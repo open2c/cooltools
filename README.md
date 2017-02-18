@@ -1,2 +1,2 @@
 # cooltools
-Tools for your .cool's
+The tools for your .cool's
