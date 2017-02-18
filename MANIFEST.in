@@ -1,1 +1,13 @@
+include CHANGES.md
+include README.md
+include LICENSE
+
 include cooltools/io/fastsavetxt.*
+
+global-exclude __pycache__/*
+global-exclude *.so
+global-exclude *.pyd
+global-exclude *.pyc
+global-exclude .git*
+global-exclude .deps/*
+global-exclude .DS_Store
