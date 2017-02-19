@@ -42,6 +42,7 @@ install_requires = [
     'numpy>=1.10', 
     'cython>=0.25', 
     'cooler>=0.6', 
+    'click>=6.6', 
 ]
 
 
@@ -68,4 +69,10 @@ setup(
     zip_safe=False,
     classifiers=[s.strip() for s in classifiers.split('\n') if s],
     install_requires=install_requires,
+    entry_points={
+        'console_scripts': [
+             'cooltools = cooltools.cli:cli',
+        ]
+    }
+
 )
