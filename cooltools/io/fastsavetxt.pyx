@@ -47,6 +47,7 @@ def empty_func():
 @cython.boundscheck(False)                                                         
 @cython.nonecheck(False)                                                           
 @cython.wraparound(False)                                                          
+
 def array2txt(
     mat,                                                  
     out,                                                  
@@ -65,11 +66,11 @@ def array2txt(
     ----------
     mat : a 2D numpy array of a list of lists of numbers (float/integer)
     
-    out : str or file handle 
+    out : str or file object
         Either:
         -- a path to the output file. If ends with .gz the output is gzipped
-        -- a file handle
-        -- a stdin of a Popen object
+        -- a file object
+        -- a stdin of a Popen object 
         TIP: when using files/stdin do not forget to flush()/communicate().
 
     format_string : bytes, optional
@@ -101,14 +102,14 @@ def array2txt(
     if issubclass(type(out), str) or issubclass(type(out), bytearray):
         if out.endswith('.gz'):
             writer = gzipWriter(out)                                                
-            outPipe = writer.stdin                                                       
+            out_pipe = writer.stdin                                                       
             close_out_func = writer.communicate
         else:
             writer = open(out, 'wb')
-            outPipe = writer
+            out_pipe = writer
             close_out_func = writer.flush
     elif hasattr(out, 'write'):
-        outPipe = out
+        out_pipe = out
         close_out_func = empty_func
     else:
         raise Exception('`out` must be either a file path or a file handle/stream')
@@ -133,8 +134,8 @@ def array2txt(
     curStringTemplate = template                                                 
                                                                                  
     if header is not None:                                                       
-        outPipe.write(header)                                                    
-        outPipe.write(newline_cstr)                                              
+        out_pipe.write(header)                                                    
+        out_pipe.write(newline_cstr)                                              
                                                                                  
     cdef int i,j                                                                 
     for i in xrange(N):                                                          
@@ -152,11 +153,10 @@ def array2txt(
             element = mat_ndarray[i,j]                                             
             s_cur = s_cur + sprintf(s_cur, curStringTemplate, element)  
             
-        if i != N-1:
-            s_cur = strcpy(s_cur, newline_cstr)  
-            s_cur += sizeof(char) * strlen(newline_cstr)
+        s_cur = strcpy(s_cur, newline_cstr)  
+        s_cur += sizeof(char) * strlen(newline_cstr)
                                                                                  
-        outPipe.write(s_start)
+        out_pipe.write(s_start)
     free(s_start)
     
     close_out_func()

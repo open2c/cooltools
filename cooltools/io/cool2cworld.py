@@ -3,29 +3,32 @@ import gzip
 import tarfile
 import tempfile
 
-import pyximport
-pyximport.install()
-import fastsavetxt
+from . import fastsavetxt
 
 import cooler
 
-def cool2cworld(
-    cooler_path, 
-    out_path, 
+def dump_cool_to_cworld(
+    in_cooler,
+    out, 
     iced=False, 
-    iced_unity=False):
+    iced_unity=False,
+    buffer_size=int(1e8)
+    ):
     '''
     Dump a genome-wide contact matrix from cooler into a CWorld-format 
     text matrix.
 
     Parameters
     ----------
-    cooler_path : str
-        The path to the cooler file.
+    in_cooler : str or cooler
+        A cooler object or the path to the file.
 
-    out_path : str
-        The path to the output matrix file. 
-        If ends with .gz, the output is gzipped.
+    out : str or file object
+        Either:
+        -- a path to the output file. If ends with .gz the output is gzipped
+        -- a file object
+        -- a stdin of a Popen object 
+        TIP: when using files/stdin do not forget to flush()/communicate().
 
     iced : bool, optional
         If True, dump the balanced matrix.
@@ -34,10 +37,25 @@ def cool2cworld(
         If True and `iced` is True, dump the matrix balanced to a unity.
     '''
 
-    c = cooler.Cooler(cooler_path)
-    mat = c.matrix(balance=iced)[:]
-    if iced and (not iced_unity):
-        mat *= (c._load_attrs('/bins/weight')['scale']) ** 2
+    # Prepare the out pipe and the clean-up function.
+    if issubclass(type(out), str) or issubclass(type(out), bytearray):
+        if out.endswith('.gz'):
+            writer = fastsavetxt.gzipWriter(out)                                                
+            out_pipe = writer.stdin                                                       
+            close_out_func = writer.communicate
+        else:
+            writer = open(out, 'wb')
+            out_pipe = writer
+            close_out_func = writer.flush
+    elif hasattr(out, 'write'):
+        out_pipe = out
+        close_out_func = fastsavetxt.empty_func
+
+    # Make headers
+    if not issubclass(type(in_cooler), cooler.Cooler):
+        c = cooler.Cooler(in_cooler)
+    else:
+        c = in_cooler
 
     res = c.info['bin-size']
     nbins = c.info['nbins']
@@ -45,27 +63,42 @@ def cool2cworld(
         
     col_headers = '\t'.join(
         ['{}x{}'.format(nbins, nbins)] +
-        ['{}|{}|{}:{}-{}'.format(binidx, gname, b.chrom, b.start+1, b.end)
+        ['{}|{}|{}:{}-{}'.format(
+            binidx, gname, b.chrom, b.start+1, b.end)
          for binidx, b in c.bins()[:].iterrows()
         ]
     ).encode()
 
     row_headers = [
-        '{}|{}|{}:{}-{}'.format(binidx1, gname, b1.chrom, b1.start+1, b1.end).encode()
+        '{}|{}|{}:{}-{}'.format(
+            binidx1, gname, b1.chrom, b1.start+1, b1.end).encode()
         for binidx1, b1 in c.bins()[:].iterrows()
     ]
-    
-    fastsavetxt.array2txt(
-        mat,
-        out_path,
-        format_string = b'%.4lf', #b'%.4lf' if iced else b'%.4lf',
-        header=col_headers,
-        row_headers = row_headers,
-    )
+
+    # Iterate over a matrix one block at a time.
+    nbins = c.matrix().shape[0]
+    nrows_per_step = max(1, buffer_size // nbins)
+    for i in range(nbins // nrows_per_step + 1):
+        lo = min(nbins, i*nrows_per_step)
+        hi = min(nbins, (i+1)*nrows_per_step)
+        if hi <= lo:
+            break
+        mat = c.matrix(balance=iced)[lo:hi]
+        if iced and (not iced_unity):
+            mat *= (c._load_attrs('/bins/weight')['scale']) ** 2
+        
+        fastsavetxt.array2txt(
+            mat,
+            out_pipe,
+            format_string = b'%.4lf',
+            header=col_headers if i==0 else None,
+            row_headers = row_headers[lo:hi],
+        )
+
+    close_out_func()
 
 
-
-def cool2cworldTar(
+def dump_cool_to_cworld_tar(
     cooler_paths,
     target_folder,
     dataset_name
@@ -117,3 +150,4 @@ def cool2cworldTar(
                 cworld_tmp_path,
                 arcname=cworld_full_name, 
                 recursive=True)
+
