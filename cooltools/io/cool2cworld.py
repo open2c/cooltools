@@ -7,12 +7,12 @@ from . import fastsavetxt
 
 import cooler
 
-def dump_cool_to_cworld(
+def dump_cworld(
     in_cooler,
     out, 
     iced=False, 
     iced_unity=False,
-    buffer_size=int(1e8)
+    buffer_size=int(1e8),
     ):
     '''
     Dump a genome-wide contact matrix from cooler into a CWorld-format 
@@ -35,6 +35,9 @@ def dump_cool_to_cworld(
 
     iced_unity : bool, optional
         If True and `iced` is True, dump the matrix balanced to a unity.
+
+    buffer_size : int
+        The chunk size for iterating over the rows of the Hi-C matrix.
     '''
 
     # Prepare the out pipe and the clean-up function.
@@ -90,7 +93,7 @@ def dump_cool_to_cworld(
         fastsavetxt.array2txt(
             mat,
             out_pipe,
-            format_string = b'%.4lf',
+            format_string = b'%.8f' if iced_unity else b'%.4lf',
             header=col_headers if i==0 else None,
             row_headers = row_headers[lo:hi],
         )
@@ -98,10 +101,9 @@ def dump_cool_to_cworld(
     close_out_func()
 
 
-def dump_cool_to_cworld_tar(
+def dump_cworld_tar(
     cooler_paths,
-    target_folder,
-    dataset_name
+    out_path,
     ):
     '''
     Makes a CWorld .tar archive with binned contact maps at multiple resolutions
@@ -113,18 +115,13 @@ def dump_cool_to_cworld_tar(
         The paths to all coolers to dump into a single CWorld tar archive.
         Must correspond to the same dataset and have different resolutions.
 
-    target_folder : str
-        The folder to contain the output .tar archive.
-
-    dataset_name : str
-        The name of the dataset.
+    out_path : str
+        The path to the output file.
 
     '''
     
-    if not os.path.isdir(target_folder):
-        raise Exception('The target folder must exist: {}'.format(target_folder))
-    
-    
+    dataset_name = os.path.splitext(os.path.split(out_path)[1])[0]
+
     with tempfile.TemporaryDirectory() as cworld_tmp_path:
         for cooler_path in cooler_paths:
             res = cooler.Cooler(cooler_path).info['bin-size']
@@ -137,17 +134,16 @@ def dump_cool_to_cworld_tar(
                     folder_path, 
                     '{}__C-{}-{}.matrix.gz'.format(dataset_name, res, iced_label))
 
-                cool2cworld(
-                    cooler_path=cooler_path,
-                    out_path=mat_path,
-                    iced=iced
+                dump_cworld(
+                    in_cooler=cooler_path,
+                    out=mat_path,
+                    iced=iced,
+                    iced_unity=False
                     )
                 
-        cworld_full_name = dataset_name+'__txt'        
-        with tarfile.open(
-            os.path.join(target_folder, cworld_full_name) + '.tar', mode='w') as archive:
+        with tarfile.open(out_path, mode='w') as archive:
             archive.add(
                 cworld_tmp_path,
-                arcname=cworld_full_name, 
+                arcname=dataset_name, 
                 recursive=True)
 
