@@ -1,5 +1,6 @@
 import warnings
 import numpy as np
+import pandas as pd
 from .num import peaks, numutils
 
 def insul_diamond(mat, window=10, ignore_diags=2):
@@ -17,7 +18,9 @@ def insul_diamond(mat, window=10, ignore_diags=2):
 
     ignore_diags : int
         If > 0, the interactions at separations <= `ignore_diags` are ignored
-        when calculating the insulation score.
+        when calculating the insulation score. Typically, a few first diagonals 
+        of the Hi-C map should be ignored due to contamination with Hi-C
+        artifacts.
     
     """
     if (ignore_diags):
@@ -46,25 +49,30 @@ def insul_diamond(mat, window=10, ignore_diags=2):
 def find_insulating_boundaries(
     c,
     window_bp = 100000,
-    ignore_diags = 2,
     max_bad_bins = 2):
-    '''Calculate insulating diamond scores and find boundaries.
+    '''Calculate the diamond insulation scores and call insulating boundaries.
 
     Parameters
     ----------
     c : cooler.Cooler
         A cooler with balanced Hi-C data.
+
     window_bp : int
         The size of the sliding diamond window used to calculate the insulation
         score.
-    ignore_diags : int
-        The number of diagonals in the Hi-C map which should be ignored due 
-        to contamination with Hi-C artifacts.
+
     max_bad_bins : int
-        The maximal allowed number of bad bins in a sliding window.
+        The maximal allowed number of bad bins on each side of a sliding window.
+
+    Returns
+    -------
+    ins_table : pandas.DataFrame
+        A table containing the insulation scores of the genomic bins and 
+        the insulating boundary strengths.
     '''
 
     bin_size = c.info['bin-size']
+    ignore_diags = c._load_attrs('/bins/weight')['ignore_diags']
     window_bins = window_bp // bin_size
     
     if (window_bp % bin_size !=0):
@@ -94,7 +102,7 @@ def find_insulating_boundaries(
             warnings.simplefilter("ignore", RuntimeWarning)  
 
             ins_track = np.log2(
-                cooltools.insulation.insul_diamond(m, window_bins, ignore_diags))
+                insul_diamond(m, window_bins, ignore_diags))
 
         ins_track[is_bad_bin] = np.nan
         ins_track[bad_bins_u > max_bad_bins] = np.nan
@@ -102,13 +110,13 @@ def find_insulating_boundaries(
 
         ins_chrom['log2_insulation_score_{}'.format(window_bp)] = ins_track
 
-        poss, proms = cooltools.num.peaks.find_peak_prominence(-ins_track)
+        poss, proms = peaks.find_peak_prominence(-ins_track)
         ins_prom_track = np.zeros_like(ins_track) * np.nan
         ins_prom_track[poss] = proms
         ins_chrom['boundary_strength_{}'.format(window_bp)] = ins_prom_track
 
         ins_chrom_tables.append(ins_chrom)
 
-    ins_chrom_table = pd.concat(ins_chrom_tables)
-    return ins_chrom_table
+    ins_table = pd.concat(ins_chrom_tables)
+    return ins_table
 
