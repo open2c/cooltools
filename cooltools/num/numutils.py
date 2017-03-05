@@ -23,4 +23,5 @@ def slice_sorted(arr, lo, hi):
     '''Get the subset of a sorted array with values >=lo and <hi.
     A faster version of arr[(arr>=lo) & (arr<hi)]
     '''
-    return arr[np.searchsorted(arr, lo):np.searchsorted(arr, hi)]
+    return arr[np.searchsorted(arr, lo)
+               :np.searchsorted(arr, hi)]
