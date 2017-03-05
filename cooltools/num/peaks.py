@@ -1,5 +1,6 @@
 # This is the Python implementation of the peakdet algorithm.
 #
+import warnings
 import numpy as np
 
 def find_peak_prominence(arr, max_dist = None):
@@ -29,15 +30,18 @@ def find_peak_prominence(arr, max_dist = None):
     
     # Finding all local minima and maxima (i.e. points the are lower/higher than
     # both immediate neighbors).
-    is_min_left = np.r_[False, arr[:-1] > arr[1:]]
-    is_min_right = np.r_[arr[:-1] < arr[1:], False]
-    is_loc_min = is_min_left & is_min_right
-    loc_min_poss = np.where(is_loc_min)[0]
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", RuntimeWarning)
 
-    is_max_left = np.r_[False, arr[:-1] < arr[1:]]
-    is_max_right = np.r_[arr[:-1] > arr[1:], False]
-    is_loc_max = is_max_left & is_max_right
-    loc_max_poss = np.where(is_loc_max)[0]
+        is_min_left = np.r_[False, arr[:-1] > arr[1:]]
+        is_min_right = np.r_[arr[:-1] < arr[1:], False]
+        is_loc_min = is_min_left & is_min_right
+        loc_min_poss = np.where(is_loc_min)[0]
+
+        is_max_left = np.r_[False, arr[:-1] < arr[1:]]
+        is_max_right = np.r_[arr[:-1] > arr[1:], False]
+        is_loc_max = is_max_left & is_max_right
+        loc_max_poss = np.where(is_loc_max)[0]
     
     # For each maximum, find the position of a higher peak on the left and 
     # on the right. If there are no higher peaks within the `max_dist` range,
@@ -79,7 +83,13 @@ def find_peak_prominence(arr, max_dist = None):
     
     # In 1D, the topographic definition of the prominence of a peak reduces to
     # the minimum of the left-side and right-side prominence.
-    max_proms = np.nanmin(np.vstack([left_max_proms, right_max_proms]), axis=0)
+    
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", RuntimeWarning)
+
+        max_proms = np.nanmin(
+            np.vstack([left_max_proms, right_max_proms]),
+            axis=0)
 
     # The global maximum, by definition, does not have higher peaks around it and
     # thus its prominence is explicitly defined with respect to the lowest local
