@@ -88,7 +88,7 @@ def dump_cworld(
             break
         mat = c.matrix(balance=iced)[lo:hi]
         if iced and (not iced_unity):
-            mat *= (c._load_attrs('/bins/weight')['scale']) ** 2
+            mat *= (c._load_attrs('/bins/weight')['scale']) 
         
         fastsavetxt.array2txt(
             mat,
