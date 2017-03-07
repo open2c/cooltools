@@ -45,7 +45,7 @@ def insul_diamond(mat, window=10, ignore_diags=2):
 def find_insulating_boundaries(
     c,
     window_bp = 100000,
-    max_bad_bins = 2):
+    max_bad_bins = None):
     '''Calculate the diamond insulation scores and call insulating boundaries.
 
     Parameters
@@ -59,6 +59,7 @@ def find_insulating_boundaries(
 
     max_bad_bins : int
         The maximal allowed number of bad bins on each side of a sliding window.
+        If None, than equals a half of the window size in bins.
 
     Returns
     -------
@@ -70,6 +71,8 @@ def find_insulating_boundaries(
     bin_size = c.info['bin-size']
     ignore_diags = c._load_attrs('/bins/weight')['ignore_diags']
     window_bins = window_bp // bin_size
+    if max_bad_bins is None:
+        max_bad_bins = window_bins // 2
     
     if (window_bp % bin_size !=0):
         raise Exception(
