@@ -32,16 +32,12 @@ def insul_diamond(mat, window=10, ignore_diags=2):
         warnings.simplefilter("ignore")
 
         N = mat.shape[0]
-        bad_bins = (np.nansum(mat, axis=0) == 0)
         score = np.nan * np.ones(N)
-        norm = np.zeros(N)
         for i in range(0, N):
             lo = max(0, i-window)
             hi = min(i+window, N)
             # nanmean of interactions to reduce the effect of bad bins
             score[i] = np.nanmean(mat[lo:i, i:hi])
-            norm[i] = (~np.isnan(mat[lo:i, i:hi])).sum()
-        score = score / np.where(norm>0, norm, 1)
         score /= np.nanmedian(score)
     return score
 
