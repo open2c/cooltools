@@ -64,7 +64,7 @@ def find_peak_prominence(arr, max_dist = None):
     # between the peak and the adjacent higher peaks, on the left and the right
     # separately.
     left_max_proms = np.array([
-        (arr[pos] - arr[left_maxs[i]:pos].min()
+        (arr[pos] - np.nanmin(arr[left_maxs[i]:pos])
             if (left_maxs[i] >= 0)
             else np.nan
         )
@@ -73,7 +73,7 @@ def find_peak_prominence(arr, max_dist = None):
     ])
 
     right_max_proms = np.array([
-        (arr[pos] - arr[pos:right_maxs[i]].min()
+        (arr[pos] - np.nanmin(arr[pos:right_maxs[i]])
             if (right_maxs[i] >= 0)
             else np.nan
         )
@@ -102,9 +102,9 @@ def find_peak_prominence(arr, max_dist = None):
         global_max_pos = loc_max_poss[global_max_idx]
         max_proms[global_max_idx] = (
             arr[global_max_pos] 
-            - arr[loc_min_poss[(loc_min_poss >= global_max_pos - max_dist)
+            - np.nanmin(arr[loc_min_poss[(loc_min_poss >= global_max_pos - max_dist)
                                & (loc_min_poss < global_max_pos + max_dist)
-                              ]].min()
+                              ]])
         )
     
     return loc_max_poss, max_proms
