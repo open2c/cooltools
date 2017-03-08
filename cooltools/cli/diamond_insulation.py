@@ -17,16 +17,16 @@ from .. import insulation
     type=int,
     )
 @click.option(
-    '--max-bad-bins', 
-    help="The maximal allowed number of bad bins on each side of the sliding "
-        "window.",
+    '--min-dist-bad-bin', 
+    help='The minimal allowed distance to a bad bin. Do not calculate insulation scores '
+         'for bins having a bad bin closer than this distance.',
     type=int,
     default=2,
     show_default=True,
     )
 
 
-def diamond_insulation(cool_path, window, max_bad_bins):
+def diamond_insulation(cool_path, window, min_dist_bad_bin):
     """
     Calculate the diamond insulation scores and call insulating boundaries.
     
@@ -37,6 +37,6 @@ def diamond_insulation(cool_path, window, max_bad_bins):
 
     c = cooler.Cooler(cool_path)
     ins_table = insulation.find_insulating_boundaries(
-        c, window_bp = window, max_bad_bins = max_bad_bins)
+        c, window_bp = window, min_dist_bad_bin = min_dist_bad_bin)
 
     print(ins_table.to_csv(sep='\t', index=False, na_rep='nan'))
