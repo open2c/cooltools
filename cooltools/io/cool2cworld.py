@@ -1,4 +1,5 @@
 import os
+import io
 import gzip
 import tarfile
 import tempfile
@@ -9,13 +10,14 @@ import cooler
 
 def dump_cworld(
     in_cooler,
-    out, 
-    iced=False, 
+    out=None,
+    region=None,
+    iced=False,
     iced_unity=False,
     buffer_size=int(1e8),
     ):
     '''
-    Dump a genome-wide contact matrix from cooler into a CWorld-format 
+    Dump a genome-wide contact matrix from cooler into a CWorld-format
     text matrix.
 
     Parameters
@@ -27,8 +29,12 @@ def dump_cworld(
         Either:
         -- a path to the output file. If ends with .gz the output is gzipped
         -- a file object
-        -- a stdin of a Popen object 
+        -- a stdin of a Popen object
+        -- None, in which case the data is dumped into a string and returned
         TIP: when using files/stdin do not forget to flush()/communicate().
+
+    region : str
+        The region to dump. By default is None, dump the genome-wide matrix.
 
     iced : bool, optional
         If True, dump the balanced matrix.
@@ -41,10 +47,12 @@ def dump_cworld(
     '''
 
     # Prepare the out pipe and the clean-up function.
+    if not(out):
+        out = io.BytesIO(b'')
     if issubclass(type(out), str) or issubclass(type(out), bytearray):
         if out.endswith('.gz'):
-            writer = fastsavetxt.gzipWriter(out)                                                
-            out_pipe = writer.stdin                                                       
+            writer = fastsavetxt.gzipWriter(out)
+            out_pipe = writer.stdin
             close_out_func = writer.communicate
         else:
             writer = open(out, 'wb')
@@ -61,35 +69,38 @@ def dump_cworld(
         c = in_cooler
 
     res = c.info['bin-size']
-    nbins = c.info['nbins']
     gname = c.info['genome-assembly']
-        
+
+    bins = c.bins()[:] if not(region) else c.bins().fetch(region)
+    nbins = len(bins)
+
     col_headers = '\t'.join(
         ['{}x{}'.format(nbins, nbins)] +
         ['{}|{}|{}:{}-{}'.format(
             binidx, gname, b.chrom, b.start+1, b.end)
-         for binidx, b in c.bins()[:].iterrows()
+         for binidx, b in bins.iterrows()
         ]
     ).encode()
 
     row_headers = [
         '{}|{}|{}:{}-{}'.format(
             binidx1, gname, b1.chrom, b1.start+1, b1.end).encode()
-        for binidx1, b1 in c.bins()[:].iterrows()
+        for binidx1, b1 in bins.iterrows()
     ]
 
     # Iterate over a matrix one block at a time.
-    nbins = c.matrix().shape[0]
     nrows_per_step = max(1, buffer_size // nbins)
     for i in range(nbins // nrows_per_step + 1):
         lo = min(nbins, i*nrows_per_step)
         hi = min(nbins, (i+1)*nrows_per_step)
         if hi <= lo:
             break
-        mat = c.matrix(balance=iced)[lo:hi]
+        mat = (c.matrix(balance=iced)
+               if not(region) else
+               c.matrix(balance=iced).fetch(region))[lo:hi]
         if iced and (not iced_unity):
-            mat *= (c._load_attrs('/bins/weight')['scale']) 
-        
+            mat *= (c._load_attrs('/bins/weight')['scale'])
+
         fastsavetxt.array2txt(
             mat,
             out_pipe,
@@ -98,7 +109,10 @@ def dump_cworld(
             row_headers = row_headers[lo:hi],
         )
 
-    close_out_func()
+    if issubclass(type(out), io.BytesIO):
+        return out.getvalue()
+    else:
+        close_out_func()
 
 
 def dump_cworld_tar(
@@ -107,7 +121,7 @@ def dump_cworld_tar(
     ):
     '''
     Makes a CWorld .tar archive with binned contact maps at multiple resolutions
-    in .matrix.txt.gz format. 
+    in .matrix.txt.gz format.
 
     Parameters
     ----------
@@ -119,7 +133,7 @@ def dump_cworld_tar(
         The path to the output file.
 
     '''
-    
+
     dataset_name = os.path.splitext(os.path.split(out_path)[1])[0]
 
     with tempfile.TemporaryDirectory() as cworld_tmp_path:
@@ -131,7 +145,7 @@ def dump_cworld_tar(
                 os.mkdir(folder_path)
 
                 mat_path = os.path.join(
-                    folder_path, 
+                    folder_path,
                     '{}__C-{}-{}.matrix.gz'.format(dataset_name, res, iced_label))
 
                 dump_cworld(
@@ -140,10 +154,10 @@ def dump_cworld_tar(
                     iced=iced,
                     iced_unity=False
                     )
-                
+
         with tarfile.open(out_path, mode='w') as archive:
             archive.add(
                 cworld_tmp_path,
-                arcname=dataset_name, 
+                arcname=dataset_name,
                 recursive=True)
 
