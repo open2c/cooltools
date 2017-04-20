@@ -39,10 +39,10 @@ def get_long_description():
 
 
 install_requires = [
-    'numpy>=1.10', 
-    'cython>=0.25', 
-    'cooler>=0.6', 
-    'click>=6.6', 
+    'numpy',
+    'cython',
+    'click',
+    'cooler>=0.6',
 ]
 
 
@@ -51,6 +51,10 @@ extensions = [
         "cooltools.io.fastsavetxt",
         ["cooltools/io/fastsavetxt.pyx"],
     ),
+    Extension(
+        "cooltools.num.kernels",
+        ["cooltools/num/kernels.pyx"],
+    )
 ]
 
 packages = find_packages()
