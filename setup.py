@@ -7,6 +7,7 @@ import re
 from setuptools import setup, find_packages
 from setuptools.extension import Extension
 from Cython.Build import cythonize
+import numpy as np
 
 classifiers = """\
     Development Status :: 4 - Beta
@@ -48,8 +49,8 @@ install_requires = [
 
 extensions = [
     Extension(
-        "cooltools.io.fastsavetxt",
-        ["cooltools/io/fastsavetxt.pyx"],
+        "cooltools.io.fastsavetxt", ["cooltools/io/fastsavetxt.pyx"],
+        include_dirs=[np.get_include()]
     ),
 ]
 
@@ -68,6 +69,8 @@ setup(
     ext_modules = cythonize(extensions),
     zip_safe=False,
     classifiers=[s.strip() for s in classifiers.split('\n') if s],
+    include_dirs=[np.get_include()],
+
     install_requires=install_requires,
     entry_points={
         'console_scripts': [
