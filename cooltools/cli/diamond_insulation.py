@@ -24,9 +24,17 @@ from .. import insulation
     default=2,
     show_default=True,
     )
+@click.option(
+    '--ignore-diags', 
+    help='The number of diagonals to ignore. By default, equals'
+        ' the number of diagonals ignored during IC balancing.',
+    type=int,
+    default=None,
+    show_default=True,
+    )
 
 
-def diamond_insulation(cool_path, window, min_dist_bad_bin):
+def diamond_insulation(cool_path, window, min_dist_bad_bin, ignore_diags):
     """
     Calculate the diamond insulation scores and call insulating boundaries.
     
@@ -37,6 +45,7 @@ def diamond_insulation(cool_path, window, min_dist_bad_bin):
 
     c = cooler.Cooler(cool_path)
     ins_table = insulation.find_insulating_boundaries(
-        c, window_bp = window, min_dist_bad_bin = min_dist_bad_bin)
+        c, window_bp = window, min_dist_bad_bin = min_dist_bad_bin,
+        ignore_diags=ignore_diags)
 
     print(ins_table.to_csv(sep='\t', index=False, na_rep='nan'))

@@ -47,6 +47,7 @@ def find_insulating_boundaries(
     c,
     window_bp = 100000,
     min_dist_bad_bin = 2, 
+    ignore_diags=None,
 ):
     '''Calculate the diamond insulation scores and call insulating boundaries.
 
@@ -60,6 +61,9 @@ def find_insulating_boundaries(
     min_dist_bad_bin : int
         The minimal allowed distance to a bad bin. Do not calculate insulation
         scores for bins having a bad bin closer than this distance.
+    ignore_diags : int
+        The number of diagonals to ignore. If None, equals the number of 
+        diagonals ignored during IC balancing.
 
     Returns
     -------
@@ -69,7 +73,9 @@ def find_insulating_boundaries(
     '''
 
     bin_size = c.info['bin-size']
-    ignore_diags = c._load_attrs('/bins/weight')['ignore_diags']
+    ignore_diags = (ignore_diags 
+        if ignore_diags is not None 
+        else c._load_attrs('/bins/weight')['ignore_diags'] )
     window_bins = window_bp // bin_size
     
     if (window_bp % bin_size !=0):
