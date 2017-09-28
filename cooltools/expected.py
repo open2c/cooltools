@@ -256,7 +256,7 @@ def compute_expected(clr, regions, field='balanced', chunksize=1000000):
         hi2 -= co
 
         dt = make_diag_table(bad_mask, [lo1, hi1], [lo2, hi2])
-        sel = bioframe.bg2slice_frame(
+        sel = bg2slice_frame(
             cis_maps[chrom], 
             (chrom, start1, end1), 
             (chrom, start2, end2)
