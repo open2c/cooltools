@@ -199,7 +199,7 @@ def find_peak_prominence_iterative(
     max_prom=None, 
     steps_prom=1000, 
     log_space_proms=True,
-    min_n_mins=5
+    min_n_peak_pairs=5
     ):
     """Finds the minima/maxima of an array using the peakdet algorithm at 
     different values of the threshold prominence. For each location, returns 
