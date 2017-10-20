@@ -178,13 +178,13 @@ def peakdet(arr, min_prominence):
             mnpos = x[i]
         
         if lookformax:
-            if this < mx-delta:
+            if this < mx - min_prominence:
                 maxidxs.append(mxpos)
                 mn = this
                 mnpos = x[i]
                 lookformax = False
         else:
-            if this > mn+delta:
+            if this > mn + min_prominence:
                 minidxs.append(mnpos)
                 mx = this
                 mxpos = x[i]
