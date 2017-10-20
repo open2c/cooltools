@@ -258,7 +258,7 @@ def find_peak_prominence_iterative(
     minproms = np.nan * np.ones_like(arr)
     maxproms = np.nan * np.ones_like(arr)
     for p in proms:
-        minidxs, maxidxs = peakdetect.peakdet(arr, p)
+        minidxs, maxidxs = peakdet(arr, p)
         if ((len(minidxs) >= min_n_peak_pairs) 
             and (len(minidxs) >= min_n_peak_pairs)):
 
