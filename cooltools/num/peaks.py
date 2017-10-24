@@ -27,21 +27,27 @@ def find_peak_prominence(arr, max_dist = None):
     arr = np.asarray(arr)
     n = len(arr)
     max_dist = len(arr) if max_dist is None else int(max_dist)
-    
+
+
     # Finding all local minima and maxima (i.e. points the are lower/higher than
-    # both immediate neighbors).
+    # both immediate non-nan neighbors).
+    arr_nonans = arr[~np.isnan(arr)]
+    idxs_nonans2idx = np.arange(arr.size)[~np.isnan(arr)]
+    
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", RuntimeWarning)
 
-        is_min_left = np.r_[False, arr[:-1] > arr[1:]]
-        is_min_right = np.r_[arr[:-1] < arr[1:], False]
+        is_min_left = np.r_[False, arr_nonans[:-1] > arr_nonans[1:]]
+        is_min_right = np.r_[arr_nonans[:-1] < arr_nonans[1:], False]
         is_loc_min = is_min_left & is_min_right
         loc_min_poss = np.where(is_loc_min)[0]
+        loc_min_poss = idxs_nonans2idx[loc_min_poss]
 
-        is_max_left = np.r_[False, arr[:-1] < arr[1:]]
-        is_max_right = np.r_[arr[:-1] > arr[1:], False]
+        is_max_left = np.r_[False, arr_nonans[:-1] < arr_nonans[1:]]
+        is_max_right = np.r_[arr_nonans[:-1] > arr_nonans[1:], False]
         is_loc_max = is_max_left & is_max_right
         loc_max_poss = np.where(is_loc_max)[0]
+        loc_max_poss = idxs_nonans2idx[loc_max_poss]
     
     # For each maximum, find the position of a higher peak on the left and 
     # on the right. If there are no higher peaks within the `max_dist` range,
