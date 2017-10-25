@@ -159,9 +159,12 @@ def trans_eig(A, partition, k=3, perc_top=99.95, perc_bottom=1, gc=None):
     part_ids = np.array(part_ids)
     transmask = (part_ids[:, None] != part_ids[None, :])
 
+
     # Filter heatmap
+    A[~transmask] = 0
     A = _filter_heatmap(A, transmask, perc_top, perc_bottom)
-    
+    A = _numutils_cy.iterative_correction_symmetric(A)[0]
+
     # Fake cis and re-balance
     A = _fake_cis(A, ~transmask)
     #A = numutils.iterative_correction_symmetric(A)[0]
