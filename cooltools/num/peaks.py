@@ -27,21 +27,27 @@ def find_peak_prominence(arr, max_dist = None):
     arr = np.asarray(arr)
     n = len(arr)
     max_dist = len(arr) if max_dist is None else int(max_dist)
-    
+
+
     # Finding all local minima and maxima (i.e. points the are lower/higher than
-    # both immediate neighbors).
+    # both immediate non-nan neighbors).
+    arr_nonans = arr[~np.isnan(arr)]
+    idxs_nonans2idx = np.arange(arr.size)[~np.isnan(arr)]
+    
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", RuntimeWarning)
 
-        is_min_left = np.r_[False, arr[:-1] > arr[1:]]
-        is_min_right = np.r_[arr[:-1] < arr[1:], False]
+        is_min_left = np.r_[False, arr_nonans[:-1] > arr_nonans[1:]]
+        is_min_right = np.r_[arr_nonans[:-1] < arr_nonans[1:], False]
         is_loc_min = is_min_left & is_min_right
         loc_min_poss = np.where(is_loc_min)[0]
+        loc_min_poss = idxs_nonans2idx[loc_min_poss]
 
-        is_max_left = np.r_[False, arr[:-1] < arr[1:]]
-        is_max_right = np.r_[arr[:-1] > arr[1:], False]
+        is_max_left = np.r_[False, arr_nonans[:-1] < arr_nonans[1:]]
+        is_max_right = np.r_[arr_nonans[:-1] > arr_nonans[1:], False]
         is_loc_max = is_max_left & is_max_right
         loc_max_poss = np.where(is_loc_max)[0]
+        loc_max_poss = idxs_nonans2idx[loc_max_poss]
     
     # For each maximum, find the position of a higher peak on the left and 
     # on the right. If there are no higher peaks within the `max_dist` range,
@@ -96,16 +102,27 @@ def find_peak_prominence(arr, max_dist = None):
     # minimum. This issue arises only if max_dist was not specified, otherwise
     # the prominence of the global maximum is already calculated with respect
     # to the lowest point within the `max_dist` range.
+    # If no local minima are within the `max_dist` range, just use the 
+    # lowest point.
     global_max_mask = (left_maxs == -1) & (right_maxs==-1)
     if (global_max_mask).sum() > 0:
         global_max_idx = np.where(global_max_mask)[0][0]
         global_max_pos = loc_max_poss[global_max_idx]
-        max_proms[global_max_idx] = (
-            arr[global_max_pos] 
-            - np.nanmin(arr[loc_min_poss[(loc_min_poss >= global_max_pos - max_dist)
-                               & (loc_min_poss < global_max_pos + max_dist)
-                              ]])
+        neighbor_loc_mins = (
+            (loc_min_poss >= global_max_pos - max_dist)
+          & (loc_min_poss < global_max_pos + max_dist)
         )
+        if np.any(neighbor_loc_mins):
+            max_proms[global_max_idx] = (
+                arr[global_max_pos] 
+                - np.nanmin(arr[loc_min_poss[neighbor_loc_mins]])
+            )
+        else:
+            max_proms[global_max_idx] = (
+                arr[global_max_pos] 
+                - np.nanmin(arr[max(global_max_pos - max_dist, 0):
+                                global_max_pos + max_dist])
+            )
     
     return loc_max_poss, max_proms
 
@@ -121,7 +138,7 @@ def peakdet(arr, min_prominence):
     http://billauer.co.il/peakdet.html (v. 3.4.05, Explicitly not copyrighted).
     This function is released to the public domain; Any use is allowed.
     The Python implementation was published
-    by the GitHub used endolith at https://gist.github.com/endolith/250860 .
+    by endolith on Github: https://gist.github.com/endolith/250860 .
 
     Here, we use the endolith's implementation with minimal to none modifications
     to the algorithm, but with significant changes in the interface and 
@@ -167,13 +184,13 @@ def peakdet(arr, min_prominence):
             mnpos = x[i]
         
         if lookformax:
-            if this < mx-delta:
+            if this < mx - min_prominence:
                 maxidxs.append(mxpos)
                 mn = this
                 mnpos = x[i]
                 lookformax = False
         else:
-            if this > mn+delta:
+            if this > mn + min_prominence:
                 minidxs.append(mnpos)
                 mx = this
                 mxpos = x[i]
@@ -188,7 +205,7 @@ def find_peak_prominence_iterative(
     max_prom=None, 
     steps_prom=1000, 
     log_space_proms=True,
-    min_n_mins=5
+    min_n_peak_pairs=5
     ):
     """Finds the minima/maxima of an array using the peakdet algorithm at 
     different values of the threshold prominence. For each location, returns 
@@ -247,7 +264,7 @@ def find_peak_prominence_iterative(
     minproms = np.nan * np.ones_like(arr)
     maxproms = np.nan * np.ones_like(arr)
     for p in proms:
-        minidxs, maxidxs = peakdetect.peakdet(arr, p)
+        minidxs, maxidxs = peakdet(arr, p)
         if ((len(minidxs) >= min_n_peak_pairs) 
             and (len(minidxs) >= min_n_peak_pairs)):
 

@@ -17,6 +17,7 @@ classifiers = """\
     Programming Language :: Python :: 3.3
     Programming Language :: Python :: 3.4
     Programming Language :: Python :: 3.5
+    Programming Language :: Python :: 3.6
 """
 
 
@@ -50,6 +51,10 @@ install_requires = [
 extensions = [
     Extension(
         "cooltools.io.fastsavetxt", ["cooltools/io/fastsavetxt.pyx"],
+        include_dirs=[np.get_include()]
+    ),
+    Extension(
+        "cooltools.num._numutils_cy", ["cooltools/num/_numutils_cy.pyx"],
         include_dirs=[np.get_include()]
     ),
     Extension(
