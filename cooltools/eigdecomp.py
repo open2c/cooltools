@@ -5,17 +5,18 @@ import pandas as pd
 from .num import numutils
 from .num import _numutils_cy
 
+
 def _orient_eigs_gc(eigvals, eigvecs, gc, sort_by_gc_corr=True):
     """
     If `gc` is provided, flip the eigvecs to achieve a positive correlation with
     `gc`. Additionally, if `sort_by_gc_corr` is True, reorder eigvecs/eigvals in
     order of decreasing correlation with gc.
-    """
 
+    """
     corrs = [scipy.stats.spearmanr(gc, eigvec, nan_policy='omit')[0] 
              for eigvec in eigvecs]
     # flip eigvecs 
-    for i in range(len(vecs)):
+    for i in range(len(eigvecs)):
         eigvecs[i] = np.sign(corrs[i]) * eigvecs[i]
 
     # sort eigvecs
@@ -25,7 +26,9 @@ def _orient_eigs_gc(eigvals, eigvecs, gc, sort_by_gc_corr=True):
 
     return eigvals, eigvecs
 
-def cis_eig(A, n_eigs=3, gc=None, ignore_diags=2, clip_percentile=0,):
+
+def cis_eig(A, n_eigs=3, gc=None, ignore_diags=2, clip_percentile=0,
+            sort_by_gc_corr=True):
     """
     Compute compartment eigenvector on a dense cis matrix
 
@@ -78,8 +81,9 @@ def cis_eig(A, n_eigs=3, gc=None, ignore_diags=2, clip_percentile=0,):
     eigvecs *= np.sqrt(np.abs(eigvals))[:, None]
     
     # Orient and reorder
-    if gc:
-        eigvals, eigvecs = _orient_eigs(eigvals, eigvecs, gc)
+    if gc is not None:
+        eigvals, eigvecs = _orient_eigs_gc(
+                eigvals, eigvecs, gc, sort_by_gc_corr)
 
     return eigvals, eigvecs
 
@@ -111,8 +115,8 @@ def _fake_cis(A, cismask):
     return A
 
 
-
-def trans_eig(A, partition, k=3, perc_top=99.95, perc_bottom=1, gc=None):
+def trans_eig(A, partition, k=3, perc_top=99.95, perc_bottom=1, gc=None,
+              sort_by_gc_corr=True):
     """
     Compute compartmentalization eigenvectors on trans contact data
 
@@ -179,8 +183,9 @@ def trans_eig(A, partition, k=3, perc_top=99.95, perc_bottom=1, gc=None):
     eigvecs, eigvals = numutils.get_eig(O, k, mask_zero_rows=True)
     eigvecs /= np.sqrt(np.sum(eigvecs**2, axis=1))[:,None]
     eigvecs *= np.sqrt(np.abs(eigvals))[:, None]
-    if gc:
-        eigvals, eigvecs = _orient_eigs(eigvals, eigvecs, gc)
+    if gc is not None:
+        eigvals, eigvecs = _orient_eigs_gc(
+                eigvals, eigvecs, gc, sort_by_gc_corr)
     
     return eigvals, eigvecs
 
@@ -238,3 +243,4 @@ def cooler_trans_eig(clr, bins, partition=None, gc_col='GC', **kwargs):
         eigvec_table['E{}'.format(i+1)] = eigvec
 
     return eigvals, eigvec_table
+
