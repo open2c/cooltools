@@ -156,7 +156,6 @@ def find_insulating_boundaries(
         ins_prom_track = np.zeros_like(ins_track) * np.nan
         ins_prom_track[poss] = proms
         ins_chrom['boundary_strength_{}'.format(window_bp)] = ins_prom_track
-        ins_chrom['boundary_strength_{}'.format(window_bp)] = ins_prom_track
 
         ins_chrom_tables.append(ins_chrom)
 
