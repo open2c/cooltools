@@ -237,7 +237,7 @@ def _find_insulating_boundaries_dense(
     bin_size = c.info['bin-size']
     ignore_diags = (ignore_diags 
         if ignore_diags is not None 
-        else c._load_attrs('/bins/weight')['ignore_diags'] )
+        else c._load_attrs(c.root.rstrip('/')+'/bins/weight')['ignore_diags'] )
     window_bins = window_bp // bin_size
     
     if (window_bp % bin_size !=0):
