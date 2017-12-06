@@ -62,13 +62,14 @@ def cis_eig(A, n_eigs=3, gc=None, ignore_diags=2, clip_percentile=0,
             np.array([np.nan for i in range(n_eigs)]),
             np.array([np.ones(A.shape[0]) * np.nan for i in range(n_eigs)]),
         )
-
+    
+    A[~mask, :] = 0
+    A[:, ~mask] = 0
+    
     if ignore_diags:
         for d in range(-ignore_diags + 1, ignore_diags):
-            numutils.set_diag(A, 1.0, d) 
-            A[~mask, :] = 0
-            A[:, ~mask] = 0
-
+            numutils.set_diag(A, 1.0, d)
+    
     OE, _,_,_ = numutils.observed_over_expected(A, mask)
 
     if clip_percentile and clip_percentile<100:
