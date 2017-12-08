@@ -6,12 +6,20 @@ from .num import numutils
 from .num import _numutils_cy
 
 
-def _orient_eigs_gc(eigvals, eigvecs, gc, sort_by_gc_corr=True):
+def _orient_eigs_gc(eigvals, eigvecs, gc, sort_by_gc_corr=False):
     """
     If `gc` is provided, flip the eigvecs to achieve a positive correlation with
     `gc`. Additionally, if `sort_by_gc_corr` is True, reorder eigvecs/eigvals in
     order of decreasing correlation with gc.
 
+    Recommendations 
+    ---------------
+    * Sort_by_gc_corr=False (sorting by eigenvalue is usually "better", meaning 
+    the EV with largest Eval picks up more of the compartmentalization than the EV 
+    that correlates most with gc).
+    * ALWAYS check your EVs by eye. The first one occasionally reflects not the 
+    compartment structure, but e.g. chromosomal arms or translocation blowouts.
+    
     """
     corrs = [scipy.stats.spearmanr(gc, eigvec, nan_policy='omit')[0] 
              for eigvec in eigvecs]
@@ -28,7 +36,7 @@ def _orient_eigs_gc(eigvals, eigvecs, gc, sort_by_gc_corr=True):
 
 
 def cis_eig(A, n_eigs=3, gc=None, ignore_diags=2, clip_percentile=0,
-            sort_by_gc_corr=True):
+            sort_by_gc_corr=False):
     """
     Compute compartment eigenvector on a dense cis matrix
 
@@ -51,6 +59,15 @@ def cis_eig(A, n_eigs=3, gc=None, ignore_diags=2, clip_percentile=0,
     -------
     eigenvalues, eigenvectors
 
+
+    Recommendations 
+    ---------------
+    * Sort_by_gc_corr=False (sorting by eigenvalue is usually "better", meaning 
+    the EV with largest Eval picks up more of the compartmentalization than the EV 
+    that correlates most with gc).
+    * ALWAYS check your EVs by eye. The first one occasionally reflects not the 
+    compartment structure, but e.g. chromosomal arms or translocation blowouts.
+    
     """
     A = np.array(A)
     A[~np.isfinite(A)] = 0
