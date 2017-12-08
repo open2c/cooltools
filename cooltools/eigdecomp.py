@@ -8,17 +8,17 @@ from .num import _numutils_cy
 
 def _orient_eigs_gc(eigvals, eigvecs, gc, sort_by_gc_corr=False):
     """
-    If `gc` is provided, flip the eigvecs to achieve a positive correlation with
-    `gc`. Additionally, if `sort_by_gc_corr` is True, reorder eigvecs/eigvals in
-    order of decreasing correlation with gc.
-
-    Recommendations 
-    ---------------
-    * Sort_by_gc_corr=False (sorting by eigenvalue is usually "better", meaning 
-    the EV with largest Eval picks up more of the compartmentalization than the EV 
-    that correlates most with gc).
-    * ALWAYS check your EVs by eye. The first one occasionally reflects not the 
-    compartment structure, but e.g. chromosomal arms or translocation blowouts.
+    Flip `eigvecs` to achieve a positive correlation with `gc`. 
+    
+    Parameters
+    ----------
+    gc : 1D array, optional
+        GC content per bin for choosing and orienting the primary compartment 
+        eigenvector.
+        
+    sort_by_gc_corr : bool
+        if True, re-sort `eigenvecs` and `eigvals` in the order of 
+        descreasing absolute correlation with `gc`. 
     
     """
     corrs = [scipy.stats.spearmanr(gc, eigvec, nan_policy='omit')[0] 
@@ -54,19 +54,22 @@ def cis_eig(A, n_eigs=3, gc=None, ignore_diags=2, clip_percentile=0,
     clip_percentile : float
         if >0 and <100, clip pixels with diagonal-normalized values
         higher than the specified percentile of matrix-wide values.
+    sort_by_gc_corr : bool
+        if True, report eigenvectors in the order of descreasing absolute 
+        correlation with GC and not by eigenvalue. This option is designed
+        to report the most "biologically" informative eigenvectors first,
+        and prevent eigenvector swapping caused by translocations.
+        In reality, however, shows poor performance and may lead to 
+        reporting of non-informative eigenvectors. False by default.
+    
 
     Returns
     -------
     eigenvalues, eigenvectors
 
-
-    Recommendations 
-    ---------------
-    * Sort_by_gc_corr=False (sorting by eigenvalue is usually "better", meaning 
-    the EV with largest Eval picks up more of the compartmentalization than the EV 
-    that correlates most with gc).
-    * ALWAYS check your EVs by eye. The first one occasionally reflects not the 
-    compartment structure, but e.g. chromosomal arms or translocation blowouts.
+    .. note:: ALWAYS check your EVs by eye. The first one occasionally does 
+              not reflect the compartment structure, but instead describes
+              chromosomal arms or translocation blowouts.
     
     """
     A = np.array(A)
@@ -134,7 +137,7 @@ def _fake_cis(A, cismask):
 
 
 def trans_eig(A, partition, k=3, perc_top=99.95, perc_bottom=1, gc=None,
-              sort_by_gc_corr=True):
+              sort_by_gc_corr=False):
     """
     Compute compartmentalization eigenvectors on trans contact data
 
@@ -154,10 +157,23 @@ def trans_eig(A, partition, k=3, perc_top=99.95, perc_bottom=1, gc=None,
     gc : 1D array, optional
         GC content per bin for reordering and orienting the primary compartment 
         eigenvector; not performed if no array is provided
+    sort_by_gc_corr : bool
+        if True, report eigenvectors in the order of descreasing absolute 
+        correlation with GC and not by eigenvalue. This option is designed
+        to report the most "biologically" informative eigenvectors first,
+        and prevent eigenvector swapping caused by translocations.
+        In reality, however, shows poor performance and may lead to 
+        reporting of non-informative eigenvectors. False by default.
+    
 
     Returns
     -------
     eigenvalues, eigenvectors
+    
+    .. note:: ALWAYS check your EVs by eye. The first one occasionally does 
+          not reflect the compartment structure, but instead describes
+          chromosomal arms or translocation blowouts.
+
 
     """
     if A.shape[0] != A.shape[1]:
