@@ -41,8 +41,8 @@ def fill_nainf(arr, value=0, copy=True):
     value : float
 
     copy : bool, optional
-    Whether to create a copy of x (True) or to replace values in-place (False).
-    Default is True.
+        If True, creates a copy of x, otherwise replaces values in-place. 
+        By default, True.
 
     .. note:: differs from np.nan_to_num in that it replaces np.inf with the same
     number as np.nan.
@@ -63,12 +63,24 @@ def slice_sorted(arr, lo, hi):
 def MAD(arr, axis=None, has_nans=False):
     '''Calculate the Median Absolute Deviation from the median.
     
-    If `has_nans` is True, use the slower NaN-aware method to calculate medians.
+    Parameters
+    ----------
+    
+    arr : np.ndarray
+        Input data.
+    
+    axis : int
+        The axis along which to calculate MAD.
+    
+    has_nans : bool 
+        If True, use the slower NaN-aware method to calculate medians.
     '''
+    
     if has_nans:
-        return np.median(np.abs(arr - np.median(arr, axis)), axis)
-    else:
         return np.nanmedian(np.abs(arr - np.nanmedian(arr, axis)), axis)
+    else:
+        return np.median(np.abs(arr - np.median(arr, axis)), axis)
+        
 
 def stochastic_sd(arr, n=10000, seed=0):
     '''Estimate the standard deviation of an array by considering only the 
