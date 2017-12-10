@@ -60,10 +60,15 @@ def slice_sorted(arr, lo, hi):
     return arr[np.searchsorted(arr, lo)
                :np.searchsorted(arr, hi)]
 
-def MAD(arr, axis=None):
+def MAD(arr, axis=None, has_nans=False):
     '''Calculate the Median Absolute Deviation from the median.
+    
+    If `has_nans` is True, use the slower NaN-aware method to calculate medians.
     '''
-    return np.median(np.abs(arr - np.median(arr, axis)), axis)
+    if has_nans:
+        return np.median(np.abs(arr - np.median(arr, axis)), axis)
+    else:
+        return np.nanmedian(np.abs(arr - np.nanmedian(arr, axis)), axis)
 
 def stochastic_sd(arr, n=10000, seed=0):
     '''Estimate the standard deviation of an array by considering only the 
