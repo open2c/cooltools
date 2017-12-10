@@ -80,7 +80,65 @@ def MAD(arr, axis=None, has_nans=False):
         return np.nanmedian(np.abs(arr - np.nanmedian(arr, axis)), axis)
     else:
         return np.median(np.abs(arr - np.median(arr, axis)), axis)
+    
+    
+def normalize_score(arr, norm='z', axis=None, has_nans=True):
+    '''Normalize an array by subtracting the first moment and 
+    dividing the residual by the second.
+    
+    Parameters
+    ----------
+    
+    arr : np.ndarray
+        Input data.
         
+    norm : str
+        The type of normalization.
+        'z' - report z-scores, 
+        norm_arr = (arr - mean(arr)) / std(arr)
+        
+        'mad' - report deviations from the median in units of MAD 
+        (Median Absolute Deviation from the median),
+        norm_arr = (arr - median(arr)) / MAD(arr)
+        
+        'madz' - report robust z-scores, i.e. estimate the mean as 
+        the median and the standard error as MAD / 0.67499,
+        norm_arr = (arr - median(arr)) / MAD(arr) * 0.67499
+        
+    axis : int
+        The axis along which to calculate the normalization parameters.
+    
+    has_nans : bool 
+        If True, use slower NaN-aware methods to calculate the 
+        normalization parameters.
+        
+    '''
+    
+    norm_arr = np.copy(arr)
+    norm = norm.lower()
+    
+    if norm == 'z':
+        if has_nans:
+            norm_arr -= np.nanmean(norm_arr, axis=axis)
+            norm_arr /= np.nanstd(norm_arr, axis=axis)
+        else:
+            norm_arr -= np.mean(norm_arr, axis=axis)
+            norm_arr /= np.std(norm_arr, axis=axis)
+
+    elif norm == 'mad' or norm == 'madz':
+        if has_nans:
+            norm_arr -= np.nanmedian(norm_arr, axis=axis)
+        else:
+            norm_arr -= np.median(norm_arr, axis=axis)
+        norm_arr /= cooltools.num.numutils.MAD(norm_arr, axis=axis, has_nans=has_nans)
+        if norm == 'madz':
+            norm_arr *= 0.67449
+    else:
+        raise ValueError('Unknown norm type: {}'.format(norm))
+        
+    
+    return norm_arr
+            
 
 def stochastic_sd(arr, n=10000, seed=0):
     '''Estimate the standard deviation of an array by considering only the 
