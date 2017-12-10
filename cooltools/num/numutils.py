@@ -60,6 +60,10 @@ def slice_sorted(arr, lo, hi):
     return arr[np.searchsorted(arr, lo)
                :np.searchsorted(arr, hi)]
 
+def MAD(arr, axis=None):
+    '''Calculate the Median Absolute Deviation from the median.
+    '''
+    return np.median(np.abs(arr - np.median(arr, axis)), axis)
 
 def stochastic_sd(arr, n=10000, seed=0):
     '''Estimate the standard deviation of an array by considering only the 
