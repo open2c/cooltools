@@ -130,7 +130,7 @@ def normalize_score(arr, norm='z', axis=None, has_nans=True):
             norm_arr -= np.nanmedian(norm_arr, axis=axis)
         else:
             norm_arr -= np.median(norm_arr, axis=axis)
-        norm_arr /= cooltools.num.numutils.MAD(norm_arr, axis=axis, has_nans=has_nans)
+        norm_arr /= MAD(norm_arr, axis=axis, has_nans=has_nans)
         if norm == 'madz':
             norm_arr *= 0.67449
     else:
