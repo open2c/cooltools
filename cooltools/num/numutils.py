@@ -320,12 +320,11 @@ def observed_over_expected(
                                                                                  
     N = matrix.shape[0]                                                 
     mask2d = np.empty(shape=(0,0), dtype=np.bool)
-    if (mask.ndim == 1) and (mask.size > 0):
-        mask2d = mask[:,None] * mask[None, :]
+    if (mask.ndim == 1):
+        if (mask.size > 0):
+            mask2d = mask[:,None] * mask[None, :]
     elif mask.ndim == 2:
         mask2d = mask
-    elif mask.ndim == 0:
-        pass
     else:
         raise ValueError('The mask must be either 1D or 2D.')
                                                                                  
