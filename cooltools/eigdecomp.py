@@ -227,7 +227,9 @@ def trans_eig(A, partition, k=3, perc_top=99.95, perc_bottom=1, gc=None,
 def cooler_cis_eig(clr, bins, n_eigs=3, gc_col='GC', **kwargs):
     bins_grouped = bins.groupby('chrom')
 
-    ignore_diags = clr._load_attrs('/bins/weight')['ignore_diags'] 
+    ignore_diags = kwargs.get(
+        'ignore_diags',
+        clr._load_attrs('/bins/weight')['ignore_diags'])
 
     def _each(chrom):
         A = clr.matrix(balance=True).fetch(chrom)
@@ -235,7 +237,7 @@ def cooler_cis_eig(clr, bins, n_eigs=3, gc_col='GC', **kwargs):
               if gc_col in bins else None)
         
         eigvals, eigvecs = cis_eig(
-            A, n_eigs=n_eigs, ignore_diags=ignore_diags, clip_percentile=0, 
+            A, n_eigs=n_eigs, ignore_diags=ignore_diags,
             gc=gc, **kwargs)
         
         eig_chrom_table = bins_grouped.get_group(chrom).copy()
