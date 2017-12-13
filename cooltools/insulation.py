@@ -115,7 +115,7 @@ def find_insulating_boundaries(
     bin_size = c.info['bin-size']
     ignore_diags = (ignore_diags 
         if ignore_diags is not None 
-        else c._load_attrs('/bins/weight')['ignore_diags'] )
+        else c._load_attrs(c.root.rstrip('/')+'/bins/weight')['ignore_diags'] )
     window_bins = window_bp // bin_size
     
     if (window_bp % bin_size !=0):
@@ -155,7 +155,6 @@ def find_insulating_boundaries(
         poss, proms = peaks.find_peak_prominence(-ins_track)
         ins_prom_track = np.zeros_like(ins_track) * np.nan
         ins_prom_track[poss] = proms
-        ins_chrom['boundary_strength_{}'.format(window_bp)] = ins_prom_track
         ins_chrom['boundary_strength_{}'.format(window_bp)] = ins_prom_track
 
         ins_chrom_tables.append(ins_chrom)
@@ -238,7 +237,7 @@ def _find_insulating_boundaries_dense(
     bin_size = c.info['bin-size']
     ignore_diags = (ignore_diags 
         if ignore_diags is not None 
-        else c._load_attrs('/bins/weight')['ignore_diags'] )
+        else c._load_attrs(c.root.rstrip('/')+'/bins/weight')['ignore_diags'] )
     window_bins = window_bp // bin_size
     
     if (window_bp % bin_size !=0):
