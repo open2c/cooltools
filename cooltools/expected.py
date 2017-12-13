@@ -216,17 +216,53 @@ def make_diag_table(bad_mask, span1, span2):
     return diags.astype(int)
 
 
-def sum_diagonals(df, field):
+def _sum_diagonals(df, field):
     reduced = df.groupby('diag')[field].sum()
     reduced.name = field + '.sum'
     return reduced
 
 
-def compute_expected(clr, regions, field='balanced', chunksize=1000000):
-    pixels = daskify(clr.filename, 'pixels', chunksize=chunksize)
+def cis_expected(clr, regions, field='balanced', chunksize=1000000, 
+                 use_dask=True, ignore_diags=2):
+    """
+    Compute the mean signal along diagonals of one or more regional blocks of
+    intra-chromosomal contact matrices. Typically used as a background model 
+    for contact frequencies on the same polymer chain. 
+
+    Parameters
+    ----------
+    clr : cooler.Cooler
+        Input Cooler
+    regions : iterable of genomic regions or pairs of regions
+        Iterable of genomic region strings or 3-tuples, or 5-tuples for pairs
+        of regions
+    field : str, optional
+        Which values of the contact matrix to aggregate. This is currently a
+        no-op. *FIXME*
+    chunksize : int, optional
+        Size of dask chunks.
+
+    Returns
+    -------
+    Dataframe of diagonal statistics, indexed by region and diagonal number
+
+    """
+    if use_dask:
+        pixels = daskify(clr.filename, 'pixels', chunksize=chunksize)
+    else:
+        pixels = clr.pixels()[:]
     pixels = cooler.annotate(pixels, clr.bins(), replace=False)
     pixels = pixels[pixels.chrom1 == pixels.chrom2]
-    chroms = [region[0] for region in regions]
+
+    named_regions = False
+    if isinstance(regions, pd.DataFrame):
+        named_regions = True
+        chroms = regions['chrom'].values
+        names = regions['name'].values
+        regions = regions[['chrom', 'start', 'end']].to_records(index=False)
+    else:
+        chroms = [region[0] for region in regions]
+        names = chroms
     cis_maps = {chrom: pixels[pixels.chrom1==chrom] for chrom in chroms}
 
     diag_tables = []
@@ -263,7 +299,7 @@ def compute_expected(clr, regions, field='balanced', chunksize=1000000):
         ).copy()
         sel['diag'] = sel['bin2_id'] - sel['bin1_id']
         sel['balanced'] = sel['count'] * sel['weight1'] * sel['weight2']
-        agg = sum_diagonals(sel, field)
+        agg = _sum_diagonals(sel, field)
         diag_tables.append(dt)
         data_sums.append(agg)
 
@@ -275,25 +311,53 @@ def compute_expected(clr, regions, field='balanced', chunksize=1000000):
     for dt, agg in zip(diag_tables, data_sums):
         dt[agg.name] = 0
         dt[agg.name] = dt[agg.name].add(agg, fill_value=0)
-        dt.loc[:1, agg.name] = np.nan
+        dt.iloc[:ignore_diags, dt.columns.get_loc(agg.name)] = np.nan
 
     # merge and return
-    dtable = pd.concat(diag_tables, 
-                     keys=list(chroms),
-                     names=['chrom'])
+    if named_regions:
+        dtable = pd.concat(
+            diag_tables, 
+            keys=zip(names, chroms), 
+            names=['name', 'chrom'])
+    else:
+        dtable = pd.concat(
+            diag_tables, 
+            keys=list(chroms), 
+            names=['chrom'])  
+                     
     dtable['balanced.avg'] = dtable['balanced.sum'] / dtable['n_valid']
     return dtable
 
 
-def compute_trans_expected(clr, pixels, chromosomes):
+def trans_expected(clr, chromosomes, chunksize=1000000, use_dask=True):
+    """
+    Aggregate the signal in intrachromosomal blocks.
+    Can be used as abackground for contact frequencies between chromosomes.
+
+    Parameters
+    ----------
+    clr : cooler.Cooler
+        Cooler object
+    chromosomes : list of str
+        List of chromosome names
+    chunksize : int, optional
+        Size of dask chunks
+    
+    Returns
+    -------
+    two tables, indexed by interchromosomal block
+
+    """
     def n_total_trans_elements(clr, chromosomes):
-        n = 0
+        n = len(chromosomes)
         x = [clr.extent(chrom)[1] - clr.extent(chrom)[0] 
                  for chrom in chromosomes]
-        for i in range(len(x)):
-            for j in range(i + 1, len(x)):
-                n += x[i] * x[j]
-        return n
+        pairblock_list = []
+        for i in range(n):
+            for j in range(i + 1, n):
+                pairblock_list.append( (i, j, x[i] * x[j]) )
+        return pd.DataFrame(pairblock_list, 
+            columns=['chrom1', 'chrom2', 'n_total'])
 
     def n_bad_trans_elements(clr, chromosomes):
         n = 0
@@ -303,11 +367,17 @@ def compute_trans_expected(clr, pixels, chromosomes):
                        .astype(int)
                        .values)
                  for chrom in chromosomes]
+        pairblock_list = []
         for i in range(len(x)):
             for j in range(i + 1, len(x)):
-                n += x[i] * x[j]
-        return n
+                pairblock_list.append( (i, j, x[i] * x[j]) )
+        return pd.DataFrame(pairblock_list,
+            columns=['chrom1', 'chrom2', 'n_bad'])
 
+    if use_dask:
+        pixels = daskify(clr.filename, 'pixels', chunksize=chunksize)
+    else:
+        pixels = clr.pixels()[:]
     pixels = cooler.annotate(pixels, clr.bins(), replace=False)
     pixels = pixels[
         (pixels.chrom1.isin(chromosomes)) &
@@ -315,8 +385,8 @@ def compute_trans_expected(clr, pixels, chromosomes):
         (pixels.chrom1 != pixels.chrom2)
     ]
     pixels['balanced'] = pixels['count'] * pixels['weight1'] * pixels['weight2']
-    ntot = n_total_trans_elements(clr, chromosomes)
-    nbad = n_bad_trans_elements(clr, chromosomes)
+    ntot = n_total_trans_elements(clr, chromosomes).groupby(('chrom1', 'chrom2'))['n_total']
+    nbad = n_bad_trans_elements(clr, chromosomes).groupby(('chrom1', 'chrom2'))['n_bad']
     trans_area = ntot - nbad
-    trans_sum = pixels['balanced'].sum().compute()
+    trans_sum = pixels.groupby(('chrom1', 'chrom2'))['balanced'].sum().compute()
     return trans_sum, trans_area
