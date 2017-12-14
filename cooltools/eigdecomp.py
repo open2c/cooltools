@@ -5,6 +5,7 @@ import pandas as pd
 from .num import numutils
 from .num import _numutils_cy
 
+import bioframe
 
 def _orient_eigs_gc(eigvals, eigvecs, gc, sort_by_gc_corr=False):
     """
@@ -245,7 +246,7 @@ def cooler_cis_eig(clr, bins, regions=None, n_eigs=3, gc_col='GC', **kwargs):
         gc = (bioframe.slice_bedframe(bins, region)[gc_col].values 
               if gc_col in bins else None)
         
-        eigvals, eigvecs = cooltools.eigdecomp.cis_eig(
+        eigvals, eigvecs = cis_eig(
             A, n_eigs=n_eigs, ignore_diags=ignore_diags,
             gc=gc, **kwargs)
         
@@ -256,7 +257,9 @@ def cooler_cis_eig(clr, bins, regions=None, n_eigs=3, gc_col='GC', **kwargs):
     for region, eigvecs in zip(regions, eigvecs_per_reg) :
         lo, hi = bioframe.bisect_bedframe(bins, region)
         for i, eigvec in enumerate(eigvecs):
-            eigvec_table['E'+str(i)].iloc[lo:hi] = eigvec
+            eigvec_table.iloc[
+                lo:hi, 
+                eigvec_table.columns.get_loc('E'+str(i))] = eigvec
         
     region_strs = [
         (chrom 
