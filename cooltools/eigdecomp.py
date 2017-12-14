@@ -84,9 +84,6 @@ def cis_eig(A, n_eigs=3, gc=None, ignore_diags=2, clip_percentile=0,
             np.array([np.ones(A.shape[0]) * np.nan for i in range(n_eigs)]),
         )
     
-    A[~mask, :] = 0
-    A[:, ~mask] = 0
-    
     if ignore_diags:
         for d in range(-ignore_diags + 1, ignore_diags):
             numutils.set_diag(A, 1.0, d)
@@ -94,10 +91,16 @@ def cis_eig(A, n_eigs=3, gc=None, ignore_diags=2, clip_percentile=0,
     OE, _,_,_ = numutils.observed_over_expected(A, mask)
 
     if clip_percentile and clip_percentile<100:
-        OE = np.clip(OE, 0, np.percentile(OE, clip_percentile))
+        OE = np.clip(OE, 0, np.percentile(OE[mask, :][:, mask], clip_percentile))
 
-    # subtract 1.0 from valid rows/columns 
-    OE -= 1.0 * (mask[:, None] * mask[None, :])
+    
+    # subtract 1.0 
+    OE -= 1.0
+
+    # empty invalid rows, so that get_eig can find them
+    OE[~mask, :] = 0
+    OE[:, ~mask] = 0
+
     eigvecs, eigvals = numutils.get_eig(OE, n_eigs, mask_zero_rows=True)
     eigvecs /= np.sqrt(np.sum(eigvecs**2, axis=1))[:,None]
     eigvecs *= np.sqrt(np.abs(eigvals))[:, None]
@@ -253,7 +256,9 @@ def cooler_cis_eig(
               if gc_col in bins else None)
         
         eigvals, eigvecs = cis_eig(
-            A, n_eigs=n_eigs, ignore_diags=ignore_diags,
+            A, 
+            n_eigs=n_eigs, 
+            ignore_diags=ignore_diags,
             gc=gc, 
             clip_percentile=clip_percentile,
             sort_by_gc_corr=sort_by_gc_corr)
