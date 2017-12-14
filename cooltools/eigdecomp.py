@@ -225,7 +225,11 @@ def trans_eig(A, partition, n_eigs=3, perc_top=99.95, perc_bottom=1, gc=None,
     return eigvals, eigvecs
 
 
-def cooler_cis_eig(clr, bins, regions=None, n_eigs=3, gc_col='GC', **kwargs):
+def cooler_cis_eig(
+        clr, bins, regions=None, n_eigs=3, gc_col='GC', 
+        clip_percentile = 99,
+        **kwargs):
+
     regions = (
         [(chrom, 0, clr.chromsizes[chrom]) 
          for chrom in bins['chrom'].unique()]
@@ -248,7 +252,9 @@ def cooler_cis_eig(clr, bins, regions=None, n_eigs=3, gc_col='GC', **kwargs):
         
         eigvals, eigvecs = cis_eig(
             A, n_eigs=n_eigs, ignore_diags=ignore_diags,
-            gc=gc, **kwargs)
+            gc=gc, 
+            clip_percentile=clip_percentile,
+            **kwargs)
         
         return eigvals, eigvecs
    
