@@ -227,8 +227,9 @@ def trans_eig(A, partition, n_eigs=3, perc_top=99.95, perc_bottom=1, gc=None,
 
 def cooler_cis_eig(
         clr, bins, regions=None, n_eigs=3, gc_col='GC', 
+        ignore_diags=None,
         clip_percentile = 99,
-        **kwargs):
+        sort_by_gc_corr = False):
 
     regions = (
         [(chrom, 0, clr.chromsizes[chrom]) 
@@ -237,9 +238,10 @@ def cooler_cis_eig(
         else [bioframe.parse_region(r) for r in regions]
     )
 
-    ignore_diags = kwargs.get(
-        'ignore_diags',
-        clr._load_attrs('/bins/weight')['ignore_diags'])
+    ignore_diags = (
+        clr._load_attrs('/bins/weight')['ignore_diags']
+        if ignore_diags is None
+        else ignore_diags)
 
     eigvec_table = bins.copy()
     for i in range(n_eigs):
@@ -254,7 +256,7 @@ def cooler_cis_eig(
             A, n_eigs=n_eigs, ignore_diags=ignore_diags,
             gc=gc, 
             clip_percentile=clip_percentile,
-            **kwargs)
+            sort_by_gc_corr=sort_by_gc_corr)
         
         return eigvals, eigvecs
    
