@@ -44,7 +44,7 @@ def cis_eig(A, n_eigs=3, gc=None, ignore_diags=2, clip_percentile=0,
     ----------
     A : 2D array
         balanced dense contact matrix
-    k : int
+    n_eigs : int
         number of eigenvectors to compute
     gc : 1D array, optional
         GC content per bin for choosing and orienting the primary compartment 
@@ -136,7 +136,7 @@ def _fake_cis(A, cismask):
     return A
 
 
-def trans_eig(A, partition, k=3, perc_top=99.95, perc_bottom=1, gc=None,
+def trans_eig(A, partition, n_eigs=3, perc_top=99.95, perc_bottom=1, gc=None,
               sort_by_gc_corr=False):
     """
     Compute compartmentalization eigenvectors on trans contact data
@@ -148,7 +148,7 @@ def trans_eig(A, partition, k=3, perc_top=99.95, perc_bottom=1, gc=None,
     partition : sequence of int
         bin offset of each contiguous region to treat separately (e.g., 
         chromosomes or chromosome arms)
-    k : int
+    n_eigs : int
         number of eigenvectors to compute; default = 3
     perc_top : float (percentile)
         filter - clip trans blowout contacts above this cutoff; default = 99.95
@@ -214,7 +214,7 @@ def trans_eig(A, partition, k=3, perc_top=99.95, perc_bottom=1, gc=None,
     # Compute eig
     Abar = A.mean()
     O = (A - Abar) / Abar
-    eigvecs, eigvals = numutils.get_eig(O, k, mask_zero_rows=True)
+    eigvecs, eigvals = numutils.get_eig(O, n_eigs, mask_zero_rows=True)
     eigvecs /= np.sqrt(np.sum(eigvecs**2, axis=1))[:,None]
     eigvecs *= np.sqrt(np.abs(eigvals))[:, None]
     if gc is not None:
@@ -261,8 +261,7 @@ def cooler_cis_eig(clr, bins, n_eigs=3, gc_col='GC', **kwargs):
     return eigvals, eigvecs
 
 
-def cooler_trans_eig(clr, bins, partition=None, gc_col='GC', **kwargs):
-
+def cooler_trans_eig(clr, bins, n_eigs=3, partition=None, gc_col='GC', **kwargs):
     if partition is None:
         partition = np.r_[ 
             [clr.offset(chrom) for chrom in clr.chromnames], len(clr.bins())]
@@ -272,7 +271,7 @@ def cooler_trans_eig(clr, bins, partition=None, gc_col='GC', **kwargs):
     A = clr.matrix(balance=True)[lo:hi, lo:hi]
 
     gc = bins[gc_col].values if gc_col in bins else None
-    eigvals, eigvecs = trans_eig(A, partition, gc=gc, **kwargs)
+    eigvals, eigvecs = trans_eig(A, partition, n_eigs=n_eigs, gc=gc, **kwargs)
 
     eigvec_table = bins.copy()
     for i, eigvec in enumerate(eigvecs):
