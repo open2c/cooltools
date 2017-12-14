@@ -224,41 +224,57 @@ def trans_eig(A, partition, n_eigs=3, perc_top=99.95, perc_bottom=1, gc=None,
     return eigvals, eigvecs
 
 
-def cooler_cis_eig(clr, bins, n_eigs=3, gc_col='GC', **kwargs):
-    bins_grouped = bins.groupby('chrom')
+def cooler_cis_eig(clr, bins, regions=None, n_eigs=3, gc_col='GC', **kwargs):
+    regions = (
+        [(chrom, 0, clr.chromsizes[chrom]) 
+         for chrom in bins['chrom'].unique()]
+        if regions is None 
+        else [bioframe.parse_region(r) for r in regions]
+    )
 
     ignore_diags = kwargs.get(
         'ignore_diags',
         clr._load_attrs('/bins/weight')['ignore_diags'])
 
-    def _each(chrom):
-        A = clr.matrix(balance=True).fetch(chrom)
-        gc = (bins_grouped.get_group(chrom)[gc_col].values 
+    eigvec_table = bins.copy()
+    for i in range(n_eigs):
+        eigvec_table['E'+str(i)] = np.nan
+    
+    def _each(region):
+        A = clr.matrix(balance=True).fetch(region)
+        gc = (bioframe.slice_bedframe(bins, region)[gc_col].values 
               if gc_col in bins else None)
         
-        eigvals, eigvecs = cis_eig(
+        eigvals, eigvecs = cooltools.eigdecomp.cis_eig(
             A, n_eigs=n_eigs, ignore_diags=ignore_diags,
             gc=gc, **kwargs)
         
-        eig_chrom_table = bins_grouped.get_group(chrom).copy()
-        for i, eigvec in enumerate(eigvecs):
-            eig_chrom_table['E{}'.format(i+1)] = eigvec
-        
-        return eigvals, eig_chrom_table
+        return eigvals, eigvecs
+   
+    eigvals_per_reg, eigvecs_per_reg = zip(*map(_each, regions))
     
-    bins_chroms = list(bins_grouped.groups.keys())
-    map_chroms = [chrom for chrom in clr.chromnames if chrom in bins_chroms]
-
-    eigvals, eigvecs = zip(*map(_each, map_chroms))
+    for region, eigvecs in zip(regions, eigvecs_per_reg) :
+        lo, hi = bioframe.bisect_bedframe(bins, region)
+        for i, eigvec in enumerate(eigvecs):
+            eigvec_table['E'+str(i)].iloc[lo:hi] = eigvec
+        
+    region_strs = [
+        (chrom 
+         if (start ==0 and end ==clr.chromsizes[chrom]) 
+         else '{}:{}-{}'.format(chrom,start,end)
+        )
+        for chrom, start, end in regions
+    ]        
+        
     eigvals = pd.DataFrame(
-        index=map_chroms,
-        data=np.vstack(eigvals),
+        index=region_strs,
+        data=np.vstack(eigvals_per_reg),
         columns=['eigval'+str(i+1) for i in range(n_eigs)],
     )
 
-    eigvals.index.name = 'chrom'
-    eigvecs = pd.concat(eigvecs, axis=0, ignore_index=True)
-    return eigvals, eigvecs
+    eigvals.index.name = 'region'
+    
+    return eigvals, eigvec_table
 
 
 def cooler_trans_eig(clr, bins, n_eigs=3, partition=None, gc_col='GC', **kwargs):
