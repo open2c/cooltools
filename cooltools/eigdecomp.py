@@ -228,7 +228,7 @@ def trans_eig(A, partition, n_eigs=3, perc_top=99.95, perc_bottom=1, gc=None,
 def cooler_cis_eig(
         clr, bins, regions=None, n_eigs=3, gc_col='GC', 
         ignore_diags=None,
-        clip_percentile = 99,
+        clip_percentile = 99.9,
         sort_by_gc_corr = False):
 
     regions = (
@@ -245,7 +245,7 @@ def cooler_cis_eig(
 
     eigvec_table = bins.copy()
     for i in range(n_eigs):
-        eigvec_table['E'+str(i)] = np.nan
+        eigvec_table['E'+str(i+1)] = np.nan
     
     def _each(region):
         A = clr.matrix(balance=True).fetch(region)
@@ -267,7 +267,7 @@ def cooler_cis_eig(
         for i, eigvec in enumerate(eigvecs):
             eigvec_table.iloc[
                 lo:hi, 
-                eigvec_table.columns.get_loc('E'+str(i))] = eigvec
+                eigvec_table.columns.get_loc('E'+str(i+1))] = eigvec
         
     region_strs = [
         (chrom 
