@@ -333,7 +333,7 @@ def observed_over_expected(
     has_mask = mask2d.size>0
     dist_bins = np.r_[0, np.array(logbins(1, N, dist_bin_edge_ratio))]
     n_pixels_arr = np.zeros_like(dist_bins[1:])
-    sum_pixels_arr = np.zeros_like(dist_bins[1:])
+    sum_pixels_arr = np.zeros_like(dist_bins[1:], dtype='float64')
 
     bin_idx, n_pixels, sum_pixels = 0, 0, 0
 
