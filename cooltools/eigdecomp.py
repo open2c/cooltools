@@ -21,6 +21,9 @@ def _phase_eigs(eigvals, eigvecs, phasing_track, sort_metric=None):
         'pearsonr' - sort by decreasing Pearson correlation.
         'var_explained' - sort by decreasing absolute amount of variation in 
         `eigvecs` explained by `phasing_track` (i.e. R^2 * var(eigvec)).
+        'MAD_explained' - sort by decreasing absolute amount of Median Absolute 
+        Deviation from the median of `eigvecs` explained by `phasing_track` 
+        (i.e. COMED(eigvec, phasing_track) * MAD(eigvec)).
         'spearmanr' - sort by decreasing Spearman correlation.
     """
 
@@ -35,6 +38,10 @@ def _phase_eigs(eigvals, eigvecs, phasing_track, sort_metric=None):
             corr = scipy.stats.pearsonr(phasing_track[mask], eigvec[mask])[0]
             # multiply by the sign to keep the phasing information
             corr = np.sign(corr) * corr * corr * np.var(eigvec[mask])
+        elif sort_metric == 'MAD_explained':
+            corr = (
+                numutils.COMED(phasing_track[mask], eigvec[mask]) 
+                * numutils.MAD(eigvec[mask]))
         else:
             raise ValueError('Unknown sorting metric: {}'.format(sort_by))
 
@@ -78,6 +85,9 @@ def cis_eig(A, n_eigs=3, phasing_track=None, ignore_diags=2, clip_percentile=0,
         'pearsonr' - sort by decreasing Pearson correlation.
         'var_explained' - sort by decreasing absolute amount of variation in 
         `eigvecs` explained by `phasing_track` (i.e. R^2 * var(eigvec))
+        'MAD_explained' - sort by decreasing absolute amount of Median Absolute 
+        Deviation from the median of `eigvecs` explained by `phasing_track` 
+        (i.e. COMED(eigvec, phasing_track) * MAD(eigvec)).
         'spearmanr' - sort by decreasing Spearman correlation.
         This option is designed to report the most "biologically" informative
         eigenvectors first, and prevent eigenvector swapping caused by
@@ -190,6 +200,9 @@ def trans_eig(A, partition, n_eigs=3, perc_top=99.95, perc_bottom=1,
         'pearsonr' - sort by decreasing Pearson correlation.
         'var_explained' - sort by decreasing absolute amount of variation in 
         `eigvecs` explained by `phasing_track` (i.e. R^2 * var(eigvec))
+        'MAD_explained' - sort by decreasing absolute amount of Median Absolute 
+        Deviation from the median of `eigvecs` explained by `phasing_track` 
+        (i.e. COMED(eigvec, phasing_track) * MAD(eigvec)).
         'spearmanr' - sort by decreasing Spearman correlation.
         This option is designed to report the most "biologically" informative
         eigenvectors first, and prevent eigenvector swapping caused by
