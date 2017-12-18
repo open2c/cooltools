@@ -224,7 +224,7 @@ def get_eig(mat, n=3, mask_zero_rows=False, subtract_mean=False, divide_by_mean=
             subtract_mean=subtract_mean, divide_by_mean=divide_by_mean)
 
         n_rows = mat.shape[0]
-        eigvecs = np.zeros((n, n_rows), dtype=float)
+        eigvecs = np.nan * np.ones((n, n_rows), dtype=float)
         for i in range(n):
             eigvecs[i][~zero_rows_mask] = eigvecs_collapsed[i]
 
