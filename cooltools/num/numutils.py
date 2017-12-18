@@ -80,7 +80,36 @@ def MAD(arr, axis=None, has_nans=False):
         return np.nanmedian(np.abs(arr - np.nanmedian(arr, axis)), axis)
     else:
         return np.median(np.abs(arr - np.median(arr, axis)), axis)
+
+
+def COMED(xs, ys, has_nans=False):
+    '''Calculate the comedian - the robust median-based counterpart of 
+    Pearson's r.
+
+    comedian = med((xs-median(xs))*(ys-median(ys))) / MAD(xs) / MAD(ys)
     
+    Parameters
+    ----------
+
+    has_nans : bool
+        if True, mask (x,y) pairs with at least one NaN
+
+    .. note:: Citations: "On MAD and comedians" by Michael Falk (1997),
+    "Robust Estimation of the Correlation Coefficient: An Attempt of Survey"
+    by Georgy Shevlyakov and Pavel Smirnov (2011)
+    '''
+
+    if has_nans:
+        mask = np.isfinite(xs) & np.isfinite(ys)
+        xs = xs[mask]
+        ys = ys[mask]
+
+    med_x = np.median(xs)
+    med_y = np.median(ys)
+    comedian = np.median((xs-med_x) * (ys-med_y)) / MAD(xs) / MAD(ys)
+
+    return comedian
+
     
 def normalize_score(arr, norm='z', axis=None, has_nans=True):
     '''Normalize an array by subtracting the first moment and 
