@@ -80,7 +80,36 @@ def MAD(arr, axis=None, has_nans=False):
         return np.nanmedian(np.abs(arr - np.nanmedian(arr, axis)), axis)
     else:
         return np.median(np.abs(arr - np.median(arr, axis)), axis)
+
+
+def COMED(xs, ys, has_nans=False):
+    '''Calculate the comedian - the robust median-based counterpart of 
+    Pearson's r.
+
+    comedian = med((xs-median(xs))*(ys-median(ys))) / MAD(xs) / MAD(ys)
     
+    Parameters
+    ----------
+
+    has_nans : bool
+        if True, mask (x,y) pairs with at least one NaN
+
+    .. note:: Citations: "On MAD and comedians" by Michael Falk (1997),
+    "Robust Estimation of the Correlation Coefficient: An Attempt of Survey"
+    by Georgy Shevlyakov and Pavel Smirnov (2011)
+    '''
+
+    if has_nans:
+        mask = np.isfinite(xs) & np.isfinite(ys)
+        xs = xs[mask]
+        ys = ys[mask]
+
+    med_x = np.median(xs)
+    med_y = np.median(ys)
+    comedian = np.median((xs-med_x) * (ys-med_y)) / MAD(xs) / MAD(ys)
+
+    return comedian
+
     
 def normalize_score(arr, norm='z', axis=None, has_nans=True):
     '''Normalize an array by subtracting the first moment and 
@@ -224,7 +253,7 @@ def get_eig(mat, n=3, mask_zero_rows=False, subtract_mean=False, divide_by_mean=
             subtract_mean=subtract_mean, divide_by_mean=divide_by_mean)
 
         n_rows = mat.shape[0]
-        eigvecs = np.zeros((n, n_rows), dtype=float)
+        eigvecs = np.nan * np.ones((n, n_rows), dtype=float)
         for i in range(n):
             eigvecs[i][~zero_rows_mask] = eigvecs_collapsed[i]
 
@@ -333,7 +362,7 @@ def observed_over_expected(
     has_mask = mask2d.size>0
     dist_bins = np.r_[0, np.array(logbins(1, N, dist_bin_edge_ratio))]
     n_pixels_arr = np.zeros_like(dist_bins[1:])
-    sum_pixels_arr = np.zeros_like(dist_bins[1:])
+    sum_pixels_arr = np.zeros_like(dist_bins[1:], dtype='float64')
 
     bin_idx, n_pixels, sum_pixels = 0, 0, 0
 

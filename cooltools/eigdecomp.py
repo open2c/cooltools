@@ -1,42 +1,66 @@
 import numpy as np
 import scipy
 import scipy.stats
+
 import pandas as pd
 from .num import numutils
 from .num import _numutils_cy
 
+import bioframe
 
-def _orient_eigs_gc(eigvals, eigvecs, gc, sort_by_gc_corr=False):
+def _phase_eigs(eigvals, eigvecs, phasing_track, sort_metric=None):
     """
-    Flip `eigvecs` to achieve a positive correlation with `gc`. 
+    Flip `eigvecs` to achieve a positive correlation with `phasing_track`. 
     
     Parameters
     ----------
-    gc : 1D array, optional
-        GC content per bin for choosing and orienting the primary compartment 
-        eigenvector.
-        
-    sort_by_gc_corr : bool
-        if True, re-sort `eigenvecs` and `eigvals` in the order of 
-        descreasing absolute correlation with `gc`. 
-    
+    sort_metric : str
+        If provided, re-sort `eigenvecs` and `eigvals` in the order of 
+        decreasing correlation between phasing_track and eigenvector, using the
+        specified measure of correlation. Possible values:
+        'pearsonr' - sort by decreasing Pearson correlation.
+        'var_explained' - sort by decreasing absolute amount of variation in 
+        `eigvecs` explained by `phasing_track` (i.e. R^2 * var(eigvec)).
+        'MAD_explained' - sort by decreasing absolute amount of Median Absolute 
+        Deviation from the median of `eigvecs` explained by `phasing_track` 
+        (i.e. COMED(eigvec, phasing_track) * MAD(eigvec)).
+        'spearmanr' - sort by decreasing Spearman correlation.
     """
-    corrs = [scipy.stats.spearmanr(gc, eigvec, nan_policy='omit')[0] 
-             for eigvec in eigvecs]
+
+    corrs = []
+    for eigvec in eigvecs:
+        mask = np.isfinite(eigvec) & np.isfinite(phasing_track)
+        if sort_metric is None or sort_metric == 'spearmanr':
+            corr = scipy.stats.spearmanr(phasing_track[mask], eigvec[mask])[0] 
+        elif sort_metric == 'pearsonr':
+            corr = scipy.stats.pearsonr(phasing_track[mask], eigvec[mask])[0]
+        elif sort_metric == 'var_explained':
+            corr = scipy.stats.pearsonr(phasing_track[mask], eigvec[mask])[0]
+            # multiply by the sign to keep the phasing information
+            corr = np.sign(corr) * corr * corr * np.var(eigvec[mask])
+        elif sort_metric == 'MAD_explained':
+            corr = (
+                numutils.COMED(phasing_track[mask], eigvec[mask]) 
+                * numutils.MAD(eigvec[mask]))
+        else:
+            raise ValueError('Unknown sorting metric: {}'.format(sort_by))
+
+        corrs.append(corr)
+
     # flip eigvecs 
     for i in range(len(eigvecs)):
         eigvecs[i] = np.sign(corrs[i]) * eigvecs[i]
 
     # sort eigvecs
-    if sort_by_gc_corr:
+    if sort_metric is not None:
         idx = np.argsort(-np.abs(corrs))
         eigvals, eigvecs = eigvals[idx], eigvecs[idx]
 
     return eigvals, eigvecs
 
 
-def cis_eig(A, n_eigs=3, gc=None, ignore_diags=2, clip_percentile=0,
-            sort_by_gc_corr=False):
+def cis_eig(A, n_eigs=3, phasing_track=None, ignore_diags=2, clip_percentile=0,
+            sort_metric=None):
     """
     Compute compartment eigenvector on a dense cis matrix
 
@@ -44,23 +68,32 @@ def cis_eig(A, n_eigs=3, gc=None, ignore_diags=2, clip_percentile=0,
     ----------
     A : 2D array
         balanced dense contact matrix
-    k : int
+    n_eigs : int
         number of eigenvectors to compute
-    gc : 1D array, optional
-        GC content per bin for choosing and orienting the primary compartment 
-        eigenvector; not performed if no array is provided
+    phasing_track : 1D array, optional
+        if provided, eigenvectors are flipped to achieve a positive correlation
+        with `phasing_track`.
     ignore_diags : int
         the number of diagonals to ignore
     clip_percentile : float
         if >0 and <100, clip pixels with diagonal-normalized values
         higher than the specified percentile of matrix-wide values.
-    sort_by_gc_corr : bool
-        if True, report eigenvectors in the order of descreasing absolute 
-        correlation with GC and not by eigenvalue. This option is designed
-        to report the most "biologically" informative eigenvectors first,
-        and prevent eigenvector swapping caused by translocations.
-        In reality, however, shows poor performance and may lead to 
-        reporting of non-informative eigenvectors. False by default.
+    sort_metric : str
+        If provided, re-sort `eigenvecs` and `eigvals` in the order of 
+        decreasing correlation between phasing_track and eigenvector, using the
+        specified measure of correlation. Possible values:
+        'pearsonr' - sort by decreasing Pearson correlation.
+        'var_explained' - sort by decreasing absolute amount of variation in 
+        `eigvecs` explained by `phasing_track` (i.e. R^2 * var(eigvec))
+        'MAD_explained' - sort by decreasing absolute amount of Median Absolute 
+        Deviation from the median of `eigvecs` explained by `phasing_track` 
+        (i.e. COMED(eigvec, phasing_track) * MAD(eigvec)).
+        'spearmanr' - sort by decreasing Spearman correlation.
+        This option is designed to report the most "biologically" informative
+        eigenvectors first, and prevent eigenvector swapping caused by
+        translocations. In reality, however, sometimes it shows poor 
+        performance and may lead to reporting of non-informative eigenvectors.
+        Off by default.
     
 
     Returns
@@ -83,9 +116,6 @@ def cis_eig(A, n_eigs=3, gc=None, ignore_diags=2, clip_percentile=0,
             np.array([np.ones(A.shape[0]) * np.nan for i in range(n_eigs)]),
         )
     
-    A[~mask, :] = 0
-    A[:, ~mask] = 0
-    
     if ignore_diags:
         for d in range(-ignore_diags + 1, ignore_diags):
             numutils.set_diag(A, 1.0, d)
@@ -93,18 +123,24 @@ def cis_eig(A, n_eigs=3, gc=None, ignore_diags=2, clip_percentile=0,
     OE, _,_,_ = numutils.observed_over_expected(A, mask)
 
     if clip_percentile and clip_percentile<100:
-        OE = np.clip(OE, 0, np.percentile(OE, clip_percentile))
+        OE = np.clip(OE, 0, np.percentile(OE[mask, :][:, mask], clip_percentile))
 
-    # subtract 1.0 from valid rows/columns 
-    OE -= 1.0 * (mask[:, None] * mask[None, :])
+    
+    # subtract 1.0 
+    OE -= 1.0
+
+    # empty invalid rows, so that get_eig can find them
+    OE[~mask, :] = 0
+    OE[:, ~mask] = 0
+
     eigvecs, eigvals = numutils.get_eig(OE, n_eigs, mask_zero_rows=True)
-    eigvecs /= np.sqrt(np.sum(eigvecs**2, axis=1))[:,None]
+    eigvecs /= np.sqrt(np.nansum(eigvecs**2, axis=1))[:,None]
     eigvecs *= np.sqrt(np.abs(eigvals))[:, None]
     
     # Orient and reorder
-    if gc is not None:
-        eigvals, eigvecs = _orient_eigs_gc(
-                eigvals, eigvecs, gc, sort_by_gc_corr)
+    if phasing_track is not None:
+        eigvals, eigvecs = _phase_eigs(
+            eigvals, eigvecs, phasing_track, sort_metric)
 
     return eigvals, eigvecs
 
@@ -136,8 +172,8 @@ def _fake_cis(A, cismask):
     return A
 
 
-def trans_eig(A, partition, k=3, perc_top=99.95, perc_bottom=1, gc=None,
-              sort_by_gc_corr=False):
+def trans_eig(A, partition, n_eigs=3, perc_top=99.95, perc_bottom=1,
+              phasing_track=None, sort_metric=False):
     """
     Compute compartmentalization eigenvectors on trans contact data
 
@@ -148,22 +184,31 @@ def trans_eig(A, partition, k=3, perc_top=99.95, perc_bottom=1, gc=None,
     partition : sequence of int
         bin offset of each contiguous region to treat separately (e.g., 
         chromosomes or chromosome arms)
-    k : int
+    n_eigs : int
         number of eigenvectors to compute; default = 3
     perc_top : float (percentile)
         filter - clip trans blowout contacts above this cutoff; default = 99.95
     perc_bottom : float (percentile)
         filter - remove bins with trans coverage below this cutoff; default=1
-    gc : 1D array, optional
-        GC content per bin for reordering and orienting the primary compartment 
-        eigenvector; not performed if no array is provided
-    sort_by_gc_corr : bool
-        if True, report eigenvectors in the order of descreasing absolute 
-        correlation with GC and not by eigenvalue. This option is designed
-        to report the most "biologically" informative eigenvectors first,
-        and prevent eigenvector swapping caused by translocations.
-        In reality, however, shows poor performance and may lead to 
-        reporting of non-informative eigenvectors. False by default.
+    phasing_track : 1D array, optional
+        if provided, eigenvectors are flipped to achieve a positive correlation
+        with `phasing_track`.
+    sort_metric : str
+        If provided, re-sort `eigenvecs` and `eigvals` in the order of 
+        decreasing correlation between phasing_track and eigenvector, using the
+        specified measure of correlation. Possible values:
+        'pearsonr' - sort by decreasing Pearson correlation.
+        'var_explained' - sort by decreasing absolute amount of variation in 
+        `eigvecs` explained by `phasing_track` (i.e. R^2 * var(eigvec))
+        'MAD_explained' - sort by decreasing absolute amount of Median Absolute 
+        Deviation from the median of `eigvecs` explained by `phasing_track` 
+        (i.e. COMED(eigvec, phasing_track) * MAD(eigvec)).
+        'spearmanr' - sort by decreasing Spearman correlation.
+        This option is designed to report the most "biologically" informative
+        eigenvectors first, and prevent eigenvector swapping caused by
+        translocations. In reality, however, sometimes it shows poor 
+        performance and may lead to reporting of non-informative eigenvectors.
+        Off by default.
     
 
     Returns
@@ -214,52 +259,94 @@ def trans_eig(A, partition, k=3, perc_top=99.95, perc_bottom=1, gc=None,
     # Compute eig
     Abar = A.mean()
     O = (A - Abar) / Abar
-    eigvecs, eigvals = numutils.get_eig(O, k, mask_zero_rows=True)
+    eigvecs, eigvals = numutils.get_eig(O, n_eigs, mask_zero_rows=True)
     eigvecs /= np.sqrt(np.sum(eigvecs**2, axis=1))[:,None]
     eigvecs *= np.sqrt(np.abs(eigvals))[:, None]
-    if gc is not None:
-        eigvals, eigvecs = _orient_eigs_gc(
-                eigvals, eigvecs, gc, sort_by_gc_corr)
+    if phasing_track is not None:
+        eigvals, eigvecs = _phase_eigs(
+            eigvals, eigvecs, phasing_track, sort_metric)
     
     return eigvals, eigvecs
 
 
-def cooler_cis_eig(clr, bins, n_eigs=3, gc_col='GC', **kwargs):
-    bins_grouped = bins.groupby('chrom')
+def cooler_cis_eig(
+        clr, 
+        bins, 
+        regions=None, 
+        n_eigs=3, 
+        phasing_track_col='GC', 
+        ignore_diags=None,
+        clip_percentile = 99.9,
+        sort_metric = None):
 
-    ignore_diags = clr._load_attrs('/bins/weight')['ignore_diags'] 
+    regions = (
+        [(chrom, 0, clr.chromsizes[chrom]) 
+         for chrom in bins['chrom'].unique()]
+        if regions is None 
+        else [bioframe.parse_region(r) for r in regions]
+    )
 
-    def _each(chrom):
-        A = clr.matrix(balance=True).fetch(chrom)
-        gc = (bins_grouped.get_group(chrom)[gc_col].values 
-              if gc_col in bins else None)
+    ignore_diags = (
+        clr._load_attrs('/bins/weight')['ignore_diags']
+        if ignore_diags is None
+        else ignore_diags)
+
+    eigvec_table = bins.copy()
+    for i in range(n_eigs):
+        eigvec_table['E'+str(i+1)] = np.nan
+    
+    def _each(region):
+        A = clr.matrix(balance=True).fetch(region)
+        if phasing_track_col and (phasing_track_col not in bins):
+            raise ValueError('No column "{}" in the bin table'.format(
+                phasing_track_col))
+        phasing_track = (
+            bioframe.slice_bedframe(bins, region)[phasing_track_col].values 
+            if phasing_track_col else None)
         
         eigvals, eigvecs = cis_eig(
-            A, n_eigs=n_eigs, ignore_diags=ignore_diags, clip_percentile=0, 
-            gc=gc, **kwargs)
+            A, 
+            n_eigs=n_eigs, 
+            ignore_diags=ignore_diags,
+            phasing_track=phasing_track, 
+            clip_percentile=clip_percentile,
+            sort_metric=sort_metric)
         
-        eig_chrom_table = bins_grouped.get_group(chrom).copy()
-        for i, eigvec in enumerate(eigvecs):
-            eig_chrom_table['E{}'.format(i+1)] = eigvec
-        
-        return eigvals, eig_chrom_table
+        return eigvals, eigvecs
+   
+    eigvals_per_reg, eigvecs_per_reg = zip(*map(_each, regions))
     
-    bins_chroms = list(bins_grouped.groups.keys())
-    map_chroms = [chrom for chrom in clr.chromnames if chrom in bins_chroms]
-
-    eigvals, eigvecs = zip(*map(_each, map_chroms))
+    for region, eigvecs in zip(regions, eigvecs_per_reg) :
+        lo, hi = bioframe.bisect_bedframe(bins, region)
+        for i, eigvec in enumerate(eigvecs):
+            eigvec_table.iloc[
+                lo:hi, 
+                eigvec_table.columns.get_loc('E'+str(i+1))] = eigvec
+        
+    region_strs = [
+        (chrom 
+         if (start ==0 and end ==clr.chromsizes[chrom]) 
+         else '{}:{}-{}'.format(chrom,start,end)
+        )
+        for chrom, start, end in regions
+    ]        
+        
     eigvals = pd.DataFrame(
-        index=map_chroms,
-        data=np.vstack(eigvals),
+        index=region_strs,
+        data=np.vstack(eigvals_per_reg),
         columns=['eigval'+str(i+1) for i in range(n_eigs)],
     )
 
-    eigvals.index.name = 'chrom'
-    eigvecs = pd.concat(eigvecs, axis=0, ignore_index=True)
-    return eigvals, eigvecs
+    eigvals.index.name = 'region'
+    
+    return eigvals, eigvec_table
 
 
-def cooler_trans_eig(clr, bins, partition=None, gc_col='GC', **kwargs):
+def cooler_trans_eig(
+        clr, bins, n_eigs=3, partition=None, 
+        phasing_track_col='GC', 
+        sort_metric = None,
+        **kwargs):
 
     if partition is None:
         partition = np.r_[ 
@@ -269,8 +356,17 @@ def cooler_trans_eig(clr, bins, partition=None, gc_col='GC', **kwargs):
     hi = partition[-1]
     A = clr.matrix(balance=True)[lo:hi, lo:hi]
 
-    gc = bins[gc_col].values if gc_col in bins else None
-    eigvals, eigvecs = trans_eig(A, partition, gc=gc, **kwargs)
+    if phasing_track_col and (phasing_track_col not in bins):
+        raise ValueError('No column "{}" in the bin table'.format(
+            phasing_track_col))
+    phasing_track = (
+        bioframe.slice_bedframe(bins, region)[phasing_track_col].values 
+        if phasing_track_col else None)
+        
+    eigvals, eigvecs = trans_eig(A, partition, n_eigs=n_eigs, 
+        phasing_track=phasing_track,
+        sort_metric=sort_metric,
+        **kwargs)
 
     eigvec_table = bins.copy()
     for i, eigvec in enumerate(eigvecs):

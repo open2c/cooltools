@@ -9,7 +9,7 @@ from .. import insulation
 @click.argument(
     "cool_path",
     metavar="COOL_PATH",
-    type=click.Path(exists=True),
+    type=str,
     nargs=1)
 @click.argument(
     'window', 
