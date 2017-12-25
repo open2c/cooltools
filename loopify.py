@@ -273,13 +273,9 @@ def call_dots_matrix(matrices, vectors, kernels, b):
     #
     ####################
     print("Poisson testing to be done for all pixels ...")
-    # element-wise Poisson test:
-    p_cdf = poisson.cdf( M_raw.flatten(),
-                        Ed_raw.flatten())
-    # keep it as CDF and reshape back:
-    # preserving correspondnce between pixels in 
-    # M_raw/ice and 
-    p_cdf = p_cdf.reshape(M_raw.shape)
+    # element-wise Poisson test (Poisson.cdf(obs,exp)):
+    p_cdf = poisson.cdf( M_raw, Ed_raw)
+    # all set ...
     print("Poisson testing is complete ...")
 
     # ###################
