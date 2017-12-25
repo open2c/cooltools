@@ -10,16 +10,95 @@ from scipy.stats import poisson
 from scipy.sparse import coo_matrix
 import numpy as np
 import pandas as pd
-
 from sklearn.cluster import Birch
-
+ 
 
 ###########################
 # Calculate couple more columns for filtering/sorting ...
 ###########################
-get_slice = lambda row,col,window: (
+_get_slice = lambda row,col,window: (
                         slice(row-window, row+window+1),
                         slice(col-window, col+window+1))
+
+
+def _multiple_test_BH(pvals,alpha=0.1):
+    # prepare:
+    pvals = np.asarray(pvals)
+    n_obs = pvals.size
+    # sort p-values ...
+    sortind     = np.argsort(pvals)
+    pvals_sort       = pvals[sortind]
+    # the alpha*i/N_obs (empirical CDF):
+    ecdffactor  = np.arange(1,n_obs+1)/float(n_obs)
+    # for which observations to reject null-hypothesis ...
+    reject_null = (pvals_sort <= alpha*ecdffactor)
+
+    # let's extract border-line significant P-value:
+    pval_max_reject_null = pvals[ reject_null].max()
+    pval_min_accept_null = pvals[~reject_null].min()
+
+    if reject_null.any():
+        print("Some significant peaks have been detected!\n"
+            "pval border is between {:.4f} and {:.4f}".format(
+                                            pval_max_reject_null,
+                                            pval_min_accept_null))
+    # now we have to create ndarray reject_
+    # that stores rej_null values in the order of
+    # original pvals array ... 
+    reject_ = np.empty_like(reject_null)
+    reject_[sortind] = reject_null
+    # return the reject_ status list and pval-range:
+    return reject_, (pval_max_reject_null, pval_min_accept_null)
+
+
+
+
+
+def _clust_2D_pixels(pixels,threshold_cluster=2):
+    # clustering object prepare:
+    brc = Birch(n_clusters=None,threshold=threshold_cluster)
+    # cluster selected pixels ...
+    brc.fit(pixels)
+    brc.predict(pixels)
+    # array of labels assigned to each pixel
+    # after clustering: brc.labels_
+    # array of (tuples?) with X,Y coordinates 
+    # for centroids of corresponding clusters:
+    # brc.subcluster_centers_
+    uniq_labels, uniq_counts = np.unique(brc.labels_,
+                                        # return_inverse=True,
+                                        return_counts=True)
+
+    # small message:
+    print("Clustering is completed:"+
+          "there are {} clusters detected".format(uniq_counts.size)+
+          "mean size {:.3f}+/-{:.3f}".format(uniq_counts.mean(),
+                                             uniq_counts.std())+
+          "labels and centroids to be reported.")
+
+    # # repeat centroids coordinates
+    # # as many times as there are pixels
+    # # in each cluster:
+    centroids = np.repeat(brc.subcluster_centers_,
+                          uniq_counts,
+                          axis=0)
+    c_sizes   = np.repeat(uniq_counts,
+                          uniq_counts)
+    # let's return column names as well for convenience:
+    column_names = ['c_label','c_size','c_row','c_col']
+    #
+    return np.column_stack((brc.labels_,c_sizes,centroids)), column_names
+    ##########################################################
+    # sub_centers = pd.DataFrame(brc.subcluster_centers_,
+    #                            columns=['c_col','c_row'])
+    ##########################################################
+    # # p_cdf_df_signif.merge?
+    # peaks_merged = p_cdf_df_signif.merge(sub_centers,
+    #                                      how='inner',
+    #                                      left_on='clust',
+    #                                      right_index=True,
+    #                                      sort=True)
+    ##########################################################
 
 
 
@@ -103,7 +182,7 @@ def call_dots_matrix(matrices, vectors, kernels, b):
     #     print("\"matrices\" unpacked succesfully")
 
 
-    # DEAL WITH BIN_SIZE AND MATRIX DIMENSHIONS ...
+    # DEAL WITH BIN_SIZE AND MATRIX DIMENSIONS ...
     # bin size has to be extracted:
     # later it will be replaced with
     # the sliding window-style processing,
@@ -233,6 +312,9 @@ def call_dots_matrix(matrices, vectors, kernels, b):
                     [np.zeros(idx_2Mb),
                     np.ones(s-idx_2Mb)]
                              ).astype(np.bool)
+    # In other words:
+    # mask_2Mb = np.where(np.arange(s)<idx_2Mb,False,True)
+
     # 2D mask unrolled:
     # masking everyhting outside 2Mb
     mask_2Mb = toeplitz(mask_2Mb)
@@ -265,7 +347,7 @@ def call_dots_matrix(matrices, vectors, kernels, b):
     # count finite values in a vicinity of a pixel ...
     # to see if "NN<kernel.size"-mask worked:
     get_finite_vicinity = lambda ser: np.isfinite(
-                                          np.log2(M_ice)[get_slice(
+                                          _np.log2(M_ice)[get_slice(
                                                             ser['row'],
                                                             ser['col']
                                               )] ).sum()
@@ -287,411 +369,39 @@ def call_dots_matrix(matrices, vectors, kernels, b):
     # reject null-hypothesis only for p-values that are $<\alpha*\frac{i}{N}$,
     # where $\alpha=0.1$ is a typical FDR, $N$ - is a total number of observations,
     # and $i$ is an index of a p-values sorted by ascending.
-    pvals       = peaks_df['pval'].as_matrix()
-    sortind     = np.argsort(pvals)
-    pvals       = np.take(pvals, sortind)
-    alpha,n_obs = 0.1, pvals.size
-    ecdffactor  = np.arange(1,n_obs+1)/float(n_obs)
-    # for which observations to reject null-hypothesis ...
-    reject_null = pvals <= alpha*ecdffactor
-
-    pval_max_reject = pvals[reject_null].max()
-    pval_min_null   = pvals[~reject_null].min()
-
-    if reject_null.any():
-        print("Some significant peaks have been detected!\n"
-            "pval border is between {:.4f} and {:.4f}".format(
-                                                pval_max_reject,
-                                                pval_min_null))
-    # now we have to create ndarray reject_
-    # that stores rej_null values in the order of
-    # original pvals array ... 
-    reject_ = np.empty_like(reject_null)
-    reject_[sortind] = reject_null
-    peaks_df['rej_null'] = reject_
+    peaks_df['rej_null'], pv_range = _multiple_test_BH(peaks_df['pval'],alpha=0.1)
+    # 
 
 
-    # # some reasonble sorting:
-    # ptest_df.sort_values(by=['pval','fin'],
-    #                      ascending=[True,False])[['row',
-    #                                               'col',
-    #                                               'pval',
-    #                                               'fin']]
+    # 
+    # Next step is clustering of the data:
+    ###############
+    # clustering starts here:
+    # http://scikit-learn.org/stable/modules/clustering.html
+    # picked Birch, as the most appropriate here:
+    ###############
+    pixels_to_clust = peaks_df[['col','row']][peaks_df['rej_null']]
 
-    # ptest_df_to_clust ...
+    cluster_radius = 35000
+    threshold_cluster = round(cluster_radius/float(b))
+    # cluster em' using the threshold:
+    clustered_pix,pix_columns = _clust_2D_pixels(
+                                    pixels_to_clust.values,
+                                    threshold_cluster=threshold_cluster)
+    # pack into DataFrame ...
+    peaks_clust = pd.DataFrame(
+                        clustered_pix,
+                        index=pixels_to_clust.index,
+                        columns=pix_columns)
+    # and merge (index-wise) with the main DataFrame:
+    peaks_df=peaks_df.merge(
+                        peaks_clust,
+                        how='left',
+                        left_index=True,
+                        right_index=True)
+
 
     return peaks_df
-
-#     ###############
-#     # clustering starts here:
-#     # http://scikit-learn.org/stable/modules/clustering.html
-#     # picked Birch, as the most appropriate here:
-#     ###############
-
-#     threshold_based_on_bin_size = 2
-#     brc = Birch(n_clusters=None,threshold=threshold_based_on_bin_size)
-#     clust_info = brc.fit_predict(ptest_df_to_clust)
-
-
-# ##################
-# # TO BE CONTINUED ....
-
-# mmmm =brc.fit_transform(df_to_clust)
-
-# rrrr = brc.fit(df_to_clust)
-
-# rrrr.subcluster_centers_.astype(np.int)
-
-
-# df_to_clust['clust'] = ccccc
-
-# sorted_clusters = df_to_clust.sort_values(by=['clust',],ascending=[True,])
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-def call_dots_matrix(cooler, chrom, expected, kernels, clustering_threshold=40000):
-    '''Description
-    
-    Parameters
-    ----------
-    cooler : cooler-file
-    chrom : str
-        chromosome name to perform loop-calling on
-    expected : pandas.DataFrame
-        data frame with the `balanced.avg` column
-        that contains expected Hi-C signal
-    kernels : list of numpy.arrays
-        list of kernels/masks to perform
-        convolution of the heatmap. Kernels
-        represent the local environment to 
-        find prominent peaks against.
-        Peak considered significant is it
-        passes stat-tests for all kernels
-        from the list. Use just one for now.
-    clustering_threshold : int
-        thershold for clustering neighboring
-        peaks, in kbases. Should be ~40-60kb.
-    
-    Returns
-    -------
-    peaks : pandas.DataFrame
-        data frame with 2D genomic regions that
-        have been called by loop-caller (BEDPE-like).
-    
-        '''
-    # assuming cooler, chrom and expected as input ...
-    ice_v_name = "weight"
-    exp_v_name = "balanced.avg"
-
-    # make sure everything is compatible:
-    # chrom is a legit one:
-    assert chrom in cooler.chromnames
-    # cooler is balanced:
-    assert ice_v_name in cooler.bins().columns
-
-    # let's extract full matrices and ice_vector:
-    # it's inefficient from memory consumption
-    # perspective, but it's good for
-    # small chromosomes @10+ kb
-    M_ice = cooler.matrix().fetch(chrom)
-    M_raw = cooler.matrix(balance=False).fetch(chrom)
-    ice_v = cooler.bins().fetch(chrom)[ice_v_name].as_matrix()
-
-    print("Hi-C matrices extracted ...")
-
-    # bin size has to be extracted:
-    bin_size = cooler.info['bin-size']
-    M_dim = M_ice.shape[0]
-
-    # later it will be replaced with
-    # the sliding window-style processing,
-    # maybe using dask ...
-
-
-    # there is no concrete format for storing expected
-    # so we'll use the return of the compute_expected
-    # as a reference:
-    assert 'chrom'    in expected.index.names
-    assert 'diag'     in expected.index.names
-    assert exp_v_name in expected.columns
-    # extract 1D expected vector:
-    exp_v = expected.loc[chrom][exp_v_name].as_matrix()
-
-    # We'll reconstruct a 2D expected matrix from 
-    # the `exp_v` for ease of coding for now, 
-    # but overall it is another major inefficiency
-    # of the code (memory-footprint etc).
-    M_exp = toeplitz(exp_v)
-
-    print("Hi-C expected reconstructed ...")
-
-    # Now we have all the ingredients ready 
-    # and we can go ahead and try to execute 
-    # actuall loop-calling algorithm
-    # as explained in Rao et al 2014:
-
-
-    # it comes down to comparison of pixel intensity
-    # in observed: M_ice,
-    # and a locally-modified expected:
-    #                     DONUT[i,j](M_ice)
-    # D[i,j] = M_exp[i,j]*-----------------
-    #                     DONUT[i,j](M_exp)
-    # where DONUT[i,j](M) is a sum of the pixel intensities
-    # in the donut-shaped (or other shaped) vicinity
-    # of the pixel of interest (i,j).
-    #
-    # However, comparison between balanced/scaled values
-    # that are 0..1 using Poisson statistics is 
-    # intractable, and thus both M_ice and D, has to be
-    # rescaled back to raw-count values, i.e. de-iced:
-    # de-iced M_ice is the same as M_raw, while de-icing D:
-    #                  1       1                   DONUT[i,j](M_ice)
-    # D_raw[i,j] = --------*-------- * M_exp[i,j]* -----------------
-    #              ice_v[i] ice_v[j]               DONUT[i,j](M_exp)
-    #
-    #
-    # so, at the end of the day, simply compare M_raw and D_raw ...
-
-    # deice_v = 1/ice_v
-    deice_v = np.reciprocal(ice_v)
-
-    # deiced M_exp: element-wise multiplication of M_exp[i,j] and
-    # deice_v[i]*deice_v[j]:
-    deice_M_exp = np.multiply(M_exp,
-                            np.outer(deice_v,deice_v))
-
-    # now let's calculate DONUTS ...
-    # we'll allow the DONUT-mask, i.e. kernel(s) to
-    # be provided as a parameter:
-    # assume there will be a bunch of kernels to use
-    # at some point:
-    assert isinstance(kernels,list)
-    # but use just one for now (DONUT):
-    kernel, = kernels
-    #
-    #to be replaced later by:
-    #
-    # for kernel in kernels:
-    #     call_peaks()
-    #
-    kernel_width = kernel.shape[0]
-    # size must be odd: pixel (i,j) of interest in the middle
-    # and equal amount of pixels are to left,right, up and down
-    # of it: 
-    assert kernel_width%2 != 0
-    kernel_half_width = int((kernel_width-1)/2)
-    #
-    #
-    # a matrix filled with the donut-sums based on the ICEed matrix
-    conv_M_ice = convolve(M_ice,
-                          kernel,
-                          mode='constant',
-                          cval=0.0,
-                          origin=0)
-    # a matrix filled with the donut-sums based on the expected matrix
-    conv_M_exp = convolve(M_exp,
-                          kernel,
-                          mode='constant',
-                          cval=0.0,
-                          origin=0)
-
-    print("kernels convolved with observed and expected ...")
-
-    #
-    # details like, boundaries, kernel-footprints with too many NaNs, etc, 
-    # are to be detailed later ...
-    #
-    #
-    # now finally, deice_M_exp * (conv_M_ice/conv_M_exp), as the 
-    # locally-adjusted expected with raw counts as values:
-    M_exp_local = np.multiply(deice_M_exp,
-                        np.divide(conv_M_ice, conv_M_exp))
-
-
-    #
-    # M_raw and M_exp_local can be compared element-wise now
-    #
-
-    print("kernels convolved with observed and expected ...")
-
-    ##################
-    # Enhancement:
-    # no need to perform Poisson tests
-    # for all pixels ...
-    # so, maybe we'd filter out the data first
-    # and do Poisson after ?!
-    ##################
-
-    print("Poisson testing to be done for all pixels ...")
-    # element-wise Poisson test:
-    p_cdf = poisson.cdf(M_raw.flatten(),
-                        M_exp_local.flatten())
-
-    # keep it as CDF and reshape back:
-    # preserving correspondnce between pixels in 
-    # M_raw/ice and 
-    p_cdf = p_cdf.reshape(M_raw.shape)
-    print("Poisson testing is complete ...")
-
-    # some trivial and not so trivial masking 
-    # is needed: exclude contacts >2Mb apart,
-    # pixels from NaNs-rich regions, etc.
-    #####################
-    # TODO:
-    # check if these 2 steps do anyhting at all...
-    ######################
-    p_cdf[np.isnan(M_exp_local)] = np.nan
-    p_cdf[np.isnan(M_ice)] = np.nan
-
-    # masking everyhting further than 2Mb away:
-    # index of 2Mb in current bin-sizes:
-    idx_2Mb = int(2000000.0/bin_size)
-    assert M_dim > idx_2Mb
-
-    mask_2Mb = np.zeros(M_dim,dtype=np.bool)
-    mask_2Mb[:idx_2Mb] = True
-    # 2D mask unrolled:
-    mask_2Mb = toeplitz(mask_2Mb)
-    # masking everyhting outside 2Mb
-    p_cdf[~mask_2Mb] = np.nan
-
-    #####
-    # filter out boundaries:
-    #####
-    mask_bnd = np.zeros_like(M_ice, dtype=np.bool)
-    mask_bnd[kernel_half_width:-kernel_half_width,
-             kernel_half_width:-kernel_half_width] = True
-    p_cdf[~mask_bnd] = np.nan
-    #
-    # p_cdf is quite sparse at this point
-    #
-
-    # borrowed from:
-    # https://stackoverflow.com/questions/14374791/what-is-the-fastest-way-to-initialise-a-scipy-sparse-matrix-with-numpy-nan
-    #########################
-    # get rid of NaNs in COO ...
-    ########################
-    nontrivial_idx = np.nonzero(~np.isnan(p_cdf))
-    p_cdf_coo = coo_matrix((p_cdf[nontrivial_idx],nontrivial_idx),
-                           shape=p_cdf.shape)
-    # now to DataFrame:
-    p_cdf_df = pd.DataFrame({"row" :p_cdf_coo.row,
-                             "col" :p_cdf_coo.col,
-                             "CDF" :p_cdf_coo.data})
-    print("initial filtering (<2Mb) of CDFs complete ...\
-           and a matrix with CDFs is turned into COO df.")
-    #####################
-    # ACHTUNG!!! ptest <-> 1.0 - ptest
-    # we might be using 1-pval at some point
-    # maybe keep 1-pval till the very last minute ...
-    #####################
-    p_cdf_df['pval'] = 1.0 - p_cdf_df['CDF']
-
-    #######
-    # TO BE CONTINUED ...
-
-    ###########################
-    # Calculate couple more columns for filtering/sorting ...
-    ###########################
-    get_slice = lambda row,col: (slice(row-kernel_half_width,
-                                       row+kernel_half_width+1),
-                                 slice(col-kernel_half_width,
-                                       col+kernel_half_width+1))
-    # get_slice2 = lambda row,col: (slice(col-kernel_half_width, col+kernel_half_width+1),
-    #                               slice(row-kernel_half_width, row+kernel_half_width+1))
-
-    # count finite values in a vicinity of a pixel ...
-    get_finite_vicinity = lambda ser: np.isfinite(
-                                            np.log2( # do we need this log2 here ???
-                                                M_ice[
-                                                    get_slice(ser['row'],
-                                                              ser['col'])
-                                                      ]
-                                                    )
-                                                  ).sum()
-    # calculate that vicinity enrichment:
-    p_cdf_df['fin'] = p_cdf_df[['row','col']].apply(get_finite_vicinity,
-                                                    axis=1)
-    # taking only upper triangle of the matrix:
-    p_cdf_df = p_cdf_df[p_cdf_df['row'] > p_cdf_df['col']]
-
-    print("Final filtering of CDF/pvalue data is complete")
-
-    ################
-    # ACHTUNG: play multiple hyp. correction games here:
-    ################
-
-    # some reasonble sorting:
-    ptest_df.sort_values(by=['pval','fin'],
-                         ascending=[True,False])[['row',
-                                                  'col',
-                                                  'pval',
-                                                  'fin']]
-
-    # ptest_df_to_clust ...
-
-    return ptest_df
-
-#     ###############
-#     # clustering starts here:
-#     # http://scikit-learn.org/stable/modules/clustering.html
-#     # picked Birch, as the most appropriate here:
-#     ###############
-
-#     threshold_based_on_bin_size = 2
-#     brc = Birch(n_clusters=None,threshold=threshold_based_on_bin_size)
-#     clust_info = brc.fit_predict(ptest_df_to_clust)
-
-
-# ##################
-# # TO BE CONTINUED ....
-
-# mmmm =brc.fit_transform(df_to_clust)
-
-# rrrr = brc.fit(df_to_clust)
-
-# rrrr.subcluster_centers_.astype(np.int)
-
-
-# df_to_clust['clust'] = ccccc
-
-# sorted_clusters = df_to_clust.sort_values(by=['clust',],ascending=[True,])
 
 
 
