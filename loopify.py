@@ -92,7 +92,7 @@ def _clust_2D_pixels(pixels_df,threshold_cluster=2):
     # small message:
     print("Clustering is completed:\n"+
           "there are {} clusters detected\n".format(uniq_counts.size)+
-          "mean size {:.3f}+/-{:.3f}\n".format(uniq_counts.mean(),
+          "mean size {:.6f}+/-{:.6f}\n".format(uniq_counts.mean(),
                                              uniq_counts.std())+
           "labels and centroids to be reported.")
 
@@ -102,9 +102,9 @@ def _clust_2D_pixels(pixels_df,threshold_cluster=2):
                         index=pix_idx,
                         columns=['c_row','c_col'])
     # add labels:
-    peak_tmp['c_label'] = brc.labels_
+    peak_tmp['c_label'] = brc.labels_.astype(np.int)
     # add cluster sizes:
-    peak_tmp['c_size'] = clust_sizes
+    peak_tmp['c_size'] = clust_sizes.astype(np.int)
     
 
     return peak_tmp
@@ -382,23 +382,6 @@ def call_dots_matrix(matrices, vectors, kernels, b):
                             })
     #
     peaks_df['pval'] = 1.0 - peaks_df['CDF']
-
-    # ###############################################################
-    # Following is extremely SLOW, and not needed mostly (test downstream)...
-    # ###############################################################
-    # # count finite values in a vicinity of a pixel ...
-    # # to see if "NN<kernel.size"-mask worked:
-    # get_finite_vicinity = lambda ser: np.isfinite(
-    #                                       np.log2(M_ice)[_get_slice(
-    #                                                         ser['row'],
-    #                                                         ser['col'],
-    #                                                         w
-    #                                           )] ).sum()
-    # # calculate that vicinity enrichment:
-    # peaks_df['fin'] = peaks_df[['row','col']].apply(get_finite_vicinity,
-    #                                                 axis=1)
-    # ###############################################################
-
 
 
     print("Final filtering of CDF/pvalue data is complete")
