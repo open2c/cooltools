@@ -323,6 +323,12 @@ def call_dots_matrix(matrices, vectors, kernels, b):
                        mask_bnd,
                        mask_2Mb))
 
+    ##################################
+    #
+    # error here: mask_ndx.all()==True ?! 
+    #
+    ####################################
+
     # any nonzero element in `mask_ndx` 
     # must be masked out from `p_cdf`:
     # so, we'll just take the negated
