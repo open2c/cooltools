@@ -376,7 +376,8 @@ def call_dots_matrix(matrices, vectors, kernels, b):
     get_finite_vicinity = lambda ser: np.isfinite(
                                           np.log2(M_ice)[_get_slice(
                                                             ser['row'],
-                                                            ser['col']
+                                                            ser['col'],
+                                                            w
                                               )] ).sum()
     # calculate that vicinity enrichment:
     peaks_df['fin'] = peaks_df[['row','col']].apply(get_finite_vicinity,
