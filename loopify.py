@@ -35,8 +35,8 @@ def _multiple_test_BH(pvals,alpha=0.1):
     reject_null = (pvals_sort <= alpha*ecdffactor)
 
     # let's extract border-line significant P-value:
-    pval_max_reject_null = pvals[ reject_null].max()
-    pval_min_accept_null = pvals[~reject_null].min()
+    pval_max_reject_null = pvals_sort[ reject_null].max()
+    pval_min_accept_null = pvals_sort[~reject_null].min()
 
     if reject_null.any():
         print("Some significant peaks have been detected!\n"
@@ -55,7 +55,9 @@ def _multiple_test_BH(pvals,alpha=0.1):
 
 
 
-def _clust_2D_pixels(pixels,threshold_cluster=2):
+def _clust_2D_pixels(pixels_df,threshold_cluster=2):
+    pixels  = pixels_df.values
+    pix_idx = pixels_df.index
     # clustering object prepare:
     brc = Birch(n_clusters=None,threshold=threshold_cluster)
     # cluster selected pixels ...
@@ -66,40 +68,48 @@ def _clust_2D_pixels(pixels,threshold_cluster=2):
     # array of (tuples?) with X,Y coordinates 
     # for centroids of corresponding clusters:
     # brc.subcluster_centers_
-    uniq_labels, uniq_counts = np.unique(brc.labels_,
-                                        # return_inverse=True,
-                                        return_counts=True)
+    uniq_labels, inverse_idx, uniq_counts = np.unique(
+                                                brc.labels_,
+                                                return_inverse=True,
+                                                return_counts=True)
+    # cluster sizes taken to match labels:
+    clust_sizes = uniq_counts[inverse_idx]
+    ####################
+    # After discovering a bug ...
+    # bug (or misunderstanding, rather):
+    # uniq_labels is a subset of brc.subcluster_labels_
+    # TODO: dive deeper into Birch ...
+    ####################
+    # repeat centroids coordinates
+    # as many times as there are pixels
+    # in each cluster:
+    # IN OTHER WORDS (after bug fix):
+    # take centroids corresponding to labels:
+    centroids = np.take(brc.subcluster_centers_,
+                        brc.labels_,
+                        axis=0)
 
     # small message:
-    print("Clustering is completed:"+
-          "there are {} clusters detected".format(uniq_counts.size)+
-          "mean size {:.3f}+/-{:.3f}".format(uniq_counts.mean(),
+    print("Clustering is completed:\n"+
+          "there are {} clusters detected\n".format(uniq_counts.size)+
+          "mean size {:.3f}+/-{:.3f}\n".format(uniq_counts.mean(),
                                              uniq_counts.std())+
           "labels and centroids to be reported.")
 
-    # # repeat centroids coordinates
-    # # as many times as there are pixels
-    # # in each cluster:
-    centroids = np.repeat(brc.subcluster_centers_,
-                          uniq_counts,
-                          axis=0)
-    c_sizes   = np.repeat(uniq_counts,
-                          uniq_counts)
-    # let's return column names as well for convenience:
-    column_names = ['c_label','c_size','c_row','c_col']
-    #
-    return np.column_stack((brc.labels_,c_sizes,centroids)), column_names
-    ##########################################################
-    # sub_centers = pd.DataFrame(brc.subcluster_centers_,
-    #                            columns=['c_col','c_row'])
-    ##########################################################
-    # # p_cdf_df_signif.merge?
-    # peaks_merged = p_cdf_df_signif.merge(sub_centers,
-    #                                      how='inner',
-    #                                      left_on='clust',
-    #                                      right_index=True,
-    #                                      sort=True)
-    ##########################################################
+    # let's create output DataFrame
+    peak_tmp = pd.DataFrame(
+                        centroids,
+                        index=pix_idx,
+                        columns=['c_row','c_col'])
+    # add labels:
+    peak_tmp['c_label'] = brc.labels_
+    # add cluster sizes:
+    peak_tmp['c_size'] = clust_sizes
+    
+
+    return peak_tmp
+
+
 
 
 
@@ -419,14 +429,9 @@ def call_dots_matrix(matrices, vectors, kernels, b):
     cluster_radius = 35000
     threshold_cluster = round(cluster_radius/float(b))
     # cluster em' using the threshold:
-    clustered_pix,pix_columns = _clust_2D_pixels(
-                                    pixels_to_clust.values,
-                                    threshold_cluster=threshold_cluster)
-    # pack into DataFrame ...
-    peaks_clust = pd.DataFrame(
-                        clustered_pix,
-                        index=pixels_to_clust.index,
-                        columns=pix_columns)
+    peaks_clust = _clust_2D_pixels(
+                        pixels_to_clust,
+                        threshold_cluster=threshold_cluster)
     # and merge (index-wise) with the main DataFrame:
     peaks_df=peaks_df.merge(
                         peaks_clust,
