@@ -102,6 +102,10 @@ def _clust_2D_pixels(pixels,threshold_cluster=2):
 
 
 
+_cmp_masks = lambda M_superset,M_subset: (0 > M_superset.astype(np.int) -
+                                                 M_subset.astype(np.int)).any()
+
+
 
 def call_dots_matrix(matrices, vectors, kernels, b):
     '''
@@ -290,14 +294,39 @@ def call_dots_matrix(matrices, vectors, kernels, b):
     # (would be NaN anyhow?!)
     mask_M = np.isnan(M_ice)
     # mask out CDFs for pixels
-    # with too many NaNs around:
-    mask_NN = (NN<kernel.size)
+    # with too many NaNs (#NaN>=1) around:
+    mask_NN = NN >= 1
+    # 
+    # simple tests mask_Ed vs mask_M:
+    if not _cmp_masks(mask_Ed,mask_M):
+        print("mask_Ed include all elements of mask_M (expected)")
+    else:
+        print("ATTENTION! mask_M has elements absent from mask_Ed")
+    # simple tests mask_Ed vs mask_M:
+    if not _cmp_masks(mask_Ed,mask_NN):
+        print("mask_Ed include all elements of mask_NN (expected)")
+    else:
+        print("ATTENTION! mask_NN has elements absent from mask_Ed")
+    if (mask_Ed == mask_NN).all():
+        print("In fact mask_Ed==mask_NN (expected for NN>=1)")
+    else:
+        print("But mask_Ed!=mask_NN (expected e.g. for NN>=2)")
+    if (np.isnan(p_cdf) == mask_Ed).all():
+        print("Also isnan(p_cdf)==mask_Ed (sort of expected)")
+    else:
+        print("HOWEVER: isnan(p_cdf)!=mask_Ed (investigate ...)")
+    # kepp this test here, while we are learning:
+    print("If all test yield as expected, masking is practically useless ...")
     ####
     # mask out boundaries:
     # kernel-half width from 
     # every side of the heatmap.
     mask_bnd = np.ones_like(M_ice, dtype=np.bool)
     mask_bnd[w:-w, w:-w] = False
+    ###############################################
+    # TODO:
+    # instead probably use cval=np.nan in convolve.
+    ###############################################
 
     # masking everyhting further than 2Mb away:
     # index of 2Mb in current bin-sizes:
@@ -317,17 +346,13 @@ def call_dots_matrix(matrices, vectors, kernels, b):
 
     # combine all filters/masks:
     # mask_Ed || mask_M || mask_NN || mask_bnd || mask_2Mb ...
-    mask_ndx = np.any((mask_Ed,
-                       mask_M,
-                       mask_NN,
-                       mask_bnd,
-                       mask_2Mb))
-
-    ##################################
-    #
-    # error here: mask_ndx.all()==True ?! 
-    #
-    ####################################
+    mask_ndx = np.any(
+                      (mask_Ed,
+                        mask_M,
+                        mask_NN,
+                        mask_bnd,
+                        mask_2Mb),
+                      axis=0)
 
     # any nonzero element in `mask_ndx` 
     # must be masked out from `p_cdf`:
