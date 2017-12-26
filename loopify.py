@@ -22,6 +22,7 @@ _get_slice = lambda row,col,window: (
 
 
 def _multiple_test_BH(pvals,alpha=0.1):
+    # http://www.statsmodels.org/dev/_modules/statsmodels/stats/multitest.html
     # prepare:
     pvals = np.asarray(pvals)
     n_obs = pvals.size
@@ -371,17 +372,22 @@ def call_dots_matrix(matrices, vectors, kernels, b):
                             })
     #
     peaks_df['pval'] = 1.0 - peaks_df['CDF']
-    # count finite values in a vicinity of a pixel ...
-    # to see if "NN<kernel.size"-mask worked:
-    get_finite_vicinity = lambda ser: np.isfinite(
-                                          np.log2(M_ice)[_get_slice(
-                                                            ser['row'],
-                                                            ser['col'],
-                                                            w
-                                              )] ).sum()
-    # calculate that vicinity enrichment:
-    peaks_df['fin'] = peaks_df[['row','col']].apply(get_finite_vicinity,
-                                                    axis=1)
+
+    # ###############################################################
+    # Following is extremely SLOW, and not needed mostly (test downstream)...
+    # ###############################################################
+    # # count finite values in a vicinity of a pixel ...
+    # # to see if "NN<kernel.size"-mask worked:
+    # get_finite_vicinity = lambda ser: np.isfinite(
+    #                                       np.log2(M_ice)[_get_slice(
+    #                                                         ser['row'],
+    #                                                         ser['col'],
+    #                                                         w
+    #                                           )] ).sum()
+    # # calculate that vicinity enrichment:
+    # peaks_df['fin'] = peaks_df[['row','col']].apply(get_finite_vicinity,
+    #                                                 axis=1)
+    # ###############################################################
 
 
 
