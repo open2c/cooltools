@@ -374,7 +374,7 @@ def call_dots_matrix(matrices, vectors, kernels, b):
     # count finite values in a vicinity of a pixel ...
     # to see if "NN<kernel.size"-mask worked:
     get_finite_vicinity = lambda ser: np.isfinite(
-                                          _np.log2(M_ice)[get_slice(
+                                          np.log2(M_ice)[_get_slice(
                                                             ser['row'],
                                                             ser['col']
                                               )] ).sum()
