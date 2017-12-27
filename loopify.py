@@ -21,8 +21,65 @@ _get_slice = lambda row,col,window: (
                         slice(col-window, col+window+1))
 
 
-def _multiple_test_BH(pvals,alpha=0.1):
-    # http://www.statsmodels.org/dev/_modules/statsmodels/stats/multitest.html
+_cmp_masks = lambda M_superset,M_subset: (0 > M_superset.astype(np.int) -
+                                                 M_subset.astype(np.int)).any()
+
+
+# # make sure everything is compatible:
+# try:
+#     # let's extract full matrices and ice_vector:
+#     M_ice, M_raw, E_ice = matrices
+# except ValueError as e:
+#     print("\"matrices\" has to have M_ice,M_raw,E_ice",
+#           "packed into tuple or list: {}".format(e))
+#     raise
+# except TypeError as e:
+#     print("\"matrices\" has to have M_ice,M_raw,E_ice",
+#           "packed into tuple or list: {}".format(e))
+#     raise
+# else:
+#     assert isinstance(M_ice, np.ndarray)
+#     assert isinstance(M_raw, np.ndarray)
+#     assert isinstance(E_ice, np.ndarray)
+#     print("\"matrices\" unpacked succesfully")
+
+
+
+def multiple_test_BH(pvals,alpha=0.1):
+    '''
+    take an array of N p-values, sort then
+    in ascending order p1<p2<p3<...<pN,
+    and find a threshold p-value, pi
+    for which pi < alpha*i/N, and pi+1 is
+    already pi+1 >= alpha*(i+1)/N.
+    Peaks corresponding to p-values
+    p1<p2<...pi are considered significant.
+
+    Parameters
+    ----------
+    pvals : array-like
+        array of p-values to use for
+        multiple hypothesis testing
+    alpha : float
+        rate of false discovery (FDR)
+
+    
+    Returns
+    -------
+    reject_ : numpy.ndarray
+        array of type np.bool storing
+        status of a pixel: significant (True)
+        non-significant (False)
+    pvals_threshold: tuple
+        pval_max_reject_null, pval_min_accept_null
+
+    Notes
+    -----
+    Mostly follows the statsmodels implementation:
+    http://www.statsmodels.org/dev/_modules/statsmodels/stats/multitest.html
+    
+    '''
+    # 
     # prepare:
     pvals = np.asarray(pvals)
     n_obs = pvals.size
@@ -55,7 +112,39 @@ def _multiple_test_BH(pvals,alpha=0.1):
 
 
 
-def _clust_2D_pixels(pixels_df,threshold_cluster=2):
+def clust_2D_pixels(pixels_df,threshold_cluster=2):
+    '''
+    Group significant pixels by proximity
+    using Birch clustering.
+
+    Parameters
+    ----------
+    pixels_df : pandas.DataFrame
+        a DataFrame of 2 columns, with left-one
+        being the column index of a pixel and
+        the right-one being row index of a pixel
+    threshold_cluster : int
+        clustering radius for Birch clustering
+        derived from ~40kb radius of clustering
+        and bin size.
+
+    
+    Returns
+    -------
+    peak_tmp : pandas.DataFrame
+        DataFrame with c_row,c_col,c_label,c_size - 
+        columns. row/col are coordinates of centroids,
+        label and sizes are unique pixel-cluster labels
+        and their corresponding sizes.
+
+
+    Notes
+    -----
+    TODO: figure out Birch clustering
+    CFNodes etc, check if there might
+    be some empty subclusters.
+    
+    '''
     pixels  = pixels_df.values
     pix_idx = pixels_df.index
     # clustering object prepare:
@@ -111,14 +200,7 @@ def _clust_2D_pixels(pixels_df,threshold_cluster=2):
 
 
 
-
-
-_cmp_masks = lambda M_superset,M_subset: (0 > M_superset.astype(np.int) -
-                                                 M_subset.astype(np.int)).any()
-
-
-
-def call_dots_matrix(matrices, vectors, kernels, b):
+def test_peaks_local_bg(matrices, vectors, kernels, b):
     '''
     it comes down to comparison of pixel intensity
     in observed: M_ice,
@@ -177,25 +259,6 @@ def call_dots_matrix(matrices, vectors, kernels, b):
         have been called by loop-caller (BEDPE-like).
     
         '''
-
-    # # make sure everything is compatible:
-    # try:
-    #     # let's extract full matrices and ice_vector:
-    #     M_ice, M_raw, E_ice = matrices
-    # except ValueError as e:
-    #     print("\"matrices\" has to have M_ice,M_raw,E_ice",
-    #           "packed into tuple or list: {}".format(e))
-    #     raise
-    # except TypeError as e:
-    #     print("\"matrices\" has to have M_ice,M_raw,E_ice",
-    #           "packed into tuple or list: {}".format(e))
-    #     raise
-    # else:
-    #     assert isinstance(M_ice, np.ndarray)
-    #     assert isinstance(M_raw, np.ndarray)
-    #     assert isinstance(E_ice, np.ndarray)
-    #     print("\"matrices\" unpacked succesfully")
-
 
     # DEAL WITH BIN_SIZE AND MATRIX DIMENSIONS ...
     # bin size has to be extracted:
@@ -289,7 +352,8 @@ def call_dots_matrix(matrices, vectors, kernels, b):
     ####################
     print("Poisson testing to be done for all pixels ...")
     # element-wise Poisson test (Poisson.cdf(obs,exp)):
-    p_cdf = poisson.cdf( M_raw, Ed_raw)
+    # 1.0-CDF = p-value
+    pvals = 1.0 - poisson.cdf( M_raw, Ed_raw)
     # all set ...
     print("Poisson testing is complete ...")
 
@@ -322,10 +386,10 @@ def call_dots_matrix(matrices, vectors, kernels, b):
         print("In fact mask_Ed==mask_NN (expected for NN>=1)")
     else:
         print("But mask_Ed!=mask_NN (expected e.g. for NN>=2)")
-    if (np.isnan(p_cdf) == mask_Ed).all():
-        print("Also isnan(p_cdf)==mask_Ed (sort of expected)")
+    if (np.isnan(pvals) == mask_Ed).all():
+        print("Also isnan(pvals)==mask_Ed (sort of expected)")
     else:
-        print("HOWEVER: isnan(p_cdf)!=mask_Ed (investigate ...)")
+        print("HOWEVER: isnan(pvals)!=mask_Ed (investigate ...)")
     # kepp this test here, while we are learning:
     print("If all test yield as expected, masking is practically useless ...")
     ####
@@ -366,7 +430,7 @@ def call_dots_matrix(matrices, vectors, kernels, b):
                       axis=0)
 
     # any nonzero element in `mask_ndx` 
-    # must be masked out from `p_cdf`:
+    # must be masked out from `pvals`:
     # so, we'll just take the negated
     # elements of the combined mask:
     i_ndx, j_ndx = np.nonzero(~mask_ndx)
@@ -374,18 +438,63 @@ def call_dots_matrix(matrices, vectors, kernels, b):
     up_ndx = (i_ndx < j_ndx)
     i_ndx = i_ndx[up_ndx]
     j_ndx = j_ndx[up_ndx]
-    # now melt `p_cdf` into tidy-data df:
+    # now melt `pvals` into tidy-data df:
     peaks_df = pd.DataFrame({"row": i_ndx,
                              "col": j_ndx,
-                             "CDF": p_cdf[i_ndx,j_ndx],
+                             "pval": pvals[i_ndx,j_ndx],
                              "NN_around": NN[i_ndx,j_ndx],
                             })
-    #
-    peaks_df['pval'] = 1.0 - peaks_df['CDF']
-
 
     print("Final filtering of CDF/pvalue data is complete")
+    #
+    #
+    return peaks_df
 
+
+def call_dots_matrix(matrices, vectors, kernels, b, alpha, clust_radius):
+    '''
+    description
+    
+    Parameters
+    ----------
+    matrices : tuple-like
+        square symmetrical dense-matrices
+        that contain iced, raw and expected
+        heatmaps in numpy.array format:
+        M_ice, M_raw, E_ice to be precise.
+    vectors : tuple-like
+        1D vectors needed to run dot-caller
+        such as icing and probably expected
+        in a numpy.array format.
+    kernels : list of numpy.arrays
+        list of kernels/masks to perform
+        convolution of the heatmap. Kernels
+        represent the local environment to 
+        find prominent peaks against.
+        Peak considered significant is it
+        passes stat-tests for all kernels
+        from the list. Use just one for now.
+        ########
+        # KERNELS ARE FLIPPED - BEWARE!!!
+        ########
+    b : int
+        bin-size in nucleotides (bases).
+    alpha : float
+        rate of false discovery (FDR)
+    clust_radius : int
+        approximate size of a loop (dot)
+        irrespective of the resolution
+        should be around 20-40 kb.
+    
+    Returns
+    -------
+    peaks : pandas.DataFrame
+        data frame with 2D genomic regions that
+        have been called by loop-caller (BEDPE-like).
+    
+    '''
+
+    peaks_df = test_peaks_local_bg(matrices, vectors, kernels, b)
     ################
     # Determine p-value threshold here:
     ################
@@ -396,8 +505,9 @@ def call_dots_matrix(matrices, vectors, kernels, b):
     # reject null-hypothesis only for p-values that are $<\alpha*\frac{i}{N}$,
     # where $\alpha=0.1$ is a typical FDR, $N$ - is a total number of observations,
     # and $i$ is an index of a p-values sorted by ascending.
-    peaks_df['rej_null'], pv_range = _multiple_test_BH(peaks_df['pval'],alpha=0.1)
-    # 
+    peaks_df['rej_null'], pv_range = multiple_test_BH(
+                                                peaks_df['pval'],
+                                                alpha=alpha)
 
 
     # 
@@ -409,10 +519,9 @@ def call_dots_matrix(matrices, vectors, kernels, b):
     ###############
     pixels_to_clust = peaks_df[['col','row']][peaks_df['rej_null']]
 
-    cluster_radius = 35000
-    threshold_cluster = round(cluster_radius/float(b))
+    threshold_cluster = round(clust_radius/float(b))
     # cluster em' using the threshold:
-    peaks_clust = _clust_2D_pixels(
+    peaks_clust = clust_2D_pixels(
                         pixels_to_clust,
                         threshold_cluster=threshold_cluster)
     # and merge (index-wise) with the main DataFrame:
@@ -422,27 +531,17 @@ def call_dots_matrix(matrices, vectors, kernels, b):
                         left_index=True,
                         right_index=True)
 
-
     return peaks_df
 
 
 
+##############
+# let it be
+##############
 
+def main():
+    pass
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+if __name__ == '__main__':
+    main()
 
