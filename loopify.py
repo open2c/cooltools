@@ -75,8 +75,10 @@ def multiple_test_BH(pvals,alpha=0.1):
 
     Notes
     -----
-    Mostly follows the statsmodels implementation:
+    - Mostly follows the statsmodels implementation:
     http://www.statsmodels.org/dev/_modules/statsmodels/stats/multitest.html
+    - Using alpha=0.02 it is possible to achieve
+    called dots similar to pre-update status
     
     '''
     # 
@@ -200,9 +202,13 @@ def clust_2D_pixels(pixels_df,threshold_cluster=2):
 
 
 
-def test_peaks_local_bg(matrices, vectors, kernels, b):
+def get_unexp_pixels(matrices, vectors, kernels, b):
     '''
-    it comes down to comparison of pixel intensity
+    get_unexp_pixels, i.e. get unexpectedly bright
+    pixels, standing out against local or global
+    background.
+
+    ... it comes down to comparison of pixel intensity
     in observed: M_ice,
     and a locally-modified expected:
                               DONUT[i,j](M_ice)
@@ -355,6 +361,8 @@ def test_peaks_local_bg(matrices, vectors, kernels, b):
     # 1.0-CDF = p-value
     pvals = 1.0 - poisson.cdf( M_raw, Ed_raw)
     # all set ...
+    # maybe add global pval here as well
+    # we'd need that at least for lab meeting.
     print("Poisson testing is complete ...")
 
     # ###################
@@ -442,7 +450,10 @@ def test_peaks_local_bg(matrices, vectors, kernels, b):
     peaks_df = pd.DataFrame({"row": i_ndx,
                              "col": j_ndx,
                              "pval": pvals[i_ndx,j_ndx],
-                             "NN_around": NN[i_ndx,j_ndx],
+                             "nans_around": NN[i_ndx,j_ndx],
+                             "exp_local": Ed_raw[i_ndx,j_ndx],
+                             "exp_global": E_raw[i_ndx,j_ndx],
+                             "obs": M_raw[i_ndx,j_ndx],
                             })
 
     print("Final filtering of CDF/pvalue data is complete")
