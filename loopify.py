@@ -202,11 +202,11 @@ def clust_2D_pixels(pixels_df,threshold_cluster=2):
 
 
 
-def get_unexp_pixels(matrices, vectors, kernels, b):
+
+def get_adjusted_expected(observed, expected, ice_weight, kernels, b):
     '''
-    get_unexp_pixels, i.e. get unexpectedly bright
-    pixels, standing out against local or global
-    background.
+    get_adjusted_expected, get the expected adjusted
+    to the local background using local-kernel convolution.
 
     ... it comes down to comparison of pixel intensity
     in observed: M_ice,
@@ -214,7 +214,7 @@ def get_unexp_pixels(matrices, vectors, kernels, b):
                               DONUT[i,j](M_ice)
     Ed_ice[i,j] = E_ice[i,j]*------------------
                               DONUT[i,j](E_ice)
-    where DONUT[i0,j](M) is a sum of the pixel intensities
+    where DONUT[i,j](M) is a sum of the pixel intensities
     in the donut-shaped (or other shaped) vicinity
     of the pixel of interest (i,j).
     
@@ -230,20 +230,19 @@ def get_unexp_pixels(matrices, vectors, kernels, b):
                      1       1                 
     E_raw[i,j] = --------*-------- * E_ice[i,j]
                  v_ice[i] v_ice[j]             
-    so, at the end of the day,
-    simply compare M_raw and Ed_raw ...
     
     Parameters
     ----------
-    matrices : tuple-like
-        square symmetrical dense-matrices
-        that contain iced, raw and expected
-        heatmaps in numpy.array format:
-        M_ice, M_raw, E_ice to be precise.
-    vectors : tuple-like
-        1D vectors needed to run dot-caller
-        such as icing and probably expected
-        in a numpy.array format.
+    observed : numpy.ndarray
+        square symmetrical dense-matrix
+        that contains iced observed M_ice
+    expected : numpy.ndarray
+        square symmetrical dense-matrix
+        that contains expected, calculated
+        based on iced observed: E_ice.
+    ice_weight : numpy.ndarray
+        1D vector used to turn raw observed
+        into iced observed.
     kernels : list of numpy.arrays
         list of kernels/masks to perform
         convolution of the heatmap. Kernels
@@ -260,11 +259,19 @@ def get_unexp_pixels(matrices, vectors, kernels, b):
     
     Returns
     -------
-    peaks : pandas.DataFrame
-        data frame with 2D genomic regions that
-        have been called by loop-caller (BEDPE-like).
-    
-        '''
+    Exp_raw : numpy.ndarray
+        ndarray that stores a 2D matrix of
+        the adjusted expected values Ed_raw.
+    mask : numpy.ndarray
+        ndarray that stores a 2D matrix of
+        type np.bool. Every True element of
+        the mask should be excluded from the
+        downstream analysis.
+    NumNaNs : numpy.ndarray
+        array that stores a 2D matrix with
+        the number of np.nan elements that
+        are surrounding each pixel.
+    '''
 
     # DEAL WITH BIN_SIZE AND MATRIX DIMENSIONS ...
     # bin size has to be extracted:
@@ -275,8 +282,13 @@ def get_unexp_pixels(matrices, vectors, kernels, b):
     # matrix VS vector ?! ...
 
     # let's extract full matrices and ice_vector:
-    M_ice, M_raw, E_ice = matrices
-    v_ice, = vectors
+    M_ice = observed
+    E_ice = expected
+    v_ice = ice_weight
+    ######################
+    # TODO maybe rename accoring to new 
+    # naming scheme...
+    ######################
     # we'll allow the DONUT-mask, i.e. kernel(s) to
     # be provided as a parameter:
     kernel, = kernels
@@ -289,11 +301,9 @@ def get_unexp_pixels(matrices, vectors, kernels, b):
     # actuall loop-calling algorithm
     # as explained in Rao et al 2014:
 
-    # v_deice = 1/v_ice
-    v_deice = np.reciprocal(v_ice)
-    # deiced E_ice: element-wise multiplication of E_ice[i,j] and
-    # v_deice[i]*v_deice[j]:
-    E_raw = np.multiply(E_ice, np.outer(v_deice,v_deice))
+    # deiced E_ice: element-wise division of E_ice[i,j] and
+    # v_ice[i]*v_ice[j]:
+    E_raw = np.divide(E_ice, np.outer(v_ice,v_ice))
 
     # now let's calculate DONUTS ...
     # to be replaced later by:
@@ -341,30 +351,6 @@ def get_unexp_pixels(matrices, vectors, kernels, b):
     # now finally, E_raw*(KM/KE), as the 
     # locally-adjusted expected with raw counts as values:
     Ed_raw = np.multiply(E_raw, np.divide(KM, KE))
-
-    # M_raw and Ed_raw can be compared element-wise now
-
-    ##################
-    # Enhancement:
-    # no need to perform Poisson tests
-    # for all pixels ...
-    # so, maybe we'd filter out the data first
-    # and do Poisson after ?!
-    ##################
-    #
-    # moreover take into account that
-    # Poisson CDF will use int values anyways ...
-    #
-    ####################
-    print("Poisson testing to be done for all pixels ...")
-    # element-wise Poisson test (Poisson.cdf(obs,exp)):
-    # 1.0-CDF = p-value
-    pvals = 1.0 - poisson.cdf( M_raw, Ed_raw)
-    # all set ...
-    # maybe add global pval here as well
-    # we'd need that at least for lab meeting.
-    print("Poisson testing is complete ...")
-
     # ###################
     # some trivial and not so trivial masking 
     # is needed: exclude contacts >2Mb apart,
@@ -394,11 +380,11 @@ def get_unexp_pixels(matrices, vectors, kernels, b):
         print("In fact mask_Ed==mask_NN (expected for NN>=1)")
     else:
         print("But mask_Ed!=mask_NN (expected e.g. for NN>=2)")
-    if (np.isnan(pvals) == mask_Ed).all():
-        print("Also isnan(pvals)==mask_Ed (sort of expected)")
-    else:
-        print("HOWEVER: isnan(pvals)!=mask_Ed (investigate ...)")
-    # kepp this test here, while we are learning:
+    # if (np.isnan(pvals) == mask_Ed).all():
+    #     print("Also isnan(pvals)==mask_Ed (sort of expected)")
+    # else:
+    #     print("HOWEVER: isnan(pvals)!=mask_Ed (investigate ...)")
+    # keep this test here, while we are learning:
     print("If all test yield as expected, masking is practically useless ...")
     ####
     # mask out boundaries:
@@ -436,6 +422,67 @@ def get_unexp_pixels(matrices, vectors, kernels, b):
                         mask_bnd,
                         mask_2Mb),
                       axis=0)
+    # any nonzero element in `mask_ndx` 
+    # must be masked out for the downstream
+    # analysis:
+    return Ed_raw, mask_ndx, NN
+
+
+
+
+def compare_observed_expected(observed, expected, mask):
+    '''
+    simply takes obs and some exp, 
+    compares them using Poisson test,
+    generating p-values for each pair,
+    and then turns everyhting into a
+    DataFrame after some masking.
+             
+    
+    Parameters
+    ----------
+    observed : numpy.ndarray
+        square symmetrical dense-matrix
+        that contains raw observed heatmap
+    expected : numpy.ndarray
+        square symmetrical dense-matrix
+        that contains deiced expected
+        of some sort.
+    mask : numpy.ndarray
+        square symmetrical dense-matrix
+        of type np.bool. Each True element
+        will be masked out of the downstream
+        analysis and the resulting DataFrame.
+
+    Returns
+    -------
+    peaks : pandas.DataFrame
+        DataFrame with the pixels that
+        remained after masking out with their
+        coordinates, obs, exp andp-values
+        provided. Columns are:
+        row, col, pval, expected, observed
+    '''
+    ##################
+    # Enhancement:
+    # no need to perform Poisson tests
+    # for all pixels ...
+    # so, maybe we'd filter out the data first
+    # and do Poisson after ?!
+    ##################
+    #
+    # moreover take into account that
+    # Poisson CDF will use int values anyways ...
+    #
+    ####################
+    print("Poisson testing to be done for all pixels ...")
+    # element-wise Poisson test (Poisson.cdf(obs,exp)):
+    # 1.0-CDF = p-value
+    pvals = 1.0 - poisson.cdf( observed, expected)
+    # all set ...
+    # maybe add global pval here as well
+    # we'd need that at least for lab meeting.
+    print("Poisson testing is complete ...")
 
     # any nonzero element in `mask_ndx` 
     # must be masked out from `pvals`:
@@ -450,16 +497,17 @@ def get_unexp_pixels(matrices, vectors, kernels, b):
     peaks_df = pd.DataFrame({"row": i_ndx,
                              "col": j_ndx,
                              "pval": pvals[i_ndx,j_ndx],
-                             "nans_around": NN[i_ndx,j_ndx],
-                             "exp_local": Ed_raw[i_ndx,j_ndx],
-                             "exp_global": E_raw[i_ndx,j_ndx],
-                             "obs": M_raw[i_ndx,j_ndx],
+                             "expected": expected[i_ndx,j_ndx],
+                             "observed": observed[i_ndx,j_ndx],
                             })
 
     print("Final filtering of CDF/pvalue data is complete")
     #
     #
     return peaks_df
+
+
+
 
 
 def call_dots_matrix(matrices, vectors, kernels, b, alpha, clust_radius):
@@ -505,7 +553,49 @@ def call_dots_matrix(matrices, vectors, kernels, b, alpha, clust_radius):
     
     '''
 
-    peaks_df = test_peaks_local_bg(matrices, vectors, kernels, b)
+    M_ice, M_raw, E_ice = matrices
+    v_ice, = vectors
+    # GLOBAL expected:
+    # deiced E_ice: element-wise division of E_ice[i,j] and
+    # v_ice[i]*v_ice[j]:
+    E_raw = np.multiply(E_ice, np.outer(v_deice,v_deice))
+
+    # first, generate that locally-adjusted expected:
+    Ed_raw, mask_ndx, NN = get_adjusted_expected(observed=M_ice,
+                                                 expected=E_ice,
+                                                 ice_weight=v_ice,
+                                                 kernels=kernels,
+                                                 b=b)
+
+
+    peaks_local = compare_observed_expected(observed=M_raw,
+                                            expected=Ed_raw,
+                                            mask=mask_ndx)
+
+    peaks_global = compare_observed_expected(observed=M_raw,
+                                             expected=E_raw,
+                                             mask=mask_ndx)
+
+    # merge local and global calculations 
+    peaks = pd.merge(
+        left=peaks_local,
+        right=peaks_global,
+        how='outer', # should be exactly the same: mask_ndx
+        on=['row','col'],
+        suffixes=('_local', '_global'),
+        validate="one_to_one"
+        )
+
+    # add information about # of NaNs surrounding each pixel:
+    peaks['nans_around'] = NN[peaks['row'],peaks['col']]
+
+    ###############################
+    #
+    # following analysis is based on 
+    # locally-adjusted p-values only ...
+    #
+    ################################
+
     ################
     # Determine p-value threshold here:
     ################
@@ -516,8 +606,8 @@ def call_dots_matrix(matrices, vectors, kernels, b, alpha, clust_radius):
     # reject null-hypothesis only for p-values that are $<\alpha*\frac{i}{N}$,
     # where $\alpha=0.1$ is a typical FDR, $N$ - is a total number of observations,
     # and $i$ is an index of a p-values sorted by ascending.
-    peaks_df['rej_null'], pv_range = multiple_test_BH(
-                                                peaks_df['pval'],
+    peaks['rej_null'], pv_range = multiple_test_BH(
+                                                peaks['pval_local'],
                                                 alpha=alpha)
 
 
@@ -528,7 +618,7 @@ def call_dots_matrix(matrices, vectors, kernels, b, alpha, clust_radius):
     # http://scikit-learn.org/stable/modules/clustering.html
     # picked Birch, as the most appropriate here:
     ###############
-    pixels_to_clust = peaks_df[['col','row']][peaks_df['rej_null']]
+    pixels_to_clust = peaks[['col','row']][peaks['rej_null']]
 
     threshold_cluster = round(clust_radius/float(b))
     # cluster em' using the threshold:
@@ -536,13 +626,11 @@ def call_dots_matrix(matrices, vectors, kernels, b, alpha, clust_radius):
                         pixels_to_clust,
                         threshold_cluster=threshold_cluster)
     # and merge (index-wise) with the main DataFrame:
-    peaks_df=peaks_df.merge(
-                        peaks_clust,
-                        how='left',
-                        left_index=True,
-                        right_index=True)
-
-    return peaks_df
+    return peaks.merge(
+                    peaks_clust,
+                    how='left',
+                    left_index=True,
+                    right_index=True)
 
 
 
