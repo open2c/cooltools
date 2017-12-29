@@ -488,17 +488,17 @@ def compare_observed_expected(observed, expected, mask):
     # must be masked out from `pvals`:
     # so, we'll just take the negated
     # elements of the combined mask:
-    i_ndx, j_ndx = np.nonzero(~mask_ndx)
+    i, j = np.nonzero(~mask)
     # take the upper triangle only:
-    up_ndx = (i_ndx < j_ndx)
-    i_ndx = i_ndx[up_ndx]
-    j_ndx = j_ndx[up_ndx]
+    upper = i<j
+    i = i[upper]
+    j = j[upper]
     # now melt `pvals` into tidy-data df:
-    peaks_df = pd.DataFrame({"row": i_ndx,
-                             "col": j_ndx,
-                             "pval": pvals[i_ndx,j_ndx],
-                             "expected": expected[i_ndx,j_ndx],
-                             "observed": observed[i_ndx,j_ndx],
+    peaks_df = pd.DataFrame({"row": i,
+                             "col": j,
+                             "pval": pvals[i,j],
+                             "expected": expected[i,j],
+                             "observed": observed[i,j],
                             })
 
     print("Final filtering of CDF/pvalue data is complete")
