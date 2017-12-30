@@ -267,7 +267,15 @@ def get_adjusted_expected(observed, expected, ice_weight, kernels, b):
         type np.bool. Every True element of
         the mask should be excluded from the
         downstream analysis.
-    NumNaNs : numpy.ndarray
+    KM : numpy.ndarray
+        array that stores a 2D matrix with
+        the product of convolution of
+        observed with the kernel 
+    KE : numpy.ndarray
+        array that stores a 2D matrix with
+        the product of convolution of
+        expected with the kernel 
+    NumNans : numpy.ndarray
         array that stores a 2D matrix with
         the number of np.nan elements that
         are surrounding each pixel.
@@ -425,7 +433,7 @@ def get_adjusted_expected(observed, expected, ice_weight, kernels, b):
     # any nonzero element in `mask_ndx` 
     # must be masked out for the downstream
     # analysis:
-    return Ed_raw, mask_ndx, NN
+    return Ed_raw, mask_ndx, KM, KE, NN
 
 
 
