@@ -20,8 +20,13 @@ def get_kernel(w,p,ktype='donut',show=True):
     y,x = np.ogrid[-w:w+1, -w:w+1]
 
     if ktype == 'donut':
-        mask = (((-peak<x)&(x<peak)) & ((-peak<y)&(y<peak)) )
+        # mask inner pXp square:
+        mask = (((-p<x)&(x<p))&
+                ((-p<y)&(y<p)) )
+        # mask vertical and horizontal
+        # lines of width 1 pixel:
         mask += (x==0)|(y==0)
+        # they are all 0:
         kernel[mask] = 0
     else:
         print("Only 'donut' kernel has been"
