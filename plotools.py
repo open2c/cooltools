@@ -31,10 +31,10 @@ def get_kernel(w,p,ktype='donut',show=True):
     #
     if show:
         # and plot one as well:
-        extent = 0-0.5,
-                 x.size-0.5,
-                 0-0.5,
-                 y.size-0.5
+        extent = (0-0.5,
+                  x.size-0.5,
+                  0-0.5,
+                  y.size-0.5)
         ########################
         plt.clf()
         # axes setup
