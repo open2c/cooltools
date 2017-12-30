@@ -22,8 +22,8 @@ def get_kernel(w,p,ktype='donut',show=True):
 
     if ktype == 'donut':
         # mask inner pXp square:
-        mask = (((-p<x)&(x<p))&
-                ((-p<y)&(y<p)) )
+        mask = (((-p<=x)&(x<=p))&
+                ((-p<=y)&(y<=p)) )
         # mask vertical and horizontal
         # lines of width 1 pixel:
         mask += (x==0)|(y==0)
