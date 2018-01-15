@@ -202,6 +202,161 @@ def clust_2D_pixels(pixels_df,threshold_cluster=2):
 
 
 
+############################################################
+# 
+# we need to make this work for slices
+# of the intra-chromosomal Hi-C heatmaps
+# 
+############################################################
+def generate_intra_chrom_chunks(matrix, slice_size):
+    """
+    get_adjusted_expected_slice is calculating
+    locally-adjusted expected for smaller slices
+    of the full intra-chromosomal interaction
+    matrix.
+
+    Each slice is characterized by the coordinate
+    of the top-left corner and size.
+
+    * * * * * * * * * * *  0-th slice
+    *       *           *
+    *       *           *
+    *   * * * * *       *  i-th slice
+    *   *   *   *       *
+    * * * * *   *       *
+    *   *       *       *
+    *   * * * * *       *
+    *                   *
+    *              ...  *  ...
+    *                   *
+    *                   *
+    * * * * * * * * * * *
+    """
+    
+    # 
+    # c.matrix(balance=False)[1000:1005, 1000:1005]
+    # 
+    raise NotImplementedError("To be implemented")
+
+
+
+
+
+def get_adjusted_expected_tile(origin, observed, expected, ice_weight, kernels, b, band=2e+6):
+    """
+    get_adjusted_expected_slice is calculating
+    locally-adjusted expected for smaller slices
+    of the full intra-chromosomal interaction
+    matrix.
+
+    Each slice is characterized by the coordinate
+    of the top-left corner and size.
+
+    * * * * * * * * * * *  0-th slice
+    *       *           *
+    *       *           *
+    *   * * * * *       *  i-th slice
+    *   *   *   *       *
+    * * * * *   *       *
+    *   *       *       *
+    *   * * * * *       *
+    *                   *
+    *              ...  *  ...
+    *                   *
+    *                   *
+    * * * * * * * * * * *
+    """
+    # extract origin coordinate of this tile:
+    io, jo = origin
+    # let's extract full matrices and ice_vector:
+    M_ice = observed
+    E_ice = expected
+    v_ice = ice_weight
+    kernel, = kernels
+
+    # deiced E_ice: element-wise division of E_ice[i,j] and
+    # v_ice[i]*v_ice[j]:
+    E_raw = np.divide(E_ice, np.outer(v_ice,v_ice))
+
+    s, s = M_ice.shape
+    # extract donut parameters: 
+    w, w = kernel.shape
+    # size must be odd: pixel (i,j) of interest in the middle
+    # and equal amount of pixels are to left,right, up and down
+    # of it: 
+    assert w%2 != 0
+    w = int((w-1)/2)
+    #
+    #
+    # a matrix filled with the donut-sums based on the ICEed matrix
+    KM = convolve(M_ice,
+                  kernel,
+                  mode='constant',
+                  # try to mask out border right away:
+                  cval=np.nan,
+                  # # before it was:
+                  # cval=0.0,
+                  origin=0)
+    # a matrix filled with the donut-sums based on the expected matrix
+    KE = convolve(E_ice,
+                  kernel,
+                  mode='constant',
+                  # try to mask out border right away:
+                  cval=np.nan,
+                  # # before it was:
+                  # cval=0.0,
+                  origin=0)
+    # idea for calculating how many NaNs are there around
+    # a pixel, is to take the input matrix, do np.isnan(matrix)
+    # and convolve it with the np.ones_like(around_pixel) kernel:
+    NN = convolve(np.isnan(M_ice).astype(np.int),
+                  np.ones_like(kernel),
+                  mode='constant',
+                  cval=0.0,
+                  origin=0)
+
+
+    print("kernels convolved with observed and expected ...")
+
+    # now finally, E_raw*(KM/KE), as the 
+    # locally-adjusted expected with raw counts as values:
+    Ed_raw = np.multiply(E_raw, np.divide(KM, KE))
+    # mask out CDFs for NaN Ed_raw
+    # (would be NaN anyhow?!)
+    mask_Ed = np.isnan(Ed_raw)
+    # mask out CDFs for pixels
+    # with too many NaNs (#NaN>=1) around:
+    mask_NN = NN >= 1
+    # masking everyhting further than 2Mb away
+    # is easier to do on indices.
+    band_idx = int(band/b)
+    assert s > band_idx
+
+    # combine all filters/masks:
+    # mask_Ed || mask_NN
+    mask_ndx = np.any((mask_Ed, mask_NN), axis=0)
+    # any nonzero element in `mask_ndx` 
+    # must be masked out from `pvals`:
+    # so, we'll just take the negated
+    # elements of the combined mask:
+    i, j = np.nonzero(~mask_ndx)
+    # take the upper triangle with 2Mb close to diag:
+    upper_band = (i<=j) & (i>=j-band_idx)
+    i = i[upper_band]
+    j = j[upper_band]
+    # pack it into DataFrame:
+    peaks_df = pd.DataFrame({"row": i+io,
+                             "col": j+jo,
+                             "expected": expected[i,j],
+                             "observed": observed[i,j],
+                            })
+
+    return peaks_df
+
+
+
+
+
 
 def get_adjusted_expected(observed, expected, ice_weight, kernels, b):
     '''
