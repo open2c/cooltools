@@ -341,13 +341,13 @@ def get_adjusted_expected_tile(origin, observed, expected, ice_weight, kernels, 
     # elements of the combined mask:
     i, j = np.nonzero(~mask_ndx)
     # take the upper triangle with 2Mb close to diag:
-    upper_band = (i<=j) & (i>=j-band_idx)
+    upper_band = (i<j) & (i>j-band_idx)
     i = i[upper_band]
     j = j[upper_band]
     # pack it into DataFrame:
     peaks_df = pd.DataFrame({"row": i+io,
                              "col": j+jo,
-                             "expected": expected[i,j],
+                             "expected": Ed_raw[i,j],
                              "observed": observed[i,j],
                             })
 
