@@ -242,7 +242,13 @@ def generate_intra_chrom_chunks(matrix, slice_size):
 
 
 
-def get_adjusted_expected_tile(origin, observed, expected, ice_weight, kernels, b, band=2e+6):
+def get_adjusted_expected_tile(origin,
+                               observed,
+                               expected,
+                               ice_weight,
+                               kernels,
+                               b,
+                               band=2e+6):
     """
     get_adjusted_expected_slice is calculating
     locally-adjusted expected for smaller slices
@@ -355,8 +361,14 @@ def get_adjusted_expected_tile(origin, observed, expected, ice_weight, kernels, 
 
 
 
-
-def get_adjusted_expected_some_nans(observed, expected, ice_weight, kernels, b, nan_threshold=2):
+# no tiling support:
+def get_adjusted_expected_some_nans(observed,
+                                    expected,
+                                    ice_weight,
+                                    kernels,
+                                    b,
+                                    band=2e+6,
+                                    nan_threshold=2):
     '''
     Same as 'get_adjusted_expected'
     ...
@@ -369,6 +381,21 @@ def get_adjusted_expected_some_nans(observed, expected, ice_weight, kernels, b, 
     Then figure out how many NaNs were
     near each pixel using convolution
     of NaN-masks of the input matrices.
+
+    We have to define a list of common
+    NaNs, shared between M_ice and E_ice
+    and use it both for assigning 0.0 and
+    for calculating how many NaNs are
+    around each pixel. If we don't do this
+    number of zeroed-NaNs might become
+    different between KM/KE. Thus, such
+    ratio would be "unfair".
+
+    We could have extrapolated NaNs
+    like they do in Astro-convolve
+    but I think zeroeing-out is fine,
+    since we are dealing with the ratio
+    of convolutions KM/KE.
 
     After that, just skip initial 
     convolution results whenever there are
@@ -386,8 +413,8 @@ def get_adjusted_expected_some_nans(observed, expected, ice_weight, kernels, b, 
     # matrix VS vector ?! ...
 
     # let's extract full matrices and ice_vector:
-    M_ice = observed
-    E_ice = expected
+    M_ice = np.copy(observed)
+    E_ice = np.copy(expected)
     v_ice = ice_weight
     kernel, = kernels
 
@@ -403,148 +430,107 @@ def get_adjusted_expected_some_nans(observed, expected, ice_weight, kernels, b, 
     assert w%2 != 0
     w = int((w-1)/2)
     #
+    # let's calculate a matrix of common np.nans
+    # as a logical_or:
+    N_ice = np.logical_or(np.isnan(M_ice),
+                          np.isnan(E_ice))
+    # fill in common nan-s 
+    # with zeroes:
+    M_ice[N_ice] = 0.0
+    E_ice[N_ice] = 0.0
+    # think about usinf copyto and where functions later:
+    # https://stackoverflow.com/questions/6431973/how-to-copy-data-from-a-numpy-array-to-another
+    # 
+    # Perform Convolutions:
     # a matrix filled with the donut-sums based on the ICEed matrix
-    KM = convolve(np.nan_to_num(M_ice),
+    KM = convolve(M_ice,
                   kernel,
                   mode='constant',
                   cval=0.0,
                   origin=0)
     # a matrix filled with the donut-sums based on the expected matrix
-    KE = convolve(np.nan_to_num(E_ice),
+    KE = convolve(E_ice,
                   kernel,
                   mode='constant',
                   cval=0.0,
                   origin=0)
     # idea for calculating how many NaNs are there around
-    # a pixel, is to take the input matrix, do np.isnan(matrix)
-    # and convolve it with the np.ones_like(around_pixel) kernel:
-    NNM = convolve(np.isnan(M_ice).astype(np.int),
-                   np.ones_like(kernel),
-                   mode='constant',
-                   cval=np.nan,
-                   origin=0)
-    # we have to do it for E_ice as well, although it is overkill
-    # since we know that E_ice would have NaNs only near diagonal
-    # TODO: replace with faster solution later on.
-    NNE = convolve(np.isnan(E_ice).astype(np.int),
-                   np.ones_like(kernel),
-                   mode='constant',
-                   cval=np.nan,
-                   origin=0)
+    # a pixel, is to take the matrix, of shared NaNs
+    # (shared between M_ice and E_ice) and convolve it
+    # with the np.ones_like(around_pixel) kernel:
+    NN = convolve(N_ice.astype(np.int),
+                  np.ones_like(kernel),
+                  mode='constant',
+                  cval=np.nan,
+                  origin=0)
     # ####################################
     # we'll use cval=0 in case of real data
-    # and we'll use cval=nan for NNX masks
+    # and we'll use cval=nan for NN mask
     # thus border issue becomes a
     # "too many NaNs"-issue as well.
     # ####################################
-
-
-    ##################################
-    # re-write using this insight ...
-    #############################
-    # attention- it's not fair to handle
-    # NaNs this way - instead we'd have to create 
-    # a common mask of NaNs between M_ice and E_ice
-    # ...
-    # N_ice = np.logical_or(np.isnan(M_ice),np.isnan(E_ice))
-    # 
-    # then look into using np.copyto or np.where to achieve
-    # M_ice[N_ice] = 0.0
-    # E_ice[N_ice] = 0.0
-    # after that calculate KM,KE on such zeroed matrices
-    # and calculate NN using N_ice.astype(np.int) ...
-    # 
-
-    # to be continued ...
-
-
     print("kernels convolved with observed and expected ...")
     # 
     # now finally, E_raw*(KM/KE), as the 
     # locally-adjusted expected with raw counts as values:
     Ed_raw = np.multiply(E_raw, np.divide(KM, KE))
 
-    # addressing details: boundaries, kernel-footprints with too many NaNs, etc:
-    # ####################################################
-    # some trivial and not so trivial masking 
-    # is needed: exclude contacts >2Mb apart,
-    # pixels from NaNs-rich regions, etc.
+    # addressing details:
+    # boundaries, kernel-footprints with too many NaNs, etc:
     ######################################################
     # mask out CDFs for NaN in Ed_raw
     # originating from NaNs in E_raw
     # and zero-values in KE, as there 
     # should be no NaNs in KM (or KE) anymore.
+    ######################################
+    # TODO: SHOULD we worry about np.isfinite ?!
+    ######################################
     mask_Ed = np.isnan(Ed_raw)
     # mask out CDFs for pixels
     # with too many NaNs around
-    # (#NaN>=threshold) in M_ice:
-    mask_NNM = NNM >= nan_threshold
-    # and in E_ice:
-    mask_NNM = NNM >= nan_threshold
-    # 
-    # simple tests mask_Ed vs mask_M:
-    if not _cmp_masks(mask_Ed,mask_M):
-        print("mask_Ed include all elements of mask_M (expected)")
-    else:
-        print("ATTENTION! mask_M has elements absent from mask_Ed")
-    # simple tests mask_Ed vs mask_M:
-    if not _cmp_masks(mask_Ed,mask_NN):
-        print("mask_Ed include all elements of mask_NN (expected)")
-    else:
-        print("ATTENTION! mask_NN has elements absent from mask_Ed")
-    if (mask_Ed == mask_NN).all():
-        print("In fact mask_Ed==mask_NN (expected for NN>=1)")
-    else:
-        print("But mask_Ed!=mask_NN (expected e.g. for NN>=2)")
-    # if (np.isnan(pvals) == mask_Ed).all():
-    #     print("Also isnan(pvals)==mask_Ed (sort of expected)")
-    # else:
-    #     print("HOWEVER: isnan(pvals)!=mask_Ed (investigate ...)")
-    # keep this test here, while we are learning:
-    print("If all test yield as expected, masking is practically useless ...")
-    ####
-    # mask out boundaries:
-    # kernel-half width from 
-    # every side of the heatmap.
-    mask_bnd = np.ones_like(M_ice, dtype=np.bool)
-    mask_bnd[w:-w, w:-w] = False
-    ###############################################
-    # TODO:
-    # instead probably use cval=np.nan in convolve.
-    ###############################################
+    # (#NaN>=threshold) each pixel:
+    mask_NN = (NN >= nan_threshold)
+    # this way boundary pixels are masked
+    # closed to diagonal pixels are masked
+    # pixels for which M_ice itself is NaN
+    # can be left alone, as they would 
+    # be masked during Poisson test comparison.
 
-    # masking everyhting further than 2Mb away:
-    # index of 2Mb in current bin-sizes:
-    idx_2Mb = int(2e+6/b)
-    assert s > idx_2Mb
-    # everything outside 2Mb will become NaN
-    mask_2Mb = np.concatenate(
-                    [np.zeros(idx_2Mb),
-                    np.ones(s-idx_2Mb)]
-                             ).astype(np.bool)
-    # In other words:
-    # mask_2Mb = np.where(np.arange(s)<idx_2Mb,False,True)
-
-    # 2D mask unrolled:
-    # masking everyhting outside 2Mb
-    mask_2Mb = toeplitz(mask_2Mb)
+    # masking everyhting further than 2Mb away
+    # is easier to do on indices.
+    band_idx = int(band/b)
+    assert s > band_idx
 
     # combine all filters/masks:
-    # mask_Ed || mask_M || mask_NN || mask_bnd || mask_2Mb ...
-    mask_ndx = np.any(
-                      (mask_Ed,
-                        mask_M,
-                        mask_NN,
-                        mask_bnd,
-                        mask_2Mb),
-                      axis=0)
+    # mask_Ed || mask_NN
+    mask_ndx = np.logical_or(mask_Ed,
+                             mask_NN)
     # any nonzero element in `mask_ndx` 
-    # must be masked out for the downstream
-    # analysis:
-    return Ed_raw, mask_ndx, KM, KE, NN
+    # must be masked out from `pvals`:
+    # so, we'll just take the negated
+    # elements of the combined mask:
+    i, j = np.where(~mask_ndx)
+    # take the upper triangle with 2Mb close to diag:
+    upper_band = np.logical_and((i<j),
+                                (i>j-band_idx))
+    # peek the reduced list of pixels:
+    i = i[upper_band]
+    j = j[upper_band]
+    # pack it into DataFrame:
+    peaks_df = pd.DataFrame({"row": i,
+                             "col": j,
+                             "expected": Ed_raw[i,j],
+                             "observed": observed[i,j],
+                            })
+    # INSTEAD OF:
+    # return Ed_raw, mask_ndx, KM, KE, NN
+    # DO:
+    return peaks_df
 
 
 
+# the main work-horse for now
+# well-tested
 def get_adjusted_expected(observed, expected, ice_weight, kernels, b):
     '''
     get_adjusted_expected, get the expected adjusted
