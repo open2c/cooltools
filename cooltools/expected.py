@@ -248,7 +248,7 @@ def cis_expected(clr, regions, field='balanced', chunksize=1000000,
 
     """
     if use_dask:
-        pixels = daskify(clr.filename, 'pixels', chunksize=chunksize)
+        pixels = daskify(clr, clr.root + '/pixels', chunksize=chunksize)
     else:
         pixels = clr.pixels()[:]
     pixels = cooler.annotate(pixels, clr.bins(), replace=False)

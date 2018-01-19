@@ -30,6 +30,54 @@ def set_diag(mat, x, i=0):
         ] = x
 
 
+def fill_na(arr, value=0, copy=True):
+    '''Replaces np.nan entries in an array with the provided value.
+
+    Parameters
+    ----------
+
+    arr : np.array
+
+    value : float
+
+    copy : bool, optional
+        If True, creates a copy of x, otherwise replaces values in-place. 
+        By default, True.
+
+    '''
+    if copy:
+        arr = arr.copy()
+    arr[np.isnan(arr)] = value
+    return arr
+
+
+def fill_inf(arr, pos_value=0, neg_value=0, copy=True):
+    '''Replaces positive and negative infinity entries in an array 
+       with the provided values.
+
+    Parameters
+    ----------
+    
+    arr : np.array
+
+    pos_value : float
+        Fill value for np.inf
+
+    neg_value : float
+        Fill value for -np.inf
+
+    copy : bool, optional
+        If True, creates a copy of x, otherwise replaces values in-place. 
+        By default, True.
+
+    '''
+    if copy:
+        arr = arr.copy()
+    arr[np.isposinf(arr)] = pos_value
+    arr[np.isneginf(arr)] = neg_value
+    return arr
+
+
 def fill_nainf(arr, value=0, copy=True):
     '''Replaces np.nan and np.inf entries in an array with the provided value.
 
@@ -399,7 +447,7 @@ def observed_over_expected(
 
 @numba.jit #(nopython=True)
 def iterative_correction_symmetric( 
-    x, max_iter=1000, ignore_diags = 0, tolerance=1e-5):                         
+    x, max_iter=1000, ignore_diags = 0, tol=1e-5, verbose=False):
     """The main method for correcting DS and SS read data.                       
     By default does iterative correction, but can perform an M-time correction   
                                                                                  
@@ -412,7 +460,7 @@ def iterative_correction_symmetric(
         The maximal number of iterations to take.                                
     ignore_diags : int                                                           
         The number of diagonals to ignore during iterative correction.           
-    tolerance : float                                                            
+    tol : float                                                            
         If less or equal to zero, will perform max_iter iterations.              
                                                                                  
     """                                                                          
@@ -449,8 +497,12 @@ def iterative_correction_symmetric(
         for i in range(N):
             for j in range(N):
                 _x[i,j] /= s[i] * s[j]
+
+        crit = np.var(s) #np.abs(s - 1).max()
+        if verbose:
+            print(crit)
             
-        if (tolerance > 0) and (np.abs(s - 1).max() < tolerance):                
+        if (tol > 0) and (crit < tol):
             converged=True                                                       
             break                                                                
                                                                                  
