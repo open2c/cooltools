@@ -361,6 +361,149 @@ def get_adjusted_expected_tile(origin,
 
 
 
+def get_adjusted_expected_tile_some_nans(origin,
+                                         observed,
+                                         expected,
+                                         ice_weight,
+                                         kernels,
+                                         b,
+                                         band=2e+6,
+                                         nan_threshold=2):
+    """
+    get_adjusted_expected_tile_some_nans
+    combines get_adjusted_expected_tile and
+    get_adjusted_expected_some_nans ...
+
+    """
+    # extract origin coordinate of this tile:
+    io, jo = origin
+    # let's extract full matrices and ice_vector:
+    M_ice = np.copy(observed)
+    E_ice = np.copy(expected)
+    v_ice = ice_weight
+    kernel, = kernels
+
+    # deiced E_ice: element-wise division of E_ice[i,j] and
+    # v_ice[i]*v_ice[j]:
+    E_raw = np.divide(E_ice, np.outer(v_ice,v_ice))
+
+    s, s = M_ice.shape
+    # extract donut parameters: 
+    w, w = kernel.shape
+    # size must be odd: pixel (i,j) of interest in the middle
+    # and equal amount of pixels are to left,right, up and down
+    # of it: 
+    assert w%2 != 0
+    w = int((w-1)/2)
+    #
+    # let's calculate a matrix of common np.nans
+    # as a logical_or:
+    N_ice = np.logical_or(np.isnan(M_ice),
+                          np.isnan(E_ice))
+    # fill in common nan-s 
+    # with zeroes:
+    M_ice[N_ice] = 0.0
+    E_ice[N_ice] = 0.0
+    # think about usinf copyto and where functions later:
+    # https://stackoverflow.com/questions/6431973/how-to-copy-data-from-a-numpy-array-to-another
+    #
+    # a matrix filled with the donut-sums based on the ICEed matrix
+    KM = convolve(M_ice,
+                  kernel,
+                  mode='constant',
+                  cval=0.0,
+                  origin=0)
+    # a matrix filled with the donut-sums based on the expected matrix
+    KE = convolve(E_ice,
+                  kernel,
+                  mode='constant',
+                  cval=0.0,
+                  origin=0)
+    # idea for calculating how many NaNs are there around
+    # a pixel, is to take the matrix, of shared NaNs
+    # (shared between M_ice and E_ice) and convolve it
+    # with the np.ones_like(around_pixel) kernel:
+    NN = convolve(N_ice.astype(np.int),
+                  # we have to use kernel
+                  # all made of 1s, since
+                  # even 0 * nan == nan
+                  np.ones_like(kernel),
+                  mode='constant',
+                  # make it look, like there are 
+                  # a lot of NaNs beyond
+                  # the boundary ...
+                  cval=1,
+                  origin=0)
+    # ####################################
+    # we'll use cval=0 in case of real data
+    # and we'll use cval=1 for NN mask
+    # thus border issue becomes a
+    # "too many NaNs"-issue as well.
+    # ####################################
+    print("kernels convolved with observed and expected ...")
+
+    # now finally, E_raw*(KM/KE), as the 
+    # locally-adjusted expected with raw counts as values:
+    Ed_raw = np.multiply(E_raw, np.divide(KM, KE))
+
+    # addressing details:
+    # boundaries, kernel-footprints with too many NaNs, etc:
+    ######################################################
+    # mask out CDFs for NaN in Ed_raw
+    # originating from NaNs in E_raw
+    # and zero-values in KE, as there 
+    # should be no NaNs in KM (or KE) anymore.
+    ######################################
+    # TODO: SHOULD we worry about np.isfinite ?!
+    # mask_Ed = np.isfinite(Ed_raw) ?
+    ######################################
+    mask_Ed = np.isnan(Ed_raw)
+    # mask out CDFs for pixels
+    # with too many NaNs around
+    # (#NaN>=threshold) each pixel:
+    mask_NN = (NN >= nan_threshold)
+    # this way boundary pixels are masked
+    # closed to diagonal pixels are masked
+    # pixels for which M_ice itself is NaN
+    # can be left alone, as they would 
+    # be masked during Poisson test comparison.
+
+    # masking everyhting further than 2Mb away
+    # is easier to do on indices.
+    band_idx = int(band/b)
+    assert s > band_idx
+
+    # ########################
+    # Sparsify Ed_raw using 
+    # derived masks ...
+    # ########################
+    # combine all filters/masks:
+    # mask_Ed || mask_NN
+    mask_ndx = np.logical_or(mask_Ed,
+                             mask_NN)
+    # any nonzero element in `mask_ndx` 
+    # must be masked out from `pvals`:
+    # so, we'll just take the negated
+    # elements of the combined mask:
+    i, j = np.nonzero(~mask_ndx)
+    # take the upper triangle with 2Mb close to diag:
+    upper_band = np.logical_and((i<j),
+                                (i>j-band_idx))
+    # peek the reduced list of pixels
+    i = i[upper_band]
+    j = j[upper_band]
+    # pack it into DataFrame:
+    peaks_df = pd.DataFrame({"row": i+io,
+                             "col": j+jo,
+                             "expected": Ed_raw[i,j],
+                             "observed": observed[i,j],
+                            })
+    # return sparsified DF:
+    return peaks_df
+
+
+
+
 # no tiling support:
 def get_adjusted_expected_some_nans(observed,
                                     expected,
