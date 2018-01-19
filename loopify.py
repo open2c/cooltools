@@ -340,7 +340,7 @@ def get_adjusted_expected_tile(origin,
 
     # combine all filters/masks:
     # mask_Ed || mask_NN
-    mask_ndx = np.any((mask_Ed, mask_NN), axis=0)
+    mask_ndx = np.logical_or(mask_Ed, mask_NN)
     # any nonzero element in `mask_ndx` 
     # must be masked out from `pvals`:
     # so, we'll just take the negated
@@ -461,11 +461,14 @@ def get_adjusted_expected_some_nans(observed,
     NN = convolve(N_ice.astype(np.int),
                   np.ones_like(kernel),
                   mode='constant',
-                  cval=np.nan,
+                  # make it look, like there are 
+                  # a lot of NaNs beyond
+                  # the boundary ...
+                  cval=1,
                   origin=0)
     # ####################################
     # we'll use cval=0 in case of real data
-    # and we'll use cval=nan for NN mask
+    # and we'll use cval=1 for NN mask
     # thus border issue becomes a
     # "too many NaNs"-issue as well.
     # ####################################
