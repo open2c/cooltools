@@ -457,7 +457,7 @@ def get_adjusted_expected_tile_some_nans(origin,
     # TODO: SHOULD we worry about np.isfinite ?!
     # mask_Ed = np.isfinite(Ed_raw) ?
     ######################################
-    mask_Ed = np.isfinite(Ed_raw)
+    mask_Ed = ~np.isfinite(Ed_raw)
     # mask out CDFs for pixels
     # with too many NaNs around
     # (#NaN>=threshold) each pixel:
