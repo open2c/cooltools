@@ -355,12 +355,17 @@ def trans_expected(clr, chromosomes, chunksize=1000000, use_dask=True):
         pairblock_list = []
         for i in range(n):
             for j in range(i + 1, n):
-                pairblock_list.append( (i, j, x[i] * x[j]) )
+                # appending to the list of tuples
+                pairblock_list.append((chromosomes[i],
+                                       chromosomes[j],
+                                       x[i] * x[j] ))
         return pd.DataFrame(pairblock_list, 
             columns=['chrom1', 'chrom2', 'n_total'])
 
     def n_bad_trans_elements(clr, chromosomes):
         n = 0
+        # bad bins are ones with
+        # the weight vector being NaN:
         x = [np.sum(clr.bins()['weight']
                        .fetch(chrom)
                        .isnull()
@@ -370,7 +375,10 @@ def trans_expected(clr, chromosomes, chunksize=1000000, use_dask=True):
         pairblock_list = []
         for i in range(len(x)):
             for j in range(i + 1, len(x)):
-                pairblock_list.append( (i, j, x[i] * x[j]) )
+                # appending to the list of tuples
+                pairblock_list.append((chromosomes[i],
+                                       chromosomes[j],
+                                       x[i] * x[j] ))
         return pd.DataFrame(pairblock_list,
             columns=['chrom1', 'chrom2', 'n_bad'])
 
@@ -378,6 +386,8 @@ def trans_expected(clr, chromosomes, chunksize=1000000, use_dask=True):
         pixels = daskify(clr.filename, 'pixels', chunksize=chunksize)
     else:
         pixels = clr.pixels()[:]
+    # getting pixels that belong to trans-area,
+    # defined by the list of chromosomes:
     pixels = cooler.annotate(pixels, clr.bins(), replace=False)
     pixels = pixels[
         (pixels.chrom1.isin(chromosomes)) &
@@ -385,8 +395,16 @@ def trans_expected(clr, chromosomes, chunksize=1000000, use_dask=True):
         (pixels.chrom1 != pixels.chrom2)
     ]
     pixels['balanced'] = pixels['count'] * pixels['weight1'] * pixels['weight2']
-    ntot = n_total_trans_elements(clr, chromosomes).groupby(('chrom1', 'chrom2'))['n_total']
-    nbad = n_bad_trans_elements(clr, chromosomes).groupby(('chrom1', 'chrom2'))['n_bad']
+    ntot = n_total_trans_elements(clr, chromosomes).groupby(('chrom1', 'chrom2'))['n_total'].sum()
+    nbad = n_bad_trans_elements(clr, chromosomes).groupby(('chrom1', 'chrom2'))['n_bad'].sum()
     trans_area = ntot - nbad
-    trans_sum = pixels.groupby(('chrom1', 'chrom2'))['balanced'].sum().compute()
-    return trans_sum, trans_area
+    trans_area.name = 'n_valid'
+    # do we need compute here, should that be dask vs no dask stuff ...
+    if use_dask:
+        trans_sum = pixels.groupby(('chrom1', 'chrom2'))['balanced'].sum().compute()
+    else:
+        trans_sum = pixels.groupby(('chrom1', 'chrom2'))['balanced'].sum()
+    # decide here what do we do ...
+    return pd.merge(
+        trans_sum.to_frame(), trans_area.to_frame(), 
+        left_index=True, right_index=True)
