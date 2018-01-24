@@ -342,10 +342,20 @@ def trans_expected(clr, chromosomes, chunksize=1000000, use_dask=True):
         List of chromosome names
     chunksize : int, optional
         Size of dask chunks
+    use_dask : bool, optional
+        option to use dask
     
     Returns
     -------
-    two tables, indexed by interchromosomal block
+    pandas.DataFrame that stores total number of
+    interactions between a pair of chromosomes: 'balanced',
+    and corresponding number of bins involved
+    in the inter-chromosomal interactions: 'n_valid'
+    for every interchromosomal pair.
+
+    In order to get the actual trans-expected, 
+    divide number of interaction, 'balanced', by
+    the number of bins, 'n_valid'.
 
     """
     def n_total_trans_elements(clr, chromosomes):
@@ -399,12 +409,14 @@ def trans_expected(clr, chromosomes, chunksize=1000000, use_dask=True):
     nbad = n_bad_trans_elements(clr, chromosomes).groupby(('chrom1', 'chrom2'))['n_bad'].sum()
     trans_area = ntot - nbad
     trans_area.name = 'n_valid'
-    # do we need compute here, should that be dask vs no dask stuff ...
+    # processing with use_dask=True is different:
     if use_dask:
         trans_sum = pixels.groupby(('chrom1', 'chrom2'))['balanced'].sum().compute()
     else:
         trans_sum = pixels.groupby(('chrom1', 'chrom2'))['balanced'].sum()
-    # decide here what do we do ...
+    # returning a DataFrame with MultiIndex, that stores
+    # pairs of 'balanced' and 'n_valid' values for each
+    # pair of chromosomes.
     return pd.merge(
         trans_sum.to_frame(), trans_area.to_frame(), 
         left_index=True, right_index=True)
