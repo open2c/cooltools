@@ -329,7 +329,7 @@ def cis_expected(clr, regions, field='balanced', chunksize=1000000,
     return dtable
 
 
-def trans_expected(clr, chromosomes, chunksize=1000000, use_dask=True):
+def trans_expected(clr, chromosomes, chunksize=1000000, use_dask=False):
     """
     Aggregate the signal in intrachromosomal blocks.
     Can be used as abackground for contact frequencies between chromosomes.
@@ -393,7 +393,8 @@ def trans_expected(clr, chromosomes, chunksize=1000000, use_dask=True):
             columns=['chrom1', 'chrom2', 'n_bad'])
 
     if use_dask:
-        pixels = daskify(clr.filename, 'pixels', chunksize=chunksize)
+        # pixels = daskify(clr.filename, clr.root + '/pixels', chunksize=chunksize)
+        raise NotImplementedError("To be implemented once dask supports MultiIndex")
     else:
         pixels = clr.pixels()[:]
     # getting pixels that belong to trans-area,
@@ -411,7 +412,8 @@ def trans_expected(clr, chromosomes, chunksize=1000000, use_dask=True):
     trans_area.name = 'n_valid'
     # processing with use_dask=True is different:
     if use_dask:
-        trans_sum = pixels.groupby(('chrom1', 'chrom2'))['balanced'].sum().compute()
+        # trans_sum = pixels.groupby(('chrom1', 'chrom2'))['balanced'].sum().compute()
+        pass
     else:
         trans_sum = pixels.groupby(('chrom1', 'chrom2'))['balanced'].sum()
     # returning a DataFrame with MultiIndex, that stores
