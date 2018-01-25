@@ -3,6 +3,8 @@
 import numpy as np
 import pandas as pd
 
+import os.path as op
+
 # just follow mirnylab practises:
 from nose.tools import assert_raises
 
@@ -19,8 +21,14 @@ from loopify import get_adjusted_expected
                     # get_adjusted_expected_some_nans
 
 
+testdir = op.realpath(op.dirname(__file__))
+
+
+mock_input = op.join(testdir, 'data', 'mock_inputs.npz')
+mock_result = op.join(testdir, 'data', 'mock_res.csv.gz')
+
 # load bunch of array from a numpy npz container:
-arrays_loaded = np.load('./data/mock_inputs.npz')
+arrays_loaded = np.load(mock_input)
 # snippets of M_ice,E_ice and v_ice are supposed 
 # to be there ...
 mock_M_ice = arrays_loaded['mock_M_ice']
@@ -45,7 +53,7 @@ b=20000
 
 
 # load mock results:
-mock_res = pd.read_csv("./data/mock_res.csv.gz")
+mock_res = pd.read_csv(mock_result)
 
 
 
