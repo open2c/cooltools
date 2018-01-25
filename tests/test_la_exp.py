@@ -66,9 +66,19 @@ def test_adjusted_expected():
                          kernel=kernel,
                          b=b,
                          return_type="sparse")
-    cmp_res = (res[['row','col','expected','la_expected','observed']] == mock_res[['row','col','expected','la_expected','observed']])
-    # that's where actual test is happening ...
-    assert ( cmp_res.all().all() )
+    # ACTUAL TESTS:
+    # integer part of DataFrame must equals exactly:
+    assert (
+        res[['row','col']].equals(
+            mock_res[['row','col']])
+        )
+    # compare floating point part separately:
+    assert (
+        np.isclose(
+            res[['expected','la_expected','observed']],
+            mock_res[['expected','la_expected','observed']],
+            equal_nan=True).all()
+        )
 
 
 
