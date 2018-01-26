@@ -14,9 +14,9 @@ import sys
 sys.path.append("../")
 
 # try importing stuff from loopify:
-from loopify import get_adjusted_expected,
-                    get_adjusted_expected_tile,
-                    get_adjusted_expected_tile_some_nans,
+from loopify import get_adjusted_expected,\
+                    get_adjusted_expected_tile,\
+                    get_adjusted_expected_tile_some_nans,\
                     get_adjusted_expected_some_nans
 
 
