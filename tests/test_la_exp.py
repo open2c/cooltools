@@ -153,7 +153,7 @@ def test_adjusted_expected_tile_some_nans():
                      band=2e+6,
                      nan_threshold=2)
     # now we can only guess the size:
-    assert (res.size > mock_res.size)
+    assert (res['row'].size > mock_res['row'].size)
 
 
 
@@ -197,7 +197,7 @@ def test_adjusted_expected_some_nans():
                      band=2e+6,
                      nan_threshold=2)
     # now we can only guess the size:
-    assert (res.size > mock_res.size)
+    assert (res['row'].size > mock_res['row'].size)
 
 
 
