@@ -13,16 +13,18 @@ from nose.tools import assert_raises
 import sys
 sys.path.append("../")
 
-# try importing stuff from loopify:
-from loopify import get_adjusted_expected,\
+# try importing stuff from old_loopify:
+from old_loopify import get_adjusted_expected,\
                     get_adjusted_expected_tile,\
-                    get_adjusted_expected_tile_some_nans,\
                     get_adjusted_expected_some_nans
 
+# try importing stuff from loopify:
+from loopify import get_adjusted_expected_tile_some_nans
 
+# adjust the path for data:
 testdir = op.realpath(op.dirname(__file__))
 
-
+# mock input data location:
 mock_input = op.join(testdir, 'data', 'mock_inputs.npz')
 mock_result = op.join(testdir, 'data', 'mock_res.csv.gz')
 
@@ -198,41 +200,5 @@ def test_adjusted_expected_some_nans():
                      nan_threshold=2)
     # now we can only guess the size:
     assert (res['row'].size > mock_res['row'].size)
-
-
-
-
-
-
-# def get_adjusted_expected_tile(origin,
-#                                observed,
-#                                expected,
-#                                ice_weight,
-#                                kernels,
-#                                b,
-#                                band=2e+6)
-
-
-# def get_adjusted_expected_tile_some_nans(origin,
-#                                          observed,
-#                                          expected,
-#                                          ice_weight,
-#                                          kernels,
-#                                          b,
-#                                          band=2e+6,
-#                                          nan_threshold=2)
-
-
-# def get_adjusted_expected_some_nans(observed,
-#                                     expected,
-#                                     ice_weight,
-#                                     kernels,
-#                                     b,
-#                                     band=2e+6,
-#                                     nan_threshold=2):
-
-
-
-
 
 
