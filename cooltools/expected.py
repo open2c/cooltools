@@ -329,7 +329,7 @@ def cis_expected(clr, regions, field='balanced', chunksize=1000000,
     return dtable
 
 
-def trans_expected(clr, chromosomes, chunksize=1000000, use_dask=True):
+def trans_expected(clr, chromosomes, chunksize=1000000, use_dask=False):
     """
     Aggregate the signal in intrachromosomal blocks.
     Can be used as abackground for contact frequencies between chromosomes.
@@ -342,10 +342,20 @@ def trans_expected(clr, chromosomes, chunksize=1000000, use_dask=True):
         List of chromosome names
     chunksize : int, optional
         Size of dask chunks
+    use_dask : bool, optional
+        option to use dask
     
     Returns
     -------
-    two tables, indexed by interchromosomal block
+    pandas.DataFrame that stores total number of
+    interactions between a pair of chromosomes: 'balanced',
+    and corresponding number of bins involved
+    in the inter-chromosomal interactions: 'n_valid'
+    for every interchromosomal pair.
+
+    In order to get the actual trans-expected, 
+    divide number of interaction, 'balanced', by
+    the number of bins, 'n_valid'.
 
     """
     def n_total_trans_elements(clr, chromosomes):
@@ -355,12 +365,17 @@ def trans_expected(clr, chromosomes, chunksize=1000000, use_dask=True):
         pairblock_list = []
         for i in range(n):
             for j in range(i + 1, n):
-                pairblock_list.append( (i, j, x[i] * x[j]) )
+                # appending to the list of tuples
+                pairblock_list.append((chromosomes[i],
+                                       chromosomes[j],
+                                       x[i] * x[j] ))
         return pd.DataFrame(pairblock_list, 
             columns=['chrom1', 'chrom2', 'n_total'])
 
     def n_bad_trans_elements(clr, chromosomes):
         n = 0
+        # bad bins are ones with
+        # the weight vector being NaN:
         x = [np.sum(clr.bins()['weight']
                        .fetch(chrom)
                        .isnull()
@@ -370,14 +385,20 @@ def trans_expected(clr, chromosomes, chunksize=1000000, use_dask=True):
         pairblock_list = []
         for i in range(len(x)):
             for j in range(i + 1, len(x)):
-                pairblock_list.append( (i, j, x[i] * x[j]) )
+                # appending to the list of tuples
+                pairblock_list.append((chromosomes[i],
+                                       chromosomes[j],
+                                       x[i] * x[j] ))
         return pd.DataFrame(pairblock_list,
             columns=['chrom1', 'chrom2', 'n_bad'])
 
     if use_dask:
-        pixels = daskify(clr.filename, 'pixels', chunksize=chunksize)
+        # pixels = daskify(clr.filename, clr.root + '/pixels', chunksize=chunksize)
+        raise NotImplementedError("To be implemented once dask supports MultiIndex")
     else:
         pixels = clr.pixels()[:]
+    # getting pixels that belong to trans-area,
+    # defined by the list of chromosomes:
     pixels = cooler.annotate(pixels, clr.bins(), replace=False)
     pixels = pixels[
         (pixels.chrom1.isin(chromosomes)) &
@@ -385,8 +406,19 @@ def trans_expected(clr, chromosomes, chunksize=1000000, use_dask=True):
         (pixels.chrom1 != pixels.chrom2)
     ]
     pixels['balanced'] = pixels['count'] * pixels['weight1'] * pixels['weight2']
-    ntot = n_total_trans_elements(clr, chromosomes).groupby(('chrom1', 'chrom2'))['n_total']
-    nbad = n_bad_trans_elements(clr, chromosomes).groupby(('chrom1', 'chrom2'))['n_bad']
+    ntot = n_total_trans_elements(clr, chromosomes).groupby(('chrom1', 'chrom2'))['n_total'].sum()
+    nbad = n_bad_trans_elements(clr, chromosomes).groupby(('chrom1', 'chrom2'))['n_bad'].sum()
     trans_area = ntot - nbad
-    trans_sum = pixels.groupby(('chrom1', 'chrom2'))['balanced'].sum().compute()
-    return trans_sum, trans_area
+    trans_area.name = 'n_valid'
+    # processing with use_dask=True is different:
+    if use_dask:
+        # trans_sum = pixels.groupby(('chrom1', 'chrom2'))['balanced'].sum().compute()
+        pass
+    else:
+        trans_sum = pixels.groupby(('chrom1', 'chrom2'))['balanced'].sum()
+    # returning a DataFrame with MultiIndex, that stores
+    # pairs of 'balanced' and 'n_valid' values for each
+    # pair of chromosomes.
+    return pd.merge(
+        trans_sum.to_frame(), trans_area.to_frame(), 
+        left_index=True, right_index=True)
