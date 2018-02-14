@@ -85,7 +85,7 @@ def expected(cool_path, nproc, chunksize, chrom_region_type):
         # list of regions in a format (chrom,start,stop),
         # when start,stop ommited, process entire chrom:
         regions = [ (chrom,) for chrom in c.chromnames ]
-        expected_result = cis_expected(clr=c,
+        expected_result = expected.cis_expected(clr=c,
                                        regions=regions,
                                        field='balanced',
                                        chunksize=chunksize,
@@ -93,7 +93,7 @@ def expected(cool_path, nproc, chunksize, chrom_region_type):
                                        ignore_diags=2)
     elif chrom_region_type == 'trans':
         # process for all chromosomes:
-        expected_result = trans_expected(clr=c,
+        expected_result = expected.trans_expected(clr=c,
                                          chromosomes=c.chromnames,
                                          chunksize=chunksize,
                                          use_dask=use_dask)
