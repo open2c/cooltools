@@ -60,7 +60,7 @@ from .. import expected
     required=True
     )
 
-def expected(cool_path, nproc, chunksize, chrom_region_type):
+def compute_expected(cool_path, nproc, chunksize, chrom_region_type):
     """
     Calculate either expected Hi-C singal
     either for cis or for trans regions of

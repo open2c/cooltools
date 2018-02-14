@@ -22,5 +22,5 @@ def cli():
 from . import (
     dump_cworld,
     diamond_insulation,
-    expected,
+    compute_expected,
 )
