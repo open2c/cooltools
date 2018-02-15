@@ -101,7 +101,8 @@ def compute_expected(cool_path, nproc, chunksize, chrom_region_type):
         # chrom_region_type ...
         raise click.NoSuchOption('Field numbers are one-based')
 
-    # output to stdout:
+    # output to stdout,
+    # just like in diamond_insulation:
     print(expected_result.to_csv(sep='\t', index=True, na_rep='nan'))
 
     # # DO WE HAVE TO SHUT DOWN SUCH CLUSTERS AT ALL ? ...
