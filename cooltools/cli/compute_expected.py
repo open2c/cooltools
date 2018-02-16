@@ -30,37 +30,42 @@ from .. import expected
     type=int,
     default=int(10e6),
     show_default=True)
-# instead of Choice:
-# @click.option(
-#     '--cis-trans-type',
-#     help="compute expected for cis or trans region"
-#     "of a Hi-C map.",
-#     type=click.Choice(['cis', 'trans']),
-#     default='cis',
-#     show_default=True,
-#     )
-# use
-# feature switch for --cis/--trans:
+@click.option(
+    '--contact-type',
+    help="compute expected for cis or trans region"
+    "of a Hi-C map.",
+    type=click.Choice(['cis', 'trans']),
+    default='cis',
+    show_default=True,
+    )
+@click.option(
+    "--drop-diags",
+    help="Number of diagonals to neglect for cis contact type",
+    type=int,
+    default=2,
+    show_default=True)
+# can we use feature switch
+# for --cis/--trans instead (?):
 # http://click.pocoo.org/options/#feature-switches
 # http://click.pocoo.org/parameters/#parameter-names
-@click.option(
-    '--cis',
-    'chrom_region_type',
-    help="compute expected for cis or trans region"
-    "of a Hi-C map.",
-    flag_value='cis',
-    required=True
-    )
-@click.option(
-    '--trans',
-    'chrom_region_type',
-    help="compute expected for cis or trans region"
-    "of a Hi-C map.",
-    flag_value='trans',
-    required=True
-    )
+# @click.option(
+#     '--cis',
+#     'contact_type',
+#     help="compute expected for cis or trans region"
+#     "of a Hi-C map.",
+#     flag_value='cis',
+#     required=True
+#     )
+# @click.option(
+#     '--trans',
+#     'contact_type',
+#     help="compute expected for cis or trans region"
+#     "of a Hi-C map.",
+#     flag_value='trans',
+#     required=True
+#     )
 
-def compute_expected(cool_path, nproc, chunksize, chrom_region_type):
+def compute_expected(cool_path, nproc, chunksize, contact_type, drop_diags):
     """
     Calculate either expected Hi-C singal
     either for cis or for trans regions of
@@ -81,7 +86,7 @@ def compute_expected(cool_path, nproc, chunksize, chrom_region_type):
     c = cooler.Cooler(cool_path)
 
     # execute EITHER cis OR trans (not both):
-    if chrom_region_type == 'cis':
+    if contact_type == 'cis':
         # list of regions in a format (chrom,start,stop),
         # when start,stop ommited, process entire chrom:
         regions = [ (chrom,) for chrom in c.chromnames ]
@@ -90,17 +95,14 @@ def compute_expected(cool_path, nproc, chunksize, chrom_region_type):
                                        field='balanced',
                                        chunksize=chunksize,
                                        use_dask=use_dask,
-                                       ignore_diags=2)
-    elif chrom_region_type == 'trans':
+                                       ignore_diags=drop_diags)
+    elif contact_type == 'trans':
         # process for all chromosomes:
+        chromosomes = c.chromnames
         expected_result = expected.trans_expected(clr=c,
-                                         chromosomes=c.chromnames,
+                                         chromosomes=chromosomes,
                                          chunksize=chunksize,
                                          use_dask=use_dask)
-    else:
-        # chrom_region_type ...
-        raise click.NoSuchOption('Field numbers are one-based')
-
     # output to stdout,
     # just like in diamond_insulation:
     print(expected_result.to_csv(sep='\t', index=True, na_rep='nan'))
