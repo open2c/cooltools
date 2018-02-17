@@ -23,4 +23,5 @@ from . import (
     dump_cworld,
     diamond_insulation,
     compute_expected,
+    compute_saddle,
 )
