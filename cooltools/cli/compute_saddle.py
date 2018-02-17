@@ -88,11 +88,6 @@ track_mask_fetcher = lambda chrom: (
 #     a contact matrix.
 #     Parameters
 #     ----------
-#     track_name : str
-#         Name of value column in ``track``.
-#     expected_name : str, optional
-#         Required if ``contact_type`` is 'cis'. Name of value column in the
-#         ``expected`` data frame.
 #     chromosomes : list of str, optional
 #         Restricted set of chromosomes to use. Default is to use all chromosomes
 #         in the ``track`` dataframe.
@@ -130,6 +125,20 @@ track_mask_fetcher = lambda chrom: (
     nargs=1)
 # options ...
 @click.option(
+    '--track-name',
+    help="Name of value column in TRACK_PATH",
+    type=str,
+    default='eigen',
+    show_default=True,
+    )
+@click.option(
+    '--expected-name',
+    help="Name of value column in EXPECTED_PATH",
+    type=str,
+    default='balanced.avg',
+    show_default=True,
+    )
+@click.option(
     # optional
     "--n-bins",
     help="Number of bins for digitizing the signal track.",
@@ -163,7 +172,9 @@ track_mask_fetcher = lambda chrom: (
 def compute_saddle(
             cool_path,
             track_path,
+            track_name,
             expected_path,
+            expected_name,
             n_bins,
             contact_type,
             by_percentile):
@@ -217,13 +228,13 @@ def compute_saddle(
 
     # playing with OBS/EXP a bit : ...
 
-    obsexp_func = make_cis_obsexp_fetcher(c, cis_exp, 'balanced.avg')
+    obsexp_func = make_cis_obsexp_fetcher(c, cis_exp, expected_name)
 
 
-    t_obsexp_func = NEW_make_trans_obsexp_fetcher(c, trans_exp, 'balanced.avg')
+    t_obsexp_func = NEW_make_trans_obsexp_fetcher(c, trans_exp, expected_name)
 
-    # plt.imshow(np.log(obsexp_func("chr20","chr21")),cmap="YlOrRd")
-    plt.imshow(np.log(t_obsexp_func("chr17","chr18")),cmap="YlOrRd")
+    # # plt.imshow(np.log(obsexp_func("chr20","chr21")),cmap="YlOrRd")
+    # plt.imshow(np.log(t_obsexp_func("chr17","chr18")),cmap="YlOrRd")
 
 
     # Aggregate contacts
