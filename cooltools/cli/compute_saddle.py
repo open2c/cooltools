@@ -236,8 +236,14 @@ def make_track_mask_fetcher(df, name):
          "The figure format is deduced from the extension of the file, "
          "the supported formats are png, jpg, svg, pdf, ps and eps.",
     type=str)
+@click.option(
+    "--output",
+    help="Save the saddle-plot data to a csv file.",
+    type=str)
 # TODO:
-# add out for saddledata otself ...
+# maybe attach binedges as index/column names ...?!?!?!? ...
+# just for output
+#
 # add flag to calculate compartment strength ...
 # update help ...
 # add validations ...
@@ -341,7 +347,23 @@ def compute_saddle(
     saddledata = sum_/count
     # # output to stdout,
     # # just like in diamond_insulation:
-    # print(expected_result.to_csv(sep='\t', index=True, na_rep='nan'))
+    if output is not None:
+        pd.DataFrame(saddledata).to_csv(output,
+                                        sep='\t',
+                                        index=True,
+                                        header=True,
+                                        na_rep='nan')
+        # binDf=pd.DataFrame(binedges)
+        # binDf.to_csv("binedges.txt", sep='\t')
+    else:
+        print(pd.DataFrame(saddledata).to_csv(output,
+                                        sep='\t',
+                                        index=True,
+                                        header=True,
+                                        na_rep='nan'))
+    
+
+
 
     # ###########################
     # do the plotting, if requested ...
