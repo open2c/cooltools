@@ -7,9 +7,13 @@ from .. import saddle
 
 
 import pandas as pd
-# import numpy as np
+import numpy as np
 from scipy.linalg import toeplitz
 # from bioframe import parse_humanized, parse_region_string
+
+
+
+
 
 
 # inspired by:
@@ -29,10 +33,9 @@ def make_cis_obsexp_fetcher(clr, expected, name):
     returns slice of OBS/EXP for a given 
     chromosome.
     """
-    g = expected.groupby('chrom')
     return lambda chrom, _: (
             clr.matrix().fetch(chrom) / 
-                toeplitz(g.get_group(chrom)[name].values)
+                toeplitz(expected.loc[chrom][name].values)
         )
 
 def make_trans_obsexp_fetcher(clr, expected, name):
@@ -288,15 +291,36 @@ def compute_saddle(
     c = cooler.Cooler(cool_path)
 
 
-    # ACHTUNG: SCHEMA IS DIFFERENT FOR cis AND trans :
-    # FIX IT LATER:
-    # neccessary ingredients ...
-    expected = pd.read_table(expected_path,index_col=[0,1])
-    # expected = pd.read_table(expected_path,index_col=[0,1])
+    # read expected and validate it:
+    if contact_type == "cis":
+        expected_columns = ['chrom', 'diag', 'n_valid', expected_name]
+        expected_index = ['chrom', 'diag']
+        expected_dtype = {'chrom':np.str, 'diag':np.int64, 'n_valid':np.int64, expected_name:np.float64}
+    else contact_type == "trans":
+        expected_columns = ['chrom1', 'chrom2', 'n_valid', expected_name]
+        expected_index = ['chrom1', 'chrom2']
+        expected_dtype = {'chrom1':np.str, 'chrom2':np.str, 'n_valid':np.int64, expected_name:np.float64}
+    # that's what we expect as columns names
+    # use 'usecols' as a rudimentary form of validation:
+    expected = pd.read_table(
+                            expected_path,
+                            usecols  = expected_columns,
+                            index_col= expected_index,
+                            dtype    = expected_dtype,
+                            comment  = None,
+                            verbose  = False)
 
 
     # read BED-file :
-    track = pd.read_csv(track_path,  sep='\t',  names=['chrom', 'start', 'end', track_name])
+    track_columns = ['chrom', 'start', 'end', track_name]
+    track_dtype = {'chrom':np.str, 'start':np.int64, 'end':np.int64, track_name:np.float64}
+    track = pd.read_table(
+                    track_path,
+                    usecols  = [0,1,2,3],
+                    names    = track_columns,
+                    dtype    = track_dtype,
+                    comment  = None,
+                    verbose  = False)
     # # or do tht as an alternative:
     # # ...
     # from bioframe.io import formats
@@ -308,12 +332,26 @@ def compute_saddle(
     # are by default extracted
     # from the BedGraph track-file:
     track_chroms = track['chrom'].unique()
-
-
     # ADD VALIDATIONS:
-    # # make sure cooler and track are
-    # # compatible:
-    # track_chroms in c.chromnames
+    # We might want to try this eventually:
+    # https://github.com/TMiguelT/PandasSchema
+    # do simple column-name validation for now:
+    if not set(track_chroms).issubset(c.chromnames):
+        raise ValueError("Chromosomes in {} must be subset of chromosomes in cooler {}".format(track_path,
+                                                                                               cool_path))
+
+    # check number of bins at least:
+    track_bins = len(track)
+    cool_bins   = c.bins()[:]["chrom"].isin(track_chroms).sum()
+    if not (track_bins==clr_bins):
+        raise ValueError("Number of bins is not matching:",
+                " {} in {}, and {} in {} for chromosomes {}".format(track_bins,
+                                                                   track_path,
+                                                                   cool_bins,
+                                                                   cool_path,
+                                                                   track_chroms))
+
+
 
 
     # digitize the track (compartment track)
