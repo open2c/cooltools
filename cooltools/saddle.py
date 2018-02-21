@@ -55,8 +55,10 @@ def digitize_track(
     digitized : dict
         A dictionary of the digitized track, split by chromosome.
         The value of -1 corresponds to the masked genomic bins, the values of 0 
-        and the number of bins correspond to the values lying below and above 
-        the bin range limits. 
+        and the number of bin-edges (bins+1) correspond to the values lying below
+        and above the bin range limits, correspondingly.
+        See https://docs.scipy.org/doc/numpy/reference/generated/numpy.digitize.html
+        for reference.
     binedges : numpy.ndarray
         The edges of bins used to digitize the track.
     """
@@ -71,11 +73,13 @@ def digitize_track(
         ])
 
         if by_percentile:
+            # there are bins+1 edges for bins number of bins
             perc_edges = np.linspace(prange[0], prange[1], bins + 1)
             binedges = np.percentile(fulltrack, perc_edges)
         else:
             lo = np.percentile(fulltrack, prange[0])
             hi = np.percentile(fulltrack, prange[1])
+            # there are bins+1 edges for bins number of bins
             binedges = np.linspace(lo, hi, bins + 1)
     else:
         binedges = bins
@@ -149,10 +153,12 @@ def make_saddle(
         raise ValueError("The allowed values for the contact_type "
                          "argument are 'cis' or 'trans'.")
     
+    # n_bins here includes 2 open bins
+    # for values <lo and >hi.
     n_bins = max([
         get_digitized(chrom).max() 
             for chrom in chromosomes
-    ])
+    ]) + 1
     
     interaction_sum   = np.zeros((n_bins, n_bins))
     interaction_count = np.zeros((n_bins, n_bins))
