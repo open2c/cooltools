@@ -369,7 +369,7 @@ def compute_saddle(
     # check number of bins:
     track_bins = len(track)
     cool_bins   = c.bins()[:]["chrom"].isin(track_chroms).sum()
-    if not (track_bins==clr_bins):
+    if not (track_bins==cool_bins):
         raise ValueError("Number of bins is not matching:",
                 " {} in {}, and {} in {} for chromosomes {}".format(track_bins,
                                                                    track_path,
