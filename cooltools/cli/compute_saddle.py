@@ -318,7 +318,7 @@ def compute_saddle(
         get_exp_chroms = lambda df: np.union1d(df.index.get_level_values("chrom1").unique(),
                                            df.index.get_level_values("chrom2").unique())
         # no way to get bins from trans-expected, so just get the number:
-        get_exp_bins   = lambda _,_,correct_bins: correct_bins
+        get_exp_bins   = lambda _1,_2,correct_bins: correct_bins
     else:
         raise ValueError("Incorrect contact_type: {}, ".format(contact_type),
             "Should have been caught by click.")
