@@ -258,7 +258,8 @@ def compute_saddle(
             prange,
             by_percentile,
             verbose,
-            savefig):
+            savefig,
+            output):
     """
     Calculate saddle statistics and
     generate saddle plots.
