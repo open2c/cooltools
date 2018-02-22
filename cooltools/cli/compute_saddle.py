@@ -244,9 +244,6 @@ def make_track_mask_fetcher(df, name):
     help="Save the saddle-plot data to a csv file.",
     type=str)
 # TODO:
-# maybe attach binedges as index/column names ...?!?!?!? ...
-# just for output
-#
 # add flag to calculate compartment strength ...
 # update help ...
 
@@ -297,24 +294,34 @@ def compute_saddle(
     c = cooler.Cooler(cool_path)
 
 
-    # read expected and validate it:
+    # read expected and make preparations for validation,
+    # it's contact_type dependent:
     if contact_type == "cis":
+        # that's what we expect as column names:
         expected_columns = ['chrom', 'diag', 'n_valid', expected_name]
+        # what would become a MultiIndex:
         expected_index = ['chrom', 'diag']
+        # expected dtype as a rudimentary form of validation:
         expected_dtype = {'chrom':np.str, 'diag':np.int64, 'n_valid':np.int64, expected_name:np.float64}
+        # unique list of chroms mentioned in expected_path:
         get_exp_chroms = lambda df: df.index.get_level_values("chrom").unique()
         # compute # of bins by comparing matching indexes:
         get_exp_bins   = lambda df,ref_chroms,_: df.index.get_level_values("chrom").isin(ref_chroms).sum()
     else contact_type == "trans":
+        # that's what we expect as column names:
         expected_columns = ['chrom1', 'chrom2', 'n_valid', expected_name]
+        # what would become a MultiIndex:
         expected_index = ['chrom1', 'chrom2']
+        # expected dtype as a rudimentary form of validation:
         expected_dtype = {'chrom1':np.str, 'chrom2':np.str, 'n_valid':np.int64, expected_name:np.float64}
+        # unique list of chroms mentioned in expected_path:
         get_exp_chroms = lambda df: np.union1d(df.index.get_level_values("chrom1").unique(),
                                            df.index.get_level_values("chrom2").unique())
         # no way to get bins from trans-expected, so just get the number:
         get_exp_bins   = lambda _,_,correct_bins: correct_bins
-    # that's what we expect as columns names
-    # use 'usecols' as a rudimentary form of validation:
+    # use 'usecols' as a rudimentary form of validation,
+    # and dtype. Keep 'comment' and 'verbose' - explicit,
+    # as we may use them later:
     expected = pd.read_table(
                             expected_path,
                             usecols  = expected_columns,
@@ -326,6 +333,7 @@ def compute_saddle(
 
     # read BED-file :
     track_columns = ['chrom', 'start', 'end', track_name]
+    # specify dtype as a rudimentary form of validation:
     track_dtype = {'chrom':np.str, 'start':np.int64, 'end':np.int64, track_name:np.float64}
     track = pd.read_table(
                     track_path,
@@ -334,26 +342,27 @@ def compute_saddle(
                     dtype    = track_dtype,
                     comment  = None,
                     verbose  = False)
-    # # or do tht as an alternative:
+    # # should we use bioframe as an alternative?:
     # # ...
     # from bioframe.io import formats
     # from bioframe.schemas import SCHEMAS
     # formats.read_table(track_path, schema=SCHEMAS["bed4"])
 
-
+    #############################################
+    # CROSS-VALIDATE COOLER, EXPECTED AND TRACK:
+    #############################################
+    # TRACK vs COOLER:
     # chromosomes to deal with 
     # are by default extracted
     # from the BedGraph track-file:
     track_chroms = track['chrom'].unique()
-    # ADD VALIDATIONS:
     # We might want to try this eventually:
     # https://github.com/TMiguelT/PandasSchema
     # do simple column-name validation for now:
     if not set(track_chroms).issubset(c.chromnames):
         raise ValueError("Chromosomes in {} must be subset of chromosomes in cooler {}".format(track_path,
                                                                                                cool_path))
-
-    # check number of bins at least:
+    # check number of bins:
     track_bins = len(track)
     cool_bins   = c.bins()[:]["chrom"].isin(track_chroms).sum()
     if not (track_bins==clr_bins):
@@ -363,8 +372,7 @@ def compute_saddle(
                                                                    cool_bins,
                                                                    cool_path,
                                                                    track_chroms))
-
-
+    # EXPECTED vs TRACK:
     # validate expected a bit as well:
     expected_chroms = get_exp_chroms(expected)
     # do simple column-name validation for now:
@@ -381,14 +389,22 @@ def compute_saddle(
                                                                    expected_bins,
                                                                    expected_path,
                                                                    track_chroms))
+    #############################################
+    # CROSS-VALIDATION IS COMPLETE.
+    #############################################
+    # COOLER, TRACK and EXPECTED seems cross-compatible:
+
+    # define OBS/EXP getter functions,
+    # it's contact_type dependent:
+    if contact_type == "cis":
+        obsexp_func = make_cis_obsexp_fetcher(c, expected, expected_name)
+    elif contact_type == "trans":
+        obsexp_func = make_trans_obsexp_fetcher(c, expected, expected_name)
 
 
 
-
-
-
-    # digitize the track (compartment track)
-    # no matter the contact type ...
+    # digitize the track (i.e., compartment track)
+    # no matter the contact_type ...
     track_fetcher = make_track_fetcher(track, track_name)
     track_mask_fetcher = make_track_mask_fetcher(track, track_name)
     digitized, binedges = saddle.digitize_track(
@@ -401,36 +417,59 @@ def compute_saddle(
     # digitized fetcher, yielding per chrom slice:
     digitized_fetcher = lambda chrom: digitized[chrom]
 
-    # playing with OBS/EXP a bit : ...
-    if contact_type == "cis":
-        obsexp_func = make_cis_obsexp_fetcher(c, expected, expected_name)
-    elif contact_type == "trans":
-        obsexp_func = make_trans_obsexp_fetcher(c, expected, expected_name)
 
-    # Aggregate contacts
+    # Aggregate contacts (implicit contact_type dependency):
     sum_, count = saddle.make_saddle(
         get_matrix = obsexp_func, 
         get_digitized = digitized_fetcher,
         chromosomes = track_chroms,
         contact_type = contact_type,
         verbose = verbose)
-
+    # actual saddleplot data:
     saddledata = sum_/count
+
+    ##############################
+    # OUTPUT AND PLOTTING:
+    ##############################
+
     # # output to stdout,
     # # just like in diamond_insulation:
     if output is not None:
-        pd.DataFrame(saddledata).to_csv(output,
+        # output saddledata (square matrix):
+        pd.DataFrame(saddledata).to_csv(output+".saddledata.tsv",
                                         sep='\t',
-                                        index=True,
-                                        header=True,
+                                        index=False,
+                                        header=False,
                                         na_rep='nan')
-        # binDf=pd.DataFrame(binedges)
-        # binDf.to_csv("binedges.txt", sep='\t')
+        # output digitized track:
+        # we should be able to reuse 'track' DataFrame
+        # more than we're doing now. Are we trusing it ?
+        var_name = "chrom"
+        value_name = "digitized."+track_name
+        pd.melt(
+            pd.DataFrame.from_dict(digitized,orient="index").transpose(),
+            var_name=var_name,
+            value_name=value_name) \
+                .dropna() \
+                .reset_index(drop=True) \
+                .astype({var_name: np.str, value_name: np.int64}) \
+                .to_csv(output+".digitized.tsv",
+                    sep="\t",
+                    index=False,
+                    header=True,
+                    na_rep='nan')
+        # output binedges:
+        pd.Series(binedges, name="binedges."+track_name).\
+            to_csv(output+".binedges.tsv",
+                sep="\t",
+                index=False,
+                header=True,
+                na_rep='nan')
     else:
-        print(pd.DataFrame(saddledata).to_csv(output,
+        print(pd.DataFrame(saddledata).to_csv(
                                         sep='\t',
-                                        index=True,
-                                        header=True,
+                                        index=False,
+                                        header=False,
                                         na_rep='nan'))
     
 
