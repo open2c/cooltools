@@ -219,9 +219,12 @@ def saddleplot(binedges,
     """
     from matplotlib.gridspec import GridSpec
     import matplotlib.pyplot as plt
-    
-    n_bins = len(binedges) - 1
-    lo, hi = 0, n_bins  #-0.5, n_bins - 1.5
+
+    # # of bins that include outliers:
+    # could use max(map(max,digitized.values())) + 1
+    # as well ...
+    n_bins = len(binedges) + 1
+    lo, hi = 0, n_bins #-0.5, n_bins - 1.5
 
     # Populate kwargs
     fig_kws = merge(
@@ -258,8 +261,12 @@ def saddleplot(binedges,
     img = ax.imshow(np.log10(saddledata), **heatmap_kws)
 
     # bottom
+    # binedges[0] and binedges[-1] are binedges of the 
+    # leftmost and rightmost, halfopen bins correspondingly.
+    # i.e. bin with values < binedges[0]
+    # and bin with values > binedges[-1]:
     plt.xticks(
-        [0, np.interp(0, binedges, np.arange(n_bins+1)), n_bins],
+        [1, np.interp(0, binedges, np.arange(1,n_bins)), n_bins-1],
         ['{:0.4f}'.format(t) for t in (binedges[0], 0, binedges[-1])],
         rotation=90,
     )
@@ -269,7 +276,10 @@ def saddleplot(binedges,
 
     margin_kws = merge(
         dict(bins=n_bins,
-             range=(0, len(binedges)),
+             # making hist aligned with
+             # the imshow by +1 extending
+             # the range:
+             range=(0, n_bins),
              histtype='stepfilled',
              edgecolor='k',
              facecolor=color,
@@ -282,11 +292,16 @@ def saddleplot(binedges,
     plt.hist(np.concatenate(list(digitized.values())), 
              **merge(margin_kws, {'orientation': 'horizontal'}))
     plt.xticks([])
+    # binedges[0] and binedges[-1] are binedges of the 
+    # leftmost and rightmost, halfopen bins correspondingly.
+    # i.e. bin with values < binedges[0]
+    # and bin with values > binedges[-1]:
     plt.yticks(
-        [0, np.interp(0, binedges, np.arange(n_bins+1)), n_bins],
+        [1, np.interp(0, binedges, np.arange(1,n_bins)), n_bins-1],
         ['{:0.4f}'.format(t) for t in (binedges[0], 0, binedges[-1])],
     )
     plt.xlim(plt.xlim()[1], plt.xlim()[0])  # fliplr
+    # left histogram
     plt.ylim(hi, lo)
     plt.gca().spines['top'].set_visible(False)
     plt.gca().spines['bottom'].set_visible(False)
