@@ -324,7 +324,8 @@ def cis_expected(clr, regions, field='balanced', chunksize=1000000,
             diag_tables, 
             keys=list(chroms), 
             names=['chrom'])  
-                     
+
+    # the actual expected is balanced.sum/n_valid:
     dtable['balanced.avg'] = dtable['balanced.sum'] / dtable['n_valid']
     return dtable
 
@@ -348,14 +349,11 @@ def trans_expected(clr, chromosomes, chunksize=1000000, use_dask=False):
     Returns
     -------
     pandas.DataFrame that stores total number of
-    interactions between a pair of chromosomes: 'balanced',
-    and corresponding number of bins involved
-    in the inter-chromosomal interactions: 'n_valid'
-    for every interchromosomal pair.
-
-    In order to get the actual trans-expected, 
-    divide number of interaction, 'balanced', by
-    the number of bins, 'n_valid'.
+    interactions between a pair of chromosomes: 'balanced.sum',
+    corresponding number of bins involved
+    in the inter-chromosomal interactions: 'n_valid', 
+    and a ratio 'balanced.avg = balanced.sum/n_valid', that is
+    the actual value of expected for every interchromosomal pair.
 
     """
     def n_total_trans_elements(clr, chromosomes):
@@ -416,9 +414,18 @@ def trans_expected(clr, chromosomes, chunksize=1000000, use_dask=False):
         pass
     else:
         trans_sum = pixels.groupby(('chrom1', 'chrom2'))['balanced'].sum()
+    # for consistency with the cis_expected function:
+    trans_sum.name = trans_sum.name + '.sum'
+
     # returning a DataFrame with MultiIndex, that stores
-    # pairs of 'balanced' and 'n_valid' values for each
+    # pairs of 'balanced.sum' and 'n_valid' values for each
     # pair of chromosomes.
-    return pd.merge(
-        trans_sum.to_frame(), trans_area.to_frame(), 
-        left_index=True, right_index=True)
+    dtable = pd.merge(
+        trans_sum.to_frame(),
+        trans_area.to_frame(),
+        left_index=True,
+        right_index=True)
+
+    # the actual expected is balanced.sum/n_valid:
+    dtable['balanced.avg'] = dtable['balanced.sum'] / dtable['n_valid']
+    return dtable
