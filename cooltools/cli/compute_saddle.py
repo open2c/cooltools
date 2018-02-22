@@ -307,7 +307,7 @@ def compute_saddle(
         get_exp_chroms = lambda df: df.index.get_level_values("chrom").unique()
         # compute # of bins by comparing matching indexes:
         get_exp_bins   = lambda df,ref_chroms,_: df.index.get_level_values("chrom").isin(ref_chroms).sum()
-    else contact_type == "trans":
+    elif contact_type == "trans":
         # that's what we expect as column names:
         expected_columns = ['chrom1', 'chrom2', 'n_valid', expected_name]
         # what would become a MultiIndex:
@@ -319,6 +319,9 @@ def compute_saddle(
                                            df.index.get_level_values("chrom2").unique())
         # no way to get bins from trans-expected, so just get the number:
         get_exp_bins   = lambda _,_,correct_bins: correct_bins
+    else:
+        raise ValueError("Incorrect contact_type: {}, ".format(contact_type),
+            "Should have been caught by click.")
     # use 'usecols' as a rudimentary form of validation,
     # and dtype. Keep 'comment' and 'verbose' - explicit,
     # as we may use them later:
