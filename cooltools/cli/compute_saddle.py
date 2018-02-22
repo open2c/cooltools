@@ -261,32 +261,34 @@ def compute_saddle(
             savefig,
             output):
     """
-    Calculate saddle statistics and
-    generate saddle plots.
-
-    Make a saddle plot for an arbitrary signal track on the genomic bins of 
-    a contact matrix.
-
-    CLI version of compute_saddle allows 
-    one to specify percentile range for
-    track digitization and switching between
-    value/percentile binning.
-
-    There is no interface however for
-    uploading custom track bins.
+    Calculate saddle statistics and generate
+    saddle plots for an arbitrary signal track
+    on the genomic bins of a contact matrix.
     
     COOL_PATH : The paths to a .cool file with a balanced Hi-C map.
 
     TRACK_PATH : The paths to bedGraph-file with a binned compartment track (eigenvalues).
 
-    EXPECTED_PATH : The paths to a csv-like file with expected signal.
+    EXPECTED_PATH : The paths to a tsv-like file with expected signal.
 
-    track is going to be dicatating which 
-    chromosomes to take into account during
-    analysis.
-    Thus we want to make sure, chromosomes
-    provided in a track are to be found
-    both in COOL_PATH and in EXPECTED_PATH.
+    Analysis will be performed for chromosomes
+    referred to in TRACK_PATH, and therefore these
+    chromosomes must be a subset of chromosomes
+    referred to in COOL_PATH and EXPECTED_PATH.
+
+    COOL_PATH, TRACK_PATH and EXPECTED_PATH must
+    be binned at the same resolution (expect for 
+    EXPECTED_PATH in case of trans contact type).
+
+    EXPECTED_PATH must contain at least the
+    following columns for cis contacts:
+    'chrom', 'diag', 'n_valid', value_name
+    and the following columns for trans contacts:
+    'chrom1', 'chrom2', 'n_valid', value_name
+    value_name is controlled using options.
+    Header must be present in a file.
+
+
 
     """
 
