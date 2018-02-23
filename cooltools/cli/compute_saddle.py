@@ -5,15 +5,9 @@ import cooler
 from . import cli
 from .. import saddle
 
-
 import pandas as pd
 import numpy as np
 from scipy.linalg import toeplitz
-# from bioframe import parse_humanized, parse_region_string
-
-
-
-
 
 
 # inspired by:
@@ -119,6 +113,8 @@ def make_track_mask_fetcher(df, name):
 
 
 
+# TODO:
+# add flag to calculate compartment strength ...
 #########################################
 # strength ?!?!?!?!
 #########################################
@@ -136,25 +132,6 @@ def make_track_mask_fetcher(df, name):
 #     compStrength=(medianNum/medianDen)
 #     return compStrength
 ########################################
-
-
-# saddleplot(
-#         chromosomes=None,
-#         fig_kws=None,
-#         heatmap_kws=None, 
-#         margin_kws=None):
-#     """
-#     Parameters
-#     ----------
-#     chromosomes : list of str, optional
-#         Restricted set of chromosomes to use. Default is to use all chromosomes
-#         in the ``track`` dataframe.
-#     heatmap_kws : dict, optional
-#         Extra keywords to pass to ``imshow`` for saddle heatmap.
-#     margin_kws : dict, optional
-#         Extra keywords to pass to ``hist`` for left and top margins.
-# click.Path(exists=False, file_okay=True, dir_okay=True, writable=False, readable=True, resolve_path=False)
-
 
 
 @cli.command()
@@ -243,9 +220,6 @@ def make_track_mask_fetcher(df, name):
     "--output",
     help="Save the saddle-plot data to a csv file.",
     type=str)
-# TODO:
-# add flag to calculate compartment strength ...
-# update help ...
 
 def compute_saddle(
             cool_path,
@@ -336,7 +310,6 @@ def compute_saddle(
                             comment  = None,
                             verbose  = False)
 
-
     # read BED-file :
     track_columns = ['chrom', 'start', 'end', track_name]
     # specify dtype as a rudimentary form of validation:
@@ -348,11 +321,13 @@ def compute_saddle(
                     dtype    = track_dtype,
                     comment  = None,
                     verbose  = False)
-    # # should we use bioframe as an alternative?:
-    # # ...
+    # ######################################
+    # # potentially switch to bioframe in the future
+    # # for DataFrame validations etc:
     # from bioframe.io import formats
     # from bioframe.schemas import SCHEMAS
-    # formats.read_table(track_path, schema=SCHEMAS["bed4"])
+    # formats.read_table(track_path, schema=SCHEMAS["bedGraph"])
+    # ######################################
 
     #############################################
     # CROSS-VALIDATE COOLER, EXPECTED AND TRACK:
@@ -438,39 +413,37 @@ def compute_saddle(
     # OUTPUT AND PLOTTING:
     ##############################
 
-    # # output to stdout,
-    # # just like in diamond_insulation:
+    # no stdout output, since there are several
+    # distinct data-structures that needs to be saved,
+    # let's pack them in a single container:
     if output is not None:
         # output saddledata (square matrix):
-        pd.DataFrame(saddledata).to_csv(output+".saddledata.tsv",
-                                        sep='\t',
-                                        index=False,
-                                        header=False,
-                                        na_rep='nan')
-        # output digitized track:
-        # we should be able to reuse 'track' DataFrame
-        # more than we're doing now. Are we trusing it ?
-        var_name = "chrom"
-        value_name = "digitized."+track_name
-        pd.melt(
-            pd.DataFrame.from_dict(digitized,orient="index").transpose(),
-            var_name=var_name,
-            value_name=value_name) \
-                .dropna() \
-                .reset_index(drop=True) \
-                .astype({var_name: np.str, value_name: np.int64}) \
-                .to_csv(output+".digitized.tsv",
+        np.savetxt(
+            output+".saddledata.tsv",
+            saddledata,
+            delimiter='\t')
+        # output digitized track, in bedGraph-like form
+        # with 3 additional columns: digitized.value, value_start, value_stop
+        # where digitized.value is an index of a digitized bin that a given
+        # value was assigned to, and (value_start, value_stop) are bounds of that bin.
+        track_copy = track.copy()
+        # left edge of the value bin:
+        get_bin_start = lambda idx: binedges[idx-1] if idx>0 else -np.inf
+        # right edge of the value bin:
+        get_bin_stop  = lambda idx: binedges[idx] if idx<len(binedges) else np.inf
+        # name of the digitized value:
+        digitized_name = "digitized."+track_name
+        track_copy[digitized_name] = \
+                np.concatenate([
+                    digitized_fetcher(chrom) for chrom in track_copy['chrom'].drop_duplicates()
+                               ]) 
+        track_copy[track_name+"_start"] = track_copy[digitized_name].apply(get_bin_start)
+        track_copy[track_name+"_start"] = track_copy[digitized_name].apply(get_bin_stop)
+        track_copy.to_csv(output+".digitized.tsv",
                     sep="\t",
                     index=False,
                     header=True,
                     na_rep='nan')
-        # output binedges:
-        pd.Series(binedges, name="binedges."+track_name).\
-            to_csv(output+".binedges.tsv",
-                sep="\t",
-                index=False,
-                header=True,
-                na_rep='nan')
     else:
         print(pd.DataFrame(saddledata).to_csv(
                                         sep='\t',
@@ -478,7 +451,6 @@ def compute_saddle(
                                         header=False,
                                         na_rep='nan'))
     
-
 
 
     # ###########################
