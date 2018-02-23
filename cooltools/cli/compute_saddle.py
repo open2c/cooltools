@@ -438,7 +438,7 @@ def compute_saddle(
                     digitized_fetcher(chrom) for chrom in track_copy['chrom'].drop_duplicates()
                                ]) 
         track_copy[track_name+"_start"] = track_copy[digitized_name].apply(get_bin_start)
-        track_copy[track_name+"_start"] = track_copy[digitized_name].apply(get_bin_stop)
+        track_copy[track_name+"_stop"] = track_copy[digitized_name].apply(get_bin_stop)
         track_copy.to_csv(output+".digitized.tsv",
                     sep="\t",
                     index=False,
