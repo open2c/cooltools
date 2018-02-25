@@ -258,7 +258,7 @@ def compute_strength(saddledata, fraction):
          " Note: use .item() method to extract"
          " 'digitized' dict from ndarray wrapper:"
          " >>>npz = np.load(\"saved.npz\")"
-         " >>>saddledata = npz[\"saddledata\"].item()"
+         " >>>saddledata = npz[\"saddledata\"].item()",
     type=str)
 
 def compute_saddle(
