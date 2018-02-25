@@ -118,7 +118,7 @@ def make_track_mask_fetcher(df, name):
 #########################################
 # strength ?!?!?!?!
 #########################################
-def compute_strength(saddledata, fraction):
+def get_compartment_strength(saddledata, fraction):
     """
     Naive compartment strength calculator.
     """
@@ -256,8 +256,8 @@ def compute_strength(saddledata, fraction):
          " Use numpy.load to load these arrays"
          " into dict-like object."
          " Note: use .item() method to extract"
-         " 'digitized' dict from ndarray wrapper:"
-         " >>>npz = np.load(\"saved.npz\")"
+         " 'digitized' dict from ndarray wrapper:\n"
+         " >>>npz = np.load(\"saved.npz\")\n"
          " >>>saddledata = npz[\"saddledata\"].item()",
     type=str)
 
@@ -508,7 +508,7 @@ def compute_saddle(
     # compute naive compartment strength
     # if requested by the user:    
     if compute_strength:
-        strength = compute_strength(saddledata, fraction_for_strength)
+        strength = get_compartment_strength(saddledata, fraction_for_strength)
         print("Comparment strength = {}".format(strength),
             "\ncalculated using {} of saddledata bins".format(fraction_for_strength),
             "to compute median intra- and inter-compartmental signal")
