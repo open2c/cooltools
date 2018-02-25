@@ -55,8 +55,10 @@ def digitize_track(
     digitized : dict
         A dictionary of the digitized track, split by chromosome.
         The value of -1 corresponds to the masked genomic bins, the values of 0 
-        and the number of bins correspond to the values lying below and above 
-        the bin range limits. 
+        and the number of bin-edges (bins+1) correspond to the values lying below
+        and above the bin range limits, correspondingly.
+        See https://docs.scipy.org/doc/numpy/reference/generated/numpy.digitize.html
+        for reference.
     binedges : numpy.ndarray
         The edges of bins used to digitize the track.
     """
@@ -71,11 +73,13 @@ def digitize_track(
         ])
 
         if by_percentile:
+            # there are bins+1 edges for bins number of bins
             perc_edges = np.linspace(prange[0], prange[1], bins + 1)
             binedges = np.percentile(fulltrack, perc_edges)
         else:
             lo = np.percentile(fulltrack, prange[0])
             hi = np.percentile(fulltrack, prange[1])
+            # there are bins+1 edges for bins number of bins
             binedges = np.linspace(lo, hi, bins + 1)
     else:
         binedges = bins
@@ -149,10 +153,12 @@ def make_saddle(
         raise ValueError("The allowed values for the contact_type "
                          "argument are 'cis' or 'trans'.")
     
+    # n_bins here includes 2 open bins
+    # for values <lo and >hi.
     n_bins = max([
         get_digitized(chrom).max() 
             for chrom in chromosomes
-    ])
+    ]) + 1
     
     interaction_sum   = np.zeros((n_bins, n_bins))
     interaction_count = np.zeros((n_bins, n_bins))
@@ -213,9 +219,12 @@ def saddleplot(binedges,
     """
     from matplotlib.gridspec import GridSpec
     import matplotlib.pyplot as plt
-    
-    n_bins = len(binedges) - 1
-    lo, hi = 0, n_bins  #-0.5, n_bins - 1.5
+
+    # # of bins that include outliers:
+    # could use max(map(max,digitized.values())) + 1
+    # as well ...
+    n_bins = len(binedges) + 1
+    lo, hi = 0, n_bins #-0.5, n_bins - 1.5
 
     # Populate kwargs
     fig_kws = merge(
@@ -252,8 +261,12 @@ def saddleplot(binedges,
     img = ax.imshow(np.log10(saddledata), **heatmap_kws)
 
     # bottom
+    # binedges[0] and binedges[-1] are binedges of the 
+    # leftmost and rightmost, halfopen bins correspondingly.
+    # i.e. bin with values < binedges[0]
+    # and bin with values > binedges[-1]:
     plt.xticks(
-        [0, np.interp(0, binedges, np.arange(n_bins+1)), n_bins],
+        [1, np.interp(0, binedges, np.arange(1,n_bins)), n_bins-1],
         ['{:0.4f}'.format(t) for t in (binedges[0], 0, binedges[-1])],
         rotation=90,
     )
@@ -263,7 +276,10 @@ def saddleplot(binedges,
 
     margin_kws = merge(
         dict(bins=n_bins,
-             range=(0, len(binedges)),
+             # making hist aligned with
+             # the imshow by +1 extending
+             # the range:
+             range=(0, n_bins),
              histtype='stepfilled',
              edgecolor='k',
              facecolor=color,
@@ -276,11 +292,16 @@ def saddleplot(binedges,
     plt.hist(np.concatenate(list(digitized.values())), 
              **merge(margin_kws, {'orientation': 'horizontal'}))
     plt.xticks([])
+    # binedges[0] and binedges[-1] are binedges of the 
+    # leftmost and rightmost, halfopen bins correspondingly.
+    # i.e. bin with values < binedges[0]
+    # and bin with values > binedges[-1]:
     plt.yticks(
-        [0, np.interp(0, binedges, np.arange(n_bins+1)), n_bins],
+        [1, np.interp(0, binedges, np.arange(1,n_bins)), n_bins-1],
         ['{:0.4f}'.format(t) for t in (binedges[0], 0, binedges[-1])],
     )
     plt.xlim(plt.xlim()[1], plt.xlim()[0])  # fliplr
+    # left histogram
     plt.ylim(hi, lo)
     plt.gca().spines['top'].set_visible(False)
     plt.gca().spines['bottom'].set_visible(False)
