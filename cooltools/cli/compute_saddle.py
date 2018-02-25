@@ -118,19 +118,36 @@ def make_track_mask_fetcher(df, name):
 #########################################
 # strength ?!?!?!?!
 #########################################
-# def compute_strength(saddledata):
-#     leng_S=len(saddledata)
-#     percent=int(len(saddledata)*0.2)
-#     BB=saddledata[0:percent,0:percent]
-#     AA=saddledata[leng_S-percent:leng_S,leng_S-percent:leng_S]
-#     numerator = np.concatenate((AA, BB), axis=0)
-#     medianNum= np.median(numerator)    
-#     BA = saddledata[0:percent,leng_S-percent:leng_S]
-#     AB = saddledata[leng_S-percent:leng_S,0:percent]
-#     denominator = np.concatenate((BA, AB), axis=0)
-#     medianDen= np.median(denominator)
-#     compStrength=(medianNum/medianDen)
-#     return compStrength
+def compute_strength(saddledata, fraction):
+    """
+    Naive compartment strength calculator.
+    """
+    # assuming square shape:
+    n_bins,n_bins = saddledata.shape
+    # fraction must be < 0.5:
+    if fraction >= 0.5:
+        raise ValueError("Fraction for compartment strength calculations must be <0.5.")
+    # # of bins to take for strenght computation:
+    bins_for_strength = int(n_bins*fraction)
+    # intra- (BB):
+    intra_BB = saddledata[0:bins_for_strength,\
+                        0:bins_for_strength]
+    # intra- (AA):
+    intra_AA = saddledata[n_bins-bins_for_strength:n_bins,\
+                        n_bins-bins_for_strength:n_bins]
+    intra = np.concatenate((intra_AA, intra_BB), axis=0)
+    intra_median = np.median(intra)
+    # inter- (BA):
+    inter_BA = saddledata[0:bins_for_strength,\
+                        n_bins-bins_for_strength:n_bins]
+    # inter- (AB):
+    inter_AB = saddledata[n_bins-bins_for_strength:n_bins,\
+                        0:bins_for_strength]
+    inter = np.concatenate((inter_BA, inter_AB), axis=0)
+    inter_median = np.median(inter)
+    # returning intra-/inter- ratrio as a
+    # measure of compartment strength:
+    return intra_median / inter_median
 ########################################
 
 
@@ -210,15 +227,38 @@ def make_track_mask_fetcher(df, name):
     is_flag=True,
     default=False)
 @click.option(
+    "--compute-strength",
+    help="Compute compartment strength"
+    " as a ratio between median intra-"
+    " and inter-compartmental signal."
+    " Result is printed to stdout.",
+    is_flag=True,
+    default=False)
+@click.option(
+    "--fraction-for-strength",
+    help="Control what fraction of inter-"
+    " and intra-compartmental 'saddledata'"
+    " to use for calculation of strength.",
+    default=0.2,
+    type=float,
+    show_default=True)
+@click.option(
     "--savefig",
     help="Save the saddle-plot to a file. "
-         "If not specified - no image is generated"
-         "The figure format is deduced from the extension of the file, "
-         "the supported formats are png, jpg, svg, pdf, ps and eps.",
+         " If not specified - no image is generated"
+         " The figure format is deduced from the extension of the file, "
+         " the supported formats are png, jpg, svg, pdf, ps and eps.",
     type=str)
 @click.option(
     "--output",
-    help="Save the saddle-plot data to a csv file.",
+    help="Dump 'saddledata', 'binedges' and 'digitized'"
+         " track in a numpy-specific .npz container."
+         " Use numpy.load to load these arrays"
+         " into dict-like object."
+         " Note: use .item() method to extract"
+         " 'digitized' dict from ndarray wrapper:"
+         " >>>npz = np.load(\"saved.npz\")"
+         " >>>saddledata = npz[\"saddledata\"].item()"
     type=str)
 
 def compute_saddle(
@@ -232,6 +272,8 @@ def compute_saddle(
             prange,
             by_percentile,
             verbose,
+            compute_strength,
+            fraction_for_strength,
             savefig,
             output):
     """
@@ -412,45 +454,64 @@ def compute_saddle(
     ##############################
     # OUTPUT AND PLOTTING:
     ##############################
-
     # no stdout output, since there are several
     # distinct data-structures that needs to be saved,
     # let's pack them in a single container:
     if output is not None:
-        # output saddledata (square matrix):
-        np.savetxt(
-            output+".saddledata.tsv",
-            saddledata,
-            delimiter='\t')
-        # output digitized track, in bedGraph-like form
-        # with 3 additional columns: digitized.value, value_start, value_stop
-        # where digitized.value is an index of a digitized bin that a given
-        # value was assigned to, and (value_start, value_stop) are bounds of that bin.
-        track_copy = track.copy()
-        # left edge of the value bin:
-        get_bin_start = lambda idx: binedges[idx-1] if idx>0 else -np.inf
-        # right edge of the value bin:
-        get_bin_stop  = lambda idx: binedges[idx] if idx<len(binedges) else np.inf
-        # name of the digitized value:
-        digitized_name = "digitized."+track_name
-        track_copy[digitized_name] = \
-                np.concatenate([
-                    digitized_fetcher(chrom) for chrom in track_copy['chrom'].drop_duplicates()
-                               ]) 
-        track_copy[track_name+"_start"] = track_copy[digitized_name].apply(get_bin_start)
-        track_copy[track_name+"_stop"] = track_copy[digitized_name].apply(get_bin_stop)
-        track_copy.to_csv(output+".digitized.tsv",
-                    sep="\t",
-                    index=False,
-                    header=True,
-                    na_rep='nan')
-    else:
-        print(pd.DataFrame(saddledata).to_csv(
-                                        sep='\t',
-                                        index=False,
-                                        header=False,
-                                        na_rep='nan'))
-    
+        # pack saddledata, binedges, and digitized 
+        # in a single .npz container,
+        # use it as a dump to redraw a saddleplot.
+        np.savez(
+            file = output+".saddledump", # .npz auto-added
+            saddledata = saddledata,
+            binedges = binedges,
+            digitized = digitized)
+        ###############################
+        # DRAFT IMPLEMENTATION OF
+        # A BedGraph-like OUTPUT.
+        # KEEP FOR FUTURE REFERENCES.
+        ###############################
+        # # output digitized track, in bedGraph-like form
+        # # with 3 additional columns: digitized.value, value_start, value_stop
+        # # where digitized.value is an index of a digitized bin that a given
+        # # value was assigned to, and (value_start, value_stop) are bounds of that bin.
+        # track_copy = track.copy()
+        # # left edge of the value bin:
+        # get_bin_start = lambda idx: binedges[idx-1] if idx>0 else -np.inf
+        # # right edge of the value bin:
+        # get_bin_stop  = lambda idx: binedges[idx] if idx<len(binedges) else np.inf
+        # # name of the digitized value:
+        # digitized_name = "digitized."+track_name
+        # track_copy[digitized_name] = \
+        #         np.concatenate([
+        #             digitized_fetcher(chrom) for chrom in track_copy['chrom'].drop_duplicates()
+        #                        ]) 
+        # track_copy[track_name+"_start"] = track_copy[digitized_name].apply(get_bin_start)
+        # track_copy[track_name+"_stop"] = track_copy[digitized_name].apply(get_bin_stop)
+        # track_copy.to_csv(output+".digitized.tsv",
+        #             sep="\t",
+        #             index=False,
+        #             header=True,
+        #             na_rep='nan')
+    ####################################################
+    # # no stdout output, since there are several
+    # # distinct data-structures that needs to be saved,
+    ####################################################
+    # else:
+    #     print(pd.DataFrame(saddledata).to_csv(
+    #                                     sep='\t',
+    #                                     index=False,
+    #                                     header=False,
+    #                                     na_rep='nan'))
+
+
+    # compute naive compartment strength
+    # if requested by the user:    
+    if compute_strength:
+        strength = compute_strength(saddledata, fraction_for_strength)
+        print("Comparment strength = {}".format(strength),
+            "\ncalculated using {} of saddledata bins".format(fraction_for_strength),
+            "to compute median intra- and inter-compartmental signal")
 
 
     # ###########################
@@ -482,6 +543,7 @@ def compute_saddle(
             margin_kws = None)
         ######
         plt.savefig(savefig, dpi=None)
+        # # No interactive plotting for now.
         # else:
         #     interactive(plt.gca(), c, row_chrom, col_chrom, field, balanced, scale)
 
