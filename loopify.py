@@ -470,10 +470,10 @@ def get_adjusted_expected_tile_some_nans(origin,
     # 
     # option (3) accumulation attempt:
     # other way is to accumulate into DataFrame:
-    i,j = np.indices(O_bal)
+    i,j = np.indices(O_raw.shape)
     # pack it into DataFrame to accumulate results:
-    peaks_df = pd.DataFrame({"row": i+io,
-                             "col": j+jo})
+    peaks_df = pd.DataFrame({"row": i.flatten()+io,
+                             "col": j.flatten()+jo})
     # # JUST A NEW IDEA, TO BE UPDATED:
     # # OR DEPRECATED FOR NOW ...
     # # allocate mask-arrays before
