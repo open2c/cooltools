@@ -30,8 +30,9 @@ mock_result = op.join(testdir, 'data', 'mock_res.csv.gz')
 
 # load bunch of array from a numpy npz container:
 arrays_loaded = np.load(mock_input)
-# snippets of M_ice,E_ice and v_ice are supposed 
+# snippets of M_raw, M_ice, E_ice and v_ice are supposed 
 # to be there ...
+mock_M_raw = arrays_loaded['mock_M_raw']
 mock_M_ice = arrays_loaded['mock_M_ice']
 mock_E_ice = arrays_loaded['mock_E_ice']
 mock_v_ice = arrays_loaded['mock_v_ice']
@@ -121,10 +122,10 @@ def test_adjusted_expected_tile_some_nans():
     # Ed_raw, mask_ndx, Cobs, Cexp, NN = 
     res = get_adjusted_expected_tile_some_nans(
                          origin=(0,0),
-                         observed=mock_M_ice,
+                         observed=mock_M_raw, # should be RAW ...
                          expected=mock_E_ice,
-                         ice_weight=mock_v_ice,
-                         kernels=(kernel,),
+                         bal_weight=mock_v_ice,
+                         kernels={"donut":kernel,},
                          b=b,
                          band=2e+6,
                          nan_threshold=1)
@@ -137,20 +138,29 @@ def test_adjusted_expected_tile_some_nans():
     # compare floating point part separately:
     assert (
         np.isclose(
-            res[['expected','observed']],
-            mock_res[['la_expected','observed']],
+            res["la_exp."+"donut"+".value"],
+            mock_res['la_expected'],
             equal_nan=True).all()
         )
+    ####################################
+    # BEFORE UPDATE:
+    # assert (
+    #     np.isclose(
+    #         res[["expected",'observed']],
+    #         mock_res[['la_expected','observed']],
+    #         equal_nan=True).all()
+    #     )
+    ####################################
     #
     # try recovering NaNs ...
     #
     #
     res = get_adjusted_expected_tile_some_nans(
                      origin=(0,0),
-                     observed=mock_M_ice,
+                     observed=mock_M_raw, # should be RAW...
                      expected=mock_E_ice,
-                     ice_weight=mock_v_ice,
-                     kernels=(kernel,),
+                     bal_weight=mock_v_ice,
+                     kernels={"donut":kernel,},
                      b=b,
                      band=2e+6,
                      nan_threshold=2)

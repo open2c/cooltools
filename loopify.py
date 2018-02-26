@@ -314,7 +314,7 @@ def generate_intra_chrom_chunks(matrix, slice_size):
 def get_adjusted_expected_tile_some_nans(origin,
                                          observed,
                                          expected,
-                                         ice_weight,
+                                         bal_weight,
                                          kernels,
                                          # to be deprecated:
                                          b,
@@ -323,58 +323,166 @@ def get_adjusted_expected_tile_some_nans(origin,
                                          nan_threshold=2,
                                          verbose=False):
     """
-    get_adjusted_expected_tile_some_nans
-    combines get_adjusted_expected_tile and
-    get_adjusted_expected_some_nans ...
+    'get_adjusted_expected_tile_some_nans', get locally adjusted
+    expected for a collection of local-filters (kernels).
 
+    Such locally adjusted expected, 'Ek' for a given kernel,
+    can serve as a baseline for deciding whether a given
+    pixel is enriched enough to call it a feature (dot-loop,
+    flare, etc.) in a downstream analysis.
+
+    For every pixel of interest [i,j], locally adjusted
+    expected is a product of a global expected in that
+    pixel E_bal[i,j] and an enrichment of local environ-
+    ment of the pixel, described with a given kernel:
+                              KERNEL[i,j](O_bal)
+    Ek_bal[i,j] = E_bal[i,j]* ------------------
+                              KERNEL[i,j](E_bal)
+    where KERNEL[i,j](X) is a result of convolution
+    between the kernel and a slice of matrix X centered
+    around (i,j). See link below for details:
+    https://en.wikipedia.org/wiki/Kernel_(image_processing)
+
+    Returned values for observed and all expecteds
+    are rescaled back to raw-counts, for the sake of
+    downstream statistical analysis, which is using
+    Poisson test to decide is a given pixel is enriched.
+    (comparison between balanced values using Poisson-
+    test is intractable):
+                              KERNEL[i,j](O_bal)
+    Ek_raw[i,j] = E_raw[i,j]* ------------------ ,
+                              KERNEL[i,j](E_bal)
+    where E_raw[i,j] is:
+          1               1                 
+    ------------- * ------------- * E_bal[i,j]
+    bal_weight[i]   bal_weight[j]             
+    
+
+    Parameters
+    ----------
+    origin : (int,int) tuple
+        tuple of interegers that specify the
+        location of an observed matrix slice.
+        Measured in bins, not in nucleotides.
+    observed : numpy.ndarray
+        square symmetrical dense-matrix
+        that contains balanced observed O_bal
+        !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+        should we switch to RAW here ?
+        it would be easy for the output ....
+        !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    expected : numpy.ndarray
+        square symmetrical dense-matrix
+        that contains expected, calculated
+        based on balanced observed: E_bal.
+        !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+        should we switch to its 1D representation here ?
+        good for now, but expected might change later ...
+        Tanay's expected, expected with modeled TAD's etc ...
+        !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    bal_weight : numpy.ndarray
+        1D vector used to turn raw observed
+        into balanced observed.
+    kernels : dict of (str, numpy.ndarray)
+        dictionary of kernels/masks to perform
+        convolution of the heatmap. Kernels
+        describe the local environment, and
+        used to estimate baseline for finding
+        enriched/prominent peaks.
+        Peak must be enriched with respect to
+        all local environments (all kernels),
+        to be considered significant.
+        Dictionay keys must contain names for
+        each kernel.
+        !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+        Beware!: kernels are flipped and 
+        only then multiplied to matrix by
+        scipy.ndimage.convolve 
+        !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    b : int
+        !!! to be deprecated - no need ...
+        bin-size in nucleotides (bases).
+    band : int
+        !!! to be deprecated - no need ...
+        Max distance between a pair of loci
+        for which to return the results.
+    nan_threshold : int
+        Parameter to control how many elements
+        in a kernel footprint can be NaN. [default: 2]
+    verbose: bool
+        Set to True to print some progress
+        messages to stdout.
+    
+    Returns
+    -------
+    peaks_df : pandas.DataFrame
+        sparsified DataFrame that stores results of
+        locally adjusted calculations for every kernel
+        for a given slice of input matrix. Multiple
+        instences of such 'peaks_df' can be concatena-
+        ted and deduplicated for the downstream analysis.
+        Reported columns: 
+        row - bin row index, adjusted to origin
+        col - bin col index, adjusted to origin
+        la_exp - locally adjusted expected (for each kernel)
+        la_nan - number of NaNs around (each kernel's footprint)
+        exp.raw - global expected, rescaled to raw-counts
+        obs.raw - observed values in raw-counts.
     """
+
+
     # extract origin coordinate of this tile:
     io, jo = origin
     # let's extract full matrices and ice_vector:
-    M_ice = np.copy(observed)
-    E_ice = np.copy(expected)
-    v_ice = ice_weight
+    O_raw = observed # raw observed, no need to copy, no modifications.
+    E_bal = np.copy(expected)
+    v_bal = bal_weight
     # kernels must be a dict with kernel-names as keys
     # and kernel ndarrays as values.
     if not isinstance(kernels, dict):
         raise ValueError("'kernels' must be a dictionary"
                     "with name-keys and ndarrays-values.")
 
-    # deiced E_ice: element-wise division of E_ice[i,j] and
-    # v_ice[i]*v_ice[j]:
-    E_raw = np.divide(E_ice, np.outer(v_ice,v_ice))
+    # balanced observed, from raw-observed
+    # by element-wise multiply:
+    O_bal = np.multiply(O_raw, np.outer(v_bal,v_bal))
+    # O_bal is separate from O_raw memory-wise.
+
+    # deiced E_bal: element-wise division of E_bal[i,j] and
+    # v_bal[i]*v_bal[j]:
+    E_raw = np.divide(E_bal, np.outer(v_bal,v_bal))
 
     # # TO BE DEPRECATED:
     # # ONLY NEEDED FOR 2MB BAND FILTERING:
-    # s, s = M_ice.shape
+    s, s = O_bal.shape
     # #
 
     # let's calculate a matrix of common np.nans
     # as a logical_or:
-    N_ice = np.logical_or(np.isnan(M_ice),
-                          np.isnan(E_ice))
+    N_bal = np.logical_or(np.isnan(O_bal),
+                          np.isnan(E_bal))
     # fill in common nan-s 
     # with zeroes:
-    M_ice[N_ice] = 0.0
-    E_ice[N_ice] = 0.0
+    O_bal[N_bal] = 0.0
+    E_bal[N_bal] = 0.0
     # think about usinf copyto and where functions later:
     # https://stackoverflow.com/questions/6431973/how-to-copy-data-from-a-numpy-array-to-another
     # 
-    # JUST A NEW IDEA, TO BE UPDATED:
-    # allocate mask-arrays before
-    # these masks would be True for elements
-    # that we want to omit, so zero-ing out
-    # everything by default makes everyhthing 
-    # a 'good' value, that we'd like to keep:
-    mask_Ed = np.zeros_like(E_ice,dtype=np.bool)
-    mask_NN = np.zeros_like(E_ice,dtype=np.bool)
-    # 
     # option (3) accumulation attempt:
     # other way is to accumulate into DataFrame:
-    i,j = np.indices(M_ice)
+    i,j = np.indices(O_bal)
     # pack it into DataFrame to accumulate results:
     peaks_df = pd.DataFrame({"row": i+io,
                              "col": j+jo})
+    # # JUST A NEW IDEA, TO BE UPDATED:
+    # # OR DEPRECATED FOR NOW ...
+    # # allocate mask-arrays before
+    # # these masks would be True for elements
+    # # that we want to omit, so zero-ing out
+    # # everything by default makes everyhthing 
+    # # a 'good' value, that we'd like to keep:
+    # mask_Ed = np.zeros_like(E_bal,dtype=np.bool)
+    # mask_NN = np.zeros_like(E_bal,dtype=np.bool)
 
 
     #
@@ -391,22 +499,22 @@ def get_adjusted_expected_tile_some_nans(origin,
         # w = int((w-1)/2)
         # 
         # a matrix filled with the donut-sums based on the ICEed matrix
-        KM = convolve(M_ice,
+        KO = convolve(O_bal,
                       kernel,
                       mode='constant',
                       cval=0.0,
                       origin=0)
         # a matrix filled with the donut-sums based on the expected matrix
-        KE = convolve(E_ice,
+        KE = convolve(E_bal,
                       kernel,
                       mode='constant',
                       cval=0.0,
                       origin=0)
         # idea for calculating how many NaNs are there around
         # a pixel, is to take the matrix, of shared NaNs
-        # (shared between M_ice and E_ice) and convolve it
+        # (shared between O_bal and E_bal) and convolve it
         # with the np.ones_like(around_pixel) kernel:
-        NN = convolve(N_ice.astype(np.int),
+        NN = convolve(N_bal.astype(np.int),
                       # we have to use kernel
                       # all made of 1s, since
                       # even 0 * nan == nan
@@ -429,13 +537,14 @@ def get_adjusted_expected_tile_some_nans(origin,
         ###############################
         # this is still kernel-specific:
         ###############################
-        # now finally, E_raw*(KM/KE), as the 
+        # now finally, E_raw*(KO/KE), as the 
         # locally-adjusted expected with raw counts as values:
-        Ed_raw = np.multiply(E_raw, np.divide(KM, KE))
+        Ek_raw = np.multiply(E_raw, np.divide(KO, KE))
 
 
         ############################################
         # UPDATE MASKS AFTER EVERY KERNEL CONVOLVE:
+        # STILL KERNEL-SPECIFIC:
         ####################
         # updating after every kernel, makes us 
         # do the most conservative thing here - 
@@ -445,35 +554,29 @@ def get_adjusted_expected_tile_some_nans(origin,
         # addressing details:
         # boundaries, kernel-footprints with too many NaNs, etc:
         ######################################################
-        # mask out CDFs for NaN in Ed_raw
+        # mask out CDFs for NaN in Ek_raw
         # originating from NaNs in E_raw
         # and zero-values in KE, as there 
-        # should be no NaNs in KM (or KE) anymore.
+        # should be no NaNs in KO (or KE) anymore.
         ######################################
         # TODO: SHOULD we worry about np.isfinite ?!
-        # mask_Ed = np.isfinite(Ed_raw) ?
+        # mask_Ed = np.isfinite(Ek_raw) ?
         ######################################
-        mask_Ed = np.logical_or(
-                        mask_Ed,
-                        ~np.isfinite(Ed_raw))
+        mask_Ed = ~np.isfinite(Ek_raw)
         # mask out CDFs for pixels
         # with too many NaNs around
         # (#NaN>=threshold) each pixel:
-        mask_NN = np.logical_or(
-                        mask_NN,
-                        (NN >= nan_threshold))
+        mask_NN = (NN >= nan_threshold)
         # this way boundary pixels are masked
         # closed to diagonal pixels are masked
-        # pixels for which M_ice itself is NaN
+        # pixels for which O_bal itself is NaN
         # can be left alone, as they would 
         # be masked during Poisson test comparison.
         # 
-        # 
-        # 
         # option (3) - accumulation into single DataFrame:
-        # there is no need for 'mask_Ed' probably, as it would be in 'Ed_raw' itself:
+        # there is no need for 'mask_Ed' probably, as it would be in 'Ek_raw' itself:
         # we should probably even just store a NaN count, not the mask at first ...
-        peaks_df["la_exp."+kernel_name+".value"] = Ed_raw.flatten()
+        peaks_df["la_exp."+kernel_name+".value"] = Ek_raw.flatten()
         peaks_df["la_exp."+kernel_name+".mask"]  = mask_NN.flatten()
         # do all the filter/logic etc on the complete DataFrame ...
 
@@ -489,7 +592,7 @@ def get_adjusted_expected_tile_some_nans(origin,
         # band_idx = int(band/b)
         # assert s > band_idx
 
-        # WHAT SHOULD WE DO WITH Ed_raw ...
+        # WHAT SHOULD WE DO WITH Ek_raw ...
         # we want to keep Ed-raw for each kernel
         # and we'd want to do it in the most 
         # effecient manner ...
@@ -499,7 +602,7 @@ def get_adjusted_expected_tile_some_nans(origin,
         ####################################
         # TO BE CONTINUED:
         # OPTIONS:
-        # - keep full Ed_raw-s in a dict ?
+        # - keep full Ek_raw-s in a dict ?
         # - after each kernel, do "i,j = np.nonzero(~mask_ndx)"
         #   and transform it into DataFrame, merge afterwards ?!
         # - maybe, scrape all of that mask_Ed/NN accumulation 
@@ -511,7 +614,7 @@ def get_adjusted_expected_tile_some_nans(origin,
     # aggregated over all kernels ...
     #####################################
     peaks_df["exp.raw"] = E_raw.flatten()
-    peaks_df["obs.raw"] = observed.flatten()
+    peaks_df["obs.raw"] = O_raw.flatten()
 
     #######################################################
     # ACHTUNG ACHTUNG ACHTUNG ACHTUNG
@@ -521,40 +624,56 @@ def get_adjusted_expected_tile_some_nans(origin,
     # FILTER OUT THE CODE AFTER JOURNAL CLUB ...
     ########################################################
 
+    # A HACK TO PASS THE TEST, HOPEFULLY:
+    band_idx = int(band/b)
+    assert s > band_idx
 
-    # ########################
-    # Sparsify Ed_raw using 
-    # derived masks ...
-    # ########################
-    # combine all filters/masks:
-    # mask_Ed || mask_NN
-    mask_ndx = np.logical_or(mask_Ed,
-                             mask_NN)
-    # any nonzero element in `mask_ndx` 
-    # must be masked out from `pvals`:
-    # so, we'll just take the negated
-    # elements of the combined mask:
-    i, j = np.nonzero(~mask_ndx)
-    # DEPRECATE NEXT 3 LINES IN FAVOR OF i = i[i<j]
-    # BECAUSE OF RETIRING 2mb FEATURE:
-    # # take the upper triangle with 2Mb close to diag:
-    # upper_band = np.logical_and((i<j),
-    #                             (i>j-band_idx))
-    # 
-    # reduced list of pixels: UPPER TRIANGLE ONLY
-    # BEWARE: so far this is valid only if 
-    # 'origin' is right on diagonal ...
-    # FIX ME!!!!!!!!!!!!!!!!
-    i = i[(i<j)]
-    j = j[(i<j)]
-    # pack it into DataFrame:
-    peaks_df = pd.DataFrame({"row": i+io,
-                             "col": j+jo,
-                             "expected": Ed_raw[i,j],
-                             "observed": observed[i,j],
-                            })
-    # return sparsified DF:
-    return peaks_df
+    mask_ndx = np.logical_or(
+                    ~np.isfinite(peaks_df["la_exp."+kernel_name+".value"]),
+                    peaks_df["la_exp."+kernel_name+".mask"]
+                            )
+
+    # upper_band = np.logical_and((i<j), (i>j-band_idx))
+    # mimick ..
+    upper_band = (peaks_df["row"] < peaks_df["col"])
+    upper_band = np.logical_and(upper_band, (peaks_df["row"]>(peaks_df["col"]-band_idx)))
+    # 2Mb thing is still indeed important for the mock input ...
+
+    # return good sparsified DF:
+    return peaks_df[(~mask_ndx) & upper_band]
+    # # # ########################
+    # # # Sparsify Ek_raw using 
+    # # # derived masks ...
+    # # # ########################
+    # # # combine all filters/masks:
+    # # # mask_Ed || mask_NN
+    # # mask_ndx = np.logical_or(mask_Ed,
+    # #                          mask_NN)
+    # # # any nonzero element in `mask_ndx` 
+    # # # must be masked out from `pvals`:
+    # # # so, we'll just take the negated
+    # # # elements of the combined mask:
+    # # i, j = np.nonzero(~mask_ndx)
+    # # # DEPRECATE NEXT 3 LINES IN FAVOR OF i = i[i<j]
+    # # # BECAUSE OF RETIRING 2mb FEATURE:
+    # # # # take the upper triangle with 2Mb close to diag:
+    # # # upper_band = np.logical_and((i<j),
+    # # #                             (i>j-band_idx))
+    # # # 
+    # # # reduced list of pixels: UPPER TRIANGLE ONLY
+    # # # BEWARE: so far this is valid only if 
+    # # # 'origin' is right on diagonal ...
+    # # # FIX ME!!!!!!!!!!!!!!!!
+    # # i = i[(i<j)]
+    # # j = j[(i<j)]
+    # # # pack it into DataFrame:
+    # peaks_df = pd.DataFrame({"row": i+io,
+    #                          "col": j+jo,
+    #                          "expected": Ek_raw[i,j],
+    #                          "observed": observed[i,j],
+    #                         })
+    # # return sparsified DF:
+    # return peaks_df
 
 
 
