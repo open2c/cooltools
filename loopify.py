@@ -239,7 +239,73 @@ def generate_intra_chrom_chunks(matrix, slice_size):
     # 
     # c.matrix(balance=False)[1000:1005, 1000:1005]
     # 
+    #####################
+    # super-relevant code
+    # turn it into cooler-based thing
+    # and that would be it ...
+    #####################
+    # 
+    # ###################################################
+    # # this needs to be converted into a special-case
+    # # chunking function ...
+    # ###################################################
+    # L,L = M_ice.shape
+    # M = int(parse_humanized('2M')/b)
+    # # w
+
+    # # matrix parameters before chunking:
+    # print("matrix of size {}X{} to be splitted so that\n".format(L,L)+
+    #      "  diagonal region of size {} would be completely\n".format(M)+
+    #      "  covered by the tiling, additionally keeping\n"+
+    #      "  a small 'edge' if size w={}, to allow for\n".format(w)+
+    #      "  meaningfull convolution around boundaries.\n")
+    # #######################################
+    # # this is in sync and is up to date
+    # # with /data/venevs/matrix_tiles.ipynb
+    # #######################################
+    # # number of tiles ...
+    # T = L//M + bool(L%M)
+    # #################
+    # # IMPORTANT:
+    # # we only care if there is
+    # # a remainder of the L%M divison
+    # # not the size of it!
+    # # thus bool(L%M) is what we need!
+    # # it's either 1 (L%M!=0) or 0 otherwise.
+    # tiles_origin = []
+    # tiles_M_ice = []
+    # tiles_E_ice = []
+    # tiles_v_ice = []
+    # # by doing range(1,T) we are making
+    # # sure we are processing the upper-left
+    # # chunk only once:
+    # for t in range(1,T):
+    #     # l = max(0,M*t-M)
+    #     # r = min(L,M*t+M)
+    #     lw = max(0,M*t-M-w)
+    #     rw = min(L,M*t+M+w)
+    #     #
+    #     origin_lw = (lw,lw)
+    #     tiles_origin.append(origin_lw)
+    #     tiles_M_ice.append(M_ice[lw:rw,lw:rw])
+    #     tiles_E_ice.append(E_ice[lw:rw,lw:rw])
+    #     tiles_v_ice.append(v_ice[lw:rw])
+
+    # # there you go!
+    # # here are your tiles ...
+    # 
     raise NotImplementedError("To be implemented")
+
+
+
+
+
+
+
+
+
+
+
 
 
 ########################################################################
@@ -302,6 +368,14 @@ def get_adjusted_expected_tile_some_nans(origin,
     # a 'good' value, that we'd like to keep:
     mask_Ed = np.zeros_like(E_ice,dtype=np.bool)
     mask_NN = np.zeros_like(E_ice,dtype=np.bool)
+    # 
+    # option (3) accumulation attempt:
+    # other way is to accumulate into DataFrame:
+    i,j = np.indices(M_ice)
+    # pack it into DataFrame to accumulate results:
+    peaks_df = pd.DataFrame({"row": i+io,
+                             "col": j+jo})
+
 
     #
     for kernel_name, kernel in kernels.items():
@@ -393,6 +467,15 @@ def get_adjusted_expected_tile_some_nans(origin,
         # pixels for which M_ice itself is NaN
         # can be left alone, as they would 
         # be masked during Poisson test comparison.
+        # 
+        # 
+        # 
+        # option (3) - accumulation into single DataFrame:
+        # there is no need for 'mask_Ed' probably, as it would be in 'Ed_raw' itself:
+        # we should probably even just store a NaN count, not the mask at first ...
+        peaks_df["la_exp."+kernel_name+".value"] = Ed_raw.flatten()
+        peaks_df["la_exp."+kernel_name+".mask"]  = mask_NN.flatten()
+        # do all the filter/logic etc on the complete DataFrame ...
 
 
         ##########################################
@@ -427,6 +510,17 @@ def get_adjusted_expected_tile_some_nans(origin,
     # downstream stuff is supposed to be
     # aggregated over all kernels ...
     #####################################
+    peaks_df["exp.raw"] = E_raw.flatten()
+    peaks_df["obs.raw"] = observed.flatten()
+
+    #######################################################
+    # ACHTUNG ACHTUNG ACHTUNG ACHTUNG
+    # ACHTUNG ACHTUNG ACHTUNG ACHTUNG
+    # ACHTUNG ACHTUNG ACHTUNG ACHTUNG
+    # 2 CONTRADICTING IDEAS ARE IMPLEMENTED RIGHT NOW, 
+    # FILTER OUT THE CODE AFTER JOURNAL CLUB ...
+    ########################################################
+
 
     # ########################
     # Sparsify Ed_raw using 
