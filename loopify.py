@@ -300,7 +300,27 @@ def diagonal_chunking(clr,chrom,w_edge,band=int(2e6)):
         # tiles_v_ice.append(v_ice[lw:rw])
 
 
-
+################################
+# TODO generate a normal version of chunking
+# i.e. tiling
+# tiling where you get to control the
+# chunk-size yourself ...
+#
+#     * * * * * * * * * * * * *
+#     *       *       *       *
+#     *       *       *  ...  *
+#     *       *       *       *
+#     * * * * * * * * *       *
+#     *       *               *
+#     *       *    ...        *
+#     *       *               *
+#     * * * * *               *
+#     *                       *
+#     *                       *
+#     *                       *
+#     * * * * * * * * * * * * *
+#
+################################
 
 
 
