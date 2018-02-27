@@ -206,12 +206,10 @@ def clust_2D_pixels(pixels_df,threshold_cluster=2):
 
 
 ############################################################
-# 
 # we need to make this work for slices
 # of the intra-chromosomal Hi-C heatmaps
-# 
 ############################################################
-def generate_intra_chrom_chunks(matrix, slice_size):
+def diagonal_chunking(clr,chrom,w_edge,band="2M"):
     """
     get_adjusted_expected_slice is calculating
     locally-adjusted expected for smaller slices
@@ -234,68 +232,69 @@ def generate_intra_chrom_chunks(matrix, slice_size):
     *                   *
     *                   *
     * * * * * * * * * * *
-    """
     
-    # 
-    # c.matrix(balance=False)[1000:1005, 1000:1005]
-    # 
-    #####################
-    # super-relevant code
-    # turn it into cooler-based thing
-    # and that would be it ...
-    #####################
-    # 
-    # ###################################################
-    # # this needs to be converted into a special-case
-    # # chunking function ...
-    # ###################################################
-    # L,L = M_ice.shape
-    # M = int(parse_humanized('2M')/b)
-    # # w
+    yield matrix tiles (raw, bal, exp, etc)
+    these chunks are supposed to cover up
+    a diagonal band of size 'band'.
 
-    # # matrix parameters before chunking:
-    # print("matrix of size {}X{} to be splitted so that\n".format(L,L)+
-    #      "  diagonal region of size {} would be completely\n".format(M)+
-    #      "  covered by the tiling, additionally keeping\n"+
-    #      "  a small 'edge' if size w={}, to allow for\n".format(w)+
-    #      "  meaningfull convolution around boundaries.\n")
-    # #######################################
-    # # this is in sync and is up to date
-    # # with /data/venevs/matrix_tiles.ipynb
-    # #######################################
-    # # number of tiles ...
-    # T = L//M + bool(L%M)
-    # #################
-    # # IMPORTANT:
-    # # we only care if there is
-    # # a remainder of the L%M divison
-    # # not the size of it!
-    # # thus bool(L%M) is what we need!
-    # # it's either 1 (L%M!=0) or 0 otherwise.
+    Returns:
+    --------
+    yields pairs of indices for every chunk
+    use those indices [cstart:cstop)
+    to fetch chunks from the cooler-object:
+     >>> clr.matrix()[cstart:cstop, cstart:cstop]
+    """
+
+    bin_size   = clr.info['bin-size']
+    bin_start, bin_end = clr.extent(chrom)
+    # matrix size:
+    mat_size = bin_end - bin_start
+    # diagonal chunking to cover band-sized band around
+    # a diagonal:
+    diag_band = int(parse_humanized(band)/b)
+        
+    # number of tiles ...
+    num_tiles = mat_size//diag_band + bool(mat_size%diag_band)
+    
+    ###################################################################
+    # matrix parameters before chunking:
+    print("matrix of size {}X{} to be splitted so that\n".format(mat_size,mat_size)+
+     "  diagonal region of size {} would be completely\n".format(diag_band)+
+     "  covered by the tiling, additionally keeping\n"+
+     "  a small 'edge' of size w={}, to allow for\n".format(w_edge)+
+     "  meaningfull convolution around boundaries.\n"+
+     "  Resulting number of tiles is {}".format(num_tiles))
+    ###################################################################
+
+    # instead of returning lists of
+    # actual matrix-tiles, let's
+    # simply yield pairs of [cstart,cstop)
+    # coordinates for every chunk - 
+    # seems like a wiser idea to me .
+
     # tiles_origin = []
     # tiles_M_ice = []
+    # tiles_M_raw = []
     # tiles_E_ice = []
     # tiles_v_ice = []
-    # # by doing range(1,T) we are making
-    # # sure we are processing the upper-left
-    # # chunk only once:
-    # for t in range(1,T):
-    #     # l = max(0,M*t-M)
-    #     # r = min(L,M*t+M)
-    #     lw = max(0,M*t-M-w)
-    #     rw = min(L,M*t+M+w)
-    #     #
-    #     origin_lw = (lw,lw)
-    #     tiles_origin.append(origin_lw)
-    #     tiles_M_ice.append(M_ice[lw:rw,lw:rw])
-    #     tiles_E_ice.append(E_ice[lw:rw,lw:rw])
-    #     tiles_v_ice.append(v_ice[lw:rw])
-
-    # # there you go!
-    # # here are your tiles ...
-    # 
-    raise NotImplementedError("To be implemented")
-
+    
+    # by doing range(1,num_tiles) we are making
+    # sure we are processing the upper-left
+    # chunk only once:
+    for t in range(1,num_tiles):
+        # l = max(0,M*t-M)
+        # r = min(L,M*t+M)
+        lw = max(0 ,        diag_band*t - diag_band - w_edge)
+        rw = min(mat_size , diag_band*t + diag_band + w_edge)
+        # don't forget about the 'bin_start' origin:
+        yield lw+bin_start, rw+bin_start
+        #
+        # origin_lw = (lw,lw)
+        # tiles_origin.append(origin_lw)
+        # tiles_M_ice.append(M_ice[lw:rw,lw:rw])
+        # tiles_M_raw.append(M_raw[lw:rw,lw:rw])
+        # tiles_E_ice.append(E_ice[lw:rw,lw:rw])
+        # tiles_v_ice.append(v_ice[lw:rw])
 
 
 
@@ -306,7 +305,10 @@ def generate_intra_chrom_chunks(matrix, slice_size):
 
 
 
-
+########
+# TODO:
+# finish major refactoring of the following function ...
+########
 
 ########################################################################
 # this should be a main function to get locally adjusted expected
