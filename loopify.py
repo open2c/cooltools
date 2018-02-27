@@ -640,7 +640,7 @@ def get_adjusted_expected_tile_some_nans(origin,
     # 2Mb thing is still indeed important for the mock input ...
 
     # return good sparsified DF:
-    return peaks_df[(~mask_ndx) & upper_band]
+    return peaks_df[(~mask_ndx) & upper_band].reset_index(drop=True)
     # # # ########################
     # # # Sparsify Ek_raw using 
     # # # derived masks ...
