@@ -252,9 +252,9 @@ def diagonal_chunking(clr,chrom,w_edge,band=int(2e6)):
     mat_size = bin_end - bin_start
     # diagonal chunking to cover band-sized band around
     # a diagonal:
-    diag_band = int(band/b)
-    # diag_band = int(parse_humanized(band)/b) if isinstance(band,str) \
-    #                                 else int(band/b)
+    diag_band = int(band/bin_size)
+    # diag_band = int(parse_humanized(band)/bin_size) if isinstance(band,str) \
+    #                                 else int(band/bin_size)
         
     # number of tiles ...
     num_tiles = mat_size//diag_band + bool(mat_size%diag_band)
