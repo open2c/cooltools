@@ -11,7 +11,8 @@ from scipy.sparse import coo_matrix
 import numpy as np
 import pandas as pd
 from sklearn.cluster import Birch
- 
+# # not ready to be a dependency, yet according to Nezar
+# from bioframe import parse_humanized, parse_region_string
 
 ###########################
 # Calculate couple more columns for filtering/sorting ...
@@ -209,7 +210,7 @@ def clust_2D_pixels(pixels_df,threshold_cluster=2):
 # we need to make this work for slices
 # of the intra-chromosomal Hi-C heatmaps
 ############################################################
-def diagonal_chunking(clr,chrom,w_edge,band="2M"):
+def diagonal_chunking(clr,chrom,w_edge,band=int(2e6)):
     """
     get_adjusted_expected_slice is calculating
     locally-adjusted expected for smaller slices
@@ -251,7 +252,9 @@ def diagonal_chunking(clr,chrom,w_edge,band="2M"):
     mat_size = bin_end - bin_start
     # diagonal chunking to cover band-sized band around
     # a diagonal:
-    diag_band = int(parse_humanized(band)/b)
+    diag_band = int(band/b)
+    # diag_band = int(parse_humanized(band)/b) if isinstance(band,str) \
+    #                                 else int(band/b)
         
     # number of tiles ...
     num_tiles = mat_size//diag_band + bool(mat_size%diag_band)
