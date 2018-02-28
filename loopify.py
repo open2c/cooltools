@@ -440,7 +440,7 @@ def square_matrix_tiling(start,
     # start, stop = clr.extent(chrom)
 
     # matrix size:
-    size = bin_end - bin_start
+    size = stop - start
         
     # number of tiles (just 1D) ...
     tiles = size//tile_size + bool(size%tile_size)
