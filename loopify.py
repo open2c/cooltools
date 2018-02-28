@@ -210,12 +210,16 @@ def clust_2D_pixels(pixels_df,threshold_cluster=2):
 # we need to make this work for slices
 # of the intra-chromosomal Hi-C heatmaps
 ############################################################
-def diagonal_chunking(clr,chrom,w_edge,band=int(2e6)):
+def diagonal_matrix_tiling(start,
+                           stop,
+                           edge,
+                           band):
     """
-    get_adjusted_expected_slice is calculating
-    locally-adjusted expected for smaller slices
-    of the full intra-chromosomal interaction
-    matrix.
+    generate a stream of tiling coordinates
+    that guarantee to cover a diagonal area
+    of the matrix of size 'band'.
+
+    - cis-signal only...
 
     Each slice is characterized by the coordinate
     of the top-left corner and size.
@@ -238,6 +242,27 @@ def diagonal_chunking(clr,chrom,w_edge,band=int(2e6)):
     these chunks are supposed to cover up
     a diagonal band of size 'band'.
 
+    Specify a [start,stop) region of a matrix
+    you want to tile diagonally.
+
+
+    Parameters
+    ----------
+    start : int
+        starting position of the matrix
+        slice to be tiled (inclusive, bins,
+        0-based).
+    stop : int
+        end position of the matrix
+        slice to be tiled (exclusive, bins,
+        0-based).
+    edge : int
+        small edge around each tile to be
+        included in the yielded coordinates.
+    band : int
+        diagonal tiling is guaranteed to
+        cover a diagonal are of width 'band'.
+
     Returns:
     --------
     yields pairs of indices for every chunk
@@ -246,27 +271,35 @@ def diagonal_chunking(clr,chrom,w_edge,band=int(2e6)):
      >>> clr.matrix()[cstart:cstop, cstart:cstop]
     """
 
-    bin_size   = clr.info['bin-size']
-    bin_start, bin_end = clr.extent(chrom)
-    # matrix size:
-    mat_size = bin_end - bin_start
-    # diagonal chunking to cover band-sized band around
-    # a diagonal:
-    diag_band = int(band/bin_size)
-    # diag_band = int(parse_humanized(band)/bin_size) if isinstance(band,str) \
-    #                                 else int(band/bin_size)
+    # # we could use cooler to extract bin_size
+    # # and chromosome extent as [start,stop),
+    # # but let's keep it agnostic ...
+    # bin_size   = clr.info['bin-size']
+    # start, stop = clr.extent(chrom)
+
+
+    # matrix slice size [start,stop):
+    size = stop - start
+    # let's avoid delaing with bin_size explicitly ...
+    # this function would be abstracted to bin-dimensions
+    # ONLY !!!
+    # # diagonal chunking to cover band-sized band around
+    # # a diagonal:
+    # band = int(band/bin_size)
+    # # band = int(parse_humanized(band)/bin_size) if isinstance(band,str) \
+    # #                                 else int(band/bin_size)
         
     # number of tiles ...
-    num_tiles = mat_size//diag_band + bool(mat_size%diag_band)
+    tiles = size//band + bool(size%band)
     
     ###################################################################
     # matrix parameters before chunking:
-    print("matrix of size {}X{} to be splitted so that\n".format(mat_size,mat_size)+
-     "  diagonal region of size {} would be completely\n".format(diag_band)+
+    print("matrix of size {}X{} to be splitted so that\n".format(size,size)+
+     "  diagonal region of size {} would be completely\n".format(band)+
      "  covered by the tiling, additionally keeping\n"+
-     "  a small 'edge' of size w={}, to allow for\n".format(w_edge)+
+     "  a small 'edge' of size w={}, to allow for\n".format(edge)+
      "  meaningfull convolution around boundaries.\n"+
-     "  Resulting number of tiles is {}".format(num_tiles))
+     "  Resulting number of tiles is {}".format(tiles))
     ###################################################################
 
     # instead of returning lists of
@@ -281,16 +314,16 @@ def diagonal_chunking(clr,chrom,w_edge,band=int(2e6)):
     # tiles_E_ice = []
     # tiles_v_ice = []
     
-    # by doing range(1,num_tiles) we are making
+    # by doing range(1,tiles) we are making
     # sure we are processing the upper-left
     # chunk only once:
-    for t in range(1,num_tiles):
+    for t in range(1,tiles):
         # l = max(0,M*t-M)
         # r = min(L,M*t+M)
-        lw = max(0 ,        diag_band*t - diag_band - w_edge)
-        rw = min(mat_size , diag_band*t + diag_band + w_edge)
-        # don't forget about the 'bin_start' origin:
-        yield lw+bin_start, rw+bin_start
+        lw = max(0    , band*(t-1) - edge)
+        rw = min(size , band*(t+1) + edge)
+        # don't forget about the 'start' origin:
+        yield lw+start, rw+start
         #
         # origin_lw = (lw,lw)
         # tiles_origin.append(origin_lw)
@@ -300,28 +333,147 @@ def diagonal_chunking(clr,chrom,w_edge,band=int(2e6)):
         # tiles_v_ice.append(v_ice[lw:rw])
 
 
-################################
-# TODO generate a normal version of chunking
-# i.e. tiling
-# tiling where you get to control the
-# chunk-size yourself ...
-#
-#     * * * * * * * * * * * * *
-#     *       *       *       *
-#     *       *       *  ...  *
-#     *       *       *       *
-#     * * * * * * * * *       *
-#     *       *               *
-#     *       *    ...        *
-#     *       *               *
-#     * * * * *               *
-#     *                       *
-#     *                       *
-#     *                       *
-#     * * * * * * * * * * * * *
-#
-################################
+############################################################
+# we need to make this work for slices
+# of the intra-chromosomal Hi-C heatmaps
+############################################################
+def square_matrix_tiling(start,
+                         stop,
+                         tile_size,
+                         edge,
+                         square=False):
+    """
+    generate a stream of tiling coordinates
+    that guarantee to cover an entire matrix.
 
+    - cis-signal only...
+
+    Each slice is characterized by the coordinate
+    of the top-left corner and size.
+
+    * * * * * * * * * * * * *
+    *       *       *       *
+    *       *       *  ...  *
+    *       *       *       *
+    * * * * * * * * *       *
+    *       *               *
+    *       *    ...        *
+    *       *               *
+    * * * * *               *
+    *                       *
+    *                       *
+    *                       *
+    * * * * * * * * * * * * *
+
+    Square parameter determines behavior
+    of the tiling function, when the
+    size of the matrix is not an exact
+    multiple of the 'tile_size':
+
+    square = False
+    * * * * * * * * * * *
+    *       *       *   *
+    *       *       *   *
+    *       *       *   *
+    * * * * * * * * * * *
+    *       *       *   *
+    *       *       *   *
+    *       *       *   *
+    * * * * * * * * * * *
+    *       *       *   *
+    *       *       *   *
+    * * * * * * * * * * *
+
+    square = True
+    * * * * * * * * * * *
+    *       *   *   *   *
+    *       *   *   *   *
+    *       *   *   *   *
+    * * * * * * * * * * *
+    *       *   *   *   *
+    *       *   *   *   *
+    * * * * * * * * * * *
+    * * * * * * * * * * *
+    *       *   *   *   *
+    *       *   *   *   *
+    * * * * * * * * * * *
+    
+    yield matrix tiles (raw, bal, exp, etc)
+    these chunks are supposed to cover up
+    a diagonal band of size 'band'.
+
+
+    Parameters
+    ----------
+    start : int
+        starting position of the matrix
+        slice to be tiled (inclusive, bins,
+        0-based).
+    stop : int
+        end position of the matrix
+        slice to be tiled (exclusive, bins,
+        0-based).
+    tile_size : int
+        requested size of the tiles.
+        Boundary tiles may or may not be
+        of 'tile_size', see 'square'.
+    edge : int
+        small edge around each tile to be
+        included in the yielded coordinates.
+    band : int
+        diagonal tiling is guaranteed to
+        cover a diagonal are of width 'band'.
+
+
+    Returns:
+    --------
+    yields pairs of indices for every chunk
+    use those indices [cstart:cstop)
+    to fetch chunks from the cooler-object:
+     >>> clr.matrix()[cstart:cstop, cstart:cstop]
+    """
+
+    # # we could use cooler to extract bin_size
+    # # and chromosome extent as [start,stop),
+    # # but let's keep it agnostic ...
+    # bin_size   = clr.info['bin-size']
+    # start, stop = clr.extent(chrom)
+
+    # matrix size:
+    size = bin_end - bin_start
+        
+    # number of tiles (just 1D) ...
+    tiles = size//tile_size + bool(size%tile_size)
+    
+    ###################################################################
+    # matrix parameters before chunking:
+    print("matrix of size {}X{} to be splitted\n".format(size,size)+
+     "  into square tiles of size {}.\n".format(tile_size)+
+     "  A small 'edge' of size w={} is added, to allow for\n".format(edge)+
+     "  meaningfull convolution around boundaries.\n"+
+     "  Resulting number of tiles is {}".format(tiles*tiles))
+    ###################################################################
+
+    # instead of returning lists of
+    # actual matrix-tiles, let's
+    # simply yield pairs of [cstart,cstop)
+    # coordinates for every chunk - 
+    # seems like a wiser idea to me .
+
+    for tx in range(tiles):
+        for ty in range(tiles):
+            # 
+            lwx = max(0,    tile_size*tx - edge)
+            rwx = min(size, tile_size*(tx+1) + edge)
+            if square and (rwx >= size):
+                lwx = size - tile_size - edge
+            #         
+            lwy = max(0,    tile_size*ty - edge)
+            rwy = min(size, tile_size*(ty+1) + edge)
+            if square and (rwy >= size):
+                lwy = size - tile_size - edge
+            #
+            yield (lwx+start,rwx+start), (lwy+start,rwy+start)
 
 
 
