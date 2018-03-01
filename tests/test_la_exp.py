@@ -129,8 +129,8 @@ def test_adjusted_expected_tile_some_nans():
                          expected=mock_E_ice,
                          bal_weight=mock_v_ice,
                          kernels={"donut":kernel,},
-                         b=b,
-                         band=band,
+                         # b=b,
+                         # band=band,
                          nan_threshold=1)
     # mock results are supposedly for
     # the contacts closer than the band
@@ -142,7 +142,7 @@ def test_adjusted_expected_tile_some_nans():
     band_idx = int(band/b)
     is_inside_band = (res["row"]>(res["col"]-band_idx))
     # so, selecting inside band results only:
-    res = res[is_inside_band]
+    res = res[is_inside_band].reset_index(drop=True)
     # 
     # ACTUAL TESTS:
     # integer part of DataFrame must equals exactly:
@@ -176,9 +176,17 @@ def test_adjusted_expected_tile_some_nans():
                      expected=mock_E_ice,
                      bal_weight=mock_v_ice,
                      kernels={"donut":kernel,},
-                     b=b,
-                     band=band,
+                     # b=b,
+                     # band=band,
                      nan_threshold=2)
+    # neccessary to exclude contacts outside 
+    # the diagonal band, after that functional
+    # was retired from 'get_adjusted_expected_tile_some_nans':
+    band_idx = int(band/b)
+    is_inside_band = (res["row"]>(res["col"]-band_idx))
+    # so, selecting inside band results only:
+    res = res[is_inside_band].reset_index(drop=True)
+
     # now we can only guess the size:
     assert (res['row'].size > mock_res['row'].size)
 

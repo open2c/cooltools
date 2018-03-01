@@ -493,10 +493,10 @@ def get_adjusted_expected_tile_some_nans(origin,
                                          expected,
                                          bal_weight,
                                          kernels,
-                                         # to be deprecated:
-                                         b,
-                                         # to be deprecated:
-                                         band=2e+6,
+                                         # # to be deprecated:
+                                         # b,
+                                         # # to be deprecated:
+                                         # band=2e+6,
                                          nan_threshold=2,
                                          verbose=False):
     """
@@ -629,10 +629,10 @@ def get_adjusted_expected_tile_some_nans(origin,
     # v_bal[i]*v_bal[j]:
     E_raw = np.divide(E_bal, np.outer(v_bal,v_bal))
 
-    # # TO BE DEPRECATED:
-    # # ONLY NEEDED FOR 2MB BAND FILTERING:
-    s, s = O_bal.shape
-    # #
+    # # # TO BE DEPRECATED:
+    # # # ONLY NEEDED FOR 2MB BAND FILTERING:
+    # s, s = O_bal.shape
+    # # #
 
     # let's calculate a matrix of common np.nans
     # as a logical_or:
@@ -801,9 +801,9 @@ def get_adjusted_expected_tile_some_nans(origin,
     # FILTER OUT THE CODE AFTER JOURNAL CLUB ...
     ########################################################
 
-    # A HACK TO PASS THE TEST, HOPEFULLY:
-    band_idx = int(band/b)
-    assert s > band_idx
+    # # A HACK TO PASS THE TEST, HOPEFULLY:
+    # band_idx = int(band/b)
+    # assert s > band_idx
 
     mask_ndx = np.logical_or(
                     ~np.isfinite(peaks_df["la_exp."+kernel_name+".value"]),
@@ -813,8 +813,8 @@ def get_adjusted_expected_tile_some_nans(origin,
     # upper_band = np.logical_and((i<j), (i>j-band_idx))
     # mimick ..
     upper_band = (peaks_df["row"] < peaks_df["col"])
-    upper_band = np.logical_and(upper_band, (peaks_df["row"]>(peaks_df["col"]-band_idx)))
-    # 2Mb thing is still indeed important for the mock input ...
+    # upper_band = np.logical_and(upper_band, (peaks_df["row"]>(peaks_df["col"]-band_idx)))
+    # # 2Mb thing is still indeed important for the mock input ...
 
     # return good sparsified DF:
     return peaks_df[(~mask_ndx) & upper_band].reset_index(drop=True)
