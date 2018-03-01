@@ -129,6 +129,18 @@ def test_adjusted_expected_tile_some_nans():
                          b=b,
                          band=2e+6,
                          nan_threshold=1)
+    # mock results are supposedly for
+    # the contacts closer than the band
+    # nucleotides to each other...
+    # we want to retire that functional 
+    # from the 'get_adjusted_expected_tile_some_nans'
+    # so we should complement that selection
+    # here:
+    band_idx = int(band/b)
+    is_inside_band = (res["row"]>(res["col"]-band_idx))
+    # so, selecting inside band results only:
+    res = res[is_inside_band]
+    # 
     # ACTUAL TESTS:
     # integer part of DataFrame must equals exactly:
     assert (
