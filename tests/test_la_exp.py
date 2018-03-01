@@ -52,6 +52,9 @@ kernel = np.array([[1, 1, 1, 0, 1, 1, 1],
 # mock data were extracted
 # from 20kb matrix:
 b=20000
+# 2MB aroud diagonal to look at:
+band=2e+6
+
 
 
 # load mock results:
@@ -127,7 +130,7 @@ def test_adjusted_expected_tile_some_nans():
                          bal_weight=mock_v_ice,
                          kernels={"donut":kernel,},
                          b=b,
-                         band=2e+6,
+                         band=band,
                          nan_threshold=1)
     # mock results are supposedly for
     # the contacts closer than the band
@@ -174,7 +177,7 @@ def test_adjusted_expected_tile_some_nans():
                      bal_weight=mock_v_ice,
                      kernels={"donut":kernel,},
                      b=b,
-                     band=2e+6,
+                     band=band,
                      nan_threshold=2)
     # now we can only guess the size:
     assert (res['row'].size > mock_res['row'].size)
