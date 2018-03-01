@@ -493,10 +493,6 @@ def get_adjusted_expected_tile_some_nans(origin,
                                          expected,
                                          bal_weight,
                                          kernels,
-                                         # # to be deprecated:
-                                         # b,
-                                         # # to be deprecated:
-                                         # band=2e+6,
                                          nan_threshold=2,
                                          verbose=False):
     """
@@ -576,13 +572,6 @@ def get_adjusted_expected_tile_some_nans(origin,
         only then multiplied to matrix by
         scipy.ndimage.convolve 
         !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-    b : int
-        !!! to be deprecated - no need ...
-        bin-size in nucleotides (bases).
-    band : int
-        !!! to be deprecated - no need ...
-        Max distance between a pair of loci
-        for which to return the results.
     nan_threshold : int
         Parameter to control how many elements
         in a kernel footprint can be NaN. [default: 2]
@@ -629,10 +618,6 @@ def get_adjusted_expected_tile_some_nans(origin,
     # v_bal[i]*v_bal[j]:
     E_raw = np.divide(E_bal, np.outer(v_bal,v_bal))
 
-    # # # TO BE DEPRECATED:
-    # # # ONLY NEEDED FOR 2MB BAND FILTERING:
-    # s, s = O_bal.shape
-    # # #
 
     # let's calculate a matrix of common np.nans
     # as a logical_or:
@@ -645,21 +630,14 @@ def get_adjusted_expected_tile_some_nans(origin,
     # think about usinf copyto and where functions later:
     # https://stackoverflow.com/questions/6431973/how-to-copy-data-from-a-numpy-array-to-another
     # 
-    # option (3) accumulation attempt:
-    # other way is to accumulate into DataFrame:
+    # 
+    # we are going to accumulate all the results
+    # into a DataFrame, keeping NaNs, and other
+    # unfiltered results (even the lower triangle for now):
     i,j = np.indices(O_raw.shape)
     # pack it into DataFrame to accumulate results:
     peaks_df = pd.DataFrame({"row": i.flatten()+io,
                              "col": j.flatten()+jo})
-    # # JUST A NEW IDEA, TO BE UPDATED:
-    # # OR DEPRECATED FOR NOW ...
-    # # allocate mask-arrays before
-    # # these masks would be True for elements
-    # # that we want to omit, so zero-ing out
-    # # everything by default makes everyhthing 
-    # # a 'good' value, that we'd like to keep:
-    # mask_Ed = np.zeros_like(E_bal,dtype=np.bool)
-    # mask_NN = np.zeros_like(E_bal,dtype=np.bool)
 
 
     #
@@ -667,13 +645,8 @@ def get_adjusted_expected_tile_some_nans(origin,
         ###############################
         # kernel-specific calculations:
         ###############################
-        # # extract donut parameters: 
-        # w, w = kernel.shape
-        # # size must be odd: pixel (i,j) of interest in the middle
-        # # and equal amount of pixels are to left,right, up and down
-        # # of it: 
-        # assert w%2 != 0
-        # w = int((w-1)/2)
+        # kernel paramters such as width etc
+        # are taken into account implicitly ...
         # 
         # a matrix filled with the donut-sums based on the ICEed matrix
         KO = convolve(O_bal,
@@ -718,15 +691,6 @@ def get_adjusted_expected_tile_some_nans(origin,
         # locally-adjusted expected with raw counts as values:
         Ek_raw = np.multiply(E_raw, np.divide(KO, KE))
 
-
-        ############################################
-        # UPDATE MASKS AFTER EVERY KERNEL CONVOLVE:
-        # STILL KERNEL-SPECIFIC:
-        ####################
-        # updating after every kernel, makes us 
-        # do the most conservative thing here - 
-        # mask element into a 'bad' category
-        # if it appears 'bad' for either of the kernels.
         ####################
         # addressing details:
         # boundaries, kernel-footprints with too many NaNs, etc:
@@ -736,10 +700,11 @@ def get_adjusted_expected_tile_some_nans(origin,
         # and zero-values in KE, as there 
         # should be no NaNs in KO (or KE) anymore.
         ######################################
-        # TODO: SHOULD we worry about np.isfinite ?!
-        # mask_Ed = np.isfinite(Ek_raw) ?
+        # we should check for np.isfinite
+        # not just np.isnan (because division by 0).
         ######################################
-        mask_Ed = ~np.isfinite(Ek_raw)
+        # # to be deprecated ...
+        # mask_Ed = ~np.isfinite(Ek_raw)
         # mask out CDFs for pixels
         # with too many NaNs around
         # (#NaN>=threshold) each pixel:
@@ -750,42 +715,18 @@ def get_adjusted_expected_tile_some_nans(origin,
         # can be left alone, as they would 
         # be masked during Poisson test comparison.
         # 
-        # option (3) - accumulation into single DataFrame:
+        # accumulation into single DataFrame:
         # there is no need for 'mask_Ed' probably, as it would be in 'Ek_raw' itself:
         # we should probably even just store a NaN count, not the mask at first ...
         peaks_df["la_exp."+kernel_name+".value"] = Ek_raw.flatten()
         peaks_df["la_exp."+kernel_name+".mask"]  = mask_NN.flatten()
         # do all the filter/logic etc on the complete DataFrame ...
-
-
-        ##########################################
-        # DEPRECATE THIS TO SIMPLIFY CODE,
-        # AS smart-CHUNKING WOULD TAKE CARE OF
-        # THAT, OR SIMPLE POST-FACTUM FILTERING
-        # IS A SOLID OPTION AS WELL ...
-        ##########################################
-        # # masking everyhting further than 2Mb away
-        # # is easier to do on indices.
-        # band_idx = int(band/b)
-        # assert s > band_idx
-
-        # WHAT SHOULD WE DO WITH Ek_raw ...
-        # we want to keep Ed-raw for each kernel
-        # and we'd want to do it in the most 
-        # effecient manner ...
-
-        ####################################
-        # START HERE TOMORROW !!!!!!!!!!!
-        ####################################
-        # TO BE CONTINUED:
-        # OPTIONS:
-        # - keep full Ek_raw-s in a dict ?
-        # - after each kernel, do "i,j = np.nonzero(~mask_ndx)"
-        #   and transform it into DataFrame, merge afterwards ?!
-        # - maybe, scrape all of that mask_Ed/NN accumulation 
-        #   business and just generate a DataFrame for each kernel,
-        #   and afterwards, simply merge all DataFrames together (!)
-
+        # 
+        # masking and filtering is easier to do
+        # on the DataFrame level, so we'll keep
+        # this operations for the post-processing.
+        # including, the banding part and
+        # upper/lower trinagle thing as well.
     #####################################
     # downstream stuff is supposed to be
     # aggregated over all kernels ...
@@ -793,64 +734,22 @@ def get_adjusted_expected_tile_some_nans(origin,
     peaks_df["exp.raw"] = E_raw.flatten()
     peaks_df["obs.raw"] = O_raw.flatten()
 
-    #######################################################
-    # ACHTUNG ACHTUNG ACHTUNG ACHTUNG
-    # ACHTUNG ACHTUNG ACHTUNG ACHTUNG
-    # ACHTUNG ACHTUNG ACHTUNG ACHTUNG
-    # 2 CONTRADICTING IDEAS ARE IMPLEMENTED RIGHT NOW, 
-    # FILTER OUT THE CODE AFTER JOURNAL CLUB ...
-    ########################################################
-
-    # # A HACK TO PASS THE TEST, HOPEFULLY:
-    # band_idx = int(band/b)
-    # assert s > band_idx
-
-    mask_ndx = np.logical_or(
-                    ~np.isfinite(peaks_df["la_exp."+kernel_name+".value"]),
-                    peaks_df["la_exp."+kernel_name+".mask"]
-                            )
+    # # # combine all filters/masks:
+    # # # mask_Ed || mask_NN
+    # # # for every kernel etc ....
+    mask_ndx = pd.Series(0, index=peaks_df.index, dtype=np.bool)
+    for kernel_name, kernel in kernels.items():
+        # accummulating with a vector full of 'False':
+        mask_ndx_kernel = ~np.isfinite(peaks_df["la_exp."+kernel_name+".value"])
+        mask_ndx_kernel = np.logical_or(mask_ndx_kernel, peaks_df["la_exp."+kernel_name+".mask"])
+        mask_ndx = np.logical_or(mask_ndx_kernel,mask_ndx)
 
     # upper_band = np.logical_and((i<j), (i>j-band_idx))
-    # mimick ..
     upper_band = (peaks_df["row"] < peaks_df["col"])
-    # upper_band = np.logical_and(upper_band, (peaks_df["row"]>(peaks_df["col"]-band_idx)))
-    # # 2Mb thing is still indeed important for the mock input ...
+    # transfered 2Mb diagonal band to test and Jupyter nb ...
 
     # return good sparsified DF:
     return peaks_df[(~mask_ndx) & upper_band].reset_index(drop=True)
-    # # # ########################
-    # # # Sparsify Ek_raw using 
-    # # # derived masks ...
-    # # # ########################
-    # # # combine all filters/masks:
-    # # # mask_Ed || mask_NN
-    # # mask_ndx = np.logical_or(mask_Ed,
-    # #                          mask_NN)
-    # # # any nonzero element in `mask_ndx` 
-    # # # must be masked out from `pvals`:
-    # # # so, we'll just take the negated
-    # # # elements of the combined mask:
-    # # i, j = np.nonzero(~mask_ndx)
-    # # # DEPRECATE NEXT 3 LINES IN FAVOR OF i = i[i<j]
-    # # # BECAUSE OF RETIRING 2mb FEATURE:
-    # # # # take the upper triangle with 2Mb close to diag:
-    # # # upper_band = np.logical_and((i<j),
-    # # #                             (i>j-band_idx))
-    # # # 
-    # # # reduced list of pixels: UPPER TRIANGLE ONLY
-    # # # BEWARE: so far this is valid only if 
-    # # # 'origin' is right on diagonal ...
-    # # # FIX ME!!!!!!!!!!!!!!!!
-    # # i = i[(i<j)]
-    # # j = j[(i<j)]
-    # # # pack it into DataFrame:
-    # peaks_df = pd.DataFrame({"row": i+io,
-    #                          "col": j+jo,
-    #                          "expected": Ek_raw[i,j],
-    #                          "observed": observed[i,j],
-    #                         })
-    # # return sparsified DF:
-    # return peaks_df
 
 
 
