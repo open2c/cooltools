@@ -383,6 +383,9 @@ def square_matrix_tiling(start,
     *       *       *   *
     *       *       *   *
     * * * * * * * * * * *
+    WARNING: be carefull with extracting
+    expected in this case, as it is 
+    not trivial at all !!!
 
     square = True
     * * * * * * * * * * *
@@ -476,6 +479,128 @@ def square_matrix_tiling(start,
             yield (lwx+start,rwx+start), (lwy+start,rwy+start)
 
 
+
+##########################
+# expected tile functions write up:
+# to be used in concert with 'square_matrix_tiling'
+# or 'diagonal_matrix_tiling' for that matter ...
+##########################
+# exp_getter = lambda start,stop,shift: cis_exp.iloc[start+shift:stop+shift][exp_v_name].values
+def tile_of_expected(origin, tilei, tilej, get_exp):
+    """
+    A function that returns a dense slice
+    of expected matrix, defined as a 1D track
+    as a function of diag index.
+
+
+    Parameters
+    ----------
+    origin : int
+        to be deprecated ...
+        overall shift of indexes in
+        the 1D track of expected.
+    tilei : (int,int)
+        start and stop indexes of the
+        slice (tile) rows (vertical idx).
+    tilej : (int,int)
+        start and stop indexes of the
+        slice (tile) columns (horizontal
+        idx).
+    get_exp : (int,int,int) -> numpy.ndarray
+        function of 3 arguments that
+        returns a slice of 1D expected
+        track for every 'start','stop' and
+        'shift' arguments.
+        e.g.:
+        >>> lambda start,stop,shift: \
+        >>>   cis_exp.iloc[start+shift: \
+        >>>             stop+shift][exp_v_name]\
+        >>>                     .values
+        ...
+        should become function of 2 params
+        and 'origin' must retire - as an
+        unnecessary complication ...
+        'origin' information is stored
+        in tilei[0]
+
+
+    Returns:
+    --------
+    numpy.ndarray of shape:
+    (tilei[1]-tilei[0], tilej[1]-tilej[0])
+    that contains a reconstructed 2D
+    signal of expected.
+    """
+    #
+    i0,i1 = tilei
+    j0,j1 = tilej
+    # (1) the whole tile in upper:
+    if j0 > i1:
+        msg = "i'm in (1)"
+        #########################
+        # exp_1d must 1 bins smaller than
+        # tcol and trow together, as 
+        # one of the diagonals is going to
+        # be reused between trow and tcol ...
+        # it is a features of toeplitz(col,row)
+        # that I cannot get used to just yet ...
+        #########################
+        # exp_1d = cis_exp.iloc[sta+(j0-i1)+1:sta+(j1-i0)][exp_v_name].values
+        exp_1d = get_exp((j0-i1)+1, (j1-i0), origin)
+        tcol = exp_1d[:(i1-i0)][::-1]
+        trow = exp_1d[(j0-j1):]
+        # this assertion would stay here for now
+        # until code matures - to remind us about
+        # peculiarities of 'toeplitz' function.
+        assert len(exp_1d) == len(tcol)+len(trow)-1
+        expected = toeplitz(tcol, trow)
+    # (2) the whole tile in lower:
+    elif i0 > j1:
+        # corrected this one as well ...
+        msg = "i'm in (2)"
+        # exp_1d = cis_exp.iloc[sta+(i0-j1)+1:sta+(i1-j0)][exp_v_name].values
+        exp_1d = get_exp((i0-j1)+1, (i1-j0), origin)
+        trow = exp_1d[:(j1-j0)][::-1]
+        tcol = exp_1d[(i0-i1):]
+        # this assertion would stay here for now
+        # until code matures - to remind us about
+        # peculiarities of 'toeplitz' function.
+        assert len(exp_1d) == len(tcol)+len(trow)-1
+        expected = toeplitz(tcol, trow)
+    # (3) vertical intersect:
+    elif i0<=j0<i1:
+        msg = "i'm in (3)"
+        # GOT THIS ONE RIGHT !!!
+        # exp_1d_l = cis_exp.iloc[sta:sta+(i1-j0)][exp_v_name].values
+        # exp_1d_r = cis_exp.iloc[sta:sta+(j1-i0)][exp_v_name].values
+        exp_1d_l = get_exp(0, (i1-j0), origin)
+        exp_1d_r = get_exp(0, (j1-i0), origin)
+        exp_1d = np.concatenate([exp_1d_l[:0:-1],exp_1d_r])
+        tcol = exp_1d[:(i1-i0)][::-1]
+        trow = exp_1d[(j0-j1):]
+        # this assertion would stay here for now
+        # until code matures - to remind us about
+        # peculiarities of 'toeplitz' function.
+        assert len(exp_1d) == len(tcol)+len(trow)-1
+        expected = toeplitz(tcol, trow)
+    # (4) horizontal intersect:
+    elif j0<=i0<j1:
+        msg = ("i'm in (4)")
+        # # correct now ...
+        # exp_1d_l = cis_exp.iloc[sta:sta+(i1-j0)][exp_v_name].values
+        # exp_1d_r = cis_exp.iloc[sta:sta+(j1-i0)][exp_v_name].values
+        exp_1d_l = get_exp(0, (i1-j0), origin)
+        exp_1d_r = get_exp(0, (j1-i0), origin)
+        exp_1d = np.concatenate([exp_1d_l[:0:-1],exp_1d_r])
+        tcol = exp_1d[:(i1-i0)][::-1]
+        trow = exp_1d[(j0-j1):]
+        # this assertion would stay here for now
+        # until code matures - to remind us about
+        # peculiarities of 'toeplitz' function.
+        assert len(exp_1d) == len(tcol)+len(trow)-1
+        expected = toeplitz(tcol, trow)
+    # move return to the if/else thing ...
+    return expected
 
 
 
@@ -749,7 +874,7 @@ def get_adjusted_expected_tile_some_nans(origin,
     # transfered 2Mb diagonal band to test and Jupyter nb ...
 
     # return good sparsified DF:
-    return peaks_df[(~mask_ndx) & upper_band].reset_index(drop=True)
+    return peaks_df[~mask_ndx & upper_band].reset_index(drop=True)
 
 
 
