@@ -291,6 +291,8 @@ def diagonal_matrix_tiling(start,
         
     # number of tiles ...
     tiles = size//band + bool(size%band)
+    # actual number of tiles is tiles-1
+    # since we're looping in range(1,tiles)
     
     ###################################################################
     # matrix parameters before chunking:
@@ -299,7 +301,7 @@ def diagonal_matrix_tiling(start,
      "  covered by the tiling, additionally keeping\n"+
      "  a small 'edge' of size w={}, to allow for\n".format(edge)+
      "  meaningfull convolution around boundaries.\n"+
-     "  Resulting number of tiles is {}".format(tiles))
+     "  Resulting number of tiles is {}".format(tiles-1))
     ###################################################################
 
     # instead of returning lists of
