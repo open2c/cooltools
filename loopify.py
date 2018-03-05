@@ -678,9 +678,13 @@ def get_adjusted_expected_tile_some_nans(origin,
         good for now, but expected might change later ...
         Tanay's expected, expected with modeled TAD's etc ...
         !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-    bal_weight : numpy.ndarray
+    bal_weight : numpy.ndarray or (numpy.ndarray, numpy.ndarray)
         1D vector used to turn raw observed
-        into balanced observed.
+        into balanced observed for a slice of
+        a matrix with the origin on the diagonal;
+        and a tuple/list of a couple of 1D arrays
+        in case it is a slice with an arbitrary 
+        origin.
     kernels : dict of (str, numpy.ndarray)
         dictionary of kernels/masks to perform
         convolution of the heatmap. Kernels
@@ -727,7 +731,17 @@ def get_adjusted_expected_tile_some_nans(origin,
     # let's extract full matrices and ice_vector:
     O_raw = observed # raw observed, no need to copy, no modifications.
     E_bal = np.copy(expected)
-    v_bal = bal_weight
+    # 'bal_weight': ndarray or a couple of those ...
+    if isinstance(bal_weight, np.ndarray):
+        v_bal_i = bal_weight
+        v_bal_j = bal_weight
+    elif isinstance(bal_weight, (tuple,list)):
+        v_bal_i,v_bal_j = bal_weight
+    else:
+        raise ValueError("'bal_weight' must be an numpy.ndarray"
+                    "for slices of a matrix with diagonal-origin or"
+                    "a tuple/list of a couple of numpy.ndarray-s"
+                    "for a slice of matrix with an arbitrary origin.")
     # kernels must be a dict with kernel-names as keys
     # and kernel ndarrays as values.
     if not isinstance(kernels, dict):
@@ -736,12 +750,12 @@ def get_adjusted_expected_tile_some_nans(origin,
 
     # balanced observed, from raw-observed
     # by element-wise multiply:
-    O_bal = np.multiply(O_raw, np.outer(v_bal,v_bal))
+    O_bal = np.multiply(O_raw, np.outer(v_bal_i,v_bal_j))
     # O_bal is separate from O_raw memory-wise.
 
     # deiced E_bal: element-wise division of E_bal[i,j] and
     # v_bal[i]*v_bal[j]:
-    E_raw = np.divide(E_bal, np.outer(v_bal,v_bal))
+    E_raw = np.divide(E_bal, np.outer(v_bal_i,v_bal_j))
 
 
     # let's calculate a matrix of common np.nans

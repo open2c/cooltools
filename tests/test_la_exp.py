@@ -129,8 +129,6 @@ def test_adjusted_expected_tile_some_nans():
                          expected=mock_E_ice,
                          bal_weight=mock_v_ice,
                          kernels={"donut":kernel,},
-                         # b=b,
-                         # band=band,
                          nan_threshold=1)
     # mock results are supposedly for
     # the contacts closer than the band
@@ -176,8 +174,6 @@ def test_adjusted_expected_tile_some_nans():
                      expected=mock_E_ice,
                      bal_weight=mock_v_ice,
                      kernels={"donut":kernel,},
-                     # b=b,
-                     # band=band,
                      nan_threshold=2)
     # neccessary to exclude contacts outside 
     # the diagonal band, after that functional
