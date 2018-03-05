@@ -112,7 +112,7 @@ def test_adjusted_expected_tile_some_nans_and_diag_tiling():
     res_df = res_df.drop_duplicates().reset_index(drop=True)
 
     # get a subset of mock results (inside 1Mb band):
-    is_inside_band_1 = mock_res["row"]>(mock_res["col"]-band_1_idx)
+    is_inside_band_1 = (mock_res["row"]>(mock_res["col"]-band_1_idx))
     mock_res_1 = mock_res[is_inside_band_1].reset_index(drop=True)
 
     # ACTUAL TESTS:
@@ -128,6 +128,59 @@ def test_adjusted_expected_tile_some_nans_and_diag_tiling():
             mock_res_1['la_expected'],
             equal_nan=True).all()
         )
+
+
+
+
+def test_adjusted_expected_tile_some_nans_and_square_tiling():
+    print("Running tile some nans la_exp test + square tiling")
+    # first, generate that locally-adjusted expected:
+    band_idx = int(band/b)
+    res_list = []
+    for tilei, tilej in square_matrix_tiling(start, stop, tile_size=40, edge=w, square=False):
+        # define origin:
+        origin = (tilei[0], tilej[0])
+        # RAW observed matrix slice:
+        observed = mock_M_raw[slice(*tilei),slice(*tilej)]
+        # trying new expected function:
+        expected = tile_of_expected(start, tilei, tilej, get_mock_exp)
+        # for diagonal chuynking/tiling tilei==tilej:
+        ice_weight_i = mock_v_ice[slice(*tilei)]
+        ice_weight_j = mock_v_ice[slice(*tilej)]
+        # that's the main working function from loopify:
+        res = get_adjusted_expected_tile_some_nans(origin = origin,
+                                                 observed = observed,
+                                                 expected = expected,
+                                                 bal_weight = (ice_weight_i, ice_weight_j),
+                                                 kernels = {"donut":kernel,},
+                                                 nan_threshold=1,
+                                                 verbose=False)
+        is_inside_band = res["row"] > (res["col"]-band_idx)
+        # so, selecting inside band results only:
+        res = res[is_inside_band].reset_index(drop=True)
+        res_list.append(res)
+
+    # concat bunch of DFs:
+    res_df = pd.concat(res_list, ignore_index=True)
+
+    # drop dups (from overlaping tiles) and reset index:
+    res_df = res_df.drop_duplicates().reset_index(drop=True)
+
+    # ACTUAL TESTS:
+    # integer part of DataFrame must equals exactly:
+    assert (
+        res_df[['row','col']].equals(
+            mock_res[['row','col']])
+        )
+    # compare floating point part separately:
+    assert (
+        np.isclose(
+            res["la_exp."+"donut"+".value"],
+            mock_res['la_expected'],
+            equal_nan=True).all()
+        )
+
+
 
 
 
