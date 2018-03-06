@@ -115,6 +115,11 @@ def test_adjusted_expected_tile_some_nans_and_diag_tiling():
     is_inside_band_1 = (mock_res["row"]>(mock_res["col"]-band_1_idx))
     mock_res_1 = mock_res[is_inside_band_1].reset_index(drop=True)
 
+    # apparently sorting is needed in this case:
+    res_df = res_df.sort_values(by=['row','col']).reset_index(drop=True)
+    mock_res_1 = mock_res_1.sort_values(by=['row','col']).reset_index(drop=True)
+
+
     # ACTUAL TESTS:
     # integer part of DataFrame must equals exactly:
     assert (
@@ -166,17 +171,21 @@ def test_adjusted_expected_tile_some_nans_and_square_tiling():
     # drop dups (from overlaping tiles) and reset index:
     res_df = res_df.drop_duplicates().reset_index(drop=True)
 
+    # apparently sorting is needed in this case:
+    res_df = res_df.sort_values(by=['row','col']).reset_index(drop=True)
+    mock_res_sorted = mock_res.sort_values(by=['row','col']).reset_index(drop=True)
+
     # ACTUAL TESTS:
     # integer part of DataFrame must equals exactly:
     assert (
         res_df[['row','col']].equals(
-            mock_res[['row','col']])
+            mock_res_sorted[['row','col']])
         )
     # compare floating point part separately:
     assert (
         np.isclose(
             res["la_exp."+"donut"+".value"],
-            mock_res['la_expected'],
+            mock_res_sorted['la_expected'],
             equal_nan=True).all()
         )
 
