@@ -69,8 +69,6 @@ band_1=1e+6
 # start, stop for tiling procedures:
 start, stop = 0, len(mock_M_raw)
 
-
-
 # load mock results:
 mock_res = pd.read_csv(mock_result)
 
@@ -129,7 +127,7 @@ def test_adjusted_expected_tile_some_nans_and_diag_tiling():
     # compare floating point part separately:
     assert (
         np.isclose(
-            res["la_exp."+"donut"+".value"],
+            res_df["la_exp."+"donut"+".value"],
             mock_res_1['la_expected'],
             equal_nan=True).all()
         )
@@ -184,7 +182,7 @@ def test_adjusted_expected_tile_some_nans_and_square_tiling():
     # compare floating point part separately:
     assert (
         np.isclose(
-            res["la_exp."+"donut"+".value"],
+            res_df["la_exp."+"donut"+".value"],
             mock_res_sorted['la_expected'],
             equal_nan=True).all()
         )
