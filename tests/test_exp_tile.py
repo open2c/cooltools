@@ -38,7 +38,7 @@ get_mock_exp = lambda start,stop,shift: mock_exp[start+shift:stop+shift]
 
 
 # start, stop for tiling procedures:
-start, stop = 0, len(mock_M_raw)
+start = 0
 
 
 def test_tile_exp_upper():
