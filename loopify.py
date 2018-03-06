@@ -611,6 +611,77 @@ def tile_of_expected(origin, tilei, tilej, get_exp):
 # TODO:
 # finish major refactoring of the following function ...
 ########
+def _convolve_and_count_nans(O_bal,E_bal,E_raw,N_bal,kernel):
+    """
+    Dense versions of a bunch of matrices
+    needed for convolution and calculation
+    of number of NaNs in a vicinity of each
+    pixel.
+    And a kernel to be provided of course.
+    """
+    # a matrix filled with the donut-sums based on the ICEed matrix
+    KO = convolve(O_bal,
+                  kernel,
+                  mode='constant',
+                  cval=0.0,
+                  origin=0)
+    # a matrix filled with the donut-sums based on the expected matrix
+    KE = convolve(E_bal,
+                  kernel,
+                  mode='constant',
+                  cval=0.0,
+                  origin=0)
+    # idea for calculating how many NaNs are there around
+    # a pixel, is to take the matrix, of shared NaNs
+    # (shared between O_bal and E_bal) and convolve it
+    # with the np.ones_like(around_pixel) kernel:
+    NN = convolve(N_bal.astype(np.int),
+                  # we have to use kernel
+                  # all made of 1s, since
+                  # even 0 * nan == nan
+                  np.ones_like(kernel),
+                  mode='constant',
+                  # make it look, like there are 
+                  # a lot of NaNs beyond
+                  # the boundary ...
+                  cval=1,
+                  origin=0)
+    # ####################################
+    # we'll use cval=0 in case of real data
+    # and we'll use cval=1 for NN mask
+    # thus border issue becomes a
+    # "too many NaNs"-issue as well.
+    # ####################################
+
+    ###############################
+    # this is still kernel-specific:
+    ###############################
+    # now finally, E_raw*(KO/KE), as the 
+    # locally-adjusted expected with raw counts as values:
+    Ek_raw = np.multiply(E_raw, np.divide(KO, KE))
+
+    ####################
+    # addressing details:
+    # boundaries, kernel-footprints with too many NaNs, etc:
+    ######################################################
+    # mask out CDFs for NaN in Ek_raw
+    # originating from NaNs in E_raw
+    # and zero-values in KE, as there 
+    # should be no NaNs in KO (or KE) anymore.
+    ######################################
+    # we should check for np.isfinite
+    # not just np.isnan (because division by 0).
+    ######################################
+    # 
+    return Ek_raw, NN
+
+
+
+
+
+
+
+
 
 ########################################################################
 # this should be a main function to get locally adjusted expected
@@ -789,78 +860,33 @@ def get_adjusted_expected_tile_some_nans(origin,
         # kernel paramters such as width etc
         # are taken into account implicitly ...
         # 
-        # a matrix filled with the donut-sums based on the ICEed matrix
-        KO = convolve(O_bal,
-                      kernel,
-                      mode='constant',
-                      cval=0.0,
-                      origin=0)
-        # a matrix filled with the donut-sums based on the expected matrix
-        KE = convolve(E_bal,
-                      kernel,
-                      mode='constant',
-                      cval=0.0,
-                      origin=0)
-        # idea for calculating how many NaNs are there around
-        # a pixel, is to take the matrix, of shared NaNs
-        # (shared between O_bal and E_bal) and convolve it
-        # with the np.ones_like(around_pixel) kernel:
-        NN = convolve(N_bal.astype(np.int),
-                      # we have to use kernel
-                      # all made of 1s, since
-                      # even 0 * nan == nan
-                      np.ones_like(kernel),
-                      mode='constant',
-                      # make it look, like there are 
-                      # a lot of NaNs beyond
-                      # the boundary ...
-                      cval=1,
-                      origin=0)
-        # ####################################
-        # we'll use cval=0 in case of real data
-        # and we'll use cval=1 for NN mask
-        # thus border issue becomes a
-        # "too many NaNs"-issue as well.
-        # ####################################
+        ########################################
+        Ek_raw, NN = _convolve_and_count_nans(O_bal,
+                                            E_bal,
+                                            E_raw,
+                                            N_bal,
+                                            kernel)
         if verbose:
             print("Convolution with kernel {} is complete.".format(kernel_name))
 
-        ###############################
-        # this is still kernel-specific:
-        ###############################
-        # now finally, E_raw*(KO/KE), as the 
-        # locally-adjusted expected with raw counts as values:
-        Ek_raw = np.multiply(E_raw, np.divide(KO, KE))
-
-        ####################
-        # addressing details:
-        # boundaries, kernel-footprints with too many NaNs, etc:
-        ######################################################
-        # mask out CDFs for NaN in Ek_raw
-        # originating from NaNs in E_raw
-        # and zero-values in KE, as there 
-        # should be no NaNs in KO (or KE) anymore.
-        ######################################
-        # we should check for np.isfinite
-        # not just np.isnan (because division by 0).
-        ######################################
         # # to be deprecated ...
         # mask_Ed = ~np.isfinite(Ek_raw)
-        # mask out CDFs for pixels
-        # with too many NaNs around
-        # (#NaN>=threshold) each pixel:
-        mask_NN = (NN >= nan_threshold)
-        # this way boundary pixels are masked
-        # closed to diagonal pixels are masked
-        # pixels for which O_bal itself is NaN
-        # can be left alone, as they would 
-        # be masked during Poisson test comparison.
         # 
         # accumulation into single DataFrame:
         # there is no need for 'mask_Ed' probably, as it would be in 'Ek_raw' itself:
         # we should probably even just store a NaN count, not the mask at first ...
         peaks_df["la_exp."+kernel_name+".value"] = Ek_raw.flatten()
-        peaks_df["la_exp."+kernel_name+".mask"]  = mask_NN.flatten()
+        peaks_df["la_exp."+kernel_name+".mask"]  = (NN >= nan_threshold).flatten()
+        # # mask out CDFs for pixels
+        # # with too many NaNs around
+        # # (#NaN>=threshold) each pixel:
+        # mask_NN = (NN >= nan_threshold)
+        # # this way boundary pixels are masked
+        # # closed to diagonal pixels are masked
+        # # pixels for which O_bal itself is NaN
+        # # can be left alone, as they would 
+        # # be masked during Poisson test comparison.
+
         # do all the filter/logic etc on the complete DataFrame ...
         # 
         # masking and filtering is easier to do
