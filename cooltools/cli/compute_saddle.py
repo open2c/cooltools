@@ -192,7 +192,7 @@ def get_compartment_strength(saddledata, fraction):
 @click.option(
     # optional
     "--n-bins",
-    help="Number of bins for digitizing the signal track.",
+    help="Number of bins for digitizing track values.",
     type=int,
     default=50,
     show_default=True)
@@ -210,10 +210,21 @@ def get_compartment_strength(saddledata, fraction):
          " start at the 2-nd percentile and the upper bin would end at the 98-th"
          " percentile of the genome-wide signal."
          " Use to prevent the extreme track values from exploding the bin range.",
-     nargs=2,
-     default=(2.0, 98.0),
-     type=float,
-     show_default=True)
+    nargs=2,
+    default=(2.0, 98.0),
+    type=float,
+    show_default=True)
+@click.option(
+    # vrange : pair of floats
+    '--vrange',
+    help="Low and high values used for binning genome-wide track values, e.g."
+         " if `vrange`=(-0.05, 0.05), `n-bins` equidistant bins would be generated"
+         " between -0.05 and 0.05, dismissing `--prange` and `--by-percentile` options."
+         " Use to prevent the extreme track values from exploding the bin range and"
+         " to ensure consistent bins across several runs of `compute_saddle` command"
+         " using different track files.",
+    nargs=2,
+    type=float)
 @click.option(
     # optional
     "--by-percentile",
@@ -270,6 +281,7 @@ def compute_saddle(
             n_bins,
             contact_type,
             prange,
+            vrange,
             by_percentile,
             verbose,
             compute_strength,
@@ -430,8 +442,20 @@ def compute_saddle(
     # no matter the contact_type ...
     track_fetcher = make_track_fetcher(track, track_name)
     track_mask_fetcher = make_track_mask_fetcher(track, track_name)
+    if vrange:
+        # if a manual vrange option provided,
+        # use saddle.digitize_track's option
+        # 'bins' that overwrites both prange
+        # and 'by_percentile':
+        bins = np.linspace(*vrange, n_bins + 1)
+        # this is equivalent to the explicit:
+        prange = None
+        by_percentile = False
+    else:
+        # otherwise use prange and by_percentile:
+        bins = n_bins
     digitized, binedges = saddle.digitize_track(
-                                    bins = n_bins,
+                                    bins = bins,
                                     get_track = track_fetcher,
                                     get_mask  = track_mask_fetcher,
                                     chromosomes = track_chroms,
