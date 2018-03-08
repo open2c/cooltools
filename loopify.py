@@ -619,60 +619,46 @@ def _convolve_and_count_nans(O_bal,E_bal,E_raw,N_bal,kernel):
     pixel.
     And a kernel to be provided of course.
     """
-    # a matrix filled with the donut-sums based on the ICEed matrix
+    # a matrix filled with the kernel-weighted sums
+    # based on a balanced observed matrix:
     KO = convolve(O_bal,
                   kernel,
                   mode='constant',
                   cval=0.0,
                   origin=0)
-    # a matrix filled with the donut-sums based on the expected matrix
+    # a matrix filled with the kernel-weighted sums
+    # based on a balanced expected matrix:
     KE = convolve(E_bal,
                   kernel,
                   mode='constant',
                   cval=0.0,
                   origin=0)
-    # idea for calculating how many NaNs are there around
-    # a pixel, is to take the matrix, of shared NaNs
-    # (shared between O_bal and E_bal) and convolve it
-    # with the np.ones_like(around_pixel) kernel:
+    # get number of NaNs in a vicinity of every
+    # pixel (kernel's nonzero footprint)
+    # based on the NaN-matrix N_bal.
+    # N_bal is shared NaNs between O_bal E_bal,
+    # is it redundant ? 
     NN = convolve(N_bal.astype(np.int),
-                  # we have to use kernel
-                  # all made of 1s, since
-                  # even 0 * nan == nan
-                  np.ones_like(kernel),
+                  # we have to use kernel's
+                  # nonzero footprint:
+                  (kernel != 0).astype(np.int),
                   mode='constant',
-                  # make it look, like there are 
-                  # a lot of NaNs beyond
-                  # the boundary ...
+                  # there are only NaNs 
+                  # beyond the boundary:
                   cval=1,
                   origin=0)
-    # ####################################
-    # we'll use cval=0 in case of real data
-    # and we'll use cval=1 for NN mask
-    # thus border issue becomes a
-    # "too many NaNs"-issue as well.
+    ######################################
+    # using cval=0 for actual data and
+    # cval=1 for NaNs matrix reduces 
+    # "boundary issue" to the "number of
+    # NaNs"-issue
     # ####################################
 
-    ###############################
-    # this is still kernel-specific:
-    ###############################
     # now finally, E_raw*(KO/KE), as the 
     # locally-adjusted expected with raw counts as values:
     Ek_raw = np.multiply(E_raw, np.divide(KO, KE))
-
-    ####################
-    # addressing details:
-    # boundaries, kernel-footprints with too many NaNs, etc:
-    ######################################################
-    # mask out CDFs for NaN in Ek_raw
-    # originating from NaNs in E_raw
-    # and zero-values in KE, as there 
-    # should be no NaNs in KO (or KE) anymore.
-    ######################################
-    # we should check for np.isfinite
-    # not just np.isnan (because division by 0).
-    ######################################
-    # 
+    # return locally adjusted expected and number of NaNs
+    # in the form of dense matrices:
     return Ek_raw, NN
 
 
@@ -684,7 +670,8 @@ def _convolve_and_count_nans(O_bal,E_bal,E_raw,N_bal,kernel):
 
 
 ########################################################################
-# this should be a main function to get locally adjusted expected
+# this should be a MAIN function to get locally adjusted expected
+# Die Hauptfunktion
 ########################################################################
 def get_adjusted_expected_tile_some_nans(origin,
                                          observed,
@@ -826,17 +813,17 @@ def get_adjusted_expected_tile_some_nans(origin,
     O_bal = np.multiply(O_raw, np.outer(v_bal_i,v_bal_j))
     # O_bal is separate from O_raw memory-wise.
 
-    # deiced E_bal: element-wise division of E_bal[i,j] and
+    # raw E_bal: element-wise division of E_bal[i,j] and
     # v_bal[i]*v_bal[j]:
     E_raw = np.divide(E_bal, np.outer(v_bal_i,v_bal_j))
 
-
-    # let's calculate a matrix of common np.nans
-    # as a logical_or:
+    # let's calculate a matrix of common NaNs
+    # shared between observed and expected:
+    # check if it's redundant ? (is NaNs from O_bal sufficient? )
     N_bal = np.logical_or(np.isnan(O_bal),
                           np.isnan(E_bal))
-    # fill in common nan-s 
-    # with zeroes:
+    # fill in common nan-s with zeroes, preventing
+    # NaNs during convolution part of '_convolve_and_count_nans': 
     O_bal[N_bal] = 0.0
     E_bal[N_bal] = 0.0
     # think about usinf copyto and where functions later:
@@ -859,7 +846,6 @@ def get_adjusted_expected_tile_some_nans(origin,
         ###############################
         # kernel paramters such as width etc
         # are taken into account implicitly ...
-        # 
         ########################################
         Ek_raw, NN = _convolve_and_count_nans(O_bal,
                                             E_bal,
@@ -868,32 +854,13 @@ def get_adjusted_expected_tile_some_nans(origin,
                                             kernel)
         if verbose:
             print("Convolution with kernel {} is complete.".format(kernel_name))
-
-        # # to be deprecated ...
-        # mask_Ed = ~np.isfinite(Ek_raw)
-        # 
+        #
         # accumulation into single DataFrame:
-        # there is no need for 'mask_Ed' probably, as it would be in 'Ek_raw' itself:
-        # we should probably even just store a NaN count, not the mask at first ...
+        # store locally adjusted expected for each kernel
+        # and number of NaNs in the footprint of each kernel
         peaks_df["la_exp."+kernel_name+".value"] = Ek_raw.flatten()
-        peaks_df["la_exp."+kernel_name+".mask"]  = (NN >= nan_threshold).flatten()
-        # # mask out CDFs for pixels
-        # # with too many NaNs around
-        # # (#NaN>=threshold) each pixel:
-        # mask_NN = (NN >= nan_threshold)
-        # # this way boundary pixels are masked
-        # # closed to diagonal pixels are masked
-        # # pixels for which O_bal itself is NaN
-        # # can be left alone, as they would 
-        # # be masked during Poisson test comparison.
-
-        # do all the filter/logic etc on the complete DataFrame ...
-        # 
-        # masking and filtering is easier to do
-        # on the DataFrame level, so we'll keep
-        # this operations for the post-processing.
-        # including, the banding part and
-        # upper/lower trinagle thing as well.
+        peaks_df["la_exp."+kernel_name+".nnans"] = NN.flatten()
+        # do all the filter/logic/masking etc on the complete DataFrame ...
     #####################################
     # downstream stuff is supposed to be
     # aggregated over all kernels ...
@@ -901,21 +868,25 @@ def get_adjusted_expected_tile_some_nans(origin,
     peaks_df["exp.raw"] = E_raw.flatten()
     peaks_df["obs.raw"] = O_raw.flatten()
 
-    # # # combine all filters/masks:
-    # # # mask_Ed || mask_NN
-    # # # for every kernel etc ....
+    # TO BE REFACTORED ...
+    # for now should be 100% compatible with tests ...
+    # slowly retiring legacy filtering ...
     mask_ndx = pd.Series(0, index=peaks_df.index, dtype=np.bool)
     for kernel_name, kernel in kernels.items():
         # accummulating with a vector full of 'False':
         mask_ndx_kernel = ~np.isfinite(peaks_df["la_exp."+kernel_name+".value"])
-        mask_ndx_kernel = np.logical_or(mask_ndx_kernel, peaks_df["la_exp."+kernel_name+".mask"])
+        mask_ndx_kernel = np.logical_or(mask_ndx_kernel,
+                peaks_df["la_exp."+kernel_name+".nnans"]>=nan_threshold )
         mask_ndx = np.logical_or(mask_ndx_kernel,mask_ndx)
 
-    # upper_band = np.logical_and((i<j), (i>j-band_idx))
+    # returning only pixels from upper triangle of a matrix
+    # is likely here to stay:
     upper_band = (peaks_df["row"] < peaks_df["col"])
-    # transfered 2Mb diagonal band to test and Jupyter nb ...
+    # selecting pixels in relation to diagonal - too far, too
+    # close etc, is now shifted to the outside of this function
+    # a way to simplify code.
 
-    # return good sparsified DF:
+    # return good semi-sparsified DF:
     return peaks_df[~mask_ndx & upper_band].reset_index(drop=True)
 
 
