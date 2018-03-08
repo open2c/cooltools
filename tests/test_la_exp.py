@@ -10,13 +10,14 @@ import os.path as op
 # just follow mirnylab practises:
 from nose.tools import assert_raises
 
+# try importing stuff from loopify:
+from cooltools.loopify import get_adjusted_expected_tile_some_nans
+
 # let's try running tests 
 # without installing loopify:
 import sys
 sys.path.append("../")
 
-# try importing stuff from loopify:
-from loopify import get_adjusted_expected_tile_some_nans
 
 # adjust the path for data:
 testdir = op.realpath(op.dirname(__file__))

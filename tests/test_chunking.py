@@ -8,17 +8,19 @@ import os.path as op
 # just follow mirnylab practises:
 from nose.tools import assert_raises
 
+from cooltools import loopify
+
 # let's try running tests 
 # without installing loopify:
 import sys
 sys.path.append("../")
 
 
-# try importing stuff from loopify:
-from loopify import get_adjusted_expected_tile_some_nans, \
-                    diagonal_matrix_tiling, \
-                    square_matrix_tiling, \
-                    tile_of_expected
+# # try importing stuff from loopify:
+# from loopify import get_adjusted_expected_tile_some_nans, \
+#                     diagonal_matrix_tiling, \
+#                     square_matrix_tiling, \
+#                     tile_of_expected
 
 # adjust the path for data:
 testdir = op.realpath(op.dirname(__file__))
@@ -76,7 +78,7 @@ def test_adjusted_expected_tile_some_nans_and_diag_tiling():
     nnans = 1
     band_1_idx = int(band_1/b)
     res_df = pd.DataFrame([])
-    for tile in diagonal_matrix_tiling(start, stop, w, band = band_1_idx):
+    for tile in loopify.diagonal_matrix_tiling(start, stop, w, band = band_1_idx):
         # let's keep i,j-part explicit here:
         tilei, tilej = tile, tile
         # define origin:
@@ -84,11 +86,11 @@ def test_adjusted_expected_tile_some_nans_and_diag_tiling():
         # RAW observed matrix slice:
         observed = mock_M_raw[slice(*tilei),slice(*tilej)]
         # trying new expected function:
-        expected = tile_of_expected(start, tilei, tilej, get_mock_exp)
+        expected = loopify.tile_of_expected(start, tilei, tilej, get_mock_exp)
         # for diagonal chuynking/tiling tilei==tilej:
         ice_weight = mock_v_ice[slice(*tilei)]
         # that's the main working function from loopify:
-        res = get_adjusted_expected_tile_some_nans(origin = origin,
+        res = loopify.get_adjusted_expected_tile_some_nans(origin = origin,
                                                  observed = observed,
                                                  expected = expected,
                                                  bal_weight = ice_weight,
@@ -140,18 +142,18 @@ def test_adjusted_expected_tile_some_nans_and_square_tiling():
     nnans = 1
     band_idx = int(band/b)
     res_df = pd.DataFrame([])
-    for tilei, tilej in square_matrix_tiling(start, stop, tile_size=40, edge=w, square=False):
+    for tilei, tilej in loopify.square_matrix_tiling(start, stop, tile_size=40, edge=w, square=False):
         # define origin:
         origin = (tilei[0], tilej[0])
         # RAW observed matrix slice:
         observed = mock_M_raw[slice(*tilei),slice(*tilej)]
         # trying new expected function:
-        expected = tile_of_expected(start, tilei, tilej, get_mock_exp)
+        expected = loopify.tile_of_expected(start, tilei, tilej, get_mock_exp)
         # for diagonal chuynking/tiling tilei==tilej:
         ice_weight_i = mock_v_ice[slice(*tilei)]
         ice_weight_j = mock_v_ice[slice(*tilej)]
         # that's the main working function from loopify:
-        res = get_adjusted_expected_tile_some_nans(origin = origin,
+        res = loopify.get_adjusted_expected_tile_some_nans(origin = origin,
                                                  observed = observed,
                                                  expected = expected,
                                                  bal_weight = (ice_weight_i, ice_weight_j),

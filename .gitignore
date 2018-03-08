@@ -1,13 +1,8 @@
-<<<<<<< HEAD
 # Vim's cache
 *.un~
 # Byte-compiled / optimized / DLL files
 __pycache__
 cooltools/__pycache__
-=======
-# Byte-compiled / optimized / DLL files
-__pycache__/
->>>>>>> cooloop/master
 *.py[cod]
 *$py.class
 
@@ -28,10 +23,6 @@ lib64/
 parts/
 sdist/
 var/
-<<<<<<< HEAD
-=======
-wheels/
->>>>>>> cooloop/master
 *.egg-info/
 .installed.cfg
 *.egg
@@ -54,11 +45,7 @@ htmlcov/
 .cache
 nosetests.xml
 coverage.xml
-<<<<<<< HEAD
 *,cover
-=======
-*.cover
->>>>>>> cooloop/master
 .hypothesis/
 
 # Translations
@@ -82,11 +69,7 @@ docs/_build/
 # PyBuilder
 target/
 
-<<<<<<< HEAD
 # IPython Notebook
-=======
-# Jupyter Notebook
->>>>>>> cooloop/master
 .ipynb_checkpoints
 
 # pyenv
@@ -95,38 +78,15 @@ target/
 # celery beat schedule file
 celerybeat-schedule
 
-<<<<<<< HEAD
-=======
-# SageMath parsed files
-*.sage.py
-
->>>>>>> cooloop/master
 # dotenv
 .env
 
 # virtualenv
-<<<<<<< HEAD
-=======
-.venv
->>>>>>> cooloop/master
 venv/
 ENV/
 
 # Spyder project settings
 .spyderproject
-<<<<<<< HEAD
 
 # Rope project settings
 .ropeproject
-=======
-.spyproject
-
-# Rope project settings
-.ropeproject
-
-# mkdocs documentation
-/site
-
-# mypy
-.mypy_cache/
->>>>>>> cooloop/master

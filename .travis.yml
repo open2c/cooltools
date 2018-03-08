@@ -21,7 +21,8 @@ install:
   - conda create -q -n test-environment python=$TRAVIS_PYTHON_VERSION setuptools pip six numpy scipy pandas h5py dask nose mock scikit-learn
   - source activate test-environment
   # let's try it without installing anyhting:
-  # - python setup.py install
+  # try installation now, travis to be updated:
+  - python setup.py install
   # - pip install 
 
 script:
