@@ -75,8 +75,6 @@ def test_adjusted_expected_tile_some_nans_and_diag_tiling():
     # first, generate that locally-adjusted expected:
     nnans = 1
     band_1_idx = int(band_1/b)
-    # let's append to empty DataFrame - less
-    # efficient than pd.concat, but less code
     res_df = pd.DataFrame([])
     for tile in diagonal_matrix_tiling(start, stop, w, band = band_1_idx):
         # let's keep i,j-part explicit here:
@@ -99,21 +97,23 @@ def test_adjusted_expected_tile_some_nans_and_diag_tiling():
         is_inside_band = (res["row"] > (res["col"]-band_1_idx))
         # new style, selecting good guys:
         does_comply_nans = (res["la_exp."+"footprint"+".nnans"] < nnans)
-        # so, selecting inside band and nNaNs compliant results:
-        res = res[is_inside_band & does_comply_nans].reset_index(drop=True)
-        # append to empty df:
-        res_df = res_df.append(res, ignore_index=True)
+        # so, selecting inside band and nNaNs compliant results and append:
+        res_df = res_df.append(
+                            res[is_inside_band & does_comply_nans],
+                            ignore_index=True)
 
 
-    # drop dups (from overlaping tiles) and reset index:
-    res_df = res_df.drop_duplicates().reset_index(drop=True)
+    # drop dups (from overlaping tiles), sort and reset index:
+    res_df = res_df \
+                .drop_duplicates() \
+                .sort_values(by=['row','col']) \
+                .reset_index(drop=True)
 
+    # prepare mock_data for comparison:
     # get a subset of mock results (inside 1Mb band):
     is_inside_band_1 = (mock_res["row"]>(mock_res["col"]-band_1_idx))
     mock_res_1 = mock_res[is_inside_band_1].reset_index(drop=True)
-
     # apparently sorting is needed in this case:
-    res_df = res_df.sort_values(by=['row','col']).reset_index(drop=True)
     mock_res_1 = mock_res_1.sort_values(by=['row','col']).reset_index(drop=True)
 
 
@@ -168,10 +168,12 @@ def test_adjusted_expected_tile_some_nans_and_square_tiling():
                             ignore_index=True)
 
     # drop dups (from overlaping tiles), sort and reset index:
-    res_df = res_df.drop_duplicates()\
-                        .sort_values(by=['row','col'])\
-                        .reset_index(drop=True)
+    res_df = res_df \
+                .drop_duplicates() \
+                .sort_values(by=['row','col']) \
+                .reset_index(drop=True)
 
+    # prepare mock_data for comparison:
     # apparently sorting is needed in this case:
     mock_res_sorted = mock_res.sort_values(by=['row','col']).reset_index(drop=True)
 

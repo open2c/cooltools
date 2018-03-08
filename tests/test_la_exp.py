@@ -79,13 +79,12 @@ def test_adjusted_expected_tile_some_nans():
     # from the 'get_adjusted_expected_tile_some_nans'
     # so we should complement that selection
     # here:
-    nnans = 1
+    nnans = 1 # no nans tolerated
     band_idx = int(band/b)
     is_inside_band   = (res["row"]>(res["col"]-band_idx))
-    # old style, selecting bad guys:
-    not_comply_nans = (res["la_exp."+"footprint"+".nnans"] >= nnans)
+    does_comply_nans = (res["la_exp."+"footprint"+".nnans"] < nnans)
     # so, selecting inside band and nNaNs compliant results:
-    res = res[is_inside_band & ~not_comply_nans].reset_index(drop=True)
+    res = res[is_inside_band & does_comply_nans].reset_index(drop=True)
     # 
     # ACTUAL TESTS:
     # integer part of DataFrame must equals exactly:
@@ -112,13 +111,12 @@ def test_adjusted_expected_tile_some_nans():
                              "footprint":np.ones_like(kernel)})
     # post-factum filtering resides
     # outside of get_la_exp now:
-    nnans = 2
+    nnans = 2 # just 1 nan tolerated
     band_idx = int(band/b)
     is_inside_band = (res["row"]>(res["col"]-band_idx))
-    # old style, selecting bad guys:
-    not_comply_nans = (res["la_exp."+"footprint"+".nnans"] >= nnans)
+    does_comply_nans = (res["la_exp."+"footprint"+".nnans"] < nnans)
     # so, selecting inside band and comply nNaNs results only:
-    res = res[is_inside_band & ~not_comply_nans].reset_index(drop=True)
+    res = res[is_inside_band & does_comply_nans].reset_index(drop=True)
 
     # now we can only guess the size:
     assert (len(res) > len(mock_res))
