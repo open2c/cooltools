@@ -58,7 +58,6 @@ b=20000
 band=2e+6
 
 
-
 #################################################################
 # main test function for new 'get_adjusted_expected_tile_some_nans':
 #################################################################
@@ -73,9 +72,6 @@ def test_adjusted_expected_tile_some_nans():
                          bal_weight=mock_v_ice,
                          kernels={"donut":kernel,
                                  "footprint":np.ones_like(kernel)})
-    ###################
-    # nan_threshold = 1
-    ###################
     # mock results are supposedly for
     # the contacts closer than the band
     # nucleotides to each other...
@@ -83,13 +79,13 @@ def test_adjusted_expected_tile_some_nans():
     # from the 'get_adjusted_expected_tile_some_nans'
     # so we should complement that selection
     # here:
+    nnans = 1
     band_idx = int(band/b)
-    is_inside_band = (res["row"]>(res["col"]-band_idx))
-    ###################################
-    # to add footprint NaN counting ...
-    ###################################
-    # so, selecting inside band results only:
-    res = res[is_inside_band].reset_index(drop=True)
+    is_inside_band   = (res["row"]>(res["col"]-band_idx))
+    # old style, selecting bad guys:
+    not_comply_nans = (res["la_exp."+"footprint"+".nnans"] >= nnans)
+    # so, selecting inside band and nNaNs compliant results:
+    res = res[is_inside_band & ~not_comply_nans].reset_index(drop=True)
     # 
     # ACTUAL TESTS:
     # integer part of DataFrame must equals exactly:
@@ -104,19 +100,9 @@ def test_adjusted_expected_tile_some_nans():
             mock_res['la_expected'],
             equal_nan=True).all()
         )
-    ####################################
-    # BEFORE UPDATE:
-    # assert (
-    #     np.isclose(
-    #         res[["expected",'observed']],
-    #         mock_res[['la_expected','observed']],
-    #         equal_nan=True).all()
-    #     )
-    ####################################
     #
-    # try recovering NaNs ...
-    #
-    #
+    # try recovering more NaNs ...
+    # (allowing 1 here per pixel's footprint)...
     res = get_adjusted_expected_tile_some_nans(
                      origin=(0,0),
                      observed=mock_M_raw, # should be RAW...
@@ -124,22 +110,18 @@ def test_adjusted_expected_tile_some_nans():
                      bal_weight=mock_v_ice,
                      kernels={"donut":kernel,
                              "footprint":np.ones_like(kernel)})
-    ###################
-    # nan_threshold = 2
-    ###################
-    # neccessary to exclude contacts outside 
-    # the diagonal band, after that functional
-    # was retired from 'get_adjusted_expected_tile_some_nans':
+    # post-factum filtering resides
+    # outside of get_la_exp now:
+    nnans = 2
     band_idx = int(band/b)
     is_inside_band = (res["row"]>(res["col"]-band_idx))
-    ###################################
-    # to add footprint NaN counting ...
-    ###################################
-    # so, selecting inside band results only:
-    res = res[is_inside_band].reset_index(drop=True)
+    # old style, selecting bad guys:
+    not_comply_nans = (res["la_exp."+"footprint"+".nnans"] >= nnans)
+    # so, selecting inside band and comply nNaNs results only:
+    res = res[is_inside_band & ~not_comply_nans].reset_index(drop=True)
 
     # now we can only guess the size:
-    assert (res['row'].size > mock_res['row'].size)
+    assert (len(res) > len(mock_res))
 
 
 

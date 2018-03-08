@@ -678,7 +678,6 @@ def get_adjusted_expected_tile_some_nans(origin,
                                          expected,
                                          bal_weight,
                                          kernels,
-                                         # nan_threshold=2,
                                          verbose=False):
     """
     'get_adjusted_expected_tile_some_nans', get locally adjusted
@@ -761,9 +760,6 @@ def get_adjusted_expected_tile_some_nans(origin,
         only then multiplied to matrix by
         scipy.ndimage.convolve 
         !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-    # nan_threshold : int
-    #     Parameter to control how many elements
-    #     in a kernel footprint can be NaN. [default: 2]
     verbose: bool
         Set to True to print some progress
         messages to stdout.
@@ -875,8 +871,6 @@ def get_adjusted_expected_tile_some_nans(origin,
     for kernel_name, kernel in kernels.items():
         # accummulating with a vector full of 'False':
         mask_ndx_kernel = ~np.isfinite(peaks_df["la_exp."+kernel_name+".value"])
-        # mask_ndx_kernel = np.logical_or(mask_ndx_kernel,
-        #         peaks_df["la_exp."+kernel_name+".nnans"]>=nan_threshold )
         mask_ndx = np.logical_or(mask_ndx_kernel,mask_ndx)
 
     # returning only pixels from upper triangle of a matrix
