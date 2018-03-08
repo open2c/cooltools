@@ -92,10 +92,14 @@ def test_adjusted_expected_tile_some_nans_and_diag_tiling():
                                                  observed = observed,
                                                  expected = expected,
                                                  bal_weight = ice_weight,
-                                                 kernels = {"donut":kernel,},
-                                                 nan_threshold=1,
+                                                 kernels = {"donut":kernel,
+                                                         "footprint":np.ones_like(kernel)},
+                                                 # nan_threshold=1,
                                                  verbose=False)
         is_inside_band = res["row"] > (res["col"]-band_1_idx)
+        ###################################
+        # to add footprint NaN counting ...
+        ###################################
         # so, selecting inside band results only:
         res = res[is_inside_band].reset_index(drop=True)
         res_list.append(res)
@@ -152,10 +156,14 @@ def test_adjusted_expected_tile_some_nans_and_square_tiling():
                                                  observed = observed,
                                                  expected = expected,
                                                  bal_weight = (ice_weight_i, ice_weight_j),
-                                                 kernels = {"donut":kernel,},
-                                                 nan_threshold=1,
+                                                 kernels = {"donut":kernel,
+                                                         "footprint":np.ones_like(kernel)},
+                                                 # nan_threshold=1,
                                                  verbose=False)
         is_inside_band = res["row"] > (res["col"]-band_idx)
+        ###################################
+        # to add footprint NaN counting ...
+        ###################################
         # so, selecting inside band results only:
         res = res[is_inside_band].reset_index(drop=True)
         res_list.append(res)

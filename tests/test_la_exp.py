@@ -71,8 +71,11 @@ def test_adjusted_expected_tile_some_nans():
                          observed=mock_M_raw, # should be RAW ...
                          expected=mock_E_ice,
                          bal_weight=mock_v_ice,
-                         kernels={"donut":kernel,},
-                         nan_threshold=1)
+                         kernels={"donut":kernel,
+                                 "footprint":np.ones_like(kernel)})
+    ###################
+    # nan_threshold = 1
+    ###################
     # mock results are supposedly for
     # the contacts closer than the band
     # nucleotides to each other...
@@ -82,6 +85,9 @@ def test_adjusted_expected_tile_some_nans():
     # here:
     band_idx = int(band/b)
     is_inside_band = (res["row"]>(res["col"]-band_idx))
+    ###################################
+    # to add footprint NaN counting ...
+    ###################################
     # so, selecting inside band results only:
     res = res[is_inside_band].reset_index(drop=True)
     # 
@@ -116,13 +122,19 @@ def test_adjusted_expected_tile_some_nans():
                      observed=mock_M_raw, # should be RAW...
                      expected=mock_E_ice,
                      bal_weight=mock_v_ice,
-                     kernels={"donut":kernel,},
-                     nan_threshold=2)
+                     kernels={"donut":kernel,
+                             "footprint":np.ones_like(kernel)})
+    ###################
+    # nan_threshold = 2
+    ###################
     # neccessary to exclude contacts outside 
     # the diagonal band, after that functional
     # was retired from 'get_adjusted_expected_tile_some_nans':
     band_idx = int(band/b)
     is_inside_band = (res["row"]>(res["col"]-band_idx))
+    ###################################
+    # to add footprint NaN counting ...
+    ###################################
     # so, selecting inside band results only:
     res = res[is_inside_band].reset_index(drop=True)
 
