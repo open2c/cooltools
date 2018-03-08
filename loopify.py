@@ -864,9 +864,10 @@ def get_adjusted_expected_tile_some_nans(origin,
     peaks_df["exp.raw"] = E_raw.flatten()
     peaks_df["obs.raw"] = O_raw.flatten()
 
-    # TO BE REFACTORED ...
-    # for now should be 100% compatible with tests ...
-    # slowly retiring legacy filtering ...
+    # TO BE REFACTORED/deprecated ...
+    # compatibility with legacy API is completely BROKEN
+    # post-processing allows us to restore it, see tests,
+    # but we pay with the processing speed for it.
     mask_ndx = pd.Series(0, index=peaks_df.index, dtype=np.bool)
     for kernel_name, kernel in kernels.items():
         # accummulating with a vector full of 'False':
