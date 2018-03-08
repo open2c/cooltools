@@ -1,0 +1,28 @@
+language: python
+python:
+  # We don't actually use the Travis Python, but this keeps it organized.
+  - "3.5"
+  - "3.6"
+install:
+  # http://conda.pydata.org/docs/travis.html
+  - sudo apt-get update
+  - sudo apt-get install -y pigz tabix
+  # We do this conditionally because it saves us some downloading if the version is the same.
+  - wget https://repo.continuum.io/miniconda/Miniconda3-latest-Linux-x86_64.sh -O miniconda.sh
+  - bash miniconda.sh -b -p $HOME/miniconda
+  - export PATH="$HOME/miniconda/bin:$PATH"
+  - hash -r
+  - conda config --set always_yes yes --set changeps1 no
+  - conda update -q conda
+  # Useful for debugging any issues with conda
+  - conda info -a
+
+  # Create test environment and install deps
+  - conda create -q -n test-environment python=$TRAVIS_PYTHON_VERSION setuptools pip six numpy scipy pandas h5py dask nose mock scikit-learn
+  - source activate test-environment
+  # let's try it without installing anyhting:
+  # - python setup.py install
+  # - pip install 
+
+script:
+  nosetests
