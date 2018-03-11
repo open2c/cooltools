@@ -22,7 +22,7 @@ install:
   - source activate test-environment
   # let's try it without installing anyhting:
   # try installation now, travis to be updated:
-  - python setup.py install
+  - python setup.py install build_ext -i
   # - pip install 
 
 script:
