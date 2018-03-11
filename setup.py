@@ -42,9 +42,12 @@ def get_long_description():
 
 install_requires = [
     'numpy',
-    'cython',
+    'cython>=0.25',
     'click',
     'cooler>=0.6',
+    'cytoolz',
+    'numba',
+    'distributed',
 ]
 
 
