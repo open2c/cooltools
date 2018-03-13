@@ -507,8 +507,8 @@ def iterative_correction_symmetric(
             break                                                                
                                                                                  
     corr = totalBias[~mask].mean()  #mean correction factor                      
-    x = x * corr * corr #renormalizing everything                               
+    _x = _x * corr * corr #renormalizing everything                               
     totalBias /= corr                                                            
     report = {'converged':converged, 'iternum':iternum}                          
                                                                                  
-    return x, totalBias, report
+    return _x, totalBias, report
