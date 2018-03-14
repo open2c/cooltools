@@ -5,7 +5,13 @@ import scipy.sparse.linalg
 
 import numba 
 
-from ._numutils_cy import  iterative_correction_symmetric
+from ._numutils import (
+    iterative_correction_symmetric as _iterative_correction_symmetric,
+    observed_over_expected as _observed_over_expected,
+    fake_cis,
+    logbins,
+)
+
 
 def get_diag(mat, i=0):
     '''Get the i-th diagonal of a matrix.

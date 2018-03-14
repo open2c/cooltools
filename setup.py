@@ -54,7 +54,7 @@ extensions = [
         include_dirs=[np.get_include()]
     ),
     Extension(
-        "cooltools.num._numutils_cy", ["cooltools/num/_numutils_cy.pyx"],
+        "cooltools.num._numutils", ["cooltools/num/_numutils.pyx"],
         include_dirs=[np.get_include()]
     ),
     Extension(
