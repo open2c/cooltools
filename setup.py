@@ -43,6 +43,10 @@ def get_long_description():
 install_requires = [
     'numpy',
     'cython',
+    'dask',
+    'distributed',
+    'cytoolz',
+    'numba',
     'click',
     'cooler>=0.6',
 ]
