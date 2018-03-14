@@ -257,22 +257,11 @@ class LazyToeplitz(cooler.core._IndexingMixin):
             raise ValueError('First element of `c` and `r` should match')
         self._c = c
         self._r = r
-    
+        
     @property
     def shape(self):
         return (len(self._c), len(self._r))
-
-    @staticmethod
-    def _comes_before(a0, a1, b0, b1, strict=False):
-        if a0 < b0: return a1 <= b0 if strict else a1 <= b1
-        return False
-
-    @staticmethod
-    def _contains(a0, a1, b0, b1, strict=False):
-        if a0 > b0 or a1 < b1: return False
-        if strict and (a0 == b0 or a1 == b1): return False
-        return a0 <= b0 and a1 >= b1
-
+    
     def __getitem__(self, key):
         slc0, slc1 = self._unpack_index(key)
         i0, i1 = self._process_slice(slc0, self.shape[0])
@@ -294,25 +283,13 @@ class LazyToeplitz(cooler.core._IndexingMixin):
                 i0, i1, j0, j1 = j0, j1, i0, i1
                 C, R = R, C
                 transpose = True
+               
+            c = np.r_[
+                R[(j0-i0) : max(0, j0-i1) : -1], 
+                C[0 : max(0, i1-j0)]
+            ]
+            r = R[(j0-i0):(j1-i0)]
             
-            # triu, no overlap
-            if self._comes_before(i0, i1, j0, j1, strict=True):
-                c = R[(j0-i0):(j0-i1):-1]
-                r = R[(j0-i0):(j1-i0)]
-                
-            # triu, partial overlap
-            elif self._comes_before(i0, i1, j0, j1):
-                c = np.r_[R[(j0-i0):0:-1], C[0:(i1-j0)]]
-                r = R[(j0-i0):(j1-i0)]
-            
-            # nested
-            elif self._contains(i0, i1, j0, j1):
-                c = np.r_[R[(j0-i0):0:-1], C[0:(i1-j0)]]
-                r = R[(j0-i0):(j0-i0)+(j1-j0)]
-
-            else:
-                raise IndexError("This shouldn't happen")
-        
             if transpose:
                 c, r = r, c
         
