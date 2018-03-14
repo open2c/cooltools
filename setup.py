@@ -48,7 +48,7 @@ install_requires = [
     'cytoolz',
     'numba',
     'click',
-    'cooler>=0.6',
+    'cooler>=0.7',
 ]
 
 
