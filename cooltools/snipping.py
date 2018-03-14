@@ -298,7 +298,7 @@ class LazyToeplitz(cooler.core._IndexingMixin):
             # triu, no overlap
             if self._comes_before(i0, i1, j0, j1, strict=True):
                 c = R[(j0-i0):(j0-i1):-1]
-                r = C[(j0-i0):(j1-i0)]
+                r = R[(j0-i0):(j1-i0)]
                 
             # triu, partial overlap
             elif self._comes_before(i0, i1, j0, j1):
@@ -307,8 +307,8 @@ class LazyToeplitz(cooler.core._IndexingMixin):
             
             # nested
             elif self._contains(i0, i1, j0, j1):
-                c = np.r_[R[(i0-j0):0:-1], C[0:(j1-i0)]]
-                r = R[(i0-j0):(i1-j0)]
+                c = np.r_[R[(j0-i0):0:-1], C[0:(i1-j0)]]
+                r = R[(j0-i0):(j0-i0)+(j1-j0)]
 
             else:
                 raise IndexError("This shouldn't happen")
