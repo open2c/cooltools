@@ -126,9 +126,11 @@ def clust_2D_pixels(pixels_df,threshold_cluster=2):
     Parameters
     ----------
     pixels_df : pandas.DataFrame
-        a DataFrame of 2 columns, with left-one
-        being the column index of a pixel and
-        the right-one being row index of a pixel
+        a DataFrame with pixel coordinates
+        that must have at least 2 columns
+        named 'bin1_id' and 'bin2_id',
+        where first is pixels's row and the
+        second is pixel's column index.
     threshold_cluster : int
         clustering radius for Birch clustering
         derived from ~40kb radius of clustering
@@ -151,7 +153,11 @@ def clust_2D_pixels(pixels_df,threshold_cluster=2):
     be some empty subclusters.
     
     '''
-    pixels  = pixels_df.values
+    # ###########
+    # I suspect misup of row/col indices ...
+    ##############
+    # col (bin2) must precede row (bin1):
+    pixels  = pixels_df[['bin2_id','bind1_id']].values
     pix_idx = pixels_df.index
     # clustering object prepare:
     brc = Birch(n_clusters=None,threshold=threshold_cluster)
@@ -195,7 +201,7 @@ def clust_2D_pixels(pixels_df,threshold_cluster=2):
     peak_tmp = pd.DataFrame(
                         centroids,
                         index=pix_idx,
-                        columns=['c_row','c_col'])
+                        columns=['cbin1_id','cbin2_id'])
     # add labels:
     peak_tmp['c_label'] = brc.labels_.astype(np.int)
     # add cluster sizes:
