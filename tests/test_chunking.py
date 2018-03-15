@@ -28,6 +28,8 @@ testdir = op.realpath(op.dirname(__file__))
 # mock input data location:
 mock_input = op.join(testdir, 'data', 'mock_inputs.npz')
 mock_result = op.join(testdir, 'data', 'mock_res.csv.gz')
+mock_result = mock_result.rename(columns={'row':'bin1_id','col':'bin2_id'})
+
 
 # load bunch of array from a numpy npz container:
 arrays_loaded = np.load(mock_input)
@@ -96,7 +98,7 @@ def test_adjusted_expected_tile_some_nans_and_diag_tiling():
                                                  bal_weight = ice_weight,
                                                  kernels = {"donut":kernel,
                                                          "footprint":np.ones_like(kernel)} )
-        is_inside_band = (res["row"] > (res["col"]-band_1_idx))
+        is_inside_band = (res["bin1_id"] > (res["bin2_id"]-band_1_idx))
         # new style, selecting good guys:
         does_comply_nans = (res["la_exp."+"footprint"+".nnans"] < nnans)
         # so, selecting inside band and nNaNs compliant results and append:
@@ -108,22 +110,22 @@ def test_adjusted_expected_tile_some_nans_and_diag_tiling():
     # drop dups (from overlaping tiles), sort and reset index:
     res_df = res_df \
                 .drop_duplicates() \
-                .sort_values(by=['row','col']) \
+                .sort_values(by=['bin1_id','bin2_id']) \
                 .reset_index(drop=True)
 
     # prepare mock_data for comparison:
     # get a subset of mock results (inside 1Mb band):
-    is_inside_band_1 = (mock_res["row"]>(mock_res["col"]-band_1_idx))
+    is_inside_band_1 = (mock_res["bin1_id"]>(mock_res["bin2_id"]-band_1_idx))
     mock_res_1 = mock_res[is_inside_band_1].reset_index(drop=True)
     # apparently sorting is needed in this case:
-    mock_res_1 = mock_res_1.sort_values(by=['row','col']).reset_index(drop=True)
+    mock_res_1 = mock_res_1.sort_values(by=['bin1_id','bin2_id']).reset_index(drop=True)
 
 
     # ACTUAL TESTS:
     # integer part of DataFrame must equals exactly:
     assert (
-        res_df[['row','col']].equals(
-            mock_res_1[['row','col']])
+        res_df[['bin1_id','bin2_id']].equals(
+            mock_res_1[['bin1_id','bin2_id']])
         )
     # compare floating point part separately:
     assert (
@@ -161,7 +163,7 @@ def test_adjusted_expected_tile_some_nans_and_square_tiling():
                                                          "footprint":np.ones_like(kernel)},
                                                  # nan_threshold=1,
                                                  verbose=False)
-        is_inside_band = (res["row"] > (res["col"]-band_idx))
+        is_inside_band = (res["bin1_id"] > (res["bin2_id"]-band_idx))
         # new style, selecting good guys:
         does_comply_nans = (res["la_exp."+"footprint"+".nnans"] < nnans)
         # so, select inside band and nNaNs compliant results and append:
@@ -172,18 +174,18 @@ def test_adjusted_expected_tile_some_nans_and_square_tiling():
     # drop dups (from overlaping tiles), sort and reset index:
     res_df = res_df \
                 .drop_duplicates() \
-                .sort_values(by=['row','col']) \
+                .sort_values(by=['bin1_id','bin2_id']) \
                 .reset_index(drop=True)
 
     # prepare mock_data for comparison:
     # apparently sorting is needed in this case:
-    mock_res_sorted = mock_res.sort_values(by=['row','col']).reset_index(drop=True)
+    mock_res_sorted = mock_res.sort_values(by=['bin1_id','bin2_id']).reset_index(drop=True)
 
     # ACTUAL TESTS:
     # integer part of DataFrame must equals exactly:
     assert (
-        res_df[['row','col']].equals(
-            mock_res_sorted[['row','col']])
+        res_df[['bin1_id','bin2_id']].equals(
+            mock_res_sorted[['bin1_id','bin2_id']])
         )
     # compare floating point part separately:
     assert (

@@ -157,7 +157,7 @@ def clust_2D_pixels(pixels_df,threshold_cluster=2):
     # I suspect misup of row/col indices ...
     ##############
     # col (bin2) must precede row (bin1):
-    pixels  = pixels_df[['bin2_id','bin1_id']].values
+    pixels  = pixels_df[['bin1_id','bin2_id']].values
     pix_idx = pixels_df.index
     # clustering object prepare:
     brc = Birch(n_clusters=None,threshold=threshold_cluster)
