@@ -28,7 +28,6 @@ testdir = op.realpath(op.dirname(__file__))
 # mock input data location:
 mock_input = op.join(testdir, 'data', 'mock_inputs.npz')
 mock_result = op.join(testdir, 'data', 'mock_res.csv.gz')
-mock_result = mock_result.rename(columns={'row':'bin1_id','col':'bin2_id'})
 
 
 # load bunch of array from a numpy npz container:
@@ -72,6 +71,7 @@ start, stop = 0, len(mock_M_raw)
 
 # load mock results:
 mock_res = pd.read_csv(mock_result)
+mock_res = mock_res.rename(columns={'row':'bin1_id','col':'bin2_id'})
 
 
 def test_adjusted_expected_tile_some_nans_and_diag_tiling():
