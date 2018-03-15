@@ -42,12 +42,13 @@ def get_long_description():
 
 install_requires = [
     'numpy',
-    'cython>=0.25',
-    'click',
-    'cooler>=0.6',
+    'cython',
+    'dask',
+    'distributed',
     'cytoolz',
     'numba',
-    'distributed',
+    'click',
+    'cooler>=0.7',
 ]
 
 
@@ -57,7 +58,7 @@ extensions = [
         include_dirs=[np.get_include()]
     ),
     Extension(
-        "cooltools.num._numutils_cy", ["cooltools/num/_numutils_cy.pyx"],
+        "cooltools.num._numutils", ["cooltools/num/_numutils.pyx"],
         include_dirs=[np.get_include()]
     ),
     Extension(

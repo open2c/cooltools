@@ -4,9 +4,9 @@ import scipy.stats
 
 import pandas as pd
 from .num import numutils
-from .num import _numutils_cy
 
 import bioframe
+
 
 def _phase_eigs(eigvals, eigvecs, phasing_track, sort_metric=None):
     """
@@ -168,7 +168,7 @@ def _fake_cis(A, cismask):
     s = np.abs(np.sum(A, axis=0)) <= 1e-10
     cismask[:, s] = 2
     cismask[s, :] = 2
-    _numutils_cy.fake_cis(A, cismask)
+    numutils.fake_cis(A, cismask)
     return A
 
 
@@ -246,15 +246,15 @@ def trans_eig(A, partition, n_eigs=3, perc_top=99.95, perc_bottom=1,
     # Filter heatmap
     A[~transmask] = 0
     A = _filter_heatmap(A, transmask, perc_top, perc_bottom)
-    A = _numutils_cy.iterative_correction_symmetric(A)[0]
+    A = numutils.iterative_correction_symmetric(A)[0]
 
     # Fake cis and re-balance
     A = _fake_cis(A, ~transmask)
     #A = numutils.iterative_correction_symmetric(A)[0]
-    A = _numutils_cy.iterative_correction_symmetric(A)[0]
+    A = numutils.iterative_correction_symmetric(A)[0]
     A = _fake_cis(A, ~transmask)
     #A = numutils.iterative_correction_symmetric(A)[0]
-    A = _numutils_cy.iterative_correction_symmetric(A)[0]
+    A = numutils.iterative_correction_symmetric(A)[0]
     
     # Compute eig
     Abar = A.mean()
