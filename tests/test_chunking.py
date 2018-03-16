@@ -9,6 +9,7 @@ import os.path as op
 from nose.tools import assert_raises
 
 from cooltools import loopify
+from cooltools import snipping
 
 # let's try running tests 
 # without installing loopify:
@@ -40,15 +41,12 @@ mock_E_ice = arrays_loaded['mock_E_ice']
 mock_v_ice = arrays_loaded['mock_v_ice']
 
 # 1D expected extracted for tiling-tests:
-mock_exp = mock_E_ice[0,:]
-get_mock_exp = lambda start,stop,shift: mock_exp[start+shift:stop+shift]
-
-
+mock_exp = snipping.LazyToeplitz(mock_E_ice[0,:])
 
 # we need w-edge for tiling procedures:
 w = 3
 # p = 1
-# kernel = get_kernel(w,p,ktype='donut')
+# kernel type: 'donut'
 # # just a simple donut kernel for testing:
 kernel = np.array([[1, 1, 1, 0, 1, 1, 1],
                    [1, 1, 1, 0, 1, 1, 1],
@@ -88,7 +86,7 @@ def test_adjusted_expected_tile_some_nans_and_diag_tiling():
         # RAW observed matrix slice:
         observed = mock_M_raw[slice(*tilei),slice(*tilej)]
         # trying new expected function:
-        expected = loopify.tile_of_expected(start, tilei, tilej, get_mock_exp)
+        expected = mock_exp[slice(*tilei),slice(*tilej)]
         # for diagonal chuynking/tiling tilei==tilej:
         ice_weight = mock_v_ice[slice(*tilei)]
         # that's the main working function from loopify:
@@ -150,7 +148,7 @@ def test_adjusted_expected_tile_some_nans_and_square_tiling():
         # RAW observed matrix slice:
         observed = mock_M_raw[slice(*tilei),slice(*tilej)]
         # trying new expected function:
-        expected = loopify.tile_of_expected(start, tilei, tilej, get_mock_exp)
+        expected = mock_exp[slice(*tilei),slice(*tilej)]
         # for diagonal chuynking/tiling tilei==tilej:
         ice_weight_i = mock_v_ice[slice(*tilei)]
         ice_weight_j = mock_v_ice[slice(*tilej)]

@@ -43,7 +43,7 @@ mock_v_ice = arrays_loaded['mock_v_ice']
 # we need w-edge for tiling procedures:
 # w = 3
 # p = 1
-# kernel = get_kernel(w,p,ktype='donut')
+# kernel type: 'donut'
 # # just a simple donut kernel for testing:
 kernel = np.array([[1, 1, 1, 0, 1, 1, 1],
                    [1, 1, 1, 0, 1, 1, 1],
