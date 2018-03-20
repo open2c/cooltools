@@ -1,0 +1,4 @@
+before we move on with the cleanup and breaking compatibility, I'd like to add this coule of notebooks to the https://github.com/dekkerlab/cooltools.git@dotfinder repo, so that the state would be preserved.
+
+Install cooltools in such a legacy state: pip install --upgrade --no-deps git+https://github.com/dekkerlab/cooltools.git#dotfinder
+and simply run old notebooks using that installation ...
