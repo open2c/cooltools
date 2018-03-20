@@ -20,6 +20,8 @@ install:
   # Create test environment and install deps
   - conda create -q -n test-environment python=$TRAVIS_PYTHON_VERSION setuptools pip six cython numpy matplotlib scipy pandas h5py dask nose mock scikit-learn
   - source activate test-environment
+  # try pip install bioframe:
+  - pip install git+https://github.com/mirnylab/bioframe.git
   # let's try it without installing anyhting:
   # try installation now, travis to be updated:
   - python setup.py install build_ext -i
