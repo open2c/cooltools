@@ -83,7 +83,7 @@ def test_adjusted_expected_tile_some_nans():
     # here:
     nnans = 1 # no nans tolerated
     band_idx = int(band/b)
-    is_inside_band   = (res["bin1_id"]>(res["bin1_id"]-band_idx))
+    is_inside_band   = (res["bin1_id"]>(res["bin2_id"]-band_idx))
     does_comply_nans = (res["la_exp."+"footprint"+".nnans"] < nnans)
     # so, selecting inside band and nNaNs compliant results:
     res = res[is_inside_band & does_comply_nans].reset_index(drop=True)
@@ -91,8 +91,8 @@ def test_adjusted_expected_tile_some_nans():
     # ACTUAL TESTS:
     # integer part of DataFrame must equals exactly:
     assert (
-        res[['bin1_id','bin1_id']].equals(
-            mock_res[['bin1_id','bin1_id']])
+        res[['bin1_id','bin2_id']].equals(
+            mock_res[['bin1_id','bin2_id']])
         )
     # compare floating point part separately:
     assert (
@@ -115,7 +115,7 @@ def test_adjusted_expected_tile_some_nans():
     # outside of get_la_exp now:
     nnans = 2 # just 1 nan tolerated
     band_idx = int(band/b)
-    is_inside_band = (res["bin1_id"]>(res["bin1_id"]-band_idx))
+    is_inside_band = (res["bin1_id"]>(res["bin2_id"]-band_idx))
     does_comply_nans = (res["la_exp."+"footprint"+".nnans"] < nnans)
     # so, selecting inside band and comply nNaNs results only:
     res = res[is_inside_band & does_comply_nans].reset_index(drop=True)
