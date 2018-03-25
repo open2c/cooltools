@@ -48,7 +48,30 @@ _cmp_masks = lambda M_superset,M_subset: (0 > M_superset.astype(np.int) -
 
 
 
-
+###########################################
+# `multiple_test_BH` should be returning
+# an array of q-values, not an array of
+# null_reject statuses ...
+# potentially rename to get_qvals ...
+###########################################
+def get_qvals(pvals):
+    pvals = np.asarray(pvals)
+    n_obs = pvals.size
+    # sort p-values ...
+    sortind       = np.argsort(pvals)
+    pvals_sorted  = pvals[sortind]
+    # q-value = p-value*N_obs/i(rank of a p-value) ...
+    qvals_sorted  = n_obs*pvals_sorted/np.arange(1,n_obs+1)
+    # now we have to create ndarray qvals
+    # that stores qvals in the order of
+    # original pvals array ... 
+    qvals = np.empty_like(pvals)
+    qvals[sortind] = qvals_sorted
+    # return the qvals sorted as the initial pvals:
+    return qvals
+#######################
+#######################
+#######################
 def multiple_test_BH(pvals,alpha=0.1):
     '''
     take an array of N p-values, sort then
