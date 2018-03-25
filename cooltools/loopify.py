@@ -55,23 +55,54 @@ _cmp_masks = lambda M_superset,M_subset: (0 > M_superset.astype(np.int) -
 # potentially rename to get_qvals ...
 ###########################################
 def get_qvals(pvals):
+    '''
+    B&H FDR control procedure:
+    sort a given array of N p-values,
+    determine their rank i and then
+    for each p-value compute a corres-
+    ponding q-value, which is a minimum
+    FDR at which that given p-value
+    would pass a BH-FDR test.
+
+    BH-FDR reminder:
+    given an array of N p-values, sort
+    it in ascending order p[1]<p[2]<p[3]
+    <...<p[N], and find a threshold
+    p-value, p[j] for which p[j] < FDR*j/N,
+    and p[j+1] is already p[j+1] >= FDR*(j+1)/N.
+    Peaks corresponding to p-values
+    p[1]<p[2]<...p[j] are considered significant.
+
+    Parameters
+    ----------
+    pvals : array-like
+        array of p-values to use for
+        multiple hypothesis testing
+    
+    Returns
+    -------
+    qvals : numpy.ndarray
+        array of q-values
+
+    Notes
+    -----
+    - Mostly follows the statsmodels implementation:
+    http://www.statsmodels.org/dev/_modules/statsmodels/stats/multitest.html
+    - Using alpha=0.02 it is possible to achieve
+    called dots similar to pre-update status
+    
+    '''
     pvals = np.asarray(pvals)
     n_obs = pvals.size
-    # sort p-values ...
-    sortind       = np.argsort(pvals)
-    pvals_sorted  = pvals[sortind]
+    # determine rank of p-values (1-indexed):
+    prank = np.argsort(pvals) + 1
     # q-value = p-value*N_obs/i(rank of a p-value) ...
-    qvals_sorted  = n_obs*pvals_sorted/np.arange(1,n_obs+1)
-    # now we have to create ndarray qvals
-    # that stores qvals in the order of
-    # original pvals array ... 
-    qvals = np.empty_like(pvals)
-    qvals[sortind] = qvals_sorted
+    qvals = np.true_divide(n_obs*pvals, prank)
     # return the qvals sorted as the initial pvals:
     return qvals
-#######################
-#######################
-#######################
+#################################################
+# 'multiple_test_BH' to be retired ...
+#################################################
 def multiple_test_BH(pvals,alpha=0.1):
     '''
     take an array of N p-values, sort then
