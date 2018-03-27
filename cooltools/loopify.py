@@ -95,7 +95,9 @@ def get_qvals(pvals):
     pvals = np.asarray(pvals)
     n_obs = pvals.size
     # determine rank of p-values (1-indexed):
-    prank = np.argsort(pvals) + 1
+    porder = np.argsort(pvals)
+    prank  = np.empty_like(porder)
+    prank[porder] = np.arange(1, n_obs+1)
     # q-value = p-value*N_obs/i(rank of a p-value) ...
     qvals = np.true_divide(n_obs*pvals, prank)
     # return the qvals sorted as the initial pvals:
