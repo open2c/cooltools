@@ -14,45 +14,10 @@ from sklearn.cluster import Birch
 # # not ready to be a dependency, yet according to Nezar
 # from bioframe import parse_humanized, parse_region_string
 
-###########################
-# Calculate couple more columns for filtering/sorting ...
-###########################
-_get_slice = lambda row,col,window: (
-                        slice(row-window, row+window+1),
-                        slice(col-window, col+window+1))
-
-
-_cmp_masks = lambda M_superset,M_subset: (0 > M_superset.astype(np.int) -
-                                                 M_subset.astype(np.int)).any()
-
-#############################################
-# to be reused for future CLI:
-#############################################
-# # make sure everything is compatible:
-# try:
-#     # let's extract full matrices and ice_vector:
-#     M_ice, M_raw, E_ice = matrices
-# except ValueError as e:
-#     print("\"matrices\" has to have M_ice,M_raw,E_ice",
-#           "packed into tuple or list: {}".format(e))
-#     raise
-# except TypeError as e:
-#     print("\"matrices\" has to have M_ice,M_raw,E_ice",
-#           "packed into tuple or list: {}".format(e))
-#     raise
-# else:
-#     assert isinstance(M_ice, np.ndarray)
-#     assert isinstance(M_raw, np.ndarray)
-#     assert isinstance(E_ice, np.ndarray)
-#     print("\"matrices\" unpacked succesfully")
-
-
 
 ###########################################
-# `multiple_test_BH` should be returning
-# an array of q-values, not an array of
-# null_reject statuses ...
-# potentially rename to get_qvals ...
+# 'get_qvals' is tested and is capable
+# of reproducing `multiple_test_BH` results
 ###########################################
 def get_qvals(pvals):
     '''
@@ -90,6 +55,8 @@ def get_qvals(pvals):
     http://www.statsmodels.org/dev/_modules/statsmodels/stats/multitest.html
     - Using alpha=0.02 it is possible to achieve
     called dots similar to pre-update status
+    alpha is meant to be a q-value threshold:
+    "qvals <= alpha"
     
     '''
     pvals = np.asarray(pvals)
@@ -102,74 +69,6 @@ def get_qvals(pvals):
     qvals = np.true_divide(n_obs*pvals, prank)
     # return the qvals sorted as the initial pvals:
     return qvals
-#################################################
-# 'multiple_test_BH' to be retired ...
-#################################################
-def multiple_test_BH(pvals,alpha=0.1):
-    '''
-    take an array of N p-values, sort then
-    in ascending order p1<p2<p3<...<pN,
-    and find a threshold p-value, pi
-    for which pi < alpha*i/N, and pi+1 is
-    already pi+1 >= alpha*(i+1)/N.
-    Peaks corresponding to p-values
-    p1<p2<...pi are considered significant.
-
-    Parameters
-    ----------
-    pvals : array-like
-        array of p-values to use for
-        multiple hypothesis testing
-    alpha : float
-        rate of false discovery (FDR)
-
-    
-    Returns
-    -------
-    reject_ : numpy.ndarray
-        array of type np.bool storing
-        status of a pixel: significant (True)
-        non-significant (False)
-    pvals_threshold: tuple
-        pval_max_reject_null, pval_min_accept_null
-
-    Notes
-    -----
-    - Mostly follows the statsmodels implementation:
-    http://www.statsmodels.org/dev/_modules/statsmodels/stats/multitest.html
-    - Using alpha=0.02 it is possible to achieve
-    called dots similar to pre-update status
-    
-    '''
-    # 
-    # prepare:
-    pvals = np.asarray(pvals)
-    n_obs = pvals.size
-    # sort p-values ...
-    sortind     = np.argsort(pvals)
-    pvals_sort       = pvals[sortind]
-    # the alpha*i/N_obs (empirical CDF):
-    ecdffactor  = np.arange(1,n_obs+1)/float(n_obs)
-    # for which observations to reject null-hypothesis ...
-    reject_null = (pvals_sort <= alpha*ecdffactor)
-
-    # let's extract border-line significant P-value:
-    pval_max_reject_null = pvals_sort[ reject_null].max()
-    pval_min_accept_null = pvals_sort[~reject_null].min()
-
-    if reject_null.any():
-        print("Some significant peaks have been detected!\n"
-            "pval border is between {:.4f} and {:.4f}".format(
-                                            pval_max_reject_null,
-                                            pval_min_accept_null))
-    # now we have to create ndarray reject_
-    # that stores rej_null values in the order of
-    # original pvals array ... 
-    reject_ = np.empty_like(reject_null)
-    reject_[sortind] = reject_null
-    # return the reject_ status list and pval-range:
-    return reject_, (pval_max_reject_null, pval_min_accept_null)
-
 
 
 
