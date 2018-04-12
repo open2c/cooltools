@@ -174,7 +174,8 @@ def clust_2D_pixels(pixels_df,threshold_cluster=2):
 def diagonal_matrix_tiling(start,
                            stop,
                            edge,
-                           band):
+                           band,
+                           verbose=False):
     """
     generate a stream of tiling coordinates
     that guarantee to cover a diagonal area
@@ -257,13 +258,14 @@ def diagonal_matrix_tiling(start,
     
     ###################################################################
     # matrix parameters before chunking:
-    print("matrix of size {}X{} to be splitted so that\n".format(size,size)+
-     "  diagonal region of size {} would be completely\n".format(band)+
-     "  covered by the tiling, additionally keeping\n"+
-     "  a small 'edge' of size w={}, to allow for\n".format(edge)+
-     "  meaningfull convolution around boundaries.\n"+
-     "  Resulting number of tiles is {}".format(tiles-1)+
-     "  Non-edge case size of each tile is {}X{}".format(2*(band+edge),2*(band+edge)))
+    if verbose:
+        print("matrix of size {}X{} to be splitted so that\n".format(size,size)+
+         "  diagonal region of size {} would be completely\n".format(band)+
+         "  covered by the tiling, additionally keeping\n"+
+         "  a small 'edge' of size w={}, to allow for\n".format(edge)+
+         "  meaningfull convolution around boundaries.\n"+
+         "  Resulting number of tiles is {}".format(tiles-1)+
+         "  Non-edge case size of each tile is {}X{}".format(2*(band+edge),2*(band+edge)))
     ###################################################################
 
     # instead of returning lists of
@@ -292,7 +294,8 @@ def square_matrix_tiling(start,
                          stop,
                          tile_size,
                          edge,
-                         square=False):
+                         square=False,
+                         verbose=False):
     """
     generate a stream of tiling coordinates
     that guarantee to cover an entire matrix.
@@ -401,11 +404,12 @@ def square_matrix_tiling(start,
     
     ###################################################################
     # matrix parameters before chunking:
-    print("matrix of size {}X{} to be splitted\n".format(size,size)+
-     "  into square tiles of size {}.\n".format(tile_size)+
-     "  A small 'edge' of size w={} is added, to allow for\n".format(edge)+
-     "  meaningfull convolution around boundaries.\n"+
-     "  Resulting number of tiles is {}".format(tiles*tiles))
+    if verbose:
+        print("matrix of size {}X{} to be splitted\n".format(size,size)+
+         "  into square tiles of size {}.\n".format(tile_size)+
+         "  A small 'edge' of size w={} is added, to allow for\n".format(edge)+
+         "  meaningfull convolution around boundaries.\n"+
+         "  Resulting number of tiles is {}".format(tiles*tiles))
     ###################################################################
 
     # instead of returning lists of
