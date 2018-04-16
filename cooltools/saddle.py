@@ -325,7 +325,9 @@ def saddleplot(binedges,
         fraction=0.8, 
         label=cbar_label)
     if vmin is not None and vmax is not None:
-        cb.set_ticks(np.arange(vmin, vmax + 0.001, 0.5))
+        # cb.set_ticks(np.arange(vmin, vmax + 0.001, 0.5))
+        # # do linspace between vmin and vmax of 5 segments and round to 1 decimal:
+        cb.set_ticks(np.round(np.linspace(vmin, vmax, 5),1))
     plt.grid(False)
     plt.axis('off')
 
