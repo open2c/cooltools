@@ -19,6 +19,9 @@ import multiprocessing as mp
 from scipy.linalg import toeplitz
 from scipy.stats import poisson
 
+from fuctools import partial
+
+
 # from bioframe import parse_humanized, parse_region_string
 # # from scipy.ndimage import convolve
 # # from scipy.linalg import toeplitz
@@ -158,6 +161,112 @@ def heatmap_tiles_generator_diag(clr, chroms, pad_size, tile_size, band_to_cover
             # tiles from the lower triangle from calculations ...
             if (min(band_to,diag_to) - max(band_from,diag_from)) > 2*pad_size:
                 yield chrom, tilei, tilej
+
+
+
+
+
+##############################################################################
+##############################################################################
+##############################################################################
+# # for every tile, described as (chrom, tile, tile) ...
+def get_results_per_chrom_tile(tile_cij,
+                            clr,
+                            cis_exp,
+                            exp_v_name,
+                            bal_v_name,
+                            kernels,
+                            nans_tolerated,
+                            band_to_cover,
+                            verbose):
+    """
+    The main working function that given a tile of
+    a heatmap, applies kernels to perform convolution
+    to calculate locally-adjusted expected and then
+    calculates a p-value for every meaningfull pixel
+    against these l.a. expected values.
+    
+    
+    Parameters
+    ----------
+    tile_cij : tuple
+        Tuple of 3: chromosome name, tile span row-wise,
+        tile span column-wise: (chrom, tile_i, tile_j),
+        where tile_i = (start_i, end_i), and tile_j
+         = (start_j, end_j).
+    clr : cooler
+        Cooler object to use to extract Hi-C heatmap data.
+    cis_exp : pandas.DataFrame
+        DataFrame with 1 dimensional expected, indexed with
+        'chrom' and 'diag'.
+    exp_v_name : str
+        Name of a value column in expected DataFrame
+    bal_v_name : str
+        Name of a value column with balancing weights in
+        a cooler.bins() DataFrame. Typically 'weight'.
+    kernels : dict
+        A dictionary with keys being kernels names and
+        values being ndarrays representing those kernels.
+    nans_tolerated : int
+        Number of NaNs tolerated in a footprint of every kernel.
+    band_to_cover : int
+        Results would be stored only for pixels connecting
+        loci closer than 'band_to_cover'.
+    verbose : bool
+        Enable verbose output.
+        
+    Returns
+    -------
+    res_df : pandas.DataFrame
+        results: annotated pixels with calculated locally
+        adjusted expected for every kernels, observed,
+        precalculated pvalues, number of NaNs in footprint
+        of every kernels, all of that in a form of an annotated
+        pixels DataFrame for eligible pixels of a given tile.
+    """
+
+    # unpack tile's coordinates:
+    chrom, tilei, tilej = tile_cij
+    # we have to do it for every tile, because
+    # chrom is not known apriori (maybe move outside):
+    lazy_exp = snipping.LazyToeplitz(cis_exp.loc[chrom][exp_v_name].values)
+    # let's keep i,j-part explicit here:
+    origin = (tilei[0], tilej[0])
+    # RAW observed matrix slice:
+    observed = clr.matrix(balance=False)[slice(*tilei), slice(*tilej)]
+    # expected as a rectangular tile :
+    expected = lazy_exp[slice(*tilei), slice(*tilej)]
+    # slice of balance_weight for row-span and column-span :
+    bal_weight_i = clr.bins()[slice(*tilei)][bal_v_name].values
+    bal_weight_j = clr.bins()[slice(*tilej)][bal_v_name].values
+    # that's the main working function from loopify:
+    res = loopify.get_adjusted_expected_tile_some_nans(origin = origin,
+                                                     observed = observed,
+                                                     expected = expected,
+                                                     bal_weight = (bal_weight_i,bal_weight_j),
+                                                     kernels = kernels,
+                                                     verbose = verbose)
+    # post-processing filters:
+    # (1) exclude pixels that connect loci further than 'band_to_cover' apart: 
+    is_inside_band = (res["bin1_id"] > (res["bin2_id"]-band_to_cover))
+    # (2) identify pixels that pass number of NaNs compliance test for ALL kernels:
+    does_comply_nans = np.all(res[["la_exp."+k+".nnans" for k in kernels]] < nans_tolerated, axis=1)
+    # so, selecting inside band and nNaNs compliant results:
+    # ( drop dropping index maybe ??? ) ...
+    res_df = res[is_inside_band & does_comply_nans].reset_index(drop=True)
+    # do Poisson tests:
+    get_pval = lambda la_exp : 1.0 - poisson.cdf(res_df["obs.raw"], la_exp)
+    for k in kernels:
+        res_df["la_exp."+k+".pval"] = get_pval( res_df["la_exp."+k+".value"] )
+    # that's all we can do for a given tile ...
+    return cooler.annotate(res_df.reset_index(drop=True), clr.bins()[:])
+
+
+
+
+
+
+
 
 
 
@@ -369,45 +478,129 @@ def call_dots(
                                                                     expected_path))
 
 
+    # prepare some parameters:
+    # turn them from nucleotides dims to bins, etc.:
+    binsize = c.binsize
+    # 
+    loci_separation_bins   = int(max_loci_separation/binsize)
+    tile_size_bins         = int(tile_size/binsize)
+    clustering_radius_bins = int(dots_clustering_radius/binsize)
+    # 
+    ktypes = ['donut', 'vertical', 'horizontal', 'lowleft', 'upright']
+    #
+    # define kernel parameteres based on the cooler resolution:
+    if binsize > 28000:
+        # > 30 kb - is probably too much ...
+        raise ValueError("Provided cooler {} has resolution {} bases,\
+                         which is too low for analysis.".format(cool_path, binsize))
+    elif binsize >= 18000:
+        # ~ 20-25 kb:
+        w, p = 3, 1
+    elif binsize >= 8000:
+        # ~ 10 kb
+        w, p = 5, 2
+    elif binsize >= 4000:
+        # ~5 kb
+        w, p = 7, 4
+    else:
+        # < 5 kb - is probably too fine ...
+        raise ValueError("Provided cooler {} has resolution {} bases, \
+                        which is too fine for analysis.".format(cool_path, binsize))
+    # rename w, p to wid, pix probably, or _w, _p to avoid na,ing conflicts ...
+
+    # estimate number of tiles to be processed:
+    num_tiles_approx = c.chromsizes[expected_chroms].sum()/(loci_separation_bins * binsize)
+
+    # pre-fill 'get_results_per_chrom_tile' function with context parameteres:
+    get_res_chrom_tile = partial(get_results_per_chrom_tile,
+                                    clr = c,
+                                    cis_exp = expected,
+                                    exp_v_name = expected_name,
+                                    bal_v_name = 'weight',
+                                    kernels = {k: get_kernel(w,p,k) for k in ktypes},
+                                    nans_tolerated = max_nans_tolerated,
+                                    band_to_cover = loci_separation_bins,
+                                    verbose = verbose)
+    # main working "loop":
+    if nproc > 1:
+        with mp.Pool(nproc) as p:
+            if verbose:
+                print("creating a Pool of {} workers to tackle ~{} tiles".format(nproc, num_tiles_approx))
+            # for every tile, described as (chrom, tile, tile) ...
+            res_list = p.map(get_res_chrom_tile,
+                             heatmap_tiles_generator_diag(expected_chroms, w, loci_separation_bins),
+                             chunksize=int(num_tiles_approx/nproc))
+    else:
+        # serial implementation:
+        if verbose:
+            print("Serial implementation.")
+        # for every tile, described as (chrom, tile, tile) ...
+        res_list = \
+            [get_res_chrom_tile(tij) for tij in heatmap_tiles_generator_diag(expected_chroms,
+                                                                             w,
+                                                                             loci_separation_bins)]
+
+    if verbose:
+        print("Convolution part is over!")
+    # concatenate the results ...
+    res_df = pd.concat(res_list, ignore_index=True)
+    # 
+    if verbose:
+        print("major concat is over!")
 
 
+    # do Benjamin-Hochberg FDR multiple hypothesis tests
+    # genome-wide:
+    for k in kernels:
+        res_df["la_exp."+k+".qval"] = get_pval( res_df["la_exp."+k+".pval"] )
+
+    # combine results of all tests:
+    res_df['comply_fdr'] = np.all(res[["la_exp."+k+".qval" for k in kernels]] <= fdr, axis=1)
 
 
+    # now clustering would be needed ...
+    # clustering is still per chromosome basis...
+    # 
+    # using different bin12_id_names since all
+    # pixels are annotated at this point.
+    pixel_clust_list = []
+    for chrom  in expected_chroms:
+        # probably generate one big DataFrame with clustering
+        # information only and then just merge it with the
+        # existing 'res_df'-DataFrame.
+        # should we use groupby instead of 'res_df['chrom12']==chrom' ?!
+        # to be tested ...
+        pixel_clust = clust_2D_pixels(res_df[res_df['comply_fdr'] & \
+                                      (res_df['chrom1']==chrom) & \
+                                      (res_df['chrom2']==chrom)],
+                                threshold_cluster=clustering_radius_bins,
+                                bin1_id_name='start1',
+                                bin2_id_name='start2')
+        pixel_clust_list.append(pixel_clust)
 
-
-
-
+    if verbose:
+        print("Clustering is over!")
+    # concatenate clustering results ...
+    # I'm not sure if indexing information would persist here or not ...
+    # let's assume it would for now ...
+    pixel_clust_df = pd.concat(pixel_clust_list, ignore_index=True)
+    # now merge pixel_clust_df and res_df DataFrame ...
+    #     # and merge (index-wise) with the main DataFrame:
+    res_df =  res_df.merge(
+                pixel_clust_df,
+                how='left',
+                left_index=True,
+                right_index=True) 
 
 
     ##############################
-    # OUTPUT AND PLOTTING:
+    # OUTPUT:
     ##############################
     if output is not None:
-        np.savez(
-            file = output+".saddledump", # .npz auto-added
-            saddledata = saddledata,
-            binedges = binedges,
-            digitized = digitized)
-
-    # compute naive compartment strength
-    # if requested by the user:    
-    if compute_strength:
-        strength = get_compartment_strength(saddledata, fraction_for_strength)
-        print("Comparment strength = {}".format(strength),
-            "\ncalculated using {} of saddledata bins".format(fraction_for_strength),
-            "to compute median intra- and inter-compartmental signal")
-
-
-    if savefig is not None:
-        try:
-            import matplotlib as mpl
-            # savefig only for now:
-            mpl.use('Agg')
-            import matplotlib.pyplot as plt
-            import seaborn as sns
-            pal = sns.color_palette('muted')
-        except ImportError:
-            print("Install matplotlib and seaborn to use ", file=sys.stderr)
-            sys.exit(1)
-
+        res_df[['chrom1','start1','end1','chrom2','start2','end2','c_label','c_size']].to_csv(
+                                                                    output,
+                                                                    sep='\t',
+                                                                    header=True,
+                                                                    index=False,
+                                                                    compression=None)
 

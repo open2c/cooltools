@@ -73,7 +73,10 @@ def get_qvals(pvals):
 
 
 
-def clust_2D_pixels(pixels_df,threshold_cluster=2):
+def clust_2D_pixels(pixels_df,
+                    threshold_cluster=2,
+                    bin1_id_name='bin1_id',
+                    bin2_id_name='bin2_id'):
     '''
     Group significant pixels by proximity
     using Birch clustering.
@@ -90,6 +93,14 @@ def clust_2D_pixels(pixels_df,threshold_cluster=2):
         clustering radius for Birch clustering
         derived from ~40kb radius of clustering
         and bin size.
+    bin1_id_name : str
+        Name of the 1st coordinate (row index)
+        in 'pixel_df', by default 'bin1_id'.
+        'start1/end1' could be usefull as well.
+    bin2_id_name : str
+        Name of the 2nd coordinate (column index)
+        in 'pixel_df', by default 'bin2_id'.
+        'start2/end2' could be usefull as well.
 
     
     Returns
@@ -106,13 +117,14 @@ def clust_2D_pixels(pixels_df,threshold_cluster=2):
     TODO: figure out Birch clustering
     CFNodes etc, check if there might
     be some empty subclusters.
+    Compare and potentially adopt DBSCAN.
     
     '''
     # ###########
     # I suspect misup of row/col indices ...
     ##############
     # col (bin2) must precede row (bin1):
-    pixels  = pixels_df[['bin1_id','bin2_id']].values
+    pixels  = pixels_df[[bin1_id_name, bin2_id_name]].values
     pix_idx = pixels_df.index
     # clustering object prepare:
     brc = Birch(n_clusters=None,threshold=threshold_cluster)
@@ -156,7 +168,7 @@ def clust_2D_pixels(pixels_df,threshold_cluster=2):
     peak_tmp = pd.DataFrame(
                         centroids,
                         index=pix_idx,
-                        columns=['cbin1_id','cbin2_id'])
+                        columns=['c'+bin1_id_name,'c'+bin2_id_name])
     # add labels:
     peak_tmp['c_label'] = brc.labels_.astype(np.int)
     # add cluster sizes:
