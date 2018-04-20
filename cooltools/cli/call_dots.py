@@ -590,14 +590,20 @@ def call_dots(
     # concatenate clustering results ...
     # I'm not sure if indexing information would persist here or not ...
     # let's assume it would for now ...
-    pixel_clust_df = pd.concat(pixel_clust_list, ignore_index=True)
+    pixel_clust_df = pd.concat(pixel_clust_list, ignore_index=False)
     # now merge pixel_clust_df and res_df DataFrame ...
     #     # and merge (index-wise) with the main DataFrame:
-    res_df =  res_df.merge(
-                pixel_clust_df,
-                how='left',
-                left_index=True,
-                right_index=True) 
+    res_df =  res_df[res_df['comply_fdr']].merge(
+                                            pixel_clust_df,
+                                            how='left',
+                                            left_index=True,
+                                            right_index=True) 
+
+
+###################################
+# everyhting works up until here ...
+# great stuff !!!
+###################################
 
 
     ##############################
