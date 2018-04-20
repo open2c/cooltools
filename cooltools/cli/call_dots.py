@@ -19,7 +19,7 @@ import multiprocessing as mp
 from scipy.linalg import toeplitz
 from scipy.stats import poisson
 
-from fuctools import partial
+from functools import partial
 
 
 # from bioframe import parse_humanized, parse_region_string
@@ -509,7 +509,7 @@ def call_dots(
     # rename w, p to wid, pix probably, or _w, _p to avoid na,ing conflicts ...
 
     # estimate number of tiles to be processed:
-    num_tiles_approx = c.chromsizes[expected_chroms].sum()/(loci_separation_bins * binsize)
+    num_tiles_approx = int(c.chromsizes[expected_chroms].sum()/(loci_separation_bins * binsize))
 
     # pre-fill 'get_results_per_chrom_tile' function with context parameteres:
     get_res_chrom_tile = partial(get_results_per_chrom_tile,
@@ -528,7 +528,11 @@ def call_dots(
                 print("creating a Pool of {} workers to tackle ~{} tiles".format(nproc, num_tiles_approx))
             # for every tile, described as (chrom, tile, tile) ...
             res_list = p.map(get_res_chrom_tile,
-                             heatmap_tiles_generator_diag(expected_chroms, w, loci_separation_bins),
+                             heatmap_tiles_generator_diag(c,
+                                                          expected_chroms,
+                                                          w,
+                                                          tile_size_bins,
+                                                          loci_separation_bins),
                              chunksize=int(num_tiles_approx/nproc))
     else:
         # serial implementation:
@@ -536,9 +540,12 @@ def call_dots(
             print("Serial implementation.")
         # for every tile, described as (chrom, tile, tile) ...
         res_list = \
-            [get_res_chrom_tile(tij) for tij in heatmap_tiles_generator_diag(expected_chroms,
+            [get_res_chrom_tile(tij) for tij in heatmap_tiles_generator_diag(c,
+                                                                             expected_chroms,
                                                                              w,
+                                                                             tile_size_bins,
                                                                              loci_separation_bins)]
+
 
     if verbose:
         print("Convolution part is over!")
@@ -551,11 +558,11 @@ def call_dots(
 
     # do Benjamin-Hochberg FDR multiple hypothesis tests
     # genome-wide:
-    for k in kernels:
-        res_df["la_exp."+k+".qval"] = get_pval( res_df["la_exp."+k+".pval"] )
+    for k in ktypes:
+        res_df["la_exp."+k+".qval"] = loopify.get_qvals( res_df["la_exp."+k+".pval"] )
 
     # combine results of all tests:
-    res_df['comply_fdr'] = np.all(res[["la_exp."+k+".qval" for k in kernels]] <= fdr, axis=1)
+    res_df['comply_fdr'] = np.all(res_df[["la_exp."+k+".qval" for k in ktypes]] <= fdr, axis=1)
 
 
     # now clustering would be needed ...
@@ -570,12 +577,12 @@ def call_dots(
         # existing 'res_df'-DataFrame.
         # should we use groupby instead of 'res_df['chrom12']==chrom' ?!
         # to be tested ...
-        pixel_clust = clust_2D_pixels(res_df[res_df['comply_fdr'] & \
+        pixel_clust = loopify.clust_2D_pixels(res_df[res_df['comply_fdr'] & \
                                       (res_df['chrom1']==chrom) & \
                                       (res_df['chrom2']==chrom)],
-                                threshold_cluster=clustering_radius_bins,
-                                bin1_id_name='start1',
-                                bin2_id_name='start2')
+                                threshold_cluster = dots_clustering_radius,
+                                bin1_id_name      = 'start1',
+                                bin2_id_name      = 'start2')
         pixel_clust_list.append(pixel_clust)
 
     if verbose:
