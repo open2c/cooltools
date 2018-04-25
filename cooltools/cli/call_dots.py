@@ -484,7 +484,9 @@ def call_dots(
     # 
     loci_separation_bins   = int(max_loci_separation/binsize)
     tile_size_bins         = int(tile_size/binsize)
-    clustering_radius_bins = int(dots_clustering_radius/binsize)
+    # # clustering would deal with bases-units for now, so
+    # # supress this for now:
+    # clustering_radius_bins = int(dots_clustering_radius/binsize)
     # 
     ktypes = ['donut', 'vertical', 'horizontal', 'lowleft', 'upright']
     #
@@ -511,6 +513,9 @@ def call_dots(
     # estimate number of tiles to be processed:
     num_tiles_approx = int(c.chromsizes[expected_chroms].sum()/(loci_separation_bins * binsize))
 
+    # add very_verbose to supress output
+    # from convolution of every tile:
+    very_verbose = False
     # pre-fill 'get_results_per_chrom_tile' function with context parameteres:
     get_res_chrom_tile = partial(get_results_per_chrom_tile,
                                     clr = c,
@@ -520,7 +525,7 @@ def call_dots(
                                     kernels = {k: get_kernel(w,p,k) for k in ktypes},
                                     nans_tolerated = max_nans_tolerated,
                                     band_to_cover = loci_separation_bins,
-                                    verbose = verbose)
+                                    verbose = very_verbose)
     # main working "loop":
     if nproc > 1:
         with mp.Pool(nproc) as p:
@@ -556,6 +561,7 @@ def call_dots(
         print("major concat is over!")
 
 
+
     # do Benjamin-Hochberg FDR multiple hypothesis tests
     # genome-wide:
     for k in ktypes:
@@ -564,7 +570,16 @@ def call_dots(
     # combine results of all tests:
     res_df['comply_fdr'] = np.all(res_df[["la_exp."+k+".qval" for k in ktypes]] <= fdr, axis=1)
 
+    ######################################
+    # post processing starts from here on:
+    # it includes:
+    # 0. remove low MAPQ reads ?!
+    # 1. clustering
+    # 2. filter pixels by FDR
+    # 3. merge different resolutions.
+    ######################################
 
+    # (1)
     # now clustering would be needed ...
     # clustering is still per chromosome basis...
     # 
@@ -588,32 +603,121 @@ def call_dots(
     if verbose:
         print("Clustering is over!")
     # concatenate clustering results ...
-    # I'm not sure if indexing information would persist here or not ...
-    # let's assume it would for now ...
+    # indexing information persists here ...
     pixel_clust_df = pd.concat(pixel_clust_list, ignore_index=False)
     # now merge pixel_clust_df and res_df DataFrame ...
-    #     # and merge (index-wise) with the main DataFrame:
-    res_df =  res_df[res_df['comply_fdr']].merge(
+    # # and merge (index-wise) with the main DataFrame:
+    res_df_comply =  res_df[res_df['comply_fdr']].merge(
                                             pixel_clust_df,
                                             how='left',
                                             left_index=True,
                                             right_index=True) 
 
+    # report only centroids with highest Observed:
+    res_chrom_clust_group = res_df_comply.groupby(["chrom1","chrom2","c_label"])
+    res_df_centroids      = res_df_comply.loc[res_chrom_clust_group["obs.raw"].idxmax()]
+    ###################################
+    # everyhting works up until here ...
+    # great stuff !!!
+    ###################################
 
-###################################
-# everyhting works up until here ...
-# great stuff !!!
-###################################
+
+    # (2)
+    # filter by FDR, enrichment etc:
+    enrichment_factor_1 = 1.5
+    enrichment_factor_2 = 1.75
+    enrichment_factor_3 = 2.0
+    FDR_orphan_threshold = 0.02
+    # 
+    enrichment_fdr_comply = \
+        (res_df_centroids["obs.raw"] > enrichment_factor_2*res_df_centroids["la_exp.lowleft.value"]) & \
+        (res_df_centroids["obs.raw"] > enrichment_factor_2*res_df_centroids["la_exp.donut.value"]) & \
+        (res_df_centroids["obs.raw"] > enrichment_factor_1*res_df_centroids["la_exp.vertical.value"]) & \
+        (res_df_centroids["obs.raw"] > enrichment_factor_1*res_df_centroids["la_exp.horizontal.value"]) & \
+        ( (res_df_centroids["obs.raw"] > enrichment_factor_3*res_df_centroids["la_exp.lowleft.value"]) | \
+            (res_df_centroids["obs.raw"] > enrichment_factor_3*res_df_centroids["la_exp.donut.value"]) ) & \
+        ( (res_df_centroids["c_size"] > 1) | \
+            ((res_df_centroids["la_exp.lowleft.qval"] + \
+             res_df_centroids["la_exp.donut.qval"] + \
+             res_df_centroids["la_exp.vertical.qval"] + \
+             res_df_centroids["la_exp.horizontal.qval"]) <= FDR_orphan_threshold) )
+    # use "enrichment_fdr_comply" to filter out 
+    # non-satisfying pixels:
+    res_df_output = res_df_centroids[enrichment_fdr_comply]
+
+
+    # # # columns up for grabs, take whatever you need:
+    # chrom1
+    # start1
+    # end1
+    # weight1
+    # chrom2
+    # start2
+    # end2
+    # weight2
+    # la_exp.donut.value
+    # la_exp.donut.nnans
+    # la_exp.vertical.value
+    # la_exp.vertical.nnans
+    # la_exp.horizontal.value
+    # la_exp.horizontal.nnans
+    # la_exp.lowleft.value
+    # la_exp.lowleft.nnans
+    # la_exp.upright.value
+    # la_exp.upright.nnans
+    # exp.raw
+    # obs.raw
+    # la_exp.donut.pval
+    # la_exp.vertical.pval
+    # la_exp.horizontal.pval
+    # la_exp.lowleft.pval
+    # la_exp.upright.pval
+    # la_exp.donut.qval
+    # la_exp.vertical.qval
+    # la_exp.horizontal.qval
+    # la_exp.lowleft.qval
+    # la_exp.upright.qval
+    # comply_fdr
+    # cstart1
+    # cstart2
+    # c_label
+    # c_size
+
+
+    # # tentaive output coplumns list:
+    columns_for_output = \
+            ['chrom1',
+            'start1',
+            'end1',
+            'chrom2',
+            'start2',
+            'end2',
+            'la_exp.donut.value',
+            'la_exp.vertical.value',
+            'la_exp.horizontal.value',
+            'la_exp.lowleft.value',
+            'la_exp.upright.value',
+            'exp.raw',
+            'obs.raw',
+            'la_exp.donut.qval',
+            'la_exp.vertical.qval',
+            'la_exp.horizontal.qval',
+            'la_exp.lowleft.qval',
+            'la_exp.upright.qval',
+            'cstart1',
+            'cstart2',
+            'c_label',
+            'c_size']
 
 
     ##############################
     # OUTPUT:
     ##############################
     if output is not None:
-        res_df[['chrom1','start1','end1','chrom2','start2','end2','c_label','c_size']].to_csv(
-                                                                    output,
-                                                                    sep='\t',
-                                                                    header=True,
-                                                                    index=False,
-                                                                    compression=None)
+        res_df_output[columns_for_output].to_csv(
+                                        output,
+                                        sep='\t',
+                                        header=True,
+                                        index=False,
+                                        compression=None)
 
