@@ -164,9 +164,9 @@ def clust_2D_pixels(pixels_df,
 
     if verbose:
         # prepare clustering summary report:
-        msg = "Clustering is completed:\n" +
-              "there are {} clusters detected\n".format(uniq_counts.size) +
-              "mean size {:.6f}+/-{:.6f}\n".format(uniq_counts.mean(),
+        msg = "Clustering is completed:\n" + \
+              "{} clusters detected\n".format(uniq_counts.size) + \
+              "{:.2f}+/-{:.2f} mean size\n".format(uniq_counts.mean(),
                                                  uniq_counts.std())
         print(msg)
 
