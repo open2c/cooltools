@@ -76,10 +76,17 @@ def get_qvals(pvals):
 def clust_2D_pixels(pixels_df,
                     threshold_cluster=2,
                     bin1_id_name='bin1_id',
-                    bin2_id_name='bin2_id'):
+                    bin2_id_name='bin2_id',
+                    verbose=True):
     '''
     Group significant pixels by proximity
     using Birch clustering.
+    We use "n_clusters=None", which implies
+    no AgglomerativeClustering, and thus
+    simply reporting "blobs" of pixels of
+    radii <="threshold_cluster" along with
+    corresponding blob-centroids as well.
+
 
     Parameters
     ----------
@@ -101,6 +108,9 @@ def clust_2D_pixels(pixels_df,
         Name of the 2nd coordinate (column index)
         in 'pixel_df', by default 'bin2_id'.
         'start2/end2' could be usefull as well.
+    verbose : bool
+        Print verbose clustering summary report
+        defaults is True.
 
     
     Returns
@@ -111,71 +121,67 @@ def clust_2D_pixels(pixels_df,
         label and sizes are unique pixel-cluster labels
         and their corresponding sizes.
 
-
-    Notes
-    -----
-    TODO: figure out Birch clustering
-    CFNodes etc, check if there might
-    be some empty subclusters.
-    Compare and potentially adopt DBSCAN.
-    
     '''
-    # ###########
-    # I suspect misup of row/col indices ...
-    ##############
+
     # col (bin2) must precede row (bin1):
-    pixels  = pixels_df[[bin1_id_name, bin2_id_name]].values
-    pix_idx = pixels_df.index
-    # clustering object prepare:
-    brc = Birch(n_clusters=None,threshold=threshold_cluster)
-    # cluster selected pixels ...
+    pixels     = pixels_df[[bin1_id_name, bin2_id_name]].values
+    pixel_idxs = pixels_df.index
+
+    # perform BIRCH clustering of pixels:
+    # "n_clusters=None" implies using BIRCH
+    # without AgglomerativeClustering, thus
+    # simply reporting "blobs" of pixels of
+    # radius "threshold_cluster" along with
+    # blob-centroids as well:
+    brc = Birch(n_clusters=None,
+                threshold=threshold_cluster,
+                # branching_factor=50, (it's default)
+                compute_labels=True)
     brc.fit(pixels)
-    brc.predict(pixels)
-    # array of labels assigned to each pixel
-    # after clustering: brc.labels_
-    # array of (tuples?) with X,Y coordinates 
-    # for centroids of corresponding clusters:
-    # brc.subcluster_centers_
+    # # following is redundant,
+    # # as it's done here:
+    # # https://github.com/scikit-learn/scikit-learn/blob/a24c8b464d094d2c468a16ea9f8bf8d42d949f84/sklearn/cluster/birch.py#L638
+    # clustered_labels = brc.predict(pixels)
+
+    # labels of nearest centroid, assigned to each pixel,
+    # BEWARE: labels might not be continuous, i.e.,
+    # "np.unique(clustered_labels)" isn't same as "brc.subcluster_labels_", because:
+    # https://github.com/scikit-learn/scikit-learn/blob/a24c8b464d094d2c468a16ea9f8bf8d42d949f84/sklearn/cluster/birch.py#L576
+    clustered_labels    = brc.labels_
+    # centroid coordinates ( <= len(clustered_labels)):
+    clustered_centroids = brc.subcluster_centers_
+    # count unique labels and get their continuous indices
     uniq_labels, inverse_idx, uniq_counts = np.unique(
-                                                brc.labels_,
+                                                clustered_labels,
                                                 return_inverse=True,
                                                 return_counts=True)
     # cluster sizes taken to match labels:
-    clust_sizes = uniq_counts[inverse_idx]
-    ####################
-    # After discovering a bug ...
-    # bug (or misunderstanding, rather):
-    # uniq_labels is a subset of brc.subcluster_labels_
-    # TODO: dive deeper into Birch ...
-    ####################
-    # repeat centroids coordinates
-    # as many times as there are pixels
-    # in each cluster:
-    # IN OTHER WORDS (after bug fix):
-    # take centroids corresponding to labels:
-    centroids = np.take(brc.subcluster_centers_,
-                        brc.labels_,
-                        axis=0)
+    cluster_sizes       = uniq_counts[inverse_idx]
+    # take centroids corresponding to labels (as many as needed):
+    centroids_per_pixel = np.take(clustered_centroids,
+                                  clustered_labels,
+                                  axis=0)
 
-    # small message:
-    print("Clustering is completed:\n"+
-          "there are {} clusters detected\n".format(uniq_counts.size)+
-          "mean size {:.6f}+/-{:.6f}\n".format(uniq_counts.mean(),
-                                             uniq_counts.std())+
-          "labels and centroids to be reported.")
+    if verbose:
+        # prepare clustering summary report:
+        msg = "Clustering is completed:\n" +
+              "there are {} clusters detected\n".format(uniq_counts.size) +
+              "mean size {:.6f}+/-{:.6f}\n".format(uniq_counts.mean(),
+                                                 uniq_counts.std())
+        print(msg)
 
-    # let's create output DataFrame
-    peak_tmp = pd.DataFrame(
-                        centroids,
-                        index=pix_idx,
-                        columns=['c'+bin1_id_name,'c'+bin2_id_name])
-    # add labels:
-    peak_tmp['c_label'] = brc.labels_.astype(np.int)
+    # create output DataFrame
+    centroids_n_labels_df = pd.DataFrame(
+                                centroids_per_pixel,
+                                index=pixel_idxs,
+                                columns=['c'+bin1_id_name,'c'+bin2_id_name])
+    # add labels per pixel:
+    centroids_n_labels_df['c_label'] = clustered_labels.astype(np.int)
     # add cluster sizes:
-    peak_tmp['c_size'] = clust_sizes.astype(np.int)
+    centroids_n_labels_df['c_size'] = cluster_sizes.astype(np.int)
     
 
-    return peak_tmp
+    return centroids_n_labels_df
 
 
 
