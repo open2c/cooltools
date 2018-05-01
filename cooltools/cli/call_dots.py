@@ -347,6 +347,12 @@ def get_results_per_chrom_tile(tile_cij,
     is_flag=True,
     default=False)
 @click.option(
+    "--output-preprocess",
+    help="Specify a file name where to dump"
+         " all processed pixels before they get"
+         " preprocessed in a BEDPE-like format.",
+    type=str)
+@click.option(
     "--output",
     help="Specify output file name where to store"
          " the results of dot-calling, in a BEDPE-like format.",
@@ -388,6 +394,7 @@ def call_dots(
             fdr,
             dots_clustering_radius,
             verbose,
+            output_preprocess,
             output):
     """
     Call dots on a Hi-C heatmap that are not larger
@@ -513,6 +520,9 @@ def call_dots(
     # estimate number of tiles to be processed:
     num_tiles_approx = int(c.chromsizes[expected_chroms].sum()/(loci_separation_bins * binsize))
 
+    if verbose:
+        print("Preparing to convolve ~{} tiles with w,p={},{} kernels".format(num_tiles_approx,w,p))
+
     # add very_verbose to supress output
     # from convolution of every tile:
     very_verbose = False
@@ -542,7 +552,7 @@ def call_dots(
     else:
         # serial implementation:
         if verbose:
-            print("Serial implementation.")
+            print("fallback to serial implementation.")
         # for every tile, described as (chrom, tile, tile) ...
         res_list = \
             [get_res_chrom_tile(tij) for tij in heatmap_tiles_generator_diag(c,
@@ -569,6 +579,21 @@ def call_dots(
 
     # combine results of all tests:
     res_df['comply_fdr'] = np.all(res_df[["la_exp."+k+".qval" for k in ktypes]] <= fdr, axis=1)
+    # print a message for timing:
+    if verbose:
+        print("Genome-wide multiple hypothesis testing is done.")
+
+    ##############################
+    # dump preprocessed pixels,
+    # before even clustering ...
+    ##############################
+    if output_preprocess is not None:
+        res_df.to_csv(output_preprocess,
+                      sep='\t',
+                      header=True,
+                      index=False,
+                      compression=None)
+
 
     ######################################
     # post processing starts from here on:
@@ -581,7 +606,6 @@ def call_dots(
 
     # (1)
     # now clustering would be needed ...
-    # clustering is still per chromosome basis...
     # 
     # using different bin12_id_names since all
     # pixels are annotated at this point.
@@ -597,7 +621,8 @@ def call_dots(
                                       (res_df['chrom2']==chrom)],
                                 threshold_cluster = dots_clustering_radius,
                                 bin1_id_name      = 'start1',
-                                bin2_id_name      = 'start2')
+                                bin2_id_name      = 'start2',
+                                verbose           = very_verbose)
         pixel_clust_list.append(pixel_clust)
 
     if verbose:
@@ -692,22 +717,22 @@ def call_dots(
             'chrom2',
             'start2',
             'end2',
+            'cstart1',
+            'cstart2',
+            'c_label',
+            'c_size',
+            'obs.raw',
+            'exp.raw',
             'la_exp.donut.value',
             'la_exp.vertical.value',
             'la_exp.horizontal.value',
             'la_exp.lowleft.value',
-            'la_exp.upright.value',
-            'exp.raw',
-            'obs.raw',
+            # 'la_exp.upright.value',
+            # 'la_exp.upright.qval',
             'la_exp.donut.qval',
             'la_exp.vertical.qval',
             'la_exp.horizontal.qval',
-            'la_exp.lowleft.qval',
-            'la_exp.upright.qval',
-            'cstart1',
-            'cstart2',
-            'c_label',
-            'c_size']
+            'la_exp.lowleft.qval']
 
 
     ##############################
