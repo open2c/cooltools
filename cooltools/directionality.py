@@ -103,7 +103,8 @@ def directionality(
     clr,
     window_bp=100000,
     min_dist_bad_bin=2, 
-    ignore_diags=None):
+    ignore_diags=None,
+    chromosomes=None):
     '''Calculate the diamond insulation scores and call insulating boundaries.
 
     Parameters
@@ -126,11 +127,13 @@ def directionality(
         A table containing the insulation scores of the genomic bins and 
         the insulating boundary strengths.
     '''
+    if chromosomes is None:
+        chromosomes = clr.chromnames
 
     bin_size = clr.info['bin-size']
     ignore_diags = (ignore_diags 
         if ignore_diags is not None 
-        else clr._load_attrs(c.root.rstrip('/')+'/bins/weight')['ignore_diags'] )
+        else clr._load_attrs(clr.root.rstrip('/')+'/bins/weight')['ignore_diags'] )
     window_bins = window_bp // bin_size
     
     if (window_bp % bin_size !=0):
@@ -139,7 +142,7 @@ def directionality(
                 window_bp, bin_size))
         
     dir_chrom_tables = []
-    for chrom in clr.chroms()[:]['name']:
+    for chrom in chromosomes:
         chrom_bins = clr.bins().fetch(chrom)
         chrom_pixels = clr.matrix(as_pixels=True,balance=True).fetch(chrom)
 

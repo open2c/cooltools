@@ -84,10 +84,12 @@ def insul_diamond(pixels, bins,
     return score
 
 def find_insulating_boundaries(
-    c,
-    window_bp = 100000,
-    min_dist_bad_bin = 2, 
+    clr,
+    window_bp=100000,
+    min_dist_bad_bin=2, 
+    balance='weight',
     ignore_diags=None,
+    chromosomes=None,
 ):
     '''Calculate the diamond insulation scores and call insulating boundaries.
 
@@ -111,11 +113,13 @@ def find_insulating_boundaries(
         A table containing the insulation scores of the genomic bins and 
         the insulating boundary strengths.
     '''
+    if chromosomes is None:
+        chromosomes = clr.chromnames
 
-    bin_size = c.info['bin-size']
+    bin_size = clr.info['bin-size']
     ignore_diags = (ignore_diags 
         if ignore_diags is not None 
-        else c._load_attrs(c.root.rstrip('/')+'/bins/weight')['ignore_diags'] )
+        else clr._load_attrs(clr.root.rstrip('/')+'/bins/weight')['ignore_diags'] )
     window_bins = window_bp // bin_size
     
     if (window_bp % bin_size !=0):
@@ -124,9 +128,9 @@ def find_insulating_boundaries(
                 window_bp, bin_size))
         
     ins_chrom_tables = []
-    for chrom in c.chroms()[:]['name']:
-        chrom_bins = c.bins().fetch(chrom)
-        chrom_pixels=c.matrix(as_pixels=True,balance=True).fetch(chrom)
+    for chrom in chromosomes:
+        chrom_bins = clr.bins().fetch(chrom)
+        chrom_pixels = clr.matrix(as_pixels=True, balance=balance).fetch(chrom)
 
         with warnings.catch_warnings():                      
             warnings.simplefilter("ignore", RuntimeWarning)  
@@ -144,7 +148,7 @@ def find_insulating_boundaries(
                 bad_bin_neighbor = bad_bin_neighbor | np.r_[[True]*i, is_bad_bin[:-i]]
                 bad_bin_neighbor = bad_bin_neighbor | np.r_[is_bad_bin[i:], [True]*i]            
 
-        ins_chrom = chrom_bins[['chrom', 'start', 'end']]
+        ins_chrom = chrom_bins[['chrom', 'start', 'end']].copy()
         ins_track[bad_bin_neighbor] = np.nan
         ins_chrom['bad_bin_masked'] = bad_bin_neighbor
         
@@ -206,10 +210,12 @@ def _insul_diamond_dense(mat, window=10, ignore_diags=2, norm_by_median=True):
     return score
 
 def _find_insulating_boundaries_dense(
-    c,
-    window_bp = 100000,
-    min_dist_bad_bin = 2, 
+    clr,
+    window_bp=100000,
+    balance='weight',
+    min_dist_bad_bin=2, 
     ignore_diags=None,
+    chromosomes=None,
 ):
     '''Calculate the diamond insulation scores and call insulating boundaries.
 
@@ -233,11 +239,13 @@ def _find_insulating_boundaries_dense(
         A table containing the insulation scores of the genomic bins and 
         the insulating boundary strengths.
     '''
+    if chromosomes is None:
+        chromosomes = clr.chromnames
 
-    bin_size = c.info['bin-size']
+    bin_size = clr.info['bin-size']
     ignore_diags = (ignore_diags 
         if ignore_diags is not None 
-        else c._load_attrs(c.root.rstrip('/')+'/bins/weight')['ignore_diags'] )
+        else clr._load_attrs(clr.root.rstrip('/')+'/bins/weight')['ignore_diags'] )
     window_bins = window_bp // bin_size
     
     if (window_bp % bin_size !=0):
@@ -246,11 +254,11 @@ def _find_insulating_boundaries_dense(
                 window_bp, bin_size))
         
     ins_chrom_tables = []
-    for chrom in c.chroms()[:]['name']:
-        ins_chrom = c.bins().fetch(chrom)[['chrom', 'start', 'end']]
-        is_bad_bin = np.isnan(c.bins().fetch(chrom)['weight'].values)
+    for chrom in chromosomes:
+        ins_chrom = clr.bins().fetch(chrom)[['chrom', 'start', 'end']]
+        is_bad_bin = np.isnan(clr.bins().fetch(chrom)['weight'].values)
 
-        m=c.matrix(balance=True).fetch(chrom)
+        m = clr.matrix(balance=balance).fetch(chrom)
 
         with warnings.catch_warnings():                      
             warnings.simplefilter("ignore", RuntimeWarning)  
