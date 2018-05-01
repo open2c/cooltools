@@ -13,27 +13,71 @@ from ._numutils import (
 )
 
 
-def get_diag(mat, i=0):
+def get_diag(arr, i=0):
     '''Get the i-th diagonal of a matrix.
     This solution was borrowed from
     http://stackoverflow.com/questions/9958577/changing-the-values-of-the-diagonal-of-a-matrix-in-numpy
     '''
-    return mat.ravel()[
-        max(i,-mat.shape[1]*i)
-        :max(0,(mat.shape[1]-i))*mat.shape[1]
-        :mat.shape[1]+1]
+    return arr.ravel()[
+        max(i,-arr.shape[1]*i)
+        :max(0,(arr.shape[1]-i))*arr.shape[1]
+        :arr.shape[1]+1]
 
 
-def set_diag(mat, x, i=0):
+def set_diag(arr, x, i=0, copy=False):
     '''Rewrite in place the i-th diagonal of a matrix with a value or an array
     of values.
     This solution was borrowed from
     http://stackoverflow.com/questions/9958577/changing-the-values-of-the-diagonal-of-a-matrix-in-numpy'''
-    mat.flat[
-        max(i,-mat.shape[1]*i)
-        :max(0,(mat.shape[1]-i))*mat.shape[1]
-        :mat.shape[1]+1
+    if copy:
+        arr = arr.copy()
+    arr.flat[
+        max(i,-arr.shape[1]*i)
+        :max(0,(arr.shape[1]-i))*arr.shape[1]
+        :arr.shape[1]+1
         ] = x
+    return arr
+
+def fill_diagonal(arr, values, k=0, wrap=False, copy=True):
+    """
+    Based on numpy.fill_diagonal, but allows for kth diagonals as well.
+    Supports 2D arrays, square or rectangular. Returns a copy by default.
+
+    Parameters
+    ----------
+    arr : 2-D array
+        Array whose diagonal is to be filled.
+    values : scalar or 1-D vector of correct length
+        Values to be written on the diagonal.
+    k : int, optional
+        Which diagonal to write to. Default is 0.
+        Main diagonal is 0; upper diagonals are positive and
+        lower diagonals are negative.
+    wrap : bool, optional
+        For tall matrices, the diagonal is "wrapped" after N columns.
+        Default is False.
+    copy : bool, optional
+        Return a copy. Diagonal is written in-place if false. 
+        Default is True.
+
+    Returns
+    -------
+    Array with diagonal filled.
+
+    """
+    if copy:
+        arr = arr.copy()
+    else:
+        arr = np.asarray(arr)
+    start = k
+    step = arr.shape[1] + 1
+    # This is needed so a tall matrix doesn't have the diagonal wrap around.
+    if wrap:
+        end = None
+    else:
+        end = start + arr.shape[1] * arr.shape[1]
+    arr.flat[start:end:step] = values
+    return arr
 
 
 def fill_na(arr, value=0, copy=True):
@@ -299,36 +343,38 @@ def get_eig(mat, n=3, mask_zero_rows=False, subtract_mean=False, divide_by_mean=
         if not is_symmetric(mat):
             raise ValueError('The input matrix must be symmetric!')
 
-        zero_rows_mask = np.sum(np.abs(mat), axis=0) == 0
-        mat_collapsed = mat[~zero_rows_mask]
-        mat_collapsed = mat_collapsed[:, ~zero_rows_mask]
+        mask = np.sum(np.abs(mat), axis=0) != 0
+        mat_collapsed = mat[mask, :][:, mask]
         eigvecs_collapsed, eigvals = get_eig(
-            mat_collapsed, n=n, mask_zero_rows=False, 
-            subtract_mean=subtract_mean, divide_by_mean=divide_by_mean)
-
+            mat_collapsed, 
+            n=n, 
+            mask_zero_rows=False, 
+            subtract_mean=subtract_mean, 
+            divide_by_mean=divide_by_mean)
         n_rows = mat.shape[0]
-        eigvecs = np.nan * np.ones((n, n_rows), dtype=float)
+        eigvecs = np.full((n, n_rows), np.nan)
         for i in range(n):
-            eigvecs[i][~zero_rows_mask] = eigvecs_collapsed[i]
+            eigvecs[i][mask] = eigvecs_collapsed[i]
 
         return eigvecs, eigvals
-
-    mat = mat.astype(np.float, copy=True) # make a copy, ensure float
-    mean = np.mean(mat)
-
-    if subtract_mean: 
-        mat -= mean
-    if divide_by_mean:
-        mat /= mean
-    if symmetric:
-        [eigvals, eigvecs] = scipy.sparse.linalg.eigsh(mat, n)
     else:
-        [eigvals, eigvecs] = scipy.sparse.linalg.eigs(mat, n)
-    order = np.argsort(-np.abs(eigvals))
-    eigvals = eigvals[order]
-    eigvecs = eigvecs.T[order]
+        mat = mat.astype(np.float, copy=True) # make a copy, ensure float
+        mean = np.mean(mat)
 
-    return eigvecs, eigvals 
+        if subtract_mean: 
+            mat -= mean
+        if divide_by_mean:
+            mat /= mean
+        
+        if symmetric:
+            eigvals, eigvecs = scipy.sparse.linalg.eigsh(mat, n)
+        else:
+            eigvals, eigvecs = scipy.sparse.linalg.eigs(mat, n)
+        order = np.argsort(-np.abs(eigvals))
+        eigvals = eigvals[order]
+        eigvecs = eigvecs.T[order]
+
+        return eigvecs, eigvals 
 
 
 def logbins(lo, hi, ratio=0, N=0, prepend_zero=False):
