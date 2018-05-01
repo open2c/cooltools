@@ -14,7 +14,7 @@ from cooler.tools import split, partition
 from cooler.contrib.dask import daskify
 import cooler
 import bioframe
-from .util import assign_supports
+from .utils import assign_supports
 
 where = np.flatnonzero
 concat = chain.from_iterable
@@ -586,7 +586,7 @@ def blocksum_pairwise(clr, supports, transforms=None, chunksize=1000000, map=map
 
     Returns
     -------
-    dict of support region -> dataframe of diagonal statistics
+    dict of support region -> (field name -> summary)
 
     """    
     def n_total_block_elements(clr, supports):
