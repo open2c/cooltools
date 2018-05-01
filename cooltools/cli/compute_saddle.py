@@ -226,15 +226,19 @@ def get_compartment_strength(saddledata, fraction):
     nargs=2,
     type=float)
 @click.option(
-    # crange : pair of floats
-    '--crange',
-    help="Low and high values of the saddleplot colorbar, e.g."
-         " if `crange`=(-0.5, 0.5), then all the saddledata pixels <=-0.5"
-         " would be depicted with the darkest color, while all those >=0.5,"
+    '--vmin',
+    help="Low value of the saddleplot colorbar, e.g."
+         " if `vmin`= -0.5, then all the saddledata <=-0.5"
+         " would be depicted with the darkest color."
+    type=float,
+    default=-1)
+@click.option(
+    '--vmax',
+    help="High value of the saddleplot colorbar, e.g."
+         " if `vmax`= 0.5, then all the saddledata >=0.5,"
          " would be depicted with the brightest color."
-         " If `crange` is not set, corresponding range defaults to (-1,1)",
-    nargs=2,
-    type=float)
+    type=float,
+    default=1)
 @click.option(
     # optional
     "--by-percentile",
@@ -292,7 +296,8 @@ def compute_saddle(
             contact_type,
             prange,
             vrange,
-            crange,
+            vmin,
+            vmax,
             by_percentile,
             verbose,
             compute_strength,
@@ -567,11 +572,7 @@ def compute_saddle(
         ###############################
         #
         ###############################
-        if crange:
-            heatmap_kws = {}
-            heatmap_kws['vmin'], heatmap_kws['vmax'] = crange
-        else:
-            heatmap_kws = None
+        heatmap_kws = dict(vmin=vmin, vmax=vmax)
         fig = saddle.saddleplot(
             binedges = binedges,
             digitized = digitized,
