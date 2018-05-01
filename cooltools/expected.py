@@ -1,4 +1,5 @@
-from itertools import chain
+from itertools import chain, combinations
+from collections import defaultdict
 import numpy as np
 import pandas as pd
 from scipy.linalg import toeplitz
@@ -7,10 +8,13 @@ import distributed
 import dask.dataframe as dd
 import dask.array as da
 import dask
+from functools import partial
 
 from cooler.tools import split, partition
 from cooler.contrib.dask import daskify
 import cooler
+import bioframe
+from .util import assign_supports
 
 where = np.flatnonzero
 concat = chain.from_iterable
@@ -429,3 +433,207 @@ def trans_expected(clr, chromosomes, chunksize=1000000, use_dask=False):
     # the actual expected is balanced.sum/n_valid:
     dtable['balanced.avg'] = dtable['balanced.sum'] / dtable['n_valid']
     return dtable
+
+
+
+###################
+
+
+def make_diag_tables(clr, supports):
+    where = np.flatnonzero
+    diag_tables = {}
+    for region in supports:
+        if isinstance(region, str):
+            region = bioframe.parse_region(region)
+        if len(region) == 1:
+            chrom, = region
+            start1, end1 = 0, clr.chromsizes[chrom]
+            start2, end2 = start1, end1
+        elif len(region) == 3:
+            chrom, start1, end1 = region
+            start2, end2 = start1, end1
+        elif len(region) == 5:
+            chrom, start1, end1, start2, end2 = region
+        else:
+            raise ValueError("Regions must be sequences of length 1, 3 or 5")
+        bins = clr.bins().fetch(chrom).reset_index(drop=True)
+        bad_mask = np.array(bins['weight'].isnull())
+        lo1, hi1 = clr.extent((chrom, start1, end1))
+        lo2, hi2 = clr.extent((chrom, start2, end2))
+        co = clr.offset(chrom)
+        lo1 -= co
+        lo2 -= co
+        hi1 -= co
+        hi2 -= co
+        dt = make_diag_table(bad_mask, [lo1, hi1], [lo2, hi2])
+        diag_tables[region] = dt #'{}:{}-{}'.format(*region)] = dt
+    return diag_tables
+
+
+def _diagsum_cis(clr, fields, transforms, supports, span):
+    lo, hi = span
+    bins = clr.bins()[:]
+    pixels = clr.pixels()[lo:hi]
+    pixels = cooler.annotate(pixels, bins, replace=False)
+    
+    pixels = pixels[pixels['chrom1'] == pixels['chrom2']].copy()
+    pixels['diag'] = pixels['bin2_id'] - pixels['bin1_id']
+    for field, t in transforms.items():
+        pixels[field] = t(pixels)
+    
+    pixels['support'] = assign_supports(pixels, supports, suffix='1')
+    
+    pixel_groups = dict(iter(pixels.groupby('support')))
+    return {int(i): group.groupby('diag')[fields].sum()
+                  for i, group in pixel_groups.items()}
+
+
+def _blocksum_trans(clr, fields, transforms, supports1, supports2, span):
+    lo, hi = span
+    bins = clr.bins()[:]
+    pixels = clr.pixels()[lo:hi]
+    pixels = cooler.annotate(pixels, bins, replace=False)
+
+    pixels = pixels[pixels['chrom1'] != pixels['chrom2']].copy()
+    for field, t in transforms.items():
+        pixels[field] = t(pixels)
+    
+    pixels['support1'] = assign_supports(pixels, supports1, suffix='1')
+    pixels['support2'] = assign_supports(pixels, supports2, suffix='2')
+    pixels = pixels.dropna()
+    
+    pixel_groups = dict(iter(pixels.groupby(('support1', 'support2'))))
+    return {(int(i), int(j)): group[fields].sum()
+                  for (i, j), group in pixel_groups.items()}
+
+
+def diagsum(clr, supports, transforms=None, chunksize=10000000, ignore_diags=2, 
+            map=map):
+    """
+
+    Intra-chromosomal diagonal summary statistics.
+
+    Parameters
+    ----------
+    clr : cooler.Cooler
+        Cooler object
+    supports : sequence of genomic range tuples
+        Support regions for intra-chromosomal diagonal summation
+    transforms : dict of str -> callable, optional
+        Transformations to apply to pixels. The result will be assigned to
+        a temporary column with the name given by the key. Callables take
+        one argument: the current chunk of the (annotated) pixel dataframe.
+    chunksize : int, optional
+        Size of pixel table chunks to process
+    ignore_diags : int, optional
+        Number of intial diagonals to exclude from statistics
+    map : callable, optional
+        Map functor implementation.
+
+    Returns
+    -------
+    dict of support region -> dataframe of diagonal statistics
+
+    """    
+    spans = partition(0, len(clr.pixels()), chunksize)
+    fields = ['count'] + list(transforms.keys())
+    dtables = make_diag_tables(clr, supports)
+    
+    for dt in dtables.values():
+        for field in fields:
+            agg_name = '{}.sum'.format(field)
+            dt[agg_name] = 0
+
+    job = partial(_diagsum_cis, clr, fields, transforms, supports)
+    results = map(job, spans)
+    for result in results:
+        for i, agg in result.items():
+            support = supports[i]
+            for field in fields:
+                agg_name = '{}.sum'.format(field)
+                dtables[support][agg_name] = \
+                    dtables[support][agg_name].add(agg[field], fill_value=0)
+    
+    if ignore_diags:
+        for dt in dtables.values():
+            for field in fields:
+                agg_name = '{}.sum'.format(field)
+                j =  dt.columns.get_loc(agg_name)
+                dt.iloc[:ignore_diags, j] = np.nan
+
+    return dtables
+
+
+def blocksum_pairwise(clr, supports, transforms=None, chunksize=1000000, map=map):
+    """
+    Summary statistics on inter-chromosomal rectangular blocks.
+
+    Parameters
+    ----------
+    clr : cooler.Cooler
+        Cooler object
+    supports : sequence of genomic range tuples
+        Support regions for summation. Blocks for all pairs of support regions
+        will be used.
+    transforms : dict of str -> callable, optional
+        Transformations to apply to pixels. The result will be assigned to
+        a temporary column with the name given by the key. Callables take
+        one argument: the current chunk of the (annotated) pixel dataframe.
+    chunksize : int, optional
+        Size of pixel table chunks to process
+    map : callable, optional
+        Map functor implementation.
+
+    Returns
+    -------
+    dict of support region -> dataframe of diagonal statistics
+
+    """    
+    def n_total_block_elements(clr, supports):
+        n = len(supports)
+        x = [clr.extent(region)[1] - clr.extent(region)[0] 
+                 for region in supports]
+        blocks = {}
+        for i in range(n):
+            for j in range(i + 1, n):
+                blocks[supports[i], supports[j]] = x[i] * x[j]
+        return blocks
+
+    def n_bad_block_elements(clr, supports):
+        n = 0
+        # bad bins are ones with
+        # the weight vector being NaN:
+        x = [np.sum(clr.bins()['weight']
+                       .fetch(region)
+                       .isnull()
+                       .astype(int)
+                       .values)
+                 for region in supports]
+        blocks = {}
+        for i in range(len(x)):
+            for j in range(i + 1, len(x)):
+                blocks[supports[i], supports[j]] = x[i] * x[j]
+        return blocks
+
+    blocks = list(combinations(supports, 2))
+    supports1, supports2 = list(zip(*blocks))
+    spans = partition(0, len(clr.pixels()), chunksize)
+    fields = ['count'] + list(transforms.keys())
+
+    n_tot = n_total_block_elements(clr, supports)
+    n_bad = n_bad_block_elements(clr, supports)
+    records = {(c1, c2): defaultdict(int) for (c1, c2) in blocks}    
+    for c1, c2 in blocks:
+        records[c1, c2]['n_valid'] = n_tot[c1, c2] - n_bad[c1, c2]
+    
+    job = partial(_blocksum_trans, clr, fields, transforms, supports1, supports2)
+    results = map(job, spans)
+    for result in results:
+        for (i, j), agg in result.items():
+            for field in fields:
+                agg_name = '{}.sum'.format(field)
+                s = np.asscalar(agg[field])
+                if not np.isnan(s):
+                    records[supports1[i], supports2[j]][agg_name] += s
+                
+    return records
