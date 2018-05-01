@@ -157,9 +157,8 @@ def _filter_heatmap(A, transmask, perc_top, perc_bottom):
     marg_nz = marg[np.sum(A, axis=0) > 0]
     min_cutoff = np.percentile(marg_nz, perc_bottom)
     dropmask = (marg > 0) & (marg < min_cutoff)
-    idx = np.flatnonzero(dropmask)
-    A[idx, :] = 0
-    A[:, idx] = 0
+    A[dropmask, :] = 0
+    A[:, dropmask] = 0
     return A
 
 
@@ -221,11 +220,10 @@ def trans_eig(A, partition, n_eigs=3, perc_top=99.95, perc_bottom=1,
 
 
     """
+    A = np.array(A)
     if A.shape[0] != A.shape[1]:
         raise ValueError("A is not symmetric")
     
-    A = np.array(A)
-    A[np.isnan(A)] = 0
     n_bins = A.shape[0]
     if not (partition[0] == 0 and 
             partition[-1] == n_bins and 
@@ -240,27 +238,37 @@ def trans_eig(A, partition, n_eigs=3, perc_top=99.95, perc_bottom=1,
         A[i0:i1, i0:i1] = 0
         part_ids.extend([n] * (i1 - i0))
     part_ids = np.array(part_ids)
-    transmask = (part_ids[:, None] != part_ids[None, :])
-
+    is_trans = (part_ids[:, None] != part_ids[None, :])
 
     # Filter heatmap
-    A[~transmask] = 0
-    A = _filter_heatmap(A, transmask, perc_top, perc_bottom)
-    A = numutils.iterative_correction_symmetric(A)[0]
+    is_bad_bin = np.nansum(A, axis=0) == 0
+    is_good_bin = ~is_bad_bin
+    is_valid = np.logical_and.outer(is_good_bin, is_good_bin)
+    A[is_bad_bin, :] = 0
+    A[:, is_bad_bin] = 0
+
+    A = _filter_heatmap(A, is_trans & is_valid, perc_top, perc_bottom)
+    is_bad_bin = np.nansum(A, axis=0) == 0
+    is_good_bin = ~is_bad_bin
+    is_valid = np.logical_and.outer(is_good_bin, is_good_bin)
+    A[is_bad_bin, :] = 0
+    A[:, is_bad_bin] = 0
 
     # Fake cis and re-balance
-    A = _fake_cis(A, ~transmask)
-    #A = numutils.iterative_correction_symmetric(A)[0]
     A = numutils.iterative_correction_symmetric(A)[0]
-    A = _fake_cis(A, ~transmask)
-    #A = numutils.iterative_correction_symmetric(A)[0]
+    A = _fake_cis(A, ~is_trans)
+    A = numutils.iterative_correction_symmetric(A)[0]
+    A = _fake_cis(A, ~is_trans)
     A = numutils.iterative_correction_symmetric(A)[0]
     
     # Compute eig
-    Abar = A.mean()
+    Abar = np.mean(A[is_valid])  # center by scalar mean
     O = (A - Abar) / Abar
+    O[is_bad_bin, :] = 0
+    O[:, is_bad_bin] = 0
     eigvecs, eigvals = numutils.get_eig(O, n_eigs, mask_zero_rows=True)
-    eigvecs /= np.sqrt(np.sum(eigvecs**2, axis=1))[:,None]
+
+    eigvecs /= np.sqrt(np.nansum(eigvecs**2, axis=1))[:, None]
     eigvecs *= np.sqrt(np.abs(eigvals))[:, None]
     if phasing_track is not None:
         eigvals, eigvecs = _phase_eigs(
@@ -343,9 +351,11 @@ def cooler_cis_eig(
 
 
 def cooler_trans_eig(
-        clr, bins, n_eigs=3, partition=None, 
+        clr, bins, 
+        n_eigs=3, 
+        partition=None, 
         phasing_track_col='GC', 
-        sort_metric = None,
+        sort_metric=None,
         **kwargs):
 
     if partition is None:
@@ -355,15 +365,19 @@ def cooler_trans_eig(
     lo = partition[0]
     hi = partition[-1]
     A = clr.matrix(balance=True)[lo:hi, lo:hi]
+    bins = bins[lo:hi]
 
-    if phasing_track_col and (phasing_track_col not in bins):
-        raise ValueError('No column "{}" in the bin table'.format(
-            phasing_track_col))
-    phasing_track = (
-        bioframe.slice_bedframe(bins, region)[phasing_track_col].values 
-        if phasing_track_col else None)
-        
-    eigvals, eigvecs = trans_eig(A, partition, n_eigs=n_eigs, 
+    phasing_track = None
+    if phasing_track_col: 
+        if phasing_track_col not in bins:
+            raise ValueError(
+                'No column "{}" in the bin table'.format(phasing_track_col))
+        phasing_track = bins[phasing_track_col].values[lo:hi]
+    
+    eigvals, eigvecs = trans_eig(
+        A, 
+        partition,
+        n_eigs=n_eigs,
         phasing_track=phasing_track,
         sort_metric=sort_metric,
         **kwargs)
@@ -373,4 +387,3 @@ def cooler_trans_eig(
         eigvec_table['E{}'.format(i+1)] = eigvec
 
     return eigvals, eigvec_table
-
