@@ -58,11 +58,11 @@ extensions = [
         include_dirs=[np.get_include()]
     ),
     Extension(
-        "cooltools.num._numutils", ["cooltools/num/_numutils.pyx"],
+        "cooltools.utils._numutils", ["cooltools/utils/_numutils.pyx"],
         include_dirs=[np.get_include()]
     ),
     Extension(
-        "cooltools.num.kernels", ["cooltools/num/kernels.pyx"],
+        "cooltools.utils.kernels", ["cooltools/utils/kernels.pyx"],
         include_dirs=[np.get_include()]
     )
 ]

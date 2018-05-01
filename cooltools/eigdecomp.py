@@ -3,7 +3,7 @@ import scipy
 import scipy.stats
 
 import pandas as pd
-from .num import numutils
+from .utils import numutils
 
 import bioframe
 
