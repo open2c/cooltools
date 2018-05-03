@@ -18,7 +18,7 @@ install:
   - conda info -a
 
   # Create test environment and install deps
-  - conda create -q -n test-environment python=$TRAVIS_PYTHON_VERSION setuptools pip six cython numpy matplotlib scipy pandas h5py dask nose mock scikit-learn
+  - conda create -q -n test-environment python=$TRAVIS_PYTHON_VERSION pip six cython numpy matplotlib scipy pandas h5py numba dask scikit-learn pytest
   - source activate test-environment
   # try pip install bioframe:
   - pip install git+https://github.com/mirnylab/bioframe.git
@@ -28,4 +28,4 @@ install:
   # - pip install 
 
 script:
-  nosetests
+  pytest
