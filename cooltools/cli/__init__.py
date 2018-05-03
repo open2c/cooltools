@@ -24,4 +24,5 @@ from . import (
     diamond_insulation,
     compute_expected,
     compute_saddle,
+    call_dots,
 )
