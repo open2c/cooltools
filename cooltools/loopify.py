@@ -12,34 +12,39 @@ import pandas as pd
 from sklearn.cluster import Birch
 
 
-
-def multiple_test_BH(pvals,alpha=0.1):
+###########################################
+# 'get_qvals' is tested and is capable
+# of reproducing `multiple_test_BH` results
+###########################################
+def get_qvals(pvals):
     '''
-    take an array of N p-values, sort then
-    in ascending order p1<p2<p3<...<pN,
-    and find a threshold p-value, pi
-    for which pi < alpha*i/N, and pi+1 is
-    already pi+1 >= alpha*(i+1)/N.
+    B&H FDR control procedure:
+    sort a given array of N p-values,
+    determine their rank i and then
+    for each p-value compute a corres-
+    ponding q-value, which is a minimum
+    FDR at which that given p-value
+    would pass a BH-FDR test.
+
+    BH-FDR reminder:
+    given an array of N p-values, sort
+    it in ascending order p[1]<p[2]<p[3]
+    <...<p[N], and find a threshold
+    p-value, p[j] for which p[j] < FDR*j/N,
+    and p[j+1] is already p[j+1] >= FDR*(j+1)/N.
     Peaks corresponding to p-values
-    p1<p2<...pi are considered significant.
+    p[1]<p[2]<...p[j] are considered significant.
 
     Parameters
     ----------
     pvals : array-like
         array of p-values to use for
         multiple hypothesis testing
-    alpha : float
-        rate of false discovery (FDR)
-
     
     Returns
     -------
-    reject_ : numpy.ndarray
-        array of type np.bool storing
-        status of a pixel: significant (True)
-        non-significant (False)
-    pvals_threshold: tuple
-        pval_max_reject_null, pval_min_accept_null
+    qvals : numpy.ndarray
+        array of q-values
 
     Notes
     -----
@@ -47,45 +52,38 @@ def multiple_test_BH(pvals,alpha=0.1):
     http://www.statsmodels.org/dev/_modules/statsmodels/stats/multitest.html
     - Using alpha=0.02 it is possible to achieve
     called dots similar to pre-update status
+    alpha is meant to be a q-value threshold:
+    "qvals <= alpha"
     
     '''
-    # 
-    # prepare:
     pvals = np.asarray(pvals)
     n_obs = pvals.size
-    # sort p-values ...
-    sortind     = np.argsort(pvals)
-    pvals_sort       = pvals[sortind]
-    # the alpha*i/N_obs (empirical CDF):
-    ecdffactor  = np.arange(1,n_obs+1)/float(n_obs)
-    # for which observations to reject null-hypothesis ...
-    reject_null = (pvals_sort <= alpha*ecdffactor)
-
-    # let's extract border-line significant P-value:
-    pval_max_reject_null = pvals_sort[ reject_null].max()
-    pval_min_accept_null = pvals_sort[~reject_null].min()
-
-    if reject_null.any():
-        print("Some significant peaks have been detected!\n"
-            "pval border is between {:.4f} and {:.4f}".format(
-                                            pval_max_reject_null,
-                                            pval_min_accept_null))
-    # now we have to create ndarray reject_
-    # that stores rej_null values in the order of
-    # original pvals array ... 
-    reject_ = np.empty_like(reject_null)
-    reject_[sortind] = reject_null
-    # return the reject_ status list and pval-range:
-    return reject_, (pval_max_reject_null, pval_min_accept_null)
+    # determine rank of p-values (1-indexed):
+    porder = np.argsort(pvals)
+    prank  = np.empty_like(porder)
+    prank[porder] = np.arange(1, n_obs+1)
+    # q-value = p-value*N_obs/i(rank of a p-value) ...
+    qvals = np.true_divide(n_obs*pvals, prank)
+    # return the qvals sorted as the initial pvals:
+    return qvals
 
 
 
 
-# consider using DBSCAN instead (picks cluster based on density estimation)
-def clust_2D_pixels(pixels_df,threshold_cluster=2):
+def clust_2D_pixels(pixels_df,
+                    threshold_cluster=2,
+                    bin1_id_name='bin1_id',
+                    bin2_id_name='bin2_id',
+                    verbose=True):
     '''
     Group significant pixels by proximity
     using Birch clustering.
+    We use "n_clusters=None", which implies
+    no AgglomerativeClustering, and thus
+    simply reporting "blobs" of pixels of
+    radii <="threshold_cluster" along with
+    corresponding blob-centroids as well.
+
 
     Parameters
     ----------
@@ -99,6 +97,17 @@ def clust_2D_pixels(pixels_df,threshold_cluster=2):
         clustering radius for Birch clustering
         derived from ~40kb radius of clustering
         and bin size.
+    bin1_id_name : str
+        Name of the 1st coordinate (row index)
+        in 'pixel_df', by default 'bin1_id'.
+        'start1/end1' could be usefull as well.
+    bin2_id_name : str
+        Name of the 2nd coordinate (column index)
+        in 'pixel_df', by default 'bin2_id'.
+        'start2/end2' could be usefull as well.
+    verbose : bool
+        Print verbose clustering summary report
+        defaults is True.
 
     
     Returns
@@ -109,70 +118,67 @@ def clust_2D_pixels(pixels_df,threshold_cluster=2):
         label and sizes are unique pixel-cluster labels
         and their corresponding sizes.
 
-
-    Notes
-    -----
-    TODO: figure out Birch clustering
-    CFNodes etc, check if there might
-    be some empty subclusters.
-    
     '''
-    # ###########
-    # I suspect misup of row/col indices ...
-    ##############
+
     # col (bin2) must precede row (bin1):
-    pixels  = pixels_df[['bin1_id','bin2_id']].values
-    pix_idx = pixels_df.index
-    # clustering object prepare:
-    brc = Birch(n_clusters=None,threshold=threshold_cluster)
-    # cluster selected pixels ...
+    pixels     = pixels_df[[bin1_id_name, bin2_id_name]].values
+    pixel_idxs = pixels_df.index
+
+    # perform BIRCH clustering of pixels:
+    # "n_clusters=None" implies using BIRCH
+    # without AgglomerativeClustering, thus
+    # simply reporting "blobs" of pixels of
+    # radius "threshold_cluster" along with
+    # blob-centroids as well:
+    brc = Birch(n_clusters=None,
+                threshold=threshold_cluster,
+                # branching_factor=50, (it's default)
+                compute_labels=True)
     brc.fit(pixels)
-    brc.predict(pixels)
-    # array of labels assigned to each pixel
-    # after clustering: brc.labels_
-    # array of (tuples?) with X,Y coordinates 
-    # for centroids of corresponding clusters:
-    # brc.subcluster_centers_
+    # # following is redundant,
+    # # as it's done here:
+    # # https://github.com/scikit-learn/scikit-learn/blob/a24c8b464d094d2c468a16ea9f8bf8d42d949f84/sklearn/cluster/birch.py#L638
+    # clustered_labels = brc.predict(pixels)
+
+    # labels of nearest centroid, assigned to each pixel,
+    # BEWARE: labels might not be continuous, i.e.,
+    # "np.unique(clustered_labels)" isn't same as "brc.subcluster_labels_", because:
+    # https://github.com/scikit-learn/scikit-learn/blob/a24c8b464d094d2c468a16ea9f8bf8d42d949f84/sklearn/cluster/birch.py#L576
+    clustered_labels    = brc.labels_
+    # centroid coordinates ( <= len(clustered_labels)):
+    clustered_centroids = brc.subcluster_centers_
+    # count unique labels and get their continuous indices
     uniq_labels, inverse_idx, uniq_counts = np.unique(
-                                                brc.labels_,
+                                                clustered_labels,
                                                 return_inverse=True,
                                                 return_counts=True)
     # cluster sizes taken to match labels:
-    clust_sizes = uniq_counts[inverse_idx]
-    ####################
-    # After discovering a bug ...
-    # bug (or misunderstanding, rather):
-    # uniq_labels is a subset of brc.subcluster_labels_
-    # TODO: dive deeper into Birch ...
-    ####################
-    # repeat centroids coordinates
-    # as many times as there are pixels
-    # in each cluster:
-    # IN OTHER WORDS (after bug fix):
-    # take centroids corresponding to labels:
-    centroids = np.take(brc.subcluster_centers_,
-                        brc.labels_,
-                        axis=0)
+    cluster_sizes       = uniq_counts[inverse_idx]
+    # take centroids corresponding to labels (as many as needed):
+    centroids_per_pixel = np.take(clustered_centroids,
+                                  clustered_labels,
+                                  axis=0)
 
-    # small message:
-    print("Clustering is completed:\n"+
-          "there are {} clusters detected\n".format(uniq_counts.size)+
-          "mean size {:.6f}+/-{:.6f}\n".format(uniq_counts.mean(),
-                                             uniq_counts.std())+
-          "labels and centroids to be reported.")
+    if verbose:
+        # prepare clustering summary report:
+        msg = "Clustering is completed:\n" + \
+              "{} clusters detected\n".format(uniq_counts.size) + \
+              "{:.2f}+/-{:.2f} mean size\n".format(uniq_counts.mean(),
+                                                 uniq_counts.std())
+        print(msg)
 
-    # let's create output DataFrame
-    peak_tmp = pd.DataFrame(
-                        centroids,
-                        index=pix_idx,
-                        columns=['cbin1_id','cbin2_id'])
-    # add labels:
-    peak_tmp['c_label'] = brc.labels_.astype(np.int)
+    # create output DataFrame
+    centroids_n_labels_df = pd.DataFrame(
+                                centroids_per_pixel,
+                                index=pixel_idxs,
+                                columns=['c'+bin1_id_name,'c'+bin2_id_name])
+    # add labels per pixel:
+    centroids_n_labels_df['c_label'] = clustered_labels.astype(np.int)
     # add cluster sizes:
-    peak_tmp['c_size'] = clust_sizes.astype(np.int)
+    centroids_n_labels_df['c_size'] = cluster_sizes.astype(np.int)
     
 
-    return peak_tmp
+    return centroids_n_labels_df
 
 
 
@@ -183,7 +189,8 @@ def clust_2D_pixels(pixels_df,threshold_cluster=2):
 def diagonal_matrix_tiling(start,
                            stop,
                            edge,
-                           band):
+                           band,
+                           verbose=False):
     """
     generate a stream of tiling coordinates
     that guarantee to cover a diagonal area
@@ -266,13 +273,14 @@ def diagonal_matrix_tiling(start,
     
     ###################################################################
     # matrix parameters before chunking:
-    print("matrix of size {}X{} to be splitted so that\n".format(size,size)+
-     "  diagonal region of size {} would be completely\n".format(band)+
-     "  covered by the tiling, additionally keeping\n"+
-     "  a small 'edge' of size w={}, to allow for\n".format(edge)+
-     "  meaningfull convolution around boundaries.\n"+
-     "  Resulting number of tiles is {}".format(tiles-1)+
-     "  Non-edge case size of each tile is {}X{}".format(2*(band+edge),2*(band+edge)))
+    if verbose:
+        print("matrix of size {}X{} to be splitted so that\n".format(size,size)+
+         "  diagonal region of size {} would be completely\n".format(band)+
+         "  covered by the tiling, additionally keeping\n"+
+         "  a small 'edge' of size w={}, to allow for\n".format(edge)+
+         "  meaningfull convolution around boundaries.\n"+
+         "  Resulting number of tiles is {}".format(tiles-1)+
+         "  Non-edge case size of each tile is {}X{}".format(2*(band+edge),2*(band+edge)))
     ###################################################################
 
     # instead of returning lists of
@@ -301,7 +309,8 @@ def square_matrix_tiling(start,
                          stop,
                          tile_size,
                          edge,
-                         square=False):
+                         square=False,
+                         verbose=False):
     """
     generate a stream of tiling coordinates
     that guarantee to cover an entire matrix.
@@ -410,11 +419,12 @@ def square_matrix_tiling(start,
     
     ###################################################################
     # matrix parameters before chunking:
-    print("matrix of size {}X{} to be splitted\n".format(size,size)+
-     "  into square tiles of size {}.\n".format(tile_size)+
-     "  A small 'edge' of size w={} is added, to allow for\n".format(edge)+
-     "  meaningfull convolution around boundaries.\n"+
-     "  Resulting number of tiles is {}".format(tiles*tiles))
+    if verbose:
+        print("matrix of size {}X{} to be splitted\n".format(size,size)+
+         "  into square tiles of size {}.\n".format(tile_size)+
+         "  A small 'edge' of size w={} is added, to allow for\n".format(edge)+
+         "  meaningfull convolution around boundaries.\n"+
+         "  Resulting number of tiles is {}".format(tiles*tiles))
     ###################################################################
 
     # instead of returning lists of
