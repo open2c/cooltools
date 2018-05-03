@@ -229,14 +229,14 @@ def get_compartment_strength(saddledata, fraction):
     '--vmin',
     help="Low value of the saddleplot colorbar, e.g."
          " if `vmin`= -0.5, then all the saddledata <=-0.5"
-         " would be depicted with the darkest color."
+         " would be depicted with the darkest color.",
     type=float,
     default=-1)
 @click.option(
     '--vmax',
     help="High value of the saddleplot colorbar, e.g."
          " if `vmax`= 0.5, then all the saddledata >=0.5,"
-         " would be depicted with the brightest color."
+         " would be depicted with the brightest color.",
     type=float,
     default=1)
 @click.option(
