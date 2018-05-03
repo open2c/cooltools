@@ -226,6 +226,20 @@ def get_compartment_strength(saddledata, fraction):
     nargs=2,
     type=float)
 @click.option(
+    '--vmin',
+    help="Low value of the saddleplot colorbar, e.g."
+         " if `vmin`= -0.5, then all the saddledata <=-0.5"
+         " would be depicted with the darkest color."
+    type=float,
+    default=-1)
+@click.option(
+    '--vmax',
+    help="High value of the saddleplot colorbar, e.g."
+         " if `vmax`= 0.5, then all the saddledata >=0.5,"
+         " would be depicted with the brightest color."
+    type=float,
+    default=1)
+@click.option(
     # optional
     "--by-percentile",
     help="Whether to bin the signal track by percentile"
@@ -282,6 +296,8 @@ def compute_saddle(
             contact_type,
             prange,
             vrange,
+            vmin,
+            vmax,
             by_percentile,
             verbose,
             compute_strength,
@@ -556,6 +572,7 @@ def compute_saddle(
         ###############################
         #
         ###############################
+        heatmap_kws = dict(vmin=vmin, vmax=vmax)
         fig = saddle.saddleplot(
             binedges = binedges,
             digitized = digitized,
@@ -563,7 +580,7 @@ def compute_saddle(
             color = pal[2],
             cbar_label = 'log10 (contact frequency / mean) in {}'.format(contact_type),
             fig_kws = None,
-            heatmap_kws = None, 
+            heatmap_kws = heatmap_kws, 
             margin_kws = None)
         ######
         plt.savefig(savefig, dpi=None)
