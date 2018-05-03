@@ -7,7 +7,7 @@ install:
 	pip install -e .
 
 test:
-	nosetests
+	pytest
 
 clean-pyc:
 	find . -name '*.pyc' -exec rm --force {} +

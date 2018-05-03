@@ -5,9 +5,6 @@ import pandas as pd
 
 import os.path as op
 
-# just follow mirnylab practises:
-from nose.tools import assert_raises
-
 from cooltools import loopify
 from cooltools import snipping
 

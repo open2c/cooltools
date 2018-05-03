@@ -7,9 +7,6 @@ import pandas as pd
 
 import os.path as op
 
-# just follow mirnylab practises:
-from nose.tools import assert_raises
-
 # try importing stuff from loopify:
 from cooltools.loopify import get_adjusted_expected_tile_some_nans
 
