@@ -49,6 +49,7 @@ install_requires = [
     'numba',
     'click',
     'cooler>=0.7',
+    'bioframe',
 ]
 
 

@@ -1,0 +1,17 @@
+channels:
+    - conda-forge
+    - defaults
+    - bioconda
+dependencies:
+  - numpy
+  - scipy
+  - cython
+  - matplotlib
+  - pandas
+  - h5py
+  - numba
+  - dask
+  - scikit-learn
+  - cooler
+  - click
+  - pytest
