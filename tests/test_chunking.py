@@ -5,20 +5,9 @@ import pandas as pd
 
 import os.path as op
 
-from cooltools import loopify
-from cooltools import snipping
+from cooltools import dotfinder
+from cooltools.lib.numutils import LazyToeplitz
 
-# let's try running tests 
-# without installing loopify:
-import sys
-sys.path.append("../")
-
-
-# # try importing stuff from loopify:
-# from loopify import get_adjusted_expected_tile_some_nans, \
-#                     diagonal_matrix_tiling, \
-#                     square_matrix_tiling, \
-#                     tile_of_expected
 
 # adjust the path for data:
 testdir = op.realpath(op.dirname(__file__))
@@ -38,7 +27,7 @@ mock_E_ice = arrays_loaded['mock_E_ice']
 mock_v_ice = arrays_loaded['mock_v_ice']
 
 # 1D expected extracted for tiling-tests:
-mock_exp = snipping.LazyToeplitz(mock_E_ice[0,:])
+mock_exp = LazyToeplitz(mock_E_ice[0,:])
 
 # we need w-edge for tiling procedures:
 w = 3
@@ -75,7 +64,7 @@ def test_adjusted_expected_tile_some_nans_and_diag_tiling():
     nnans = 1
     band_1_idx = int(band_1/b)
     res_df = pd.DataFrame([])
-    for tile in loopify.diagonal_matrix_tiling(start, stop, w, band = band_1_idx):
+    for tile in dotfinder.diagonal_matrix_tiling(start, stop, bandwidth=band_1_idx, edge=w):
         # let's keep i,j-part explicit here:
         tilei, tilej = tile, tile
         # define origin:
@@ -86,8 +75,8 @@ def test_adjusted_expected_tile_some_nans_and_diag_tiling():
         expected = mock_exp[slice(*tilei),slice(*tilej)]
         # for diagonal chuynking/tiling tilei==tilej:
         ice_weight = mock_v_ice[slice(*tilei)]
-        # that's the main working function from loopify:
-        res = loopify.get_adjusted_expected_tile_some_nans(origin = origin,
+        # that's the main working function from dotfinder:
+        res = dotfinder.get_adjusted_expected_tile_some_nans(origin = origin,
                                                  observed = observed,
                                                  expected = expected,
                                                  bal_weight = ice_weight,
@@ -139,7 +128,7 @@ def test_adjusted_expected_tile_some_nans_and_square_tiling():
     nnans = 1
     band_idx = int(band/b)
     res_df = pd.DataFrame([])
-    for tilei, tilej in loopify.square_matrix_tiling(start, stop, tile_size=40, edge=w, square=False):
+    for tilei, tilej in dotfinder.square_matrix_tiling(start, stop, step=40, edge=w, square=False):
         # define origin:
         origin = (tilei[0], tilej[0])
         # RAW observed matrix slice:
@@ -149,8 +138,8 @@ def test_adjusted_expected_tile_some_nans_and_square_tiling():
         # for diagonal chuynking/tiling tilei==tilej:
         ice_weight_i = mock_v_ice[slice(*tilei)]
         ice_weight_j = mock_v_ice[slice(*tilej)]
-        # that's the main working function from loopify:
-        res = loopify.get_adjusted_expected_tile_some_nans(origin = origin,
+        # that's the main working function from dotfinder:
+        res = dotfinder.get_adjusted_expected_tile_some_nans(origin = origin,
                                                  observed = observed,
                                                  expected = expected,
                                                  bal_weight = (ice_weight_i, ice_weight_j),
@@ -199,7 +188,7 @@ def test_adjusted_expected_tile_some_nans_and_square_tiling_diag_band():
     # def chrom_chunk_generator_s(chroms, w, band):
     #     for chrom in chroms:
     #         chr_start, chr_stop = the_c.extent(chrom)
-    #         for tilei, tilej in square_matrix_tiling(chr_start, chr_stop, tile_size, w):
+    #         for tilei, tilej in square_matrix_tiling(chr_start, chr_stop, step, w):
     #             # check if a given tile intersects with 
     #             # with the diagonal band of interest ...
     #             diag_from = tilej[0] - tilei[1]
@@ -215,7 +204,7 @@ def test_adjusted_expected_tile_some_nans_and_square_tiling_diag_band():
     nnans = 1
     band_idx = int(band/b)
     res_df = pd.DataFrame([])
-    for tilei, tilej in loopify.square_matrix_tiling(start, stop, tile_size=40, edge=w, square=False):
+    for tilei, tilej in dotfinder.square_matrix_tiling(start, stop, step=40, edge=w, square=False):
         # check if a given tile intersects with 
         # with the diagonal band of interest ...
         diag_from = tilej[0] - tilei[1]
@@ -235,8 +224,8 @@ def test_adjusted_expected_tile_some_nans_and_square_tiling_diag_band():
             # for diagonal chuynking/tiling tilei==tilej:
             ice_weight_i = mock_v_ice[slice(*tilei)]
             ice_weight_j = mock_v_ice[slice(*tilej)]
-            # that's the main working function from loopify:
-            res = loopify.get_adjusted_expected_tile_some_nans(origin = origin,
+            # that's the main working function from dotfinder:
+            res = dotfinder.get_adjusted_expected_tile_some_nans(origin = origin,
                                                      observed = observed,
                                                      expected = expected,
                                                      bal_weight = (ice_weight_i, ice_weight_j),

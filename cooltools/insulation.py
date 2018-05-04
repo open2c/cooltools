@@ -1,7 +1,7 @@
 import warnings
 import numpy as np
 import pandas as pd
-from .utils import peaks, numutils
+from .lib import peaks, numutils
 
 
 def insul_diamond(pixels, bins,

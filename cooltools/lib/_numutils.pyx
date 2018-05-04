@@ -1,9 +1,11 @@
+from operator import add
+from cooler.tools import split
 import cython
-
 import numpy as np
-cimport numpy as np
 
+cimport numpy as np
 from cpython cimport bool
+
 
 ctypedef unsigned long ulong
 ctypedef unsigned int uint
@@ -46,11 +48,11 @@ def logbins(lo, hi, ratio=0, N=0):
 
     return data10
 
+
 @cython.boundscheck(False)
 @cython.nonecheck(False)
 @cython.wraparound(False)
 @cython.cdivision(True)
-
 def observed_over_expected(matrix, mask=None):
     "Calculates observedOverExpected of any contact map, over regions where mask==1"
 
@@ -160,6 +162,7 @@ def iterative_correction_symmetric(
 
     return x, totalBias, report 
 
+
 @cython.boundscheck(False)
 @cython.nonecheck(False)
 @cython.wraparound(False)
@@ -187,43 +190,66 @@ def fake_cis(
                             data[j,i] = data[j,s]
 
 
-
-#@cython.boundscheck(False)
-#@cython.nonecheck(False)
-#@cython.wraparound(False)
-#@cython.cdivision(True)
-#def observedOverExpected(matrix):
-#    "Calculates observedOverExpected of any contact map. Ignores NaNs"
-#
-#    cdef int i, j, k, start, end, count, offset
-#    cdef double x, ss, meanss
-#
-#    cdef np.ndarray[np.double_t, ndim=2] data = np.array(matrix, dtype=np.double, order="C")
-#    cdef int N = data.shape[0]
-#    
-#    _bins = logbins(1, N, ratio=1.03)
-#    _bins = [(0, 1)] + [(_bins[i], _bins[i+1]) for i in range(len(_bins) - 1)]
-#    cdef np.ndarray[np.int64_t, ndim=2] bins = np.array(_bins, dtype=np.int64, order="C")
-#    cdef int M = bins.shape[0]
-#    
-#    for k in range(M):
-#        start, end = bins[k, 0], bins[k, 1]
-#        ss = 0
-#        count = 0
-#        for offset in range(start, end):
-#            for j in range(0, N - offset):
-#                x = data[offset + j, j]
-#                if isnan(x):
-#                    continue
-#                ss += x
-#                count += 1
-#        
-#        meanss = ss / count
-#        if meanss != 0:
-#            for offset in range(start,end):
-#                for j in range(0,N-offset):
-#                    data[offset + j, j] /= meanss
-#                    if offset > 0: data[j, offset+j] /= meanss
-#    return data
+@cython.boundscheck(False)
+@cython.wraparound(False)
+@cython.nonecheck(False)
+@cython.cdivision(True)
+def _matvec_sparse_symmetric(
+        np.ndarray[np.double_t, ndim=1] y, 
+        np.ndarray[np.int_t, ndim=1] bin1, 
+        np.ndarray[np.int_t, ndim=1] bin2, 
+        np.ndarray[np.double_t, ndim=1] values,
+        np.ndarray[np.double_t, ndim=1] x):
+    """
+    Perform matrix vector product A * x for a sparse real 
+    symmetric matrix A.
+    
+    bin1, bin2 : 1D array
+        sparse representation of A
+    x : 1D array
+        input vector
+    y : 1D array
+        output vector (values are added to this)
+    
+    """
+    cdef int n = bin1.shape[0]
+    cdef int ptr, i, j
+    cdef double Aij
+    
+    for ptr in range(n):
+        i, j, Aij = bin1[ptr], bin2[ptr], values[ptr]
+        y[i] += (Aij * x[j])
+        if j > i:
+            y[j] += (Aij * x[i])
 
 
+def _matvec_product(x, chunk):
+    pixels = chunk['pixels']
+    i = pixels['bin1_id']
+    j = pixels['bin2_id']
+    v = pixels['count'].astype(float)
+    y = np.zeros(len(chunk['bins']['chrom']))
+    _matvec_sparse_symmetric(y, i, j, v, x)
+    return y
+
+
+class MatVec(object):
+    def __init__(self, clr, chunksize, map):
+        self.clr = clr
+        self.chunksize = chunksize
+        self.map = map
+    
+    def __call__(self, x, mask):
+        n = len(mask)
+        
+        x_full = np.zeros(n)
+        x_full[mask] = x
+        
+        y_full = (
+            split(self.clr, map=self.map, chunksize=self.chunksize)
+                .pipe(_matvec_product, x_full)
+                .reduce(add, np.zeros(n))
+        )
+        y = y_full[mask]
+        
+        return y

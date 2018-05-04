@@ -7,14 +7,8 @@ import pandas as pd
 
 import os.path as op
 
-# try importing stuff from loopify:
-from cooltools.loopify import get_adjusted_expected_tile_some_nans
-
-# let's try running tests 
-# without installing loopify:
-import sys
-sys.path.append("../")
-
+# try importing stuff from dotfinder:
+from cooltools.dotfinder import get_adjusted_expected_tile_some_nans
 
 # adjust the path for data:
 testdir = op.realpath(op.dirname(__file__))

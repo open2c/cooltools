@@ -1,8 +1,7 @@
-####################
-# collection of functions
-# needed for dot-calling
-####################
+"""
+Collection of functions needed for dot-calling
 
+"""
 from scipy.linalg import toeplitz
 from scipy.ndimage import convolve
 from scipy.stats import poisson
@@ -12,34 +11,16 @@ import pandas as pd
 from sklearn.cluster import Birch
 
 
-###########################################
-# 'get_qvals' is tested and is capable
-# of reproducing `multiple_test_BH` results
-###########################################
 def get_qvals(pvals):
     '''
-    B&H FDR control procedure:
-    sort a given array of N p-values,
-    determine their rank i and then
-    for each p-value compute a corres-
-    ponding q-value, which is a minimum
-    FDR at which that given p-value
-    would pass a BH-FDR test.
-
-    BH-FDR reminder:
-    given an array of N p-values, sort
-    it in ascending order p[1]<p[2]<p[3]
-    <...<p[N], and find a threshold
-    p-value, p[j] for which p[j] < FDR*j/N,
-    and p[j+1] is already p[j+1] >= FDR*(j+1)/N.
-    Peaks corresponding to p-values
-    p[1]<p[2]<...p[j] are considered significant.
+    B&H FDR control procedure: sort a given array of N p-values, determine their
+    rank i and then for each p-value compute a corres- ponding q-value, which is
+    a minimum FDR at which that given p-value would pass a BH-FDR test.
 
     Parameters
     ----------
     pvals : array-like
-        array of p-values to use for
-        multiple hypothesis testing
+        array of p-values to use for multiple hypothesis testing
     
     Returns
     -------
@@ -48,14 +29,20 @@ def get_qvals(pvals):
 
     Notes
     -----
+    - BH-FDR reminder: given an array of N p-values, sort it in ascending order 
+    p[1]<p[2]<p[3]<...<p[N], and find a threshold p-value, p[j] for which 
+    p[j] < FDR*j/N, and p[j+1] is already p[j+1] >= FDR*(j+1)/N. Peaks 
+    corresponding to p-values p[1]<p[2]<...p[j] are considered significant.
+
     - Mostly follows the statsmodels implementation:
     http://www.statsmodels.org/dev/_modules/statsmodels/stats/multitest.html
-    - Using alpha=0.02 it is possible to achieve
-    called dots similar to pre-update status
-    alpha is meant to be a q-value threshold:
-    "qvals <= alpha"
+    
+    - Using alpha=0.02 it is possible to achieve called dots similar to 
+    pre-update status alpha is meant to be a q-value threshold: "qvals <= alpha"
     
     '''
+    # NOTE: This is tested and is capable of reproducing 
+    # `multiple_test_BH` results
     pvals = np.asarray(pvals)
     n_obs = pvals.size
     # determine rank of p-values (1-indexed):
@@ -68,55 +55,41 @@ def get_qvals(pvals):
     return qvals
 
 
-
-
 def clust_2D_pixels(pixels_df,
                     threshold_cluster=2,
                     bin1_id_name='bin1_id',
                     bin2_id_name='bin2_id',
                     verbose=True):
     '''
-    Group significant pixels by proximity
-    using Birch clustering.
-    We use "n_clusters=None", which implies
-    no AgglomerativeClustering, and thus
-    simply reporting "blobs" of pixels of
-    radii <="threshold_cluster" along with
-    corresponding blob-centroids as well.
-
+    Group significant pixels by proximity using Birch clustering. We use
+    "n_clusters=None", which implies no AgglomerativeClustering, and thus 
+    simply reporting "blobs" of pixels of radii <="threshold_cluster" along 
+    with corresponding blob-centroids as well.
 
     Parameters
     ----------
     pixels_df : pandas.DataFrame
-        a DataFrame with pixel coordinates
-        that must have at least 2 columns
-        named 'bin1_id' and 'bin2_id',
-        where first is pixels's row and the
+        a DataFrame with pixel coordinates that must have at least 2 columns
+        named 'bin1_id' and 'bin2_id', where first is pixels's row and the
         second is pixel's column index.
     threshold_cluster : int
-        clustering radius for Birch clustering
-        derived from ~40kb radius of clustering
-        and bin size.
+        clustering radius for Birch clustering derived from ~40kb radius of
+        clustering and bin size.
     bin1_id_name : str
-        Name of the 1st coordinate (row index)
-        in 'pixel_df', by default 'bin1_id'.
-        'start1/end1' could be usefull as well.
+        Name of the 1st coordinate (row index) in 'pixel_df', by default
+        'bin1_id'. 'start1/end1' could be usefull as well.
     bin2_id_name : str
-        Name of the 2nd coordinate (column index)
-        in 'pixel_df', by default 'bin2_id'.
-        'start2/end2' could be usefull as well.
+        Name of the 2nd coordinate (column index) in 'pixel_df', by default
+        'bin2_id'. 'start2/end2' could be usefull as well.
     verbose : bool
-        Print verbose clustering summary report
-        defaults is True.
-
+        Print verbose clustering summary report defaults is True.
     
     Returns
     -------
     peak_tmp : pandas.DataFrame
-        DataFrame with c_row,c_col,c_label,c_size - 
-        columns. row/col are coordinates of centroids,
-        label and sizes are unique pixel-cluster labels
-        and their corresponding sizes.
+        DataFrame with c_row,c_col,c_label,c_size - columns. row/col are
+        coordinates of centroids, label and sizes are unique pixel-cluster
+        labels and their corresponding sizes.
 
     '''
 
@@ -125,11 +98,9 @@ def clust_2D_pixels(pixels_df,
     pixel_idxs = pixels_df.index
 
     # perform BIRCH clustering of pixels:
-    # "n_clusters=None" implies using BIRCH
-    # without AgglomerativeClustering, thus
-    # simply reporting "blobs" of pixels of
-    # radius "threshold_cluster" along with
-    # blob-centroids as well:
+    # "n_clusters=None" implies using BIRCH without AgglomerativeClustering, 
+    # thus simply reporting "blobs" of pixels of radius "threshold_cluster" 
+    # along with blob-centroids as well:
     brc = Birch(n_clusters=None,
                 threshold=threshold_cluster,
                 # branching_factor=50, (it's default)
@@ -181,25 +152,35 @@ def clust_2D_pixels(pixels_df,
     return centroids_n_labels_df
 
 
-
-############################################################
-# we need to make this work for slices
-# of the intra-chromosomal Hi-C heatmaps
-############################################################
-def diagonal_matrix_tiling(start,
-                           stop,
-                           edge,
-                           band,
-                           verbose=False):
+def diagonal_matrix_tiling(start, stop, bandwidth, edge=0, verbose=False):
     """
-    generate a stream of tiling coordinates
-    that guarantee to cover a diagonal area
-    of the matrix of size 'band'.
+    Generate a stream of tiling coordinates that guarantee to cover a diagonal
+    area of the matrix of size 'bandwidth'. cis-signal only!
 
-    - cis-signal only...
+    Parameters
+    ----------
+    start : int
+        Starting position of the matrix slice to be tiled (inclusive, bins,
+        0-based).
+    stop : int
+        End position of the matrix slice to be tiled (exclusive, bins, 0-based).
+    edge : int
+        Small edge around each tile to be included in the yielded coordinates.
+    bandwidth : int
+        Diagonal tiling is guaranteed to cover a diagonal are of width 
+        'bandwidth'.
 
-    Each slice is characterized by the coordinate
-    of the top-left corner and size.
+    Yields
+    ------
+    Pairs of indices for every chunk use those indices [cstart:cstop) to fetch 
+    chunks from the cooler-object:
+    >>> clr.matrix()[cstart:cstop, cstart:cstop]
+
+    Notes
+    -----
+    Specify a [start,stop) region of a matrix you want to tile diagonally.
+    Each slice is characterized by the coordinate of the top-left corner and
+    size.
 
     * * * * * * * * * * *  0-th slice
     *       *           *
@@ -215,108 +196,62 @@ def diagonal_matrix_tiling(start,
     *                   *
     * * * * * * * * * * *
     
-    yield matrix tiles (raw, bal, exp, etc)
-    these chunks are supposed to cover up
-    a diagonal band of size 'band'.
+    These slices are supposed to cover up a diagonal band of size 'bandwidth'. 
 
-    Specify a [start,stop) region of a matrix
-    you want to tile diagonally.
-
-
-    Parameters
-    ----------
-    start : int
-        starting position of the matrix
-        slice to be tiled (inclusive, bins,
-        0-based).
-    stop : int
-        end position of the matrix
-        slice to be tiled (exclusive, bins,
-        0-based).
-    edge : int
-        small edge around each tile to be
-        included in the yielded coordinates.
-    band : int
-        diagonal tiling is guaranteed to
-        cover a diagonal are of width 'band'.
-
-    Returns:
-    --------
-    yields pairs of indices for every chunk
-    use those indices [cstart:cstop)
-    to fetch chunks from the cooler-object:
-     >>> clr.matrix()[cstart:cstop, cstart:cstop]
     """
-
-    # # we could use cooler to extract bin_size
-    # # and chromosome extent as [start,stop),
-    # # but let's keep it agnostic ...
-    # bin_size   = clr.info['bin-size']
-    # start, stop = clr.extent(chrom)
-
-
-    # matrix slice size [start,stop):
     size = stop - start
-    # let's avoid delaing with bin_size explicitly ...
-    # this function would be abstracted to bin-dimensions
-    # ONLY !!!
-    # # diagonal chunking to cover band-sized band around
-    # # a diagonal:
-    # band = int(band/bin_size)
-    # # band = int(parse_humanized(band)/bin_size) if isinstance(band,str) \
-    # #                                 else int(band/bin_size)
-        
-    # number of tiles ...
-    tiles = size//band + bool(size%band)
-    # actual number of tiles is tiles-1
-    # since we're looping in range(1,tiles)
+    tiles = size // bandwidth + bool(size % bandwidth)
     
-    ###################################################################
     # matrix parameters before chunking:
     if verbose:
-        print("matrix of size {}X{} to be splitted so that\n".format(size,size)+
-         "  diagonal region of size {} would be completely\n".format(band)+
+        print("matrix of size {}X{} to be split so that\n".format(size,size)+
+         "  diagonal region of size {} would be completely\n".format(bandwidth)+
          "  covered by the tiling, additionally keeping\n"+
          "  a small 'edge' of size w={}, to allow for\n".format(edge)+
          "  meaningfull convolution around boundaries.\n"+
          "  Resulting number of tiles is {}".format(tiles-1)+
-         "  Non-edge case size of each tile is {}X{}".format(2*(band+edge),2*(band+edge)))
-    ###################################################################
+         "  Non-edge case size of each tile is {}X{}".format(2*(bandwidth+edge), 
+                                                             2*(bandwidth+edge)))
 
-    # instead of returning lists of
-    # actual matrix-tiles, let's
-    # simply yield pairs of [cstart,cstop)
-    # coordinates for every chunk:
-    
-    # by doing range(1,tiles) we are making
-    # sure we are processing the upper-left
-    # chunk only once:
-    for t in range(1,tiles):
+    # actual number of tiles is tiles-1
+    # by doing range(1, tiles) we are making sure we are processing the 
+    # upper-left chunk only once:
+    for t in range(1, tiles):
         # l = max(0,M*t-M)
         # r = min(L,M*t+M)
-        lw = max(0    , band*(t-1) - edge)
-        rw = min(size , band*(t+1) + edge)
+        lw = max(0    , bandwidth*(t-1) - edge)
+        rw = min(size , bandwidth*(t+1) + edge)
         # don't forget about the 'start' origin:
         yield lw+start, rw+start
 
 
-
-############################################################
-# we need to make this work for slices
-# of the intra-chromosomal Hi-C heatmaps
-############################################################
-def square_matrix_tiling(start,
-                         stop,
-                         tile_size,
-                         edge,
-                         square=False,
-                         verbose=False):
+def square_matrix_tiling(start, stop, step, edge, square=False, verbose=False):
     """
-    generate a stream of tiling coordinates
-    that guarantee to cover an entire matrix.
+    Generate a stream of tiling coordinates that guarantee to cover an entire 
+    matrix. cis-signal only!
 
-    - cis-signal only...
+    Parameters
+    ----------
+    start : int
+        Starting position of the matrix slice to be tiled (inclusive, bins,
+        0-based).
+    stop : int
+        End position of the matrix slice to be tiled (exclusive, bins, 0-based).
+    step : int
+        Requested size of the tiles. Boundary tiles may or may not be of 
+        'step', see 'square'.
+    edge : int
+        Small edge around each tile to be included in the yielded coordinates.
+    square : bool, optional
 
+    Yields
+    ------
+    Pairs of indices for every chunk use those indices [cstart:cstop) to fetch 
+    chunks from the cooler-object:
+    >>> clr.matrix()[cstart:cstop, cstart:cstop]
+
+    Notes
+    -----
     Each slice is characterized by the coordinate
     of the top-left corner and size.
 
@@ -337,7 +272,7 @@ def square_matrix_tiling(start,
     Square parameter determines behavior
     of the tiling function, when the
     size of the matrix is not an exact
-    multiple of the 'tile_size':
+    multiple of the 'step':
 
     square = False
     * * * * * * * * * * *
@@ -369,98 +304,40 @@ def square_matrix_tiling(start,
     *       *   *   *   *
     *       *   *   *   *
     * * * * * * * * * * *
-    
-    yield matrix tiles (raw, bal, exp, etc)
-    these chunks are supposed to cover up
-    a diagonal band of size 'band'.
 
-
-    Parameters
-    ----------
-    start : int
-        starting position of the matrix
-        slice to be tiled (inclusive, bins,
-        0-based).
-    stop : int
-        end position of the matrix
-        slice to be tiled (exclusive, bins,
-        0-based).
-    tile_size : int
-        requested size of the tiles.
-        Boundary tiles may or may not be
-        of 'tile_size', see 'square'.
-    edge : int
-        small edge around each tile to be
-        included in the yielded coordinates.
-    band : int
-        diagonal tiling is guaranteed to
-        cover a diagonal are of width 'band'.
-
-
-    Returns:
-    --------
-    yields pairs of indices for every chunk
-    use those indices [cstart:cstop)
-    to fetch chunks from the cooler-object:
-     >>> clr.matrix()[cstart:cstop, cstart:cstop]
     """
-
-    # # we could use cooler to extract bin_size
-    # # and chromosome extent as [start,stop),
-    # # but let's keep it agnostic ...
-    # bin_size   = clr.info['bin-size']
-    # start, stop = clr.extent(chrom)
-
-    # matrix size:
     size = stop - start
-        
-    # number of tiles (just 1D) ...
-    tiles = size//tile_size + bool(size%tile_size)
-    
-    ###################################################################
-    # matrix parameters before chunking:
+    tiles = size // step + bool(size % step)
+
     if verbose:
         print("matrix of size {}X{} to be splitted\n".format(size,size)+
-         "  into square tiles of size {}.\n".format(tile_size)+
+         "  into square tiles of size {}.\n".format(step)+
          "  A small 'edge' of size w={} is added, to allow for\n".format(edge)+
          "  meaningfull convolution around boundaries.\n"+
          "  Resulting number of tiles is {}".format(tiles*tiles))
-    ###################################################################
-
-    # instead of returning lists of
-    # actual matrix-tiles, let's
-    # simply yield pairs of [cstart,cstop)
-    # coordinates for every chunk - 
-    # seems like a wiser idea to me .
 
     for tx in range(tiles):
         for ty in range(tiles):
-            # 
-            lwx = max(0,    tile_size*tx - edge)
-            rwx = min(size, tile_size*(tx+1) + edge)
+
+            lwx = max(0,    step*tx - edge)
+            rwx = min(size, step*(tx+1) + edge)
             if square and (rwx >= size):
-                lwx = size - tile_size - edge
-            #         
-            lwy = max(0,    tile_size*ty - edge)
-            rwy = min(size, tile_size*(ty+1) + edge)
+                lwx = size - step - edge
+
+            lwy = max(0,    step*ty - edge)
+            rwy = min(size, step*(ty+1) + edge)
             if square and (rwy >= size):
-                lwy = size - tile_size - edge
-            #
+                lwy = size - step - edge
+
             yield (lwx+start,rwx+start), (lwy+start,rwy+start)
 
 
-
-
-################################################################
-# internal function for "get_adjusted_expected_tile_some_nan"
-################################################################
 def _convolve_and_count_nans(O_bal,E_bal,E_raw,N_bal,kernel):
     """
-    Dense versions of a bunch of matrices
-    needed for convolution and calculation
-    of number of NaNs in a vicinity of each
-    pixel.
-    And a kernel to be provided of course.
+    Dense versions of a bunch of matrices needed for convolution and 
+    calculation of number of NaNs in a vicinity of each pixel. And a kernel to 
+    be provided of course.
+    
     """
     # a matrix filled with the kernel-weighted sums
     # based on a balanced observed matrix:
@@ -503,13 +380,6 @@ def _convolve_and_count_nans(O_bal,E_bal,E_raw,N_bal,kernel):
     # return locally adjusted expected and number of NaNs
     # in the form of dense matrices:
     return Ek_raw, NN
-
-
-
-
-
-
-
 
 
 ########################################################################
@@ -622,9 +492,8 @@ def get_adjusted_expected_tile_some_nans(origin,
         la_nan - number of NaNs around (each kernel's footprint)
         exp.raw - global expected, rescaled to raw-counts
         obs.raw - observed values in raw-counts.
+
     """
-
-
     # extract origin coordinate of this tile:
     io, jo = origin
     # let's extract full matrices and ice_vector:
@@ -678,7 +547,6 @@ def get_adjusted_expected_tile_some_nans(origin,
                              "bin2_id": j.flatten()+jo})
 
 
-    #
     for kernel_name, kernel in kernels.items():
         ###############################
         # kernel-specific calculations:
@@ -728,3 +596,50 @@ def get_adjusted_expected_tile_some_nans(origin,
     return peaks_df[~mask_ndx & upper_band].reset_index(drop=True)
 
 
+def heatmap_tiles_generator_diag(clr, chroms, pad_size, tile_size, band_to_cover):
+    """
+    A generator yielding heatmap tiles that are needed to cover the requested 
+    band_to_cover around diagonal. Each tile is "padded" with pad_size edge to 
+    allow proper kernel-convolution of pixels close to boundary.
+    
+    Parameters
+    ----------
+    clr : cooler
+        Cooler object to use to extract chromosome extents.
+    chroms : iterable
+        Iterable of chromosomes to process
+    pad_size : int
+        Size of padding around each tile. Typically the outer size of the 
+        kernel.
+    tile_size : int
+        Size of the heatmap tile.
+    band_to_cover : int
+        Size of the diagonal band to be covered by the generated tiles. 
+        Typically correspond to the max_loci_separation for called dots.
+        
+    Returns
+    -------
+    tile : tuple
+        Generator of tuples of three, which contain
+        chromosome name, row index of the tile,
+        column index of the tile (chrom, tilei, tilej).
+
+    """
+
+    for chrom in chroms:
+        chr_start, chr_stop = clr.extent(chrom)
+        for tilei, tilej in square_matrix_tiling(chr_start,
+                                                 chr_stop,
+                                                 tile_size,
+                                                 pad_size):
+            # check if a given tile intersects with 
+            # with the diagonal band of interest ...
+            diag_from = tilej[0] - tilei[1]
+            diag_to   = tilej[1] - tilei[0]
+            #
+            band_from = 0
+            band_to   = band_to_cover
+            # we are using this >2*padding trick to exclude
+            # tiles from the lower triangle from calculations ...
+            if (min(band_to,diag_to) - max(band_from,diag_from)) > 2*pad_size:
+                yield chrom, tilei, tilej

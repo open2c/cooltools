@@ -1,15 +1,15 @@
 import warnings
-
-import numpy as np
+from scipy.linalg import toeplitz
 import scipy.sparse.linalg
-
-import numba 
-
+import numpy as np
+import numba
+import cooler
 from ._numutils import (
     iterative_correction_symmetric as _iterative_correction_symmetric,
     observed_over_expected as _observed_over_expected,
     fake_cis,
     logbins,
+    MatVec,
 )
 
 
@@ -37,6 +37,7 @@ def set_diag(arr, x, i=0, copy=False):
         :arr.shape[1]+1
         ] = x
     return arr
+
 
 def fill_diagonal(arr, values, k=0, wrap=False, copy=True):
     """
@@ -409,6 +410,7 @@ def logbins(lo, hi, ratio=0, N=0, prepend_zero=False):
         data10 = np.r_[0, data10]
     return data10                                                         
 
+
 @numba.jit
 def observed_over_expected(
         matrix, 
@@ -564,3 +566,133 @@ def iterative_correction_symmetric(
     report = {'converged':converged, 'iternum':iternum}                          
                                                                                  
     return _x, totalBias, report
+
+
+class LazyToeplitz(cooler.core._IndexingMixin):
+    """
+    A Toeplitz matrix can be represented with one row and one column.
+    This lazy toeplitz object supports slice querying to construct dense 
+    matrices on the fly.
+    
+    """
+    def __init__(self, c, r=None):
+        if r is None:
+            r = c
+        elif c[0] != r[0]:
+            raise ValueError('First element of `c` and `r` should match')
+        self._c = c
+        self._r = r
+        
+    @property
+    def shape(self):
+        return (len(self._c), len(self._r))
+    
+    def __getitem__(self, key):
+        slc0, slc1 = self._unpack_index(key)
+        i0, i1 = self._process_slice(slc0, self.shape[0])
+        j0, j1 = self._process_slice(slc1, self.shape[1])
+        C, R = self._c, self._r
+        
+        # symmetric query
+        if (i0 == j0) and (i1 == j1):
+            c = C[0:(i1-i0)]
+            r = R[0:(j1-j0)]
+        
+        # asymmetric query
+        else:
+            transpose = False
+            # tril
+            if j0 < i0 or (i0 == j0 and i1 < j1):
+                # tranpose the matrix, query, 
+                # then transpose the result
+                i0, i1, j0, j1 = j0, j1, i0, i1
+                C, R = R, C
+                transpose = True
+               
+            c = np.r_[
+                R[(j0-i0) : max(0, j0-i1) : -1], 
+                C[0 : max(0, i1-j0)]
+            ]
+            r = R[(j0-i0):(j1-i0)]
+            
+            if transpose:
+                c, r = r, c
+        
+        return toeplitz(c, r)
+
+
+def get_kernel(w, p, ktype):
+    """
+    Return typical kernels given size parameteres w, p,and kernel type.
+    
+    Parameters
+    ----------
+    w : int
+        Outer kernel size (actually half of it).
+    p : int
+        Inner kernel size (half of it).
+    ktype : str
+        Name of the kernel type, could be one of the following: 'donut', 
+        'vertical', 'horizontal', 'lowleft', 'upright'.
+        
+    Returns
+    -------
+    kernel : ndarray
+        A square matrix of int type filled with 1 and 0, according to the 
+        kernel type.
+
+    """
+    width = 2*w+1
+    kernel = np.ones((width,width),dtype=np.int)
+    # mesh grid:
+    y,x = np.ogrid[-w:w+1, -w:w+1]
+
+    if ktype == 'donut':
+        # mask inner pXp square:
+        mask = ((((-p)<=x)&(x<=p))&
+                (((-p)<=y)&(y<=p)) )
+        # mask vertical and horizontal
+        # lines of width 1 pixel:
+        mask += (x==0)|(y==0)
+        # they are all 0:
+        kernel[mask] = 0
+    elif ktype == 'vertical':
+        # mask outside of vertical line
+        # of width 3:
+        mask = (((-1>x)|(x>1))&((y>=-w)))
+        # mask inner pXp square:
+        mask += (((-p<=x)&(x<=p))&
+                ((-p<=y)&(y<=p)) )
+        # kernel masked:
+        kernel[mask] = 0
+    elif ktype == 'horizontal':
+        # mask outside of horizontal line
+        # of width 3:
+        mask = (((-1>y)|(y>1))&((x>=-w)))
+        # mask inner pXp square:
+        mask += (((-p<=x)&(x<=p))&
+                ((-p<=y)&(y<=p)) )
+        # kernel masked:
+        kernel[mask] = 0
+    elif ktype == 'lowleft':
+        # mask inner pXp square:
+        mask = (((x>=-p))&
+                ((y<=p)) )
+        mask += (x>=0)
+        mask += (y<=0)
+        # kernel masked:
+        kernel[mask] = 0
+    elif ktype == 'upright':
+        # mask inner pXp square:
+        mask = (((x>=-p))&
+                ((y<=p)) )
+        mask += (x>=0)
+        mask += (y<=0)
+        # reflect that mask to
+        # make it upper-right:
+        mask = mask[::-1,::-1]
+        # kernel masked:
+        kernel[mask] = 0
+    else:
+        raise ValueError("Kernel-type {} has not been implemented yet".format(ktype))
+    return kernel

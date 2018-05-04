@@ -9,6 +9,8 @@ import pandas as pd
 import bioframe
 import cooler
 
+from .lib.numutils import LazyToeplitz
+
 
 def make_bin_aligned_windows(binsize, chroms, centers_bp, flank_bp=0, 
                              region_start_bp=0, ignore_index=False):
@@ -241,59 +243,6 @@ def pair_sites(sites, separation, slop):
         out.columns = ([c+'_r' for c in right_hand.columns] + 
                        [c+'_l' for c in left_hand.columns])
     return out
-
-
-class LazyToeplitz(cooler.core._IndexingMixin):
-    """
-    A Toeplitz matrix can be represented with one row and one column.
-    This lazy toeplitz object supports slice querying to construct dense 
-    matrices on the fly.
-    
-    """
-    def __init__(self, c, r=None):
-        if r is None:
-            r = c
-        elif c[0] != r[0]:
-            raise ValueError('First element of `c` and `r` should match')
-        self._c = c
-        self._r = r
-        
-    @property
-    def shape(self):
-        return (len(self._c), len(self._r))
-    
-    def __getitem__(self, key):
-        slc0, slc1 = self._unpack_index(key)
-        i0, i1 = self._process_slice(slc0, self.shape[0])
-        j0, j1 = self._process_slice(slc1, self.shape[1])
-        C, R = self._c, self._r
-        
-        # symmetric query
-        if (i0 == j0) and (i1 == j1):
-            c = C[0:(i1-i0)]
-            r = R[0:(j1-j0)]
-        
-        # asymmetric query
-        else:
-            transpose = False
-            # tril
-            if j0 < i0 or (i0 == j0 and i1 < j1):
-                # tranpose the matrix, query, 
-                # then transpose the result
-                i0, i1, j0, j1 = j0, j1, i0, i1
-                C, R = R, C
-                transpose = True
-               
-            c = np.r_[
-                R[(j0-i0) : max(0, j0-i1) : -1], 
-                C[0 : max(0, i1-j0)]
-            ]
-            r = R[(j0-i0):(j1-i0)]
-            
-            if transpose:
-                c, r = r, c
-        
-        return toeplitz(c, r)
 
 
 class CoolerSnipper:
