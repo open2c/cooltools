@@ -1,6 +1,6 @@
 from scipy.linalg import toeplitz
 import numpy as np
-from cooltools.snipping import LazyToeplitz
+from cooltools.lib.numutils import LazyToeplitz
 
 
 n = 100

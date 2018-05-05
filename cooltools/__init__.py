@@ -14,5 +14,5 @@ import logging
 __version__ = '0.0.1-dev'
 
 from . import io
-from . import utils
-from .utils import numutils
+from . import lib
+from .lib import numutils
