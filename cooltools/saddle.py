@@ -1,36 +1,41 @@
-"""
-Saddle plot code.
-
-Authors
-~~~~~~~
-* Anton Goloborodko
-* Nezar Abdennur
-
-"""
+from functools import partial
 from scipy.linalg import toeplitz
 from cytoolz import merge
 import numpy as np
 import pandas as pd
-from .utils import numutils
+from .lib import numutils
 
 
-def make_histbins(signal, n, by_percentile=False, prange=None):
-    if prange is None:
-        prange = (0, 100)
-    n_edges = n + 1
-    if by_percentile:
-        # exclude outliers from the percentile range
-        perc_edges = np.linspace(prange[0], prange[1], n_edges)
-        # make equal-sized bins in rank-space
-        binedges = np.nanpercentile(signal, perc_edges)
-    else:
-        # exclude outliers from the value range
-        lo = np.nanpercentile(signal, prange[0])
-        hi = np.nanpercentile(signal, prange[1])
-        # make equal-sized bins in signal-space
-        binedges = np.linspace(lo, hi, n_edges)
-    return binedges
+def qrank(x, v, side='left'):
+    """
+    Return the nearest quantile cut point fractions of 
+    values `v` against a sequence of data given by `x`.
     
+    """
+    x = np.asarray(x)
+    i = np.searchsorted(np.sort(x), v, side=side)
+    return i / (len(x) - 1)
+
+
+def qspace(x, start=0, stop=1, num=50):
+    """
+    Return a range of linearly spaced quantile cut points
+    from the sequence of data given by `x`.
+    
+    """
+    return quantile(x, np.linspace(start, stop, num))
+
+
+def quantile(x, q, **kwargs):
+    """
+    Return the values of the quantile cut points specified by 
+    fractions `q` of a sequence of data given by `x`.
+    
+    """
+    x = np.asarray(x)
+    p = np.asarray(q) * 100
+    return np.nanpercentile(x, p, **kwargs)
+
 
 def digitize_track(binedges, track, chromosomes=None):
     """
@@ -62,95 +67,6 @@ def digitize_track(binedges, track, chromosomes=None):
     x = x[(x > 0) & (x < len(binedges) + 1)]
     counts = np.bincount(x, minlength=len(binedges) + 1)
     return digitized, counts
-
-
-# def digitize_track(
-#         histbins,
-#         track,
-#         prange=None,
-#         chromosomes=None,
-#         by_percentile=False):
-#     """
-#     Digitize per-chromosome genomic tracks.
-    
-#     Parameters
-#     ----------
-#     get_track : function
-#         A function returning a genomic track given a chromosomal name/index.
-#     get_mask : function
-#         A function returning a binary mask of valid genomic bins given a 
-#         chromosomal name/index.
-#     chromosomes : list or iterator
-#         A list of names/indices of all chromosomes.
-#     bins : int or list or numpy.ndarray
-#         If list or numpy.ndarray, `bins` must contain the bin edges for 
-#         digitization.
-#         If int, then the specified number of bins will be generated 
-#         automatically from the genome-wide range of the track values.
-#     prange : pair of floats
-#         The percentile of the genome-wide range of the track values used to 
-#         generate bins. E.g., if `prange`=(2. 98) the lower bin would 
-#         start at the 2-nd percentile and the upper bin would end at the 98-th 
-#         percentile of the genome-wide signal.
-#         Use to prevent the extreme track values from exploding the bin range.
-#         Is ignored if `bins` is a list or a numpy.ndarray.
-#     by_percentile : bool
-#         If true then the automatically generated bins will contain an equal 
-#         number of genomic bins genome-wide (i.e. track values are binned 
-#         according to their percentile). Otherwise, bins edges are spaced equally. 
-#         Is ignored if `bins` is a list or a numpy.ndarray.
-        
-#     Returns
-#     -------
-#     digitized : dict
-#         A dictionary of the digitized track, split by chromosome.
-#         The value of -1 corresponds to the masked genomic bins, the values of 0 
-#         and the number of bin-edges (bins+1) correspond to the values lying below
-#         and above the bin range limits, correspondingly.
-#         See https://docs.scipy.org/doc/numpy/reference/generated/numpy.digitize.html
-#         for reference.
-#     binedges : numpy.ndarrayxxxx
-#         The edges of bins used to digitize the track.
-#     """
-#     if not isinstance(track, tuple):
-#         raise ValueError(
-#             "``track`` should be a tuple of (dataframe, column_name)")
-#     track, name = track
-    
-#     # subset and re-order chromosome groups
-#     if chromosomes is not None:
-#         grouped = track.groupby('chrom')
-#         track = pd.concat(grouped.get_group(chrom) for chrom in chromosomes)
-    
-#     # set the histogram bucket edges
-#     signal = track[name].dropna().values
-#     if hasattr(histbins, '__len__'):
-#         binedges = histbins
-#     else:
-#         if prange is None:
-#             prange = (0, 100)
-
-#         # n bins have n+1 edges
-#         n_edges = histbins + 1
-#         if by_percentile:
-#             # exclude outliers from the percentile range
-#             perc_edges = np.linspace(prange[0], prange[1], n_edges)
-#             # make equal-sized bins in rank-space
-#             binedges = np.nanpercentile(signal, perc_edges)
-#         else:
-#             # exclude outliers from the value range
-#             lo = np.nanpercentile(signal, prange[0])
-#             hi = np.nanpercentile(signal, prange[1])
-#             # make equal-sized bins in signal-space
-#             binedges = np.linspace(lo, hi, n_edges)
-
-#     # histogram the signal
-#     digitized = track.copy()
-#     digitized[name] = np.digitize(track[name].values, binedges, right=False)
-#     mask = track[name].isnull()
-#     digitized.loc[mask, name] = -1
-
-#     return binedges, digitized
 
 
 def make_cis_obsexp_fetcher(clr, expected):
@@ -227,10 +143,33 @@ def make_trans_obsexp_fetcher(clr, expected):
                     _fetch_trans_exp(chrom1, chrom2))
 
 
+def _accumulate(S, C, getmatrix, digitized, chrom1, chrom2, verbose):
+    n_bins = S.shape[0]
+    matrix = getmatrix(chrom1, chrom2)
+
+    if chrom1 == chrom2:
+        for d in [-2, -1, 0, 1, 2]:
+            numutils.set_diag(matrix, np.nan, d)
+
+    if verbose:
+        print('chromosomes {} vs {}'.format(chrom1, chrom2))
+        
+    for i in range(n_bins):
+        row_mask = (digitized[chrom1] == i)
+        for j in range(n_bins):
+            col_mask = (digitized[chrom2] == j)
+            data = matrix[row_mask, :][:, col_mask]
+            data = data[np.isfinite(data)]
+            S[i, j] += np.sum(data)
+            C[i, j] += float(len(data))
+
+
 def make_saddle(
-        get_matrix,
+        getmatrix,
+        binedges,
         digitized,
         contact_type,
+        trim_outliers=False,
         chromosomes=None,
         verbose=False):
     """
@@ -264,15 +203,11 @@ def make_saddle(
         corresponding pixel of ``interaction_sum``.
 
     """
-    if contact_type not in ['cis', 'trans']:
-        raise ValueError("The allowed values for the contact_type "
-                         "argument are 'cis' or 'trans'.")
-
     digitized, name = digitized
 
     # n_bins here includes 2 open bins
     # for values <lo and >hi.
-    n_bins = digitized[name].values.max() + 1        
+    n_bins = len(binedges) + 1
     interaction_sum   = np.zeros((n_bins, n_bins))
     interaction_count = np.zeros((n_bins, n_bins))
 
@@ -280,59 +215,93 @@ def make_saddle(
     if chromosomes is None:
         chromosomes = list(digitized.keys())
     
-    for k, chrom1 in enumerate(chromosomes):
-        for chrom2 in chromosomes[k:]:
-            if (((contact_type == 'trans') and (chrom1 == chrom2)) or 
-                ((contact_type == 'cis') and (chrom1 != chrom2))):
-                continue
-                
-            matrix = get_matrix(chrom1, chrom2)
-            for d in [-2, -1, 0, 1, 2]:
-                numutils.set_diag(matrix, np.nan, d)
+    if contact_type == 'cis':
+        supports = list(zip(chromosomes, chromosomes))
+    elif contact_type == 'trans':
+        supports = list(combinations(chromosomes, 2))
+    else:
+        raise ValueError("The allowed values for the contact_type "
+                         "argument are 'cis' or 'trans'.")
 
-            if verbose:
-                print('chromosomes {} vs {}'.format(chrom1, chrom2))
-                
-            for i in range(n_bins):
-                row_mask = (digitized[chrom1] == i)
-                for j in range(n_bins):
-                    col_mask = (digitized[chrom2] == j)
-                    data = matrix[row_mask, :][:, col_mask]
-                    data = data[np.isfinite(data)]
-                    interaction_sum[i, j]   += np.sum(data)
-                    interaction_count[i, j] += float(len(data))
+    for chrom1, chrom2 in supports:
+        _accumulate(interaction_sum, interaction_count, getmatrix, digitized,
+                    chrom1, chrom2, verbose)
 
     interaction_sum   += interaction_sum.T
     interaction_count += interaction_count.T
     
+    if trim_outliers:
+        interaction_sum = interaction_sum[1:-1, 1:-1]
+        interaction_count = interaction_count[1:-1, 1:-1]
+
     return interaction_sum, interaction_count
 
 
-def saddleplot(binedges,
-               counts,
-               saddledata,
-               color,
-               cbar_label=None,
-               fig_kws=None,
-               heatmap_kws=None, 
-               margin_kws=None,
-               fig=None):
-    from matplotlib.gridspec import GridSpec
+def saddleplot(binedges, counts, saddledata, cmap='coolwarm', vmin=-1, vmax=1,
+               color=None, title=None, xlabel=None, ylabel=None, clabel=None, 
+               fig=None, fig_kws=None, heatmap_kws=None, margin_kws=None, 
+               cbar_kws=None, subplot_spec=None):
+    """
+    Generate a saddle plot.
+
+    Parameters
+    ----------
+    binedges : 1D array-like
+        For `n` bins, there should be `n + 1` bin edges
+    counts : 1D array-like
+        Signal track histogram produced by `digitize_track`. It will include
+        2 flanking elements for outlier values, thus the length should be 
+        `n + 2`. 
+    saddledata : 2D array-like
+        Saddle matrix produced by `make_saddle`. It will include 2 flanking
+        rows/columns for outlier signal values, thus the shape should be
+        `(n+2, n+2)`.
+    cmap : str or matplotlib colormap
+        Colormap to use for plotting the saddle heatmap
+    vmin, vmax : float
+        Value limits for coloring the saddle heatmap
+    color : matplotlib color value
+        Face color for margin bar plots
+    fig : matplotlib Figure, optional
+        Specified figure to plot on. A new figure is created if none is 
+        provided.
+    fig_kws : dict, optional
+        Passed on to `plt.Figure()`
+    heatmap_kws : dict, optional
+        Passed on to `ax.imshow()`
+    margin_kws : dict, optional
+        Passed on to `ax.bar()` and `ax.barh()`
+    cbar_kws : dict, optional
+        Passed on to `plt.colorbar()`
+    subplot_spec : GridSpec object
+        Specify a subregion of a figure to using a GridSpec.
+
+    Returns
+    -------
+    Dictionary of axes objects.
+
+    """
+    from matplotlib.gridspec import GridSpec, GridSpecFromSubplotSpec
     import matplotlib.pyplot as plt
     from cytoolz import merge
 
-    # signal histogram
-    n_bins = len(binedges) - 1
+    n_edges = len(binedges)
+    n_bins = n_edges - 1
     lo, hi = binedges[0], binedges[-1]
-#     track, name = track
-#     signal = track[name].values
-#     signal_hist, _ = np.histogram(
-#         signal[~np.isnan(signal)], 
-#         binedges, 
-#         range=(lo, hi))
-    signal_hist = counts[1:-1]
-    
+
+    # Histogram and saddledata are flanked by outlier bins
+    n = saddledata.shape[0]
+    X, Y = np.meshgrid(binedges, binedges)
+    C = saddledata
+    hist = counts
+    if (n - n_bins) == 2:
+        C = C[1:-1, 1:-1]
+        hist = hist[1:-1]
+
     # Layout
+    if subplot_spec is not None:
+        GridSpec = partial(GridSpecFromSubplotSpec, subplot_spec=subplot_spec)
+    grid = {}
     gs = GridSpec(
         nrows=3, 
         ncols=3, 
@@ -353,20 +322,16 @@ def saddleplot(binedges,
         fig = plt.figure(**fig_kws)
 
     # Heatmap
-    ax = ax1 = plt.subplot(gs[4])
-    heatmap_kws_default = dict(
-        aspect='auto', 
+    grid['ax_heatmap'] = ax = plt.subplot(gs[4])
+    heatmap_kws_default = dict( 
         cmap='coolwarm', 
-        interpolation='none',
         rasterized=True,
-        extent=[lo, hi, hi, lo],
-        vmin=-1,
-        vmax=1)
+        vmin=vmin,
+        vmax=vmax)
     heatmap_kws = merge(
         heatmap_kws_default,
-        heatmap_kws if heatmap_kws is not None else {}, 
-    )
-    img = ax.imshow(saddledata[1:-1, 1:-1], **heatmap_kws)
+        heatmap_kws if heatmap_kws is not None else {})
+    img = ax.pcolormesh(X, Y, C, **heatmap_kws)
     vmin = heatmap_kws['vmin']
     vmax = heatmap_kws['vmax']
     plt.gca().yaxis.set_visible(False)
@@ -375,17 +340,15 @@ def saddleplot(binedges,
     margin_kws_default = dict(
         edgecolor='k',
         facecolor=color,
-        linewidth=1
-    )
+        linewidth=1)
     margin_kws = merge(
         margin_kws_default,
-        margin_kws if margin_kws is not None else {},
-    )
+        margin_kws if margin_kws is not None else {})
     # left margin hist
-    plt.subplot(gs[3], sharey=ax1)
+    grid['ax_margin_y'] = plt.subplot(gs[3], sharey=grid['ax_heatmap'])
     plt.barh(binedges[:-1], 
              height=np.diff(binedges), 
-             width=signal_hist,
+             width=hist,
              align='edge',
              **margin_kws)
     plt.xlim(plt.xlim()[1], plt.xlim()[0])  # fliplr
@@ -395,10 +358,10 @@ def saddleplot(binedges,
     plt.gca().spines['left'].set_visible(False)
     plt.gca().xaxis.set_visible(False)
     # top margin hist
-    plt.subplot(gs[1], sharex=ax1)
+    grid['ax_margin_x'] = plt.subplot(gs[1], sharex=grid['ax_heatmap'])
     plt.bar(left=binedges[:-1], 
             width=np.diff(binedges), 
-            height=signal_hist,
+            height=hist,
             align='edge',
              **margin_kws)
     plt.xlim(lo, hi)
@@ -410,61 +373,64 @@ def saddleplot(binedges,
     plt.gca().yaxis.set_visible(False)
     
     # Colorbar
-    plt.subplot(gs[5])
-    cb = plt.colorbar(
-        img, 
-        fraction=0.8, 
-        label=cbar_label)
+    grid['ax_cbar'] = plt.subplot(gs[5])
+    cbar_kws_default = dict(
+        fraction=0.8,
+        label=clabel or '')
+    cbar_kws = merge(
+        cbar_kws_default,
+        cbar_kws if cbar_kws is not None else {})
+    grid['cbar'] = cb = plt.colorbar(img, **cbar_kws)
     if vmin is not None and vmax is not None:
         # cb.set_ticks(np.arange(vmin, vmax + 0.001, 0.5))
         # # do linspace between vmin and vmax of 5 segments and trunc to 1 decimal:
         decimal = 10
         nsegments = 5
-        cd_ticks = np.trunc(
-                    np.linspace(vmin, vmax, nsegments)*decimal
-                          )/decimal
+        cd_ticks = np.trunc(np.linspace(vmin, vmax, nsegments)*decimal)/decimal
         cb.set_ticks( cd_ticks )
 
     # extra settings
-    ax1.set_xlim(lo, hi)
-    ax1.set_ylim(hi, lo)
+    grid['ax_heatmap'].set_xlim(lo, hi)
+    grid['ax_heatmap'].set_ylim(hi, lo)
     plt.grid(False)
     plt.axis('off')
+    if title is not None:
+        grid['ax_margin_x'].set_title(title)
+    if xlabel is not None:
+        grid['ax_heatmap'].set_xlabel(xlabel)
+    if ylabel is not None:
+        grid['ax_margin_y'].set_ylabel(ylabel)
+
+    return grid
 
 
-# TODO:
-# add flag to calculate compartment strength ...
-#########################################
-# strength ?!?!?!?!
-#########################################
-def get_compartment_strength(saddledata, fraction):
+def saddle_strength(S, C):
     """
-    Naive compartment strength calculator.
+    Parameters
+    ----------
+    S, C : 2D arrays, square, same shape
+        Saddle sums and counts, respectively
+        
+    Returns
+    -------
+    1D array
+    Ratios of cumulative corner interaction scores, where the saddle data is 
+    grouped over the AA+BB corners and AB+BA corners with increasing extent.
+    
     """
-    # assuming square shape:
-    n_bins,n_bins = saddledata.shape
-    # fraction must be < 0.5:
-    if fraction >= 0.5:
-        raise ValueError(
-            "Fraction for compartment strength calculations must be <0.5.")
-    # # of bins to take for strenght computation:
-    bins_for_strength = int(n_bins*fraction)
-    # intra- (BB):
-    intra_BB = saddledata[0:bins_for_strength,\
-                        0:bins_for_strength]
-    # intra- (AA):
-    intra_AA = saddledata[n_bins-bins_for_strength:n_bins,\
-                        n_bins-bins_for_strength:n_bins]
-    intra = np.concatenate((intra_AA, intra_BB), axis=0)
-    intra_median = np.median(intra)
-    # inter- (BA):
-    inter_BA = saddledata[0:bins_for_strength,\
-                        n_bins-bins_for_strength:n_bins]
-    # inter- (AB):
-    inter_AB = saddledata[n_bins-bins_for_strength:n_bins,\
-                        0:bins_for_strength]
-    inter = np.concatenate((inter_BA, inter_AB), axis=0)
-    inter_median = np.median(inter)
-    # returning intra-/inter- ratrio as a
-    # measure of compartment strength:
-    return intra_median / inter_median
+    m, n = S.shape
+    if m != n:
+        raise ValueError("`saddledata` should be square.")
+
+    ratios = np.zeros(n)
+    for k in range(1, n):
+        intra_sum = S[0:k, 0:k].sum() + S[n-k:n, n-k:n].sum() 
+        intra_count = C[0:k, 0:k].sum() + C[n-k:n, n-k:n].sum()
+        intra = intra_sum / intra_count
+        
+        inter_sum = S[0:k, n-k:n].sum() + S[n-k:n, 0:k].sum()
+        inter_count =  C[0:k, n-k:n].sum() + C[n-k:n, 0:k].sum()
+        inter = inter_sum / inter_count
+        
+        ratios[k] = intra / inter
+    return ratios
