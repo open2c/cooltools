@@ -1,16 +1,15 @@
-import click
-
+import multiprocess as mp
+import numpy as np
+import pandas as pd
 import cooler
-
-from . import cli
 from .. import expected
 
-
+import click
+from . import cli
 
 # might be relevant to us ...
 # https://stackoverflow.com/questions/46577535/how-can-i-run-a-dask-distributed-local-cluster-from-the-command-line
 # http://distributed.readthedocs.io/en/latest/setup.html#using-the-command-line
-
 
 @cli.command()
 @click.argument(
@@ -19,7 +18,7 @@ from .. import expected
     type=str,
     nargs=1)
 @click.option(
-    '--nproc', '-n',
+    '--nproc', '-p',
     help="Number of processes to split the work between."
          "[default: 1, i.e. no process pool]",
     default=1,
@@ -31,7 +30,7 @@ from .. import expected
     default=int(10e6),
     show_default=True)
 @click.option(
-    '--contact-type',
+    '--contact-type', "-t",
     help="compute expected for cis or trans region"
     "of a Hi-C map.",
     type=click.Choice(['cis', 'trans']),
@@ -64,58 +63,61 @@ from .. import expected
 #     flag_value='trans',
 #     required=True
 #     )
-
 def compute_expected(cool_path, nproc, chunksize, contact_type, drop_diags):
     """
-    Calculate either expected Hi-C singal
-    either for cis or for trans regions of
-    chromosomal interaction map.
+    Calculate either expected Hi-C signal either for cis or for trans regions 
+    of chromosomal interaction map.
     
     COOL_PATH : The paths to a .cool file with a balanced Hi-C map.
 
     """
+    clr = cooler.Cooler(cool_path)
+    supports = [(chrom, 0, clr.chromsizes[chrom]) for chrom in clr.chromnames]
 
     if nproc > 1:
-        import distributed
-        cluster = distributed.LocalCluster(n_workers=nproc)
-        client = distributed.Client(cluster)
-    # use dask if more than 1 process requested:
-    use_dask = True if nproc > 1 else False
+        pool = mp.Pool(nproc)
+        map_ = pool.map
+    else:
+        map_ = map
 
-    # load cooler file to process:
-    c = cooler.Cooler(cool_path)
+    try:
+        if contact_type == 'cis':
+            tables = expected.diagsum(
+                clr,
+                supports,
+                transforms={
+                    'balanced': lambda p: p['count'] * p['weight1'] * p['weight2']
+                },
+                chunksize=chunksize,
+                ignore_diags=drop_diags,
+                map=map_)
+            result = pd.concat(
+                [tables[support] for support in supports],
+                keys=[support[0] for support in supports], 
+                names=['chrom'])
+            result['balanced.avg'] = result['balanced.sum'] / result['n_valid']
+            result = result.reset_index()
 
-    # execute EITHER cis OR trans (not both):
-    if contact_type == 'cis':
-        # list of regions in a format (chrom,start,stop),
-        # when start,stop ommited, process entire chrom:
-        regions = [ (chrom,) for chrom in c.chromnames ]
-        expected_result = expected.cis_expected(clr=c,
-                                       regions=regions,
-                                       field='balanced',
-                                       chunksize=chunksize,
-                                       use_dask=use_dask,
-                                       ignore_diags=drop_diags)
-    elif contact_type == 'trans':
-        # process for all chromosomes:
-        chromosomes = c.chromnames
-        expected_result = expected.trans_expected(clr=c,
-                                         chromosomes=chromosomes,
-                                         chunksize=chunksize,
-                                         use_dask=use_dask)
+        elif contact_type == 'trans':
+            records = expected.blocksum_pairwise(
+                clr,                
+                supports, 
+                transforms={
+                    'balanced': lambda p: p['count'] * p['weight1'] * p['weight2']
+                },
+                chunksize=chunksize,
+                map=map_)
+            result = pd.DataFrame(
+                [{'chrom1': s1[0], 'chrom2': s2[0], **rec} 
+                    for (s1, s2), rec in records.items()], 
+                columns=['chrom1', 'chrom2', 'n_valid', 
+                         'count.sum', 'balanced.sum'])
+            result['balanced.avg'] = result['balanced.sum'] / result['n_valid']
+    finally:
+        if nproc > 1:
+            pool.close()
+
     # output to stdout,
     # just like in diamond_insulation:
-    print(expected_result.to_csv(sep='\t', index=True, na_rep='nan'))
-
-    # # DO WE HAVE TO SHUT DOWN SUCH CLUSTERS AT ALL ? ...
-    # # ############
-    # # # Shut down the whole distributed cluster
-    # # # business, to avoid interference ...
-    # # ############
-    # if nproc > 1:
-    #     # client.shutdown(timeout=1)
-    #     # print(client.status)
-    #     for w in cluster.workers:
-    #         cluster.stop_worker(w)
-    #     cluster.close()
+    print(result.to_csv(sep='\t', index=False, na_rep='nan'))
 
