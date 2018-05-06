@@ -6,11 +6,11 @@ import os.path as op
 from scipy.linalg import toeplitz
 import pandas as pd
 import numpy as np
-import click
 import cooler
-
-from . import cli
 from .. import saddle
+
+import click
+from . import cli
 
 
 def validate_csv(ctx, param, value, default_column):
@@ -278,7 +278,7 @@ def compute_saddle(cool_path, track_path, expected_path, contact_type, n_bins,
 
     if quantiles:
         if len(range_):
-            qlo, qhi = saddle.qrank(track[track_name], range_)   
+            qlo, qhi = saddle.ecdf(track[track_name], range_)   
         elif len(qrange):
             qlo, qhi = qrange
         else:
@@ -304,8 +304,6 @@ def compute_saddle(cool_path, track_path, expected_path, contact_type, n_bins,
         binedges,
         (digitized, track_name + '.d'),
         contact_type=contact_type)
-
-    print(binedges)
 
     saddledata = S / C
     if scale in ('log2', 'log10'):

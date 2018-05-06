@@ -6,30 +6,23 @@ import pandas as pd
 from .lib import numutils
 
 
-def qrank(x, v, side='left'):
+def ecdf(x, v, side='left'):
     """
-    Return the nearest quantile cut point fractions of 
-    values `v` against a sequence of data given by `x`.
+    Return array `x`'s empirical CDF value(s) at the points in `v`.
+    This is based on the :func:`statsmodels.distributions.ECDF` step function. 
+    This is the inverse of `quantile`.
     
     """
     x = np.asarray(x)
-    i = np.searchsorted(np.sort(x), v, side=side)
-    return i / (len(x) - 1)
-
-
-def qspace(x, start=0, stop=1, num=50):
-    """
-    Return a range of linearly spaced quantile cut points
-    from the sequence of data given by `x`.
-    
-    """
-    return quantile(x, np.linspace(start, stop, num))
+    ind = np.searchsorted(np.sort(x), v, side=side) - 1
+    y = np.linspace(1./len(x), 1., len(x))
+    return y[ind]
 
 
 def quantile(x, q, **kwargs):
     """
-    Return the values of the quantile cut points specified by 
-    fractions `q` of a sequence of data given by `x`.
+    Return the values of the quantile cut points specified by fractions `q` of 
+    a sequence of data given by `x`.
     
     """
     x = np.asarray(x)
@@ -39,13 +32,35 @@ def quantile(x, q, **kwargs):
 
 def digitize_track(binedges, track, chromosomes=None):
     """
-    Digitize per-chromosome genomic tracks.
+    Digitize genomic signal tracks into integers between `1` and `n`.
+
+    Parameters
+    ----------
+    binedges : 1D array (length n + 1)
+        Bin edges for quantization of signal. For `n` bins, there are `n + 1`
+        edges. See encoding details in Notes.
+    track : tuple of (DataFrame, str)
+        bedGraph-like dataframe along with the name of the value column.
+    chromosomes : sequence of chromosome names
+        List of chromosomes to include.
     
-    encoding: 
-    * 0 : left outlier
-    * n + 1 : right outlier
-    * -1 : missing data
-    * 1..n : bucket id
+    Returns
+    -------
+    digitized : DataFrame
+        New bedGraph-like dataframe with value column and an additional
+        digitized value column with name suffixed by '.d'
+    hist : 1D array (length n + 2)
+        Histogram of digitized signal values. Its length is `n + 2` because 
+        the first and last elements correspond to outliers. See notes.
+
+    Notes
+    -----
+    The digital encoding is as follows:
+
+    - `1..n` <-> values assigned to histogram bins
+    - `0` <-> left outlier values
+    - `n+1` <-> right outlier values
+    - `-1` <-> missing data (NaNs)
     
     """
     if not isinstance(track, tuple):
@@ -65,8 +80,8 @@ def digitize_track(binedges, track, chromosomes=None):
     digitized.loc[mask, name+'.d'] = -1
     x = digitized[name + '.d'].values.copy()
     x = x[(x > 0) & (x < len(binedges) + 1)]
-    counts = np.bincount(x, minlength=len(binedges) + 1)
-    return digitized, counts
+    hist = np.bincount(x, minlength=len(binedges) + 1)
+    return digitized, hist
 
 
 def make_cis_obsexp_fetcher(clr, expected):
@@ -164,33 +179,32 @@ def _accumulate(S, C, getmatrix, digitized, chrom1, chrom2, verbose):
             C[i, j] += float(len(data))
 
 
-def make_saddle(
-        getmatrix,
-        binedges,
-        digitized,
-        contact_type,
-        trim_outliers=False,
-        chromosomes=None,
-        verbose=False):
+def make_saddle(getmatrix, binedges, digitized, contact_type, chromosomes=None, 
+                trim_outliers=False, verbose=False):
     """
     Make a matrix of average interaction probabilities between genomic bin pairs
     as a function of a specified genomic track. The provided genomic track must
-    be pre-binned (i.e. digitized).
+    be pre-quantized as integers (i.e. digitized).
     
     Parameters
     ----------
-    get_matrix : function
-        A function returning an matrix of interaction between two chromosomes 
+    getmatrix : function
+        A function returning a matrix of interaction between two chromosomes 
         given their names/indicies.
-    get_digitized : function
-        A function returning a track of the digitized target genomic track given
-        a chromosomal name/index.
-    chromosomes : list or iterator
-        A list of names/indices of all chromosomes.    
+    binedges : 1D array (length n + 1)
+        Bin edges of the digitized signal. For `n` bins, there are `n + 1`
+        edges. See :func:`digitize_track`.
+    digitized : tuple of (DataFrame, str)
+        BedGraph-like dataframe of digitized signal along with the name of
+        the digitized value column.
     contact_type : str
         If 'cis' then only cis interactions are used to build the matrix.
         If 'trans', only trans interactions are used.
-    verbose : bool
+    chromosomes : sequence of str, optional
+        A list of names/indices of all chromosomes to use.
+    trim_outliers : bool, optional
+        Remove first and last row and column from the output matrix.
+    verbose : bool, optional
         If True then reports progress.
 
     Returns
