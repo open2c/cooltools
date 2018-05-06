@@ -696,3 +696,64 @@ def get_kernel(w, p, ktype):
     else:
         raise ValueError("Kernel-type {} has not been implemented yet".format(ktype))
     return kernel
+
+
+def coarsen(reduction, x, axes, trim_excess=False):
+    """
+    Coarsen an array by applying reduction to fixed size neighborhoods.
+    Adapted from `dask.array.coarsen` to work on regular numpy arrays.
+
+    Parameters
+    ----------
+    reduction : function
+        Function like np.sum, np.mean, etc...
+    x : np.ndarray
+        Array to be coarsened
+    axes : dict
+        Mapping of axis to coarsening factor
+    trim_excess : bool, optional
+        Remove excess elements. Default is False.
+
+    Examples
+    --------
+    Provide dictionary of scale per dimension
+    
+    >>> x = np.array([1, 2, 3, 4, 5, 6])
+    >>> coarsen(np.sum, x, {0: 2})
+    array([ 3,  7, 11])
+    
+    >>> coarsen(np.max, x, {0: 3})
+    array([3, 6])
+
+    >>> x = np.arange(24).reshape((4, 6))
+    >>> x
+    array([[ 0,  1,  2,  3,  4,  5],
+           [ 6,  7,  8,  9, 10, 11],
+           [12, 13, 14, 15, 16, 17],
+           [18, 19, 20, 21, 22, 23]])
+
+    >>> coarsen(np.min, x, {0: 2, 1: 3})
+    array([[ 0,  3],
+           [12, 15]])
+
+    See also
+    --------
+    dask.array.coarsen  
+
+    """
+    # Insert singleton dimensions if they don't exist already
+    for i in range(x.ndim):
+        if i not in axes:
+            axes[i] = 1
+
+    if trim_excess:
+        ind = tuple(slice(0, -(d % axes[i])) 
+                        if d % axes[i] else slice(None, None) 
+                    for i, d in enumerate(x.shape))
+        x = x[ind]
+
+    # (10, 10) -> (5, 2, 5, 2)
+    newdims = [(x.shape[i] // axes[i], axes[i]) for i in range(x.ndim)]
+    newshape = tuple(np.concatenate(newdims))
+    reduction_axes = tuple(range(1, x.ndim * 2, 2))
+    return reduction(x.reshape(newshape), axis=reduction_axes)
