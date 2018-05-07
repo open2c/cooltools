@@ -1,5 +1,7 @@
 from itertools import chain, combinations
 from collections import defaultdict
+from functools import partial
+
 import numpy as np
 import pandas as pd
 from scipy.linalg import toeplitz
@@ -8,13 +10,12 @@ import distributed
 import dask.dataframe as dd
 import dask.array as da
 import dask
-from functools import partial
 
 from cooler.tools import split, partition
 from cooler.contrib.dask import daskify
 import cooler
 import bioframe
-from .lib import assign_supports
+from .lib import assign_supports, numutils
 
 where = np.flatnonzero
 concat = chain.from_iterable
@@ -57,7 +58,7 @@ def compute_scaling(df, region1, region2=None,
     if region2 is None:
         region2 = region1
     
-    distbins = geomspace(dmin, dmax, n_bins)
+    distbins = numutils.logbins(dmin, dmax, N=n_bins)
     areas = contact_areas(distbins, region1, region2)
 
     df = df[ 
