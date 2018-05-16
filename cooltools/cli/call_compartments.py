@@ -3,7 +3,7 @@ import click
 import cooler
 
 from . import cli
-from .. import eidgecomp
+from .. import eigdecomp
 
 import pandas as pd
 import numpy as np
@@ -134,7 +134,7 @@ def compute_saddle(
     # define OBS/EXP getter functions,
     # it's contact_type dependent:
     if contact_type == "cis":
-        eigvals, eigvec_table = eidgecomp.cooler_cis_eig(
+        eigvals, eigvec_table = eigdecomp.cooler_cis_eig(
                                     clr = c,
                                     bins = phasing_df,
                                     regions=None, 
@@ -142,15 +142,15 @@ def compute_saddle(
                                     phasing_track_col=track_name, 
                                     ignore_diags=None,
                                     clip_percentile = 99.9,
-                                    sort_metric = None):
+                                    sort_metric = None)
     elif contact_type == "trans":
-        eigvals, eigvec_table =  eidgecomp.cooler_trans_eig(
+        eigvals, eigvec_table =  eigdecomp.cooler_trans_eig(
                                     clr = c,
                                     bins = phasing_df, 
                                     n_eigs=3, 
                                     partition=None, 
                                     phasing_track_col=track_name, 
-                                    sort_metric=None):
+                                    sort_metric=None)
 
     # "cooler_cis_eig"
     # is expecting  "phasing track"
@@ -170,3 +170,5 @@ def compute_saddle(
         # use it as a dump to redraw a saddleplot.
         pass
         # output eigvals, eigvec_table ...
+    else:
+        pass
