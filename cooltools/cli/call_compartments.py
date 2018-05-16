@@ -15,7 +15,7 @@ import numpy as np
     "cool_path",
     metavar="COOL_PATH",
     # type=click.Path(exists=True, dir_okay=False),
-    type=str
+    type=str,
     nargs=1)
 #     track : pandas.DataFrame
 #         bedGraph-like data frame ('chrom', 'start', 'end', <name>).
@@ -86,7 +86,6 @@ def compute_saddle(
 
 
 
-
     # load phasing track, using some rudimenary
     # forms of validation, like usecols and dtype:
     # 
@@ -94,9 +93,9 @@ def compute_saddle(
     track_cols = ["chrom", "start", "end", track_name]
     # track dtype per column:
     track_dtype = {'chrom' : np.str,
-                    'start' : np.int64,
-                    'end' : np.int64,
-                    track_name : np.float64}
+                   'start' : np.int64,
+                   'end' : np.int64,
+                   track_name : np.float64}
     # load the track into DataFrame:
     track_df = pd.read_table(
                     track_path,
@@ -129,12 +128,8 @@ def compute_saddle(
             "There is something in the {} that couldn't be merged with cooler-bins {}" \
                 .format(track_path, cool_path) )
 
-
     # once that's done and we are sure in our 'phasing_df':
-
     # go ahead and use 'cooler_cis_eig' or 'cooler_trans_eig' ...
-
-
 
     # define OBS/EXP getter functions,
     # it's contact_type dependent:
