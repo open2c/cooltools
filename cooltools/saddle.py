@@ -1,3 +1,4 @@
+from itertools import combinations
 from functools import partial
 from scipy.linalg import toeplitz
 from cytoolz import merge
