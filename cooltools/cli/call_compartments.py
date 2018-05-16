@@ -52,7 +52,8 @@ import numpy as np
          " as a BED-like file.",
     type=str)
 
-def compute_saddle(
+
+def call_compartments(
             cool_path,
             track_path,
             track_name,
