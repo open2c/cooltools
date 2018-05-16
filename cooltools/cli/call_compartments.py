@@ -54,7 +54,7 @@ import numpy as np
 
 def compute_saddle(
             cool_path,
-            track_path
+            track_path,
             track_name,
             contact_type,
             verbose,
