@@ -24,13 +24,13 @@ import numpy as np
     metavar="TRACK_PATH",
     type=click.Path(exists=True, dir_okay=False),
     nargs=1)
-# options ...
-phasing_name
+# # options ...
+# phasing_name
 @click.option(
     '--track-name',
     help="Name of phasing track column"
          " in the TRACK_PATH",
-    default='GC',
+    default='gc',
     show_default=True,
     type=str)
 @click.option(
