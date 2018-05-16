@@ -42,6 +42,12 @@ import numpy as np
     default='cis',
     show_default=True)
 @click.option(
+    '--n-eigs',
+    help="Number of eigenvectors to compute.",
+    type=int,
+    default=3,
+    show_default=True)
+@click.option(
     "--verbose", "-v",
     help="Enable verbose output",
     is_flag=True,
@@ -58,6 +64,7 @@ def call_compartments(
             track_path,
             track_name,
             contact_type,
+            n_eigs,
             verbose,
             output):
     """
@@ -124,7 +131,7 @@ def call_compartments(
     # in the track_df that didn't match 
     # ["chrom", "start", "end"] - keys from
     # the c.bins()[:] .
-    if len(phasing_df) > c.nbins:
+    if len(phasing_df) > c.info["nbins"]:
         ValueError(
             "There is something in the {} that couldn't be merged with cooler-bins {}" \
                 .format(track_path, cool_path) )
@@ -138,20 +145,20 @@ def call_compartments(
         eigvals, eigvec_table = eigdecomp.cooler_cis_eig(
                                     clr = c,
                                     bins = phasing_df,
-                                    regions=None, 
-                                    n_eigs=3, 
-                                    phasing_track_col=track_name, 
-                                    ignore_diags=None,
+                                    regions = None,
+                                    n_eigs = n_eigs,
+                                    phasing_track_col = track_name,
+                                    ignore_diags = None,
                                     clip_percentile = 99.9,
                                     sort_metric = None)
     elif contact_type == "trans":
         eigvals, eigvec_table =  eigdecomp.cooler_trans_eig(
                                     clr = c,
-                                    bins = phasing_df, 
-                                    n_eigs=3, 
-                                    partition=None, 
-                                    phasing_track_col=track_name, 
-                                    sort_metric=None)
+                                    bins = phasing_df,
+                                    n_eigs = n_eigs,
+                                    partition = None,
+                                    phasing_track_col = track_name,
+                                    sort_metric = None)
 
     # "cooler_cis_eig"
     # is expecting  "phasing track"
