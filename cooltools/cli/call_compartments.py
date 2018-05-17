@@ -1,33 +1,23 @@
+from functools import partial
 import pandas as pd
 import numpy as np
 import cooler
+from .. import eigdecomp
 
 import click
+from .util import validate_csv
 from . import cli
-from .. import eigdecomp
 
 
 @cli.command()
 @click.argument(
     "cool_path",
     metavar="COOL_PATH",
-    type=str,
-    nargs=1)
-#     track : pandas.DataFrame
-#         bedGraph-like data frame ('chrom', 'start', 'end', <name>).
-@click.argument(
-    "track_path",
-    metavar="TRACK_PATH",
-    type=click.Path(exists=True, dir_okay=False),
-    nargs=1)
-# # options ...
-# phasing_name
-@click.option(
-    '--track-name',
-    help="Name of phasing track column in the TRACK_PATH",
-    default='gc',
-    show_default=True,
     type=str)
+@click.option(
+    "--orient-track",
+    type=str,
+    callback=partial(validate_csv, default_column=3))
 @click.option(
     '--contact-type',
     help="Type of the contacts perform eigen-value decomposition on.",
@@ -46,11 +36,11 @@ from .. import eigdecomp
     is_flag=True,
     default=False)
 @click.option(
-    "--output",
+    "--out-prefix", "-o",
     help="Save compartment track as a BED-like file.",
-    type=str)
-def call_compartments(cool_path, track_path, track_name, contact_type, n_eigs,
-                      verbose, output):
+    required=True)
+def call_compartments(cool_path, orient_track, contact_type, n_eigs,
+                      verbose, out_prefix):
     """
     Perform eigen value decomposition on a cooler matrix to calculate
     compartment signal by finding the eigenvector that correlates best with the
@@ -66,53 +56,60 @@ def call_compartments(cool_path, track_path, track_name, contact_type, n_eigs,
     track-name.
 
     """
-    c = cooler.Cooler(cool_path)
+    clr = cooler.Cooler(cool_path)
 
-    # load phasing track, using some rudimenary
-    # forms of validation, like usecols and dtype:
+    if orient_track is not None:
+        kwargs = {}
 
-    # track columns, BedGraph style:
-    track_cols = ["chrom", "start", "end", track_name]
-    # track dtype per column:
-    track_dtype = {'chrom': np.str,
-                   'start': np.int64,
-                   'end': np.int64,
-                   track_name: np.float64}
-    # load the track into DataFrame:
-    track_df = pd.read_table(
-        track_path,
-        usecols=track_cols,
-        dtype=track_dtype,
-        comment=None,
-        verbose=verbose)
+        track_path, arg = orient_track
+        if isinstance(track_name, int):
+            track_name = 'orient'
+            kwargs['usecols'] = [0, 1, 2, arg]
+        else:
+            track_name = arg
+        dtypes = {
+            'chrom': np.str,
+            'start': np.int64,
+            'end': np.int64,
+            track_name: np.float64
+        }
+        track_df = pd.read_table(
+            track_path,
+            names=["chrom", "start", "end", track_name],
+            dtype=dtyes,
+            comment=None,
+            verbose=verbose,
+            **kwargs)
 
-    # we need to merge phasing track DataFrame with the cooler.bins()[:] to get
-    # a DataFrame with phasing info aligned and validated against bins inside of
-    # the cooler file.
-    phasing_df = track_df.merge(
-        right=c.bins()[:],
-        how="outer",
-        on=["chrom", "start", "end"],
-        validate=None)
-    # consider using validate ?!
+        # we need to merge phasing track DataFrame with the cooler bins to get
+        # a DataFrame with phasing info aligned and validated against bins inside of
+        # the cooler file.
+        track = pd.merge(
+            left=clr.bins()[:],
+            right=track_df,
+            how="left",
+            on=["chrom", "start", "end"],
+            validate=None)
+        # consider using validate ?!
 
-    # sanity check would be to check if len(phasing_df) becomes > than nbins ...
-    # that would imply there was something in the track_df that didn't match
-    # ["chrom", "start", "end"] - keys from the c.bins()[:] .
-    if len(phasing_df) > c.info["nbins"]:
-        ValueError(
-            "There is something in the {} that couldn't ".format(track_path) +
-            "be merged with cooler-bins {}".format(cool_path))
+        # sanity check would be to check if len(bins) becomes > than nbins ...
+        # that would imply there was something in the track_df that didn't match
+        # ["chrom", "start", "end"] - keys from the c.bins()[:] .
+        if len(track) > len(clr.bins()):
+            ValueError(
+                "There is something in the {} that couldn't ".format(track_path) +
+                "be merged with cooler-bins {}".format(cool_path))
+    else:
+        track = clr.bins()[['chrom', 'start', 'end']][:]
+        track_name = None
 
-    # once that's done and we are sure in our 'phasing_df':
-    # go ahead and use 'cooler_cis_eig' or 'cooler_trans_eig' ...
 
     # define OBS/EXP getter functions,
     # it's contact_type dependent:
     if contact_type == "cis":
         eigvals, eigvec_table = eigdecomp.cooler_cis_eig(
-            clr=c,
-            bins=phasing_df,
+            clr=clr,
+            bins=track,
             regions=None,
             n_eigs=n_eigs,
             phasing_track_col=track_name,
@@ -121,29 +118,12 @@ def call_compartments(cool_path, track_path, track_name, contact_type, n_eigs,
             sort_metric=None)
     elif contact_type == "trans":
         eigvals, eigvec_table = eigdecomp.cooler_trans_eig(
-            clr=c,
-            bins=phasing_df,
+            clr=clr,
+            bins=track,
             n_eigs=n_eigs,
             partition=None,
             phasing_track_col=track_name,
             sort_metric=None)
 
-    # "cooler_cis_eig"
-    # is expecting  "phasing track"
-    # column in c.bins()[:]
-    # should we expect a cooler like that or what ?
-
-    ##############################
-    # OUTPUT
-    ##############################
-    # no stdout output, since there are several
-    # distinct data-structures that needs to be saved,
-    # let's pack them in a single container:
-    if output is not None:
-        # pack saddledata, binedges, and digitized
-        # in a single .npz container,
-        # use it as a dump to redraw a saddleplot.
-        pass
-        # output eigvals, eigvec_table ...
-    else:
-        pass
+    eigvals.to_csv(out_prefix + '.' + contact_type + '.lam.txt', sep='\t', index=False)
+    eigvec_table.to_csv(out_prefix + '.' + contact_type + '.vecs.tsv', sep='\t', index=False)
