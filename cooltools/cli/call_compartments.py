@@ -5,7 +5,7 @@ import cooler
 from .. import eigdecomp
 
 import click
-from .util import validate_csv
+from .util import TabularFilePath, sniff_for_header
 from . import cli
 
 
@@ -15,9 +15,8 @@ from . import cli
     metavar="COOL_PATH",
     type=str)
 @click.option(
-    "--orient-track",
-    type=str,
-    callback=partial(validate_csv, default_column=3))
+    "--reference-track",
+    type=TabularFilePath(exists=True, default_column_index=3))
 @click.option(
     '--contact-type',
     help="Type of the contacts perform eigen-value decomposition on.",
@@ -39,7 +38,7 @@ from . import cli
     "--out-prefix", "-o",
     help="Save compartment track as a BED-like file.",
     required=True)
-def call_compartments(cool_path, orient_track, contact_type, n_eigs,
+def call_compartments(cool_path, reference_track, contact_type, n_eigs,
                       verbose, out_prefix):
     """
     Perform eigen value decomposition on a cooler matrix to calculate
@@ -58,28 +57,53 @@ def call_compartments(cool_path, orient_track, contact_type, n_eigs,
     """
     clr = cooler.Cooler(cool_path)
 
-    if orient_track is not None:
-        kwargs = {}
+    if reference_track is not None:
 
-        track_path, arg = orient_track
-        if isinstance(track_name, int):
-            track_name = 'orient'
-            kwargs['usecols'] = [0, 1, 2, arg]
+        track_path, col = reference_track
+        buf, names = sniff_for_header(track_path)
+
+        if names is None:
+            if not isinstance(col, int):
+                raise click.BadParameter(
+                    'No header found. '
+                    'Cannot find "{}" column without a header.'.format(col))
+            
+            track_name = 'ref'
+            kwargs = dict(
+                header=None,
+                usecols=[0, 1, 2, col],
+                names=['chrom', 'start', 'end', track_name])
         else:
-            track_name = arg
-        dtypes = {
-            'chrom': np.str,
-            'start': np.int64,
-            'end': np.int64,
-            track_name: np.float64
-        }
+            if isinstance(col, int):
+                try:
+                    col = names[col]
+                except IndexError:
+                    raise click.BadParameter(
+                        'Column #{} not compatible with header "{}".'.format(
+                            col, ','.join(names)))
+            else:
+                if col not in names:
+                    raise click.BadParameter(
+                        'Column "{}" not found in header "{}"'.format(
+                            col, ','.join(names)))
+            
+            track_name = col
+            kwargs = dict(
+                header='infer',
+                usecols=['chrom', 'start', 'end', track_name])
+        
         track_df = pd.read_table(
-            track_path,
-            names=["chrom", "start", "end", track_name],
-            dtype=dtyes,
-            comment=None,
+            buf, 
+            dtype={
+                'chrom': str,
+                'start': np.int64,
+                'end': np.int64,
+                track_name: np.float64,
+            },
+            comment='#',
             verbose=verbose,
-            **kwargs)
+            **kwargs
+        )
 
         # we need to merge phasing track DataFrame with the cooler bins to get
         # a DataFrame with phasing info aligned and validated against bins inside of
@@ -88,17 +112,15 @@ def call_compartments(cool_path, orient_track, contact_type, n_eigs,
             left=clr.bins()[:],
             right=track_df,
             how="left",
-            on=["chrom", "start", "end"],
-            validate=None)
-        # consider using validate ?!
+            on=["chrom", "start", "end"])
 
         # sanity check would be to check if len(bins) becomes > than nbins ...
         # that would imply there was something in the track_df that didn't match
         # ["chrom", "start", "end"] - keys from the c.bins()[:] .
         if len(track) > len(clr.bins()):
             ValueError(
-                "There is something in the {} that couldn't ".format(track_path) +
-                "be merged with cooler-bins {}".format(cool_path))
+                "There is something in the {} that ".format(track_path) +
+                "couldn't be merged with cooler-bins {}".format(cool_path))
     else:
         track = clr.bins()[['chrom', 'start', 'end']][:]
         track_name = None
@@ -113,7 +135,6 @@ def call_compartments(cool_path, orient_track, contact_type, n_eigs,
             regions=None,
             n_eigs=n_eigs,
             phasing_track_col=track_name,
-            ignore_diags=None,
             clip_percentile=99.9,
             sort_metric=None)
     elif contact_type == "trans":
