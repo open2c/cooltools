@@ -2,6 +2,7 @@ from functools import partial
 import pandas as pd
 import numpy as np
 import cooler
+import bioframe
 from .. import eigdecomp
 
 import click
@@ -38,8 +39,13 @@ from . import cli
     "--out-prefix", "-o",
     help="Save compartment track as a BED-like file.",
     required=True)
+@click.option(
+    "--bigwig",
+    help="Also save compartment track as a bigWig file.",
+    is_flag=True,
+    default=False)
 def call_compartments(cool_path, reference_track, contact_type, n_eigs,
-                      verbose, out_prefix):
+                      verbose, out_prefix, bigwig):
     """
     Perform eigen value decomposition on a cooler matrix to calculate
     compartment signal by finding the eigenvector that correlates best with the
@@ -125,8 +131,6 @@ def call_compartments(cool_path, reference_track, contact_type, n_eigs,
         track = clr.bins()[['chrom', 'start', 'end']][:]
         track_name = None
 
-
-    # define OBS/EXP getter functions,
     # it's contact_type dependent:
     if contact_type == "cis":
         eigvals, eigvec_table = eigdecomp.cooler_cis_eig(
@@ -146,5 +150,12 @@ def call_compartments(cool_path, reference_track, contact_type, n_eigs,
             phasing_track_col=track_name,
             sort_metric=None)
 
+    # Output
     eigvals.to_csv(out_prefix + '.' + contact_type + '.lam.txt', sep='\t', index=False)
     eigvec_table.to_csv(out_prefix + '.' + contact_type + '.vecs.tsv', sep='\t', index=False)
+    if bigwig:
+        bioframe.to_bigwig(
+            eigvec_table, 
+            clr.chromsizes, 
+            out_prefix + '.' + contact_type + '.bw', 
+            value_field='E1')
