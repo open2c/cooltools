@@ -2,7 +2,6 @@ from functools import partial
 import multiprocess as mp
 import click
 
-from scipy.linalg import toeplitz
 from scipy.stats import poisson
 import pandas as pd
 import numpy as np
