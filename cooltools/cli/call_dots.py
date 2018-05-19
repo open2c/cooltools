@@ -146,6 +146,78 @@ def scoring_step(clr, expected, expected_name, tiles, kernels,
             pool.close()
 
 
+def histogramming_step(scored_df, kernels,
+                       hists, verbose):
+    """
+    An attempt to implement HiCCUPS-like lambda-chunking
+    statistical procedure.
+    This function aims at building up a histogram of locally
+    adjusted expected scores for groups of characterized
+    pixels.
+    Such histograms are later used to compute FDR thresholds
+    for different "classes" of hypothesis (classified by their
+    l.a. expected scores).
+
+    Parameters
+    ----------
+    scored_df : pd.DataFrame
+        A table with the scoring information for a group of pixels.
+    kernels : dict
+        A dictionary with keys being kernels names and values being ndarrays
+        representing those kernels.
+    hists : DataFrame or dict or ndarray
+        A place where histogramming information is going to be accumulated
+        Must be preallocated (HiCCUPS-style) before actuall histogramming
+        occurs - potentially can be rethought and re-engineered.
+    verbose : bool
+        Enable verbose output.
+
+    Returns
+    -------
+    nothing : nothing
+
+
+    Notes
+    -----
+    This is just an attempt to implement HiCCUPS-like lambda-chunking.
+    So we'll be accumulating into globally defined (or 1 layer up) hists
+    for now, probably making something like a Feature2D class later on
+    where hists would be a class feature and histogramming_step would be
+    a method.
+
+
+    """
+    scored_df
+    # ##########################
+    # from the scoring step:
+    # ##########################
+    # get_pval = lambda la_exp : 1.0 - poisson.cdf(res_df["obs.raw"], la_exp)
+    # for k in kernels:
+    #     res_df["la_exp."+k+".pval"] = get_pval( res_df["la_exp."+k+".value"] )
+    #############################################################################
+    # potentially we wouldn't need those 'pval' entries,
+    # as lambda-chunking implies different 'pval' calculation
+    # procedure with a single Poisson expected for all the
+    # hypothesis in a same "class", i.e. with the l.a. expecteds
+    # from the same histogram bin.
+
+
+    ########################
+    # implementation ideas:
+    ########################
+    # same observations/hypothesis needs to be classified according
+    # to different l.a. expecteds (i.e. for different kernel-types),
+    # which could probably be done with a sophisticated pandas groupby!
+    # something like that:
+    # https://stackoverflow.com/questions/21441259/pandas-groupby-range-of-values?utm_medium=organic&utm_source=google_rich_qa&utm_campaign=google_rich_qa
+    #
+    # after that we could iterate over groups and do np.bincout on
+    # the "observed" column ...
+
+    # return nothing for now ...
+    return None
+
+
 def clustering_step(scores_file, expected_chroms, ktypes, fdr, 
                     dots_clustering_radius, verbose):
     res_df = pd.read_hdf(scores_file, 'results')
