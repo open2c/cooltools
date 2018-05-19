@@ -187,7 +187,8 @@ def histogramming_step(scored_df, kernels,
 
 
     """
-    scored_df
+
+
     # ##########################
     # from the scoring step:
     # ##########################
@@ -213,6 +214,33 @@ def histogramming_step(scored_df, kernels,
     #
     # after that we could iterate over groups and do np.bincout on
     # the "observed" column ...
+
+    # creating logspace bins with base=2^(1/3),
+    # the first bin must be (-inf,1]
+    # the last bin must be (2^(k/3),+inf):
+    # variant 1:
+    bins = np.zeros(k+2)
+    bins[1:k+1] = np.logspace(0,k-1,num=k,base=2**(1/3.0),dtype=np.float)
+    bins[-1] = np.inf
+    # variant 2:
+    bins = np.concatenate(([-np.inf,],
+                            np.logspace(0,
+                                        k-1,
+                                        num=k,
+                                        base=2**(1/3.0),
+                                        dtype=np.float),
+                            [np.inf,]))
+    # once we have bins ...
+
+
+    for k,grp in scored_df.groupby(pd.cut(scored_df['la_exp.donut.val'], bins)):
+        print("interval {}".format(k))
+        # consider updating global "hists" :
+        hists = np.bincount(grp["observed"], minlength=100)
+        # or returning chunks of histogramms for every "scored_df" chunk:""
+        pass
+        # ...
+
 
     # return nothing for now ...
     return None
