@@ -11,6 +11,12 @@ from . import cli
 from ..lib.numutils import LazyToeplitz, get_kernel
 from .. import dotfinder
 
+# these are the constants from HiCCUPS, that dictate how initial histogramms
+# for lambda-chunking are computed: W1 is the # of logspaced lambda bins,
+# and W2 is maximum "allowed" raw number of contacts per Hi-C heatmap bin:
+HiCCUPS_W1_MAX_INDX = 40
+HiCCUPS_W2_MAX_INDX = 10000
+
 
 def score_tile(tile_cij, clr, cis_exp, exp_v_name, bal_v_name, kernels,
                nans_tolerated, band_to_cover, verbose):
@@ -100,6 +106,99 @@ def score_tile(tile_cij, clr, cis_exp, exp_v_name, bal_v_name, kernels,
     return cooler.annotate(res_df.reset_index(drop=True), clr.bins()[:])
 
 
+def histogram_scored_pixels(scored_df, kernels, lbins, verbose):
+    """
+    An attempt to implement HiCCUPS-like lambda-chunking
+    statistical procedure.
+    This function aims at building up a histogram of locally
+    adjusted expected scores for groups of characterized
+    pixels.
+    Such histograms are later used to compute FDR thresholds
+    for different "classes" of hypothesis (classified by their
+    l.a. expected scores).
+
+    Parameters
+    ----------
+    scored_df : pd.DataFrame
+        A table with the scoring information for a group of pixels.
+    kernels : dict
+        A dictionary with keys being kernels names and values being ndarrays
+        representing those kernels.
+    lbins : ndarray
+        An ndarray with bin boundaries for groupping loc. adjusted expecteds,
+        i.e., classifying statistical hypothesis into lambda-classes.
+        Left-most bin (-inf, 1], and right-most one (value,+inf].
+    verbose : bool
+        Enable verbose output.
+
+    Returns
+    -------
+    hists : dict of pandas.DataFrame
+        A dictionary of pandas.DataFrame with lambda/observed histogram for
+        every kernel-type.
+
+
+    Notes
+    -----
+    This is just an attempt to implement HiCCUPS-like lambda-chunking.
+    So we'll be returning histograms corresponding to the chunks of
+    scored pixels.
+    Consider modifying/accumulation a globally defined hists object,
+    or probably making something like a Feature2D class later on
+    where hists would be a class feature and histogramming_step would be
+    a method.
+
+
+    """
+
+    # lambda-chunking implies different 'pval' calculation
+    # procedure with a single Poisson expected for all the
+    # hypothesis in a same "class", i.e. with the l.a. expecteds
+    # from the same histogram bin.
+
+
+    ########################
+    # implementation ideas:
+    ########################
+    # same observations/hypothesis needs to be classified according
+    # to different l.a. expecteds (i.e. for different kernel-types),
+    # which can be done with a pandas groupby, something like that:
+    # https://stackoverflow.com/questions/21441259
+    #
+    # after that we could iterate over groups and do np.bincout on
+    # the "observed.raw" column (assuming it's of integer type) ...
+
+    hists = {}
+    for k in kernels:
+        # verbose:
+        if verbose:
+            print("Building a histogram for kernel-type {}".format(k))
+        #  we would need to generate a bunch of these histograms for all of the
+        # kernel types:
+        # needs to be lambda-binned             : scored_df["la_exp."+k+".value"]
+        # needs to be histogrammed in every bin : scored_df["obs.raw"]
+        #
+        # lambda-bin index for kernel-type "k":
+        l_bins = pd.cut(scored_df["la_exp."+k+".value"],bins)
+        # now for each lambda-bin construct a histogramm of "obs.raw":
+        obs_hist = pd.DataFrame()
+        for l_bin, grp_df in scored_df.groupby(l_bins):
+            # check if obs.raw is integer of spome kind (temporary):
+            assert np.issubtype(grp_df["obs.raw"].dtype, np.integer)
+            # perform bincounting ...
+            obs_hist[l_bin] = np.bincount(grp_df["obs.raw"],
+                                          minlength=HiCCUPS_W2_MAX_INDX)
+            # by using the constants in "bincount" we could simplify the
+            # initial implementation of lambda-chunking.
+            # but consider updating global "hists" later on, or implementing a
+            # special class for that ...
+        # store W1xW2 hist for every kernel-type:
+        hists[k] = obs_hist
+    # return a dict of DataFrames with a bunch of histograms:
+    return hists
+
+
+
 def scoring_step(clr, expected, expected_name, tiles, kernels, 
                  max_nans_tolerated, loci_separation_bins, output_path, 
                  nproc, verbose):
@@ -133,6 +232,9 @@ def scoring_step(clr, expected, expected_name, tiles, kernels,
             print("fallback to serial implementation.")
         map_kwargs = {}
     try:
+        # consider using
+        # https://github.com/mirnylab/cooler/blob/9e72ee202b0ac6f9d93fd2444d6f94c524962769/cooler/tools.py#L59
+        # here:
         chunks = map_(job, tiles, **map_kwargs)
         append = False
         for chunk in chunks:
@@ -146,104 +248,93 @@ def scoring_step(clr, expected, expected_name, tiles, kernels,
             pool.close()
 
 
-def histogramming_step(scored_df, kernels,
-                       hists, verbose):
+
+def scoring_and_histogramming_step(clr, expected, expected_name, tiles, kernels,
+                                   lbins, max_nans_tolerated, loci_separation_bins,
+                                   output_path, nproc, verbose):
     """
-    An attempt to implement HiCCUPS-like lambda-chunking
-    statistical procedure.
-    This function aims at building up a histogram of locally
-    adjusted expected scores for groups of characterized
-    pixels.
-    Such histograms are later used to compute FDR thresholds
-    for different "classes" of hypothesis (classified by their
-    l.a. expected scores).
+    This is a derivative of the 'scoring_step'
+    which is supposed to implement the 1st of the
+    lambda-chunking procedure - histogramming.
 
-    Parameters
-    ----------
-    scored_df : pd.DataFrame
-        A table with the scoring information for a group of pixels.
-    kernels : dict
-        A dictionary with keys being kernels names and values being ndarrays
-        representing those kernels.
-    hists : DataFrame or dict or ndarray
-        A place where histogramming information is going to be accumulated
-        Must be preallocated (HiCCUPS-style) before actuall histogramming
-        occurs - potentially can be rethought and re-engineered.
-    verbose : bool
-        Enable verbose output.
-
-    Returns
-    -------
-    nothing : nothing
-
-
-    Notes
-    -----
-    This is just an attempt to implement HiCCUPS-like lambda-chunking.
-    So we'll be accumulating into globally defined (or 1 layer up) hists
-    for now, probably making something like a Feature2D class later on
-    where hists would be a class feature and histogramming_step would be
-    a method.
-
-
+    Basically we are piping scoring operation
+    together with histogramming into a single
+    pipeline of per-chunk operations/transforms.
     """
+    if verbose:
+        print("Preparing to convolve "
+              "{} tiles with w,p={},{} kernels".format(len(tiles),w,p))
 
+    # add very_verbose to supress output from convolution of every tile
+    very_verbose = False
 
-    # ##########################
-    # from the scoring step:
-    # ##########################
-    # get_pval = lambda la_exp : 1.0 - poisson.cdf(res_df["obs.raw"], la_exp)
-    # for k in kernels:
-    #     res_df["la_exp."+k+".pval"] = get_pval( res_df["la_exp."+k+".value"] )
-    #############################################################################
-    # potentially we wouldn't need those 'pval' entries,
-    # as lambda-chunking implies different 'pval' calculation
-    # procedure with a single Poisson expected for all the
-    # hypothesis in a same "class", i.e. with the l.a. expecteds
-    # from the same histogram bin.
+    # to score per tile:
+    to_score = partial(
+        score_tile,
+        clr=clr,
+        cis_exp=expected,
+        exp_v_name=expected_name,
+        bal_v_name='weight',
+        kernels=kernels,
+        nans_tolerated=max_nans_tolerated,
+        band_to_cover=loci_separation_bins,
+        verbose=very_verbose)
 
+    # to hist per scored chunk:
+    to_hist = partial(
+        histogram_scored_pixels,
+        kernels=kernels,
+        lbins=lbins,
+        verbose=very_verbose)
 
-    ########################
-    # implementation ideas:
-    ########################
-    # same observations/hypothesis needs to be classified according
-    # to different l.a. expecteds (i.e. for different kernel-types),
-    # which could probably be done with a sophisticated pandas groupby!
-    # something like that:
-    # https://stackoverflow.com/questions/21441259/pandas-groupby-range-of-values?utm_medium=organic&utm_source=google_rich_qa&utm_campaign=google_rich_qa
+    # composing/piping scoring and histogramming
+    # together :
+    job = lambda tile : to_hist(to_score(tile))
+
+    # copy paste from @nvictus modified 'scoring_step':
+    if nproc > 1:
+        pool = mp.Pool(nproc)
+        map_ = pool.imap
+        map_kwargs = dict(chunksize=int(np.ceil(len(tiles)/nproc)))
+        if verbose:
+            print("creating a Pool of {} workers to tackle {} tiles".format(
+                    nproc, len(tiles)))
+    else:
+        map_ = map
+        if verbose:
+            print("fallback to serial implementation.")
+        map_kwargs = {}
+    try:
+        # consider using
+        # https://github.com/mirnylab/cooler/blob/9e72ee202b0ac6f9d93fd2444d6f94c524962769/cooler/tools.py#L59
+        # here:
+        hchunks = map_(job, tiles, **map_kwargs)
+        # hchunks TO BE ACCUMULATED
+        # hopefully 'hchunks' would stay in memory
+        # until we would get a chance to accumulate them:
+    finally:
+        if nproc > 1:
+            pool.close()
     #
-    # after that we could iterate over groups and do np.bincout on
-    # the "observed" column ...
+    #
+    # here we'd need to accumulate histogram chunks:
+    # TO BE TESTED AND VERIFIED ...
+    # prepare an empty hist of the same type/shape:
+    hist_combined = {}
+    for k in kernels:
+        hist_combined[k] = pd.DataFrame()
+    # accumulate:
+    for hchunk in hchunks:
+        for k in kernels:
+            if hist_combined[k].empty:
+                hist_combined[k] = hchunk[k]
+            else:
+                hist_combined[k] += hchunk[k]
+                # not sure if one can do this
+                # even with same-sized DataFrames ...
+    #######################
+    return hist_combined
 
-    # creating logspace bins with base=2^(1/3),
-    # the first bin must be (-inf,1]
-    # the last bin must be (2^(k/3),+inf):
-    # variant 1:
-    bins = np.zeros(k+2)
-    bins[1:k+1] = np.logspace(0,k-1,num=k,base=2**(1/3.0),dtype=np.float)
-    bins[-1] = np.inf
-    # variant 2:
-    bins = np.concatenate(([-np.inf,],
-                            np.logspace(0,
-                                        k-1,
-                                        num=k,
-                                        base=2**(1/3.0),
-                                        dtype=np.float),
-                            [np.inf,]))
-    # once we have bins ...
-
-
-    for k,grp in scored_df.groupby(pd.cut(scored_df['la_exp.donut.val'], bins)):
-        print("interval {}".format(k))
-        # consider updating global "hists" :
-        hists = np.bincount(grp["observed"], minlength=100)
-        # or returning chunks of histogramms for every "scored_df" chunk:""
-        pass
-        # ...
-
-
-    # return nothing for now ...
-    return None
 
 
 def clustering_step(scores_file, expected_chroms, ktypes, fdr, 
@@ -619,19 +710,67 @@ def call_dots(
 
     kernels = {k: get_kernel(w,p,k) for k in ktypes}
 
+
+    # creating logspace l(ambda)bins with base=2^(1/3), for lambda-chunking:
+    nlbins = HiCCUPS_W1_MAX_INDX
+    base = 2**(1/3.0)
+    lbins = np.concatenate(([-np.inf,],
+                            np.logspace(0,
+                                        nlbins-1,
+                                        num=nlbins,
+                                        base=base,
+                                        dtype=np.float),
+                            [np.inf,]))
+    # the first bin must be (-inf,1]
+    # the last bin must be (2^(HiCCUPS_W1_MAX_INDX/3),+inf):
+
+
+
     tiles = list(
         dotfinder.heatmap_tiles_generator_diag(
-            clr, 
-            expected_chroms, 
-            w, 
-            tile_size_bins, 
+            clr,
+            expected_chroms,
+            w,
+            tile_size_bins,
             loci_separation_bins
         )
     )
 
-    scoring_step(clr, expected, expected_name, tiles, kernels, 
-                 max_nans_tolerated, loci_separation_bins, output_scores, 
+    ######################
+    # to be retired ...
+    ######################
+    scoring_step(clr, expected, expected_name, tiles, kernels,
+                 max_nans_tolerated, loci_separation_bins, output_scores,
                  nproc, verbose)
+
+    ################################
+    # to be finished and activated ...
+    # calculates genome-wide histogram (gw_hist):
+    ################################
+    gw_hist = scoring_and_histogramming_step(clr, expected, expected_name, tiles,
+                                             kernels, lbins, max_nans_tolerated,
+                                             loci_separation_bins, None, nproc,
+                                             verbose)
+
+    ###################
+    # 'gw_hist' needs to be
+    # processed and corresponding
+    # FDR thresholds must be calculated
+    # for every kernel-type
+    # also q-vals for every 'obs.raw' value
+    # and for every kernel-type must be stored
+    # somewhere-somehow - the 'lognorm' thing
+    # from HiCCUPS that would be ...
+    ###################
+
+    ###################
+    # right after that
+    # we'd have a scoring_and_filtering step
+    # where the filtering part
+    # would use FDR thresholds calculated
+    # in the histogramming step ...
+    ###################
+
 
     if verbose:
         print("Subsequent clustering and thresholding steps are not production-ready")
