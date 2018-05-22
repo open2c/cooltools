@@ -106,7 +106,7 @@ def score_tile(tile_cij, clr, cis_exp, exp_v_name, bal_v_name, kernels,
     return cooler.annotate(res_df.reset_index(drop=True), clr.bins()[:])
 
 
-def histogram_scored_pixels(scored_df, kernels, lbins, verbose):
+def histogram_scored_pixels(scored_df, kernels, ledges, verbose):
     """
     An attempt to implement HiCCUPS-like lambda-chunking
     statistical procedure.
@@ -124,8 +124,8 @@ def histogram_scored_pixels(scored_df, kernels, lbins, verbose):
     kernels : dict
         A dictionary with keys being kernels names and values being ndarrays
         representing those kernels.
-    lbins : ndarray
-        An ndarray with bin boundaries for groupping loc. adjusted expecteds,
+    ledges : ndarray
+        An ndarray with bin lambda-edges for groupping loc. adj. expecteds,
         i.e., classifying statistical hypothesis into lambda-classes.
         Left-most bin (-inf, 1], and right-most one (value,+inf].
     verbose : bool
@@ -179,14 +179,14 @@ def histogram_scored_pixels(scored_df, kernels, lbins, verbose):
         # needs to be histogrammed in every bin : scored_df["obs.raw"]
         #
         # lambda-bin index for kernel-type "k":
-        l_bins = pd.cut(scored_df["la_exp."+k+".value"],bins)
+        lbins = pd.cut(scored_df["la_exp."+k+".value"],ledges)
         # now for each lambda-bin construct a histogramm of "obs.raw":
         obs_hist = pd.DataFrame()
-        for l_bin, grp_df in scored_df.groupby(l_bins):
+        for lbin, grp_df in scored_df.groupby(lbins):
             # check if obs.raw is integer of spome kind (temporary):
-            assert np.issubtype(grp_df["obs.raw"].dtype, np.integer)
+            assert np.issubdtype(grp_df["obs.raw"].dtype, np.integer)
             # perform bincounting ...
-            obs_hist[l_bin] = np.bincount(grp_df["obs.raw"],
+            obs_hist[lbin] = np.bincount(grp_df["obs.raw"],
                                           minlength=HiCCUPS_W2_MAX_INDX)
             # by using the constants in "bincount" we could simplify the
             # initial implementation of lambda-chunking.
@@ -250,7 +250,7 @@ def scoring_step(clr, expected, expected_name, tiles, kernels,
 
 
 def scoring_and_histogramming_step(clr, expected, expected_name, tiles, kernels,
-                                   lbins, max_nans_tolerated, loci_separation_bins,
+                                   ledges, max_nans_tolerated, loci_separation_bins,
                                    output_path, nproc, verbose):
     """
     This is a derivative of the 'scoring_step'
@@ -284,7 +284,7 @@ def scoring_and_histogramming_step(clr, expected, expected_name, tiles, kernels,
     to_hist = partial(
         histogram_scored_pixels,
         kernels=kernels,
-        lbins=lbins,
+        ledges=ledges,
         verbose=very_verbose)
 
     # composing/piping scoring and histogramming
@@ -712,12 +712,12 @@ def call_dots(
 
 
     # creating logspace l(ambda)bins with base=2^(1/3), for lambda-chunking:
-    nlbins = HiCCUPS_W1_MAX_INDX
+    nlchunks = HiCCUPS_W1_MAX_INDX
     base = 2**(1/3.0)
-    lbins = np.concatenate(([-np.inf,],
+    ledges = np.concatenate(([-np.inf,],
                             np.logspace(0,
-                                        nlbins-1,
-                                        num=nlbins,
+                                        nlchunks-1,
+                                        num=nlchunks,
                                         base=base,
                                         dtype=np.float),
                             [np.inf,]))
@@ -748,7 +748,7 @@ def call_dots(
     # calculates genome-wide histogram (gw_hist):
     ################################
     gw_hist = scoring_and_histogramming_step(clr, expected, expected_name, tiles,
-                                             kernels, lbins, max_nans_tolerated,
+                                             kernels, ledges, max_nans_tolerated,
                                              loci_separation_bins, None, nproc,
                                              verbose)
 
