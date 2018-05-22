@@ -333,12 +333,12 @@ def scoring_and_histogramming_step(clr, expected, expected_name, tiles, kernels,
         # for every value of the dictionary:
         hxy = {}
         for k in kernels:
-            hxy[k] = hx[k].add(hy[k],fill_value=0)
+            hxy[k] = hx[k].add(hy[k],fill_value=0).astype(np.integer)
         # returning the sum:
         return hxy
 
     # returning sum-reduction of the histograms:
-    return reduce(_sum_hists, hchunks).astype(np.integer)
+    return reduce(_sum_hists, hchunks)
 
 
 
