@@ -97,6 +97,10 @@ def score_tile(tile_cij, clr, cis_exp, exp_v_name, bal_v_name, kernels,
     # so, selecting inside band and nNaNs compliant results:
     # ( drop dropping index maybe ??? ) ...
     res_df = result[is_inside_band & does_comply_nans].reset_index(drop=True)
+    ########################################################################
+    # consider retiring Poisson testing from here, in case we
+    # stick with l-chunking or opposite - add histogramming business here(!)
+    ########################################################################
     # do Poisson tests:
     get_pval = lambda la_exp : 1.0 - poisson.cdf(res_df["obs.raw"], la_exp)
     for k in kernels:
@@ -337,6 +341,15 @@ def scoring_and_histogramming_step(clr, expected, expected_name, tiles, kernels,
             hxy[k] = hx[k].add(hy[k],fill_value=0).astype(np.integer)
         # returning the sum:
         return hxy
+
+    # ######################################################
+    # this approach is tested and at the very least
+    # number of pixels in a dump list matches
+    # with the .sum().sum() of the histogram
+    # both for 10kb and 5kb,
+    # thus we should consider this as a reference
+    # implementation, albeit not a very efficient one ...
+    # ######################################################
 
     # returning sum-reduction of the histograms:
     return reduce(_sum_hists, hchunks)
