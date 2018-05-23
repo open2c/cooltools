@@ -53,4 +53,7 @@ from . import (
     compute_expected,
     compute_saddle,
     call_dots,
+    call_compartments,
+    compute_phasing,
+    genome,
 )
