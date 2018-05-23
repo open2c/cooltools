@@ -181,12 +181,13 @@ def histogram_scored_pixels(scored_df, kernels, ledges, verbose):
         # lambda-bin index for kernel-type "k":
         lbins = pd.cut(scored_df["la_exp."+k+".value"],ledges)
         # now for each lambda-bin construct a histogramm of "obs.raw":
-        obs_hist = pd.DataFrame()
+        obs_hist = {}
         for lbin, grp_df in scored_df.groupby(lbins):
             # check if obs.raw is integer of spome kind (temporary):
             assert np.issubdtype(grp_df["obs.raw"].dtype, np.integer)
             # perform bincounting ...
             obs_hist[lbin] = pd.Series(np.bincount(grp_df["obs.raw"]))
+            # ACHTUNG! assigning directly to empty DF leads to data loss!
             # turn ndarray in Series for ease of handling, i.e.
             # assign a bunch of columns of different sizes to DataFrame.
             #
@@ -198,7 +199,7 @@ def histogram_scored_pixels(scored_df, kernels, ledges, verbose):
             # turned out that storing W1xW2 for every "thread" requires a ton
             # of memory - that's why different sizes... @nvictus ?
         # store W1x(<=W2) hist for every kernel-type:
-        hists[k] = obs_hist.fillna(0).astype(np.integer)
+        hists[k] = pd.DataFrame(obs_hist).fillna(0).astype(np.integer)
     # return a dict of DataFrames with a bunch of histograms:
     return hists
 
