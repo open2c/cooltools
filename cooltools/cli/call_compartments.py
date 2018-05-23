@@ -17,6 +17,7 @@ from . import cli
     type=str)
 @click.option(
     "--reference-track",
+    help="Reference track for orienting and ranking eigenvectors",
     type=TabularFilePath(exists=True, default_column_index=3))
 @click.option(
     '--contact-type',
@@ -65,6 +66,8 @@ def call_compartments(cool_path, reference_track, contact_type, n_eigs,
 
     if reference_track is not None:
 
+        # TODO: This all needs to be refactored into a more generic tabular file parser
+        # Needs to handle stdin case too.
         track_path, col = reference_track
         buf, names = sniff_for_header(track_path)
 
