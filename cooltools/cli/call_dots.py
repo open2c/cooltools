@@ -350,9 +350,21 @@ def scoring_and_histogramming_step(clr, expected, expected_name, tiles, kernels,
     # thus we should consider this as a reference
     # implementation, albeit not a very efficient one ...
     # ######################################################
-
-    # returning sum-reduction of the histograms:
-    return reduce(_sum_hists, hchunks)
+    final_hist = reduce(_sum_hists, hchunks)
+    # we have to make sure there is nothing in the
+    # top bin, i.e., there are no l.a. expecteds > base^(len(ledges)-1)
+    for k in kernels:
+        last_la_exp_bin = final_hist[k].columns[-1]
+        last_la_exp_vals = final_hist[k].iloc[:,-1]
+        # checking the top bin:
+        assert (last_la_exp_vals.sum()==0), \
+                "There are la_exp.{}.value in {}, please check the histogram" \
+                                                    .format(k,last_la_exp_bin)
+        # drop that last column/bin (last_edge, +inf]:
+        final_hist[k] = final_hist[k].drop(columns=last_la_exp_bin)
+        # consider dropping all of the columns that have zero .sum()
+    # returning filtered histogram
+    return final_hist
 
 
 
@@ -772,6 +784,65 @@ def call_dots(
                                              kernels, ledges, max_nans_tolerated,
                                              loci_separation_bins, None, nproc,
                                              verbose)
+
+
+    ##############
+    # prepare to determine the FDR threshold ...
+    ##############
+
+
+    # Reverse Cumulative Sum of a histogram ...
+    rcs_hist = {}
+    rcs_Poisson = {}
+    threshold_df = {}
+    for k in kernels:
+        rcs_hist[k] = gw_hist[k].iloc[::-1].cumsum(axis=0).iloc[::-1]
+        # now for every kernel-type k - create rcsPoisson:
+        rcs_Poisson[k] = pd.DataFrame()
+        for mu,column in zip(ledges[1:-1], gw_hist[k].columns):
+            # poisson.sf = 1 - poisson.cdf, but more precise
+            # poisson.sf(-1,mu) == 1.0, i.e. is equivalent to the
+            # poisson.pmf(gw_hist[k].index,mu)[::-1].cumsum()[::-1]
+            # i.e., the way unitPoissonPMF is generated in HiCCUPS:
+            rcs_Poisson[k][column] = rcs_hist[k].loc[0,column] * poisson.sf(gw_hist[k].index-1, mu)
+        # once we have both RCS hist and the Poisson:
+        # now compare rcs_hist and normalized rcs_Poisson
+        # to infer FDR thresolds for every lambda-chunk:
+        fdr_diff = fdr * rcs_hist[k] - rcs_Poisson[k]
+        # determine the threshold by checking the value at which
+        # 'fdr_diff' first turns positive:
+        threshold_df[k] = fdr_diff.where(fdr_diff>0).apply(lambda col: col.first_valid_index())
+        # fill NaNs with the "unreachably" high value:
+        very_high_value = len(rcs_hist[k])
+        threshold_df[k] = threshold_df[k].fillna(very_high_value).astype(np.integer)
+
+    ##################################################################
+    # each threshold_df[k] is a Series indexed by la_exp intervals
+    # and it is all we need to extract "good" pixels from each chunk ...
+    ##################################################################
+    # threshold_df[k]
+
+
+    # ################################
+    # # TODO: finish up something like 'score_and_extract' using 'threshold_df':
+    # ################################
+    # gw_hist = scoring_and_extracting_step(clr, expected, expected_name, tiles,
+    #                                         kernels, ledges, max_nans_tolerated,
+    #                                         loci_separation_bins, None, threshold_df,
+    #                                         nproc, verbose)
+    #
+    #  DO somthing like this inside it:
+    ################################################
+    # for k in kernels:
+    #     # lambda-bin index for kernel-type "k":
+    #     lbins = pd.cut(scored_df["la_exp."+k+".value"],ledges)
+    #     # now for each lambda-bin construct a histogramm of "obs.raw":
+    #     for lbin, grp_df in scored_df.groupby(lbins):
+    #         # from each group select those pixels
+    #         # that obey this:
+    #         grp_df["obs.raw"] > threshold_df[k][lbin]
+    ################################################
+
 
 
     if output_scores is not None:
