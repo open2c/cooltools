@@ -208,6 +208,58 @@ def histogram_scored_pixels(scored_df, kernels, ledges, verbose):
     return hists
 
 
+def extract_scored_pixels(scored_df, kernels, thresholds, ledges, verbose):
+    """
+    An attempt to implement HiCCUPS-like lambda-chunking
+    statistical procedure.
+    Use FDR thresholds for different "classes" of hypothesis
+    (classified by their l.a. expected scores), in order to
+    extract pixels that stand out.
+
+    Parameters
+    ----------
+    scored_df : pd.DataFrame
+        A table with the scoring information for a group of pixels.
+    kernels : dict
+        A dictionary with keys being kernel names and values being ndarrays
+        representing those kernels.
+    thresholds : dict
+        A dictionary with keys being kernel names and values pandas.Series
+        indexed with bins defined by 'ledges' boundaries and storing FDR
+        thresholds for observed values.
+    ledges : ndarray
+        An ndarray with bin lambda-edges for groupping loc. adj. expecteds,
+        i.e., classifying statistical hypothesis into lambda-classes.
+        Left-most bin (-inf, 1], and right-most one (value,+inf].
+    verbose : bool
+        Enable verbose output.
+
+    Returns
+    -------
+    scored_df_slice : pandas.DataFrame
+        Filtered DataFrame of pixels extracted applying FDR thresholds.
+
+    Notes
+    -----
+    This is just an attempt to implement HiCCUPS-like lambda-chunking.
+
+    """
+    comply_fdr_list = np.ones(len(scored_df), dtype=np.bool)
+
+    for k in kernels:
+        # lambda-bin index for kernel-type "k":
+        lbins = pd.cut(scored_df["la_exp."+k+".value"],ledges)
+        # knowing the lambda-bin of each pixel, extract corresponding
+        # FDR threshold for each one:
+        comply_fdr_k = (scored_df["obs.raw"].values > \
+                        thresholds[k][lbins.astype(str)].values)
+        # accumulate comply_fdr_k into comply_fdr_list
+        # using np.logical_and:
+        comply_fdr_list = np.logical_and(comply_fdr_list, comply_fdr_k)
+    # return a slice of 'scored_df' that complies FDR thresholds:
+    return scored_df[comply_fdr_list]
+
+
 
 def scoring_step(clr, expected, expected_name, tiles, kernels,
                  max_nans_tolerated, loci_separation_bins, output_path,
@@ -365,6 +417,82 @@ def scoring_and_histogramming_step(clr, expected, expected_name, tiles, kernels,
         # consider dropping all of the columns that have zero .sum()
     # returning filtered histogram
     return final_hist
+
+
+def scoring_and_extraction_step(clr, expected, expected_name, tiles, kernels,
+                               ledges, thresholds, max_nans_tolerated,
+                               loci_separation_bins, output_path, nproc, verbose):
+    """
+    This is a derivative of the 'scoring_step'
+    which is supposed to implement the 2nd of the
+    lambda-chunking procedure - extracting pixels
+    that are FDR compliant.
+
+    Basically we are piping scoring operation
+    together with extraction into a single
+    pipeline of per-chunk operations/transforms.
+    """
+    if verbose:
+        print("Preparing to convolve "
+              "{} tiles with w,p={},{} kernels".format(len(tiles),w,p))
+
+    # add very_verbose to supress output from convolution of every tile
+    very_verbose = False
+
+    # to score per tile:
+    to_score = partial(
+        score_tile,
+        clr=clr,
+        cis_exp=expected,
+        exp_v_name=expected_name,
+        bal_v_name='weight',
+        kernels=kernels,
+        nans_tolerated=max_nans_tolerated,
+        band_to_cover=loci_separation_bins,
+        verbose=very_verbose)
+
+    # to hist per scored chunk:
+    to_extract = partial(
+        extract_scored_pixels,
+        kernels=kernels,
+        thresholds=thresholds,
+        ledges=ledges,
+        verbose=very_verbose)
+
+    # composing/piping scoring and histogramming
+    # together :
+    job = lambda tile : to_extract(to_score(tile))
+
+    # copy paste from @nvictus modified 'scoring_step':
+    if nproc > 1:
+        pool = mp.Pool(nproc)
+        map_ = pool.imap
+        map_kwargs = dict(chunksize=int(np.ceil(len(tiles)/nproc)))
+        if verbose:
+            print("creating a Pool of {} workers to tackle {} tiles".format(
+                    nproc, len(tiles)))
+    else:
+        map_ = map
+        if verbose:
+            print("fallback to serial implementation.")
+        map_kwargs = {}
+    try:
+        # consider using
+        # https://github.com/mirnylab/cooler/blob/9e72ee202b0ac6f9d93fd2444d6f94c524962769/cooler/tools.py#L59
+        # here:
+        filtered_pix_chunks = map_(job, tiles, **map_kwargs)
+        # concat and store the results if needed:
+        if output_path is not None:
+            pd.concat(filtered_pix_chunks) \
+                .to_csv(output_path,
+                        sep='\t',
+                        header=True,
+                        index=False,
+                        compression=None)
+    finally:
+        if nproc > 1:
+            pool.close()
+
 
 
 
@@ -786,6 +914,15 @@ def call_dots(
                                              verbose)
 
 
+    if output_scores is not None:
+        for k in kernels:
+            gw_hist[k].to_csv(
+                "{}.{}.hist.txt".format(output_scores,k),
+                sep='\t',
+                header=True,
+                index=False,
+                compression=None)
+
     ##############
     # prepare to determine the FDR threshold ...
     ##############
@@ -821,39 +958,7 @@ def call_dots(
     # and it is all we need to extract "good" pixels from each chunk ...
     ##################################################################
     # threshold_df[k]
-
-
-    # ################################
-    # # TODO: finish up something like 'score_and_extract' using 'threshold_df':
-    # ################################
-    # gw_hist = scoring_and_extracting_step(clr, expected, expected_name, tiles,
-    #                                         kernels, ledges, max_nans_tolerated,
-    #                                         loci_separation_bins, None, threshold_df,
-    #                                         nproc, verbose)
-    #
-    #  DO somthing like this inside it:
-    ################################################
-    # for k in kernels:
-    #     # lambda-bin index for kernel-type "k":
-    #     lbins = pd.cut(scored_df["la_exp."+k+".value"],ledges)
-    #     # now for each lambda-bin construct a histogramm of "obs.raw":
-    #     for lbin, grp_df in scored_df.groupby(lbins):
-    #         # from each group select those pixels
-    #         # that obey this:
-    #         grp_df["obs.raw"] > threshold_df[k][lbin]
-    ################################################
-
-
-
-    if output_scores is not None:
-        for k in kernels:
-            gw_hist[k].to_csv(
-                "{}.{}.hist.txt".format(output_scores,k),
-                sep='\t',
-                header=True,
-                index=False,
-                compression=None)
-
+    # threshold_df = pd.DataFrame(threshold_df)
 
     ###################
     # 'gw_hist' needs to be
@@ -873,6 +978,13 @@ def call_dots(
     # would use FDR thresholds calculated
     # in the histogramming step ...
     ###################
+
+    # ################################
+    # # TODO: finish up something like 'score_and_extract' using 'threshold_df':
+    # ################################
+    scoring_and_extraction_step(clr, expected, expected_name, tiles, kernels,
+                               ledges, threshold_df, max_nans_tolerated,
+                               loci_separation_bins, output_calls, nproc, verbose)
 
 
     if verbose:
