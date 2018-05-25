@@ -50,6 +50,7 @@ install_requires = [
     'click',
     'cooler>=0.7',
     'bioframe',
+    'scikit-learn'
 ]
 
 
