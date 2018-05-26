@@ -225,7 +225,7 @@ def extract_scored_pixels(scored_df, kernels, thresholds, ledges, verbose):
         representing those kernels.
     thresholds : dict
         A dictionary with keys being kernel names and values pandas.Series
-        indexed with bins defined by 'ledges' boundaries and storing FDR
+        indexed with Intervals defined by 'ledges' boundaries and storing FDR
         thresholds for observed values.
     ledges : ndarray
         An ndarray with bin lambda-edges for groupping loc. adj. expecteds,
@@ -247,26 +247,17 @@ def extract_scored_pixels(scored_df, kernels, thresholds, ledges, verbose):
     comply_fdr_list = np.ones(len(scored_df), dtype=np.bool)
 
     for k in kernels:
-        try:
-            # lambda-bin index for kernel-type "k":
-            lbins = pd.cut(scored_df["la_exp."+k+".value"],ledges)
-            # knowing the lambda-bin of each pixel, extract corresponding
-            # FDR threshold for each one:
-            comply_fdr_k = (scored_df["obs.raw"].values > \
-                            thresholds[k][lbins.astype(str)].values)
-            # accumulate comply_fdr_k into comply_fdr_list
-            # using np.logical_and:
-            comply_fdr_list = np.logical_and(comply_fdr_list, comply_fdr_k)
-            # ValueError: could not convert string to float: '(80.635, 101.594]'
-        except ValueError as e:
-            print("Error catched in {} for chunk {} and thresholds {}"\
-                    .format('extract_scored_pixels',
-                            scored_df,
-                            thresholds))
-            raise
+        # using special features of IntervalIndex:
+        # http://pandas.pydata.org/pandas-docs/stable/advanced.html#intervalindex
+        # i.e. IntervalIndex can be .loc-ed with values that would be
+        # corresponded with their Intervals (!!!):
+        comply_fdr_k = (scored_df["obs.raw"].values > \
+                        thresholds[k].loc[scored_df["la_exp."+k+".value"]].values)
+        # accumulate comply_fdr_k into comply_fdr_list
+        # using np.logical_and:
+        comply_fdr_list = np.logical_and(comply_fdr_list, comply_fdr_k)
     # return a slice of 'scored_df' that complies FDR thresholds:
     return scored_df[comply_fdr_list]
-
 
 
 def scoring_step(clr, expected, expected_name, tiles, kernels,
@@ -961,12 +952,16 @@ def call_dots(
         very_high_value = len(rcs_hist[k])
         threshold_df[k] = threshold_df[k].fillna(very_high_value).astype(np.integer)
 
+    #################
+    # this way threshold_df's index is
+    # a Categorical, where each element is
+    # an IntervalIndex, which we can and should
+    # use in the downstream analysis:
+
     ##################################################################
     # each threshold_df[k] is a Series indexed by la_exp intervals
     # and it is all we need to extract "good" pixels from each chunk ...
     ##################################################################
-    # threshold_df[k]
-    # threshold_df = pd.DataFrame(threshold_df)
 
     ###################
     # 'gw_hist' needs to be
