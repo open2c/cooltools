@@ -247,15 +247,23 @@ def extract_scored_pixels(scored_df, kernels, thresholds, ledges, verbose):
     comply_fdr_list = np.ones(len(scored_df), dtype=np.bool)
 
     for k in kernels:
-        # lambda-bin index for kernel-type "k":
-        lbins = pd.cut(scored_df["la_exp."+k+".value"],ledges)
-        # knowing the lambda-bin of each pixel, extract corresponding
-        # FDR threshold for each one:
-        comply_fdr_k = (scored_df["obs.raw"].values > \
-                        thresholds[k][lbins.astype(str)].values)
-        # accumulate comply_fdr_k into comply_fdr_list
-        # using np.logical_and:
-        comply_fdr_list = np.logical_and(comply_fdr_list, comply_fdr_k)
+        try:
+            # lambda-bin index for kernel-type "k":
+            lbins = pd.cut(scored_df["la_exp."+k+".value"],ledges)
+            # knowing the lambda-bin of each pixel, extract corresponding
+            # FDR threshold for each one:
+            comply_fdr_k = (scored_df["obs.raw"].values > \
+                            thresholds[k][lbins.astype(str)].values)
+            # accumulate comply_fdr_k into comply_fdr_list
+            # using np.logical_and:
+            comply_fdr_list = np.logical_and(comply_fdr_list, comply_fdr_k)
+            # ValueError: could not convert string to float: '(80.635, 101.594]'
+        except ValueError as e:
+            print("Error catched in {} for chunk {} and thresholds {}"\
+                    .format('extract_scored_pixels',
+                            scored_df,
+                            thresholds))
+            raise
     # return a slice of 'scored_df' that complies FDR thresholds:
     return scored_df[comply_fdr_list]
 
