@@ -479,20 +479,21 @@ def scoring_and_extraction_step(clr, expected, expected_name, tiles, kernels,
         # https://github.com/mirnylab/cooler/blob/9e72ee202b0ac6f9d93fd2444d6f94c524962769/cooler/tools.py#L59
         # here:
         filtered_pix_chunks = map_(job, tiles, **map_kwargs)
-        # significant_pixels = pd.concat(filtered_pix_chunks)
-        # if output_path is not None:
-            # pd.concat(filtered_pix_chunks) \
-            #     .to_csv(output_path,
-            #             sep='\t',
-            #             header=True,
-            #             index=False,
-            #             compression=None)
+        significant_pixels = pd.concat(filtered_pix_chunks,ignore_index=True)
+        if output_path is not None:
+            significant_pixels.to_csv(output_path,
+                                      sep='\t',
+                                      header=True,
+                                      index=False,
+                                      compression=None)
     finally:
         if nproc > 1:
             pool.close()
-    # concat and store the results if needed:
-    significant_pixels = pd.concat(filtered_pix_chunks)
-    return significant_pixels
+    # # concat and store the results if needed:
+    # significant_pixels = pd.concat(filtered_pix_chunks)
+    return significant_pixels \
+                .sort_values(by=["chrom1","chrom2","start1","start2"]) \
+                .reset_index(drop=True)
 
 
 
@@ -746,7 +747,7 @@ def thresholding_step(centroids, output_path):
 
     if output_path is not None:
         out[columns_for_output].to_csv(
-            output_path,
+            "final_"+output_path,
             sep='\t',
             header=True,
             index=False,
@@ -1082,7 +1083,7 @@ def call_dots(
 
     filtered_pix = scoring_and_extraction_step(clr, expected, expected_name, tiles, kernels,
                                                ledges, threshold_df, max_nans_tolerated,
-                                               loci_separation_bins, None, nproc, verbose)
+                                               loci_separation_bins, output_calls, nproc, verbose)
 
     ######################################
     # post processing starts from here on:
