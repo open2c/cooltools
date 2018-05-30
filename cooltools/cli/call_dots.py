@@ -555,7 +555,7 @@ def clustering_step_local(scores_df, expected_chroms,
             threshold_cluster=dots_clustering_radius,
             bin1_id_name='start1',
             bin2_id_name='start2',
-            verbose=very_verbose)
+            verbose=verbose)
         pixel_clust_list.append(pixel_clust)
     if verbose:
         print("Clustering is over!")
@@ -624,7 +624,7 @@ def clustering_step(scores_file, expected_chroms, ktypes, fdr,
             threshold_cluster=dots_clustering_radius,
             bin1_id_name='start1',
             bin2_id_name='start2',
-            verbose=very_verbose)
+            verbose=verbose)
         pixel_clust_list.append(pixel_clust)
     if verbose:
         print("Clustering is over!")
