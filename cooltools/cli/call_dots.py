@@ -15,6 +15,8 @@ from .. import dotfinder
 # for lambda-chunking are computed: W1 is the # of logspaced lambda bins,
 # and W2 is maximum "allowed" raw number of contacts per Hi-C heatmap bin:
 HiCCUPS_W1_MAX_INDX = 40
+# we are not using 'W2' as we're building
+# the histograms dynamically:
 HiCCUPS_W2_MAX_INDX = 10000
 
 
@@ -480,23 +482,114 @@ def scoring_and_extraction_step(clr, expected, expected_name, tiles, kernels,
         # https://github.com/mirnylab/cooler/blob/9e72ee202b0ac6f9d93fd2444d6f94c524962769/cooler/tools.py#L59
         # here:
         filtered_pix_chunks = map_(job, tiles, **map_kwargs)
-        # concat and store the results if needed:
-        if output_path is not None:
-            pd.concat(filtered_pix_chunks) \
-                .to_csv(output_path,
-                        sep='\t',
-                        header=True,
-                        index=False,
-                        compression=None)
+        # significant_pixels = pd.concat(filtered_pix_chunks)
+        # if output_path is not None:
+            # pd.concat(filtered_pix_chunks) \
+            #     .to_csv(output_path,
+            #             sep='\t',
+            #             header=True,
+            #             index=False,
+            #             compression=None)
     finally:
         if nproc > 1:
             pool.close()
+    # concat and store the results if needed:
+    significant_pixels = pd.concat(filtered_pix_chunks)
+    return significant_pixels
 
 
+
+def clustering_step_local(scores_df, expected_chroms,
+                          dots_clustering_radius, verbose):
+    """
+    This is a new "clustering" step updated for the pixels
+    processed by lambda-chunking multiple hypothesis testing.
+
+    This method assumes that 'scores_df' is a DataFrame with
+    all of the pixels that needs to be clustered, thus there is
+    no additional 'comply_fdr' column and selection of compliant
+    pixels.
+
+    This step is a clustering-only (using Birch from scikit).
+
+    Parameters
+    ----------
+    scores_df : pandas.DataFrame
+        DataFrame that stores filtered pixels that are ready to be
+        clustered, no more 'comply_fdr' column dependency.
+    expected_chroms : iterable
+        An iterable of chromosomes to be clustered.
+    dots_clustering_radius : int
+        Birch-clustering threshold.
+    verbose : bool
+        Enable verbose output.
+
+    Returns
+    -------
+    centroids : pandas.DataFrame
+        Pixels from 'scores_df' annotated with clustering
+        information.
+
+    Notes
+    -----
+    'dots_clustering_radius' in Birch clustering algorithm
+    corresponds to a double the clustering radius in the
+    "greedy"-clustering used in HiCCUPS (to be tested).
+
+    """
+
+    # using different bin12_id_names since all
+    # pixels are annotated at this point.
+    pixel_clust_list = []
+    for chrom  in expected_chroms:
+        # probably generate one big DataFrame with clustering
+        # information only and then just merge it with the
+        # existing 'scores_df'-DataFrame.
+        # should we use groupby instead of 'scores_df['chrom12']==chrom' ?!
+        # to be tested ...
+        df = scores_df[((scores_df['chrom1']==chrom) &
+                        (scores_df['chrom2']==chrom))]
+
+        pixel_clust = dotfinder.clust_2D_pixels(
+            df,
+            threshold_cluster=dots_clustering_radius,
+            bin1_id_name='start1',
+            bin2_id_name='start2',
+            verbose=very_verbose)
+        pixel_clust_list.append(pixel_clust)
+    if verbose:
+        print("Clustering is over!")
+    # concatenate clustering results ...
+    # indexing information persists here ...
+    pixel_clust_df = pd.concat(pixel_clust_list, ignore_index=False)
+
+    # now merge pixel_clust_df and scores_df DataFrame ...
+    # # and merge (index-wise) with the main DataFrame:
+    df = pd.merge(
+        scores_df,
+        pixel_clust_df,
+        how='left',
+        left_index=True,
+        right_index=True)
+
+    # report only centroids with highest Observed:
+    chrom_clust_group = df.groupby(["chrom1", "chrom2", "c_label"])
+    centroids = df.loc[chrom_clust_group["obs.raw"].idxmax()]
+    return centroids
 
 
 def clustering_step(scores_file, expected_chroms, ktypes, fdr,
                     dots_clustering_radius, verbose):
+    """
+    This is an old "clustering" step, before lambda-chunking
+    was implemented.
+    This step actually includes both multiple hypothesis
+    testing (its simple genome-wide version of BH-FDR) and
+    a clustering step itself (using Birch from scikit).
+    This method also assumes 'scores_file' to be an external
+    hdf file, and it would try to read the entire file in
+    memory.
+    """
     res_df = pd.read_hdf(scores_file, 'results')
 
     # do Benjamin-Hochberg FDR multiple hypothesis tests
@@ -513,18 +606,6 @@ def clustering_step(scores_file, expected_chroms, ktypes, fdr,
     if verbose:
         print("Genome-wide multiple hypothesis testing is done.")
 
-    ######################################
-    # post processing starts from here on:
-    # it includes:
-    # 0. remove low MAPQ reads ?!
-    # 1. clustering
-    # 2. filter pixels by FDR
-    # 3. merge different resolutions.
-    ######################################
-
-    # (1)
-    # now clustering would be needed ...
-    #
     # using different bin12_id_names since all
     # pixels are annotated at this point.
     pixel_clust_list = []
@@ -573,6 +654,23 @@ def thresholding_step(centroids, output_path):
     enrichment_factor_2 = 1.75
     enrichment_factor_3 = 2.0
     FDR_orphan_threshold = 0.02
+    ######################################################################
+    # # Temporarily remove orphans filtering, until q-vals are calculated:
+    ######################################################################
+    # enrichment_fdr_comply = (
+    #     (centroids["obs.raw"] > enrichment_factor_2 * centroids["la_exp.lowleft.value"]) &
+    #     (centroids["obs.raw"] > enrichment_factor_2 * centroids["la_exp.donut.value"]) &
+    #     (centroids["obs.raw"] > enrichment_factor_1 * centroids["la_exp.vertical.value"]) &
+    #     (centroids["obs.raw"] > enrichment_factor_1 * centroids["la_exp.horizontal.value"]) &
+    #     ( (centroids["obs.raw"] > enrichment_factor_3 * centroids["la_exp.lowleft.value"])
+    #         | (centroids["obs.raw"] > enrichment_factor_3 * centroids["la_exp.donut.value"]) ) &
+    #     ( (centroids["c_size"] > 1)
+    #        | ((centroids["la_exp.lowleft.qval"]
+    #            + centroids["la_exp.donut.qval"]
+    #            + centroids["la_exp.vertical.qval"]
+    #            + centroids["la_exp.horizontal.qval"]) <= FDR_orphan_threshold)
+    #     )
+    # )
     #
     enrichment_fdr_comply = (
         (centroids["obs.raw"] > enrichment_factor_2 * centroids["la_exp.lowleft.value"]) &
@@ -580,13 +678,7 @@ def thresholding_step(centroids, output_path):
         (centroids["obs.raw"] > enrichment_factor_1 * centroids["la_exp.vertical.value"]) &
         (centroids["obs.raw"] > enrichment_factor_1 * centroids["la_exp.horizontal.value"]) &
         ( (centroids["obs.raw"] > enrichment_factor_3 * centroids["la_exp.lowleft.value"])
-            | (centroids["obs.raw"] > enrichment_factor_3 * centroids["la_exp.donut.value"]) ) &
-        ( (centroids["c_size"] > 1)
-           | ((centroids["la_exp.lowleft.qval"]
-               + centroids["la_exp.donut.qval"]
-               + centroids["la_exp.vertical.qval"]
-               + centroids["la_exp.horizontal.qval"]) <= FDR_orphan_threshold)
-        )
+            | (centroids["obs.raw"] > enrichment_factor_3 * centroids["la_exp.donut.value"]) )
     )
     # use "enrichment_fdr_comply" to filter out
     # non-satisfying pixels:
@@ -647,12 +739,12 @@ def thresholding_step(centroids, output_path):
         'la_exp.vertical.value',
         'la_exp.horizontal.value',
         'la_exp.lowleft.value',
-        # 'la_exp.upright.value',
-        # 'la_exp.upright.qval',
-        'la_exp.donut.qval',
-        'la_exp.vertical.qval',
-        'la_exp.horizontal.qval',
-        'la_exp.lowleft.qval'
+        # # 'la_exp.upright.value',
+        # # 'la_exp.upright.qval',
+        # 'la_exp.donut.qval',
+        # 'la_exp.vertical.qval',
+        # 'la_exp.horizontal.qval',
+        # 'la_exp.lowleft.qval'
     ]
 
     if output_path is not None:
@@ -958,6 +1050,10 @@ def call_dots(
     # an IntervalIndex, which we can and should
     # use in the downstream analysis:
 
+    ############################################
+    # TODO: add q-values calculations !!!
+    ############################################
+
     ##################################################################
     # each threshold_df[k] is a Series indexed by la_exp intervals
     # and it is all we need to extract "good" pixels from each chunk ...
@@ -978,25 +1074,33 @@ def call_dots(
     # right after that
     # we'd have a scoring_and_filtering step
     # where the filtering part
-    # would use FDR thresholds calculated
-    # in the histogramming step ...
+    # would use FDR thresholds 'threshold_df'
+    # calculated in the histogramming step ...
     ###################
 
-    # ################################
-    # # TODO: finish up something like 'score_and_extract' using 'threshold_df':
-    # ################################
-    scoring_and_extraction_step(clr, expected, expected_name, tiles, kernels,
-                               ledges, threshold_df, max_nans_tolerated,
-                               loci_separation_bins, output_calls, nproc, verbose)
+    filtered_pix = scoring_and_extraction_step(clr, expected, expected_name, tiles, kernels,
+                                               ledges, threshold_df, max_nans_tolerated,
+                                               loci_separation_bins, None, nproc, verbose)
 
+    ######################################
+    # post processing starts from here on:
+    # it includes:
+    # 0. remove low MAPQ reads (done externally ?!?)
+    # 1. clustering
+    # 2. filter pixels by FDR
+    # 3. merge different resolutions. (external script)
+    ######################################
 
     if verbose:
         print("Subsequent clustering and thresholding steps are not production-ready")
 
-    if False:
-        centroids = clustering_step(scores_file, expected_chroms, ktypes, fdr,
-                                    dots_clustering_radius, verbose)
-        ###################################
-        # everyhting works up until here ...
-        ###################################
+    if True:
+        # (1):
+        centroids = clustering_step_local(filtered_pix, expected_chroms,
+                                          dots_clustering_radius, verbose)
+        # (2):
         thresholding_step(centroids, output_calls)
+        # (3):
+        # Call dots for different resolutions individually and then use external methods
+        # to merge the calls
+
