@@ -266,8 +266,7 @@ def scoring_step(clr, expected, expected_name, tiles, kernels,
                  max_nans_tolerated, loci_separation_bins, output_path,
                  nproc, verbose):
     if verbose:
-        print("Preparing to convolve "
-              "{} tiles with w,p={},{} kernels".format(len(tiles),w,p))
+        print("Preparing to convolve {} tiles:".format(len(tiles)))
 
     # add very_verbose to supress output from convolution of every tile
     very_verbose = False
@@ -325,8 +324,7 @@ def scoring_and_histogramming_step(clr, expected, expected_name, tiles, kernels,
     pipeline of per-chunk operations/transforms.
     """
     if verbose:
-        print("Preparing to convolve "
-              "{} tiles with w,p={},{} kernels".format(len(tiles),w,p))
+        print("Preparing to convolve {} tiles:".format(len(tiles)))
 
     # add very_verbose to supress output from convolution of every tile
     very_verbose = False
