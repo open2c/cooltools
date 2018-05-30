@@ -434,8 +434,7 @@ def scoring_and_extraction_step(clr, expected, expected_name, tiles, kernels,
     pipeline of per-chunk operations/transforms.
     """
     if verbose:
-        print("Preparing to convolve "
-              "{} tiles with w,p={},{} kernels".format(len(tiles),w,p))
+        print("Preparing to convolve {} tiles:".format(len(tiles)))
 
     # add very_verbose to supress output from convolution of every tile
     very_verbose = False
@@ -958,6 +957,11 @@ def call_dots(
         raise ValueError("Provided cooler {} has resolution {} bases, \
                         which is too fine for analysis.".format(cool_path, binsize))
     # rename w, p to wid, pix probably, or _w, _p to avoid naming conflicts ...
+    if verbose:
+        print("Kernels parameters are set as w,p={},{}"
+              " for the cooler with {} bp resolution.".format(w,p,binsize))
+
+
 
     kernels = {k: get_kernel(w,p,k) for k in ktypes}
 
