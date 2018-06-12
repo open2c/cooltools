@@ -97,9 +97,10 @@ def find_insulating_boundaries(
     ----------
     c : cooler.Cooler
         A cooler with balanced Hi-C data.
-    window_bp : int
+    window_bp : int or list
         The size of the sliding diamond window used to calculate the insulation
-        score.
+        score. If a list is provided, then a insulation score if done for each
+        value of window_bp.   
     min_dist_bad_bin : int
         The minimal allowed distance to a bad bin. Do not calculate insulation
         scores for bins having a bad bin closer than this distance.
@@ -120,25 +121,23 @@ def find_insulating_boundaries(
     ignore_diags = (ignore_diags 
         if ignore_diags is not None 
         else clr._load_attrs(clr.root.rstrip('/')+'/bins/weight')['ignore_diags'] )
+
+    if isinstance(window_bp, int):
+        window_bp = [window_bp]
+    window_bp = np.array(window_bp)
     window_bins = window_bp // bin_size
     
-    if (window_bp % bin_size !=0):
+    bad_win_sizes = window_bp % bin_size !=0 
+    if np.any(bad_win_sizes):
         raise Exception(
-            'The window size ({}) has to be a multiple of the bin size {}'.format(
-                window_bp, bin_size))
+            'The window sizes {} has to be a multiple of the bin size {}'.format(
+                window_bp[bad_win_sizes], bin_size))
         
     ins_chrom_tables = []
     for chrom in chromosomes:
         chrom_bins = clr.bins().fetch(chrom)
         chrom_pixels = clr.matrix(as_pixels=True, balance=balance).fetch(chrom)
 
-        with warnings.catch_warnings():                      
-            warnings.simplefilter("ignore", RuntimeWarning)  
-            ins_track = insul_diamond(chrom_pixels, chrom_bins, 
-                window=window_bins, ignore_diags=ignore_diags)
-            ins_track[ins_track==0] = np.nan
-            ins_track = np.log2(ins_track)
-        
         is_bad_bin = np.isnan(chrom_bins['weight'].values)
         bad_bin_neighbor = np.zeros_like(is_bad_bin)
         for i in range(0, min_dist_bad_bin):
@@ -149,17 +148,26 @@ def find_insulating_boundaries(
                 bad_bin_neighbor = bad_bin_neighbor | np.r_[is_bad_bin[i:], [True]*i]            
 
         ins_chrom = chrom_bins[['chrom', 'start', 'end']].copy()
-        ins_track[bad_bin_neighbor] = np.nan
         ins_chrom['bad_bin_masked'] = bad_bin_neighbor
-        
-        ins_track[~np.isfinite(ins_track)] = np.nan
-        
-        ins_chrom['log2_insulation_score_{}'.format(window_bp)] = ins_track
 
-        poss, proms = peaks.find_peak_prominence(-ins_track)
-        ins_prom_track = np.zeros_like(ins_track) * np.nan
-        ins_prom_track[poss] = proms
-        ins_chrom['boundary_strength_{}'.format(window_bp)] = ins_prom_track
+
+        for j, win_bin in enumerate(window_bins):
+            with warnings.catch_warnings():                      
+                warnings.simplefilter("ignore", RuntimeWarning)  
+                ins_track = insul_diamond(chrom_pixels, chrom_bins, 
+                                          window=win_bin, ignore_diags=ignore_diags)
+                ins_track[ins_track==0] = np.nan
+                ins_track = np.log2(ins_track)
+        
+            ins_track[bad_bin_neighbor] = np.nan
+            ins_track[~np.isfinite(ins_track)] = np.nan
+        
+            ins_chrom['log2_insulation_score_{}'.format(window_bp[j])] = ins_track
+
+            poss, proms = peaks.find_peak_prominence(-ins_track)	
+            ins_prom_track = np.zeros_like(ins_track) * np.nan
+            ins_prom_track[poss] = proms
+            ins_chrom['boundary_strength_{}'.format(window_bp[j])] = ins_prom_track
 
         ins_chrom_tables.append(ins_chrom)
 
