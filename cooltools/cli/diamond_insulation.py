@@ -50,3 +50,4 @@ def diamond_insulation(cool_path, window, min_dist_bad_bin, ignore_diags):
         ignore_diags=ignore_diags)
 
     print(ins_table.to_csv(sep='\t', index=False, na_rep='nan'))
+
