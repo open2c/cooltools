@@ -12,7 +12,8 @@ from .. import insulation
     type=str,
     nargs=1)
 @click.argument(
-    'window', 
+    'window',
+    nargs=-1,
     metavar="WINDOW",
     type=int,
     )
