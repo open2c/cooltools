@@ -12,7 +12,8 @@ from .. import insulation
     type=str,
     nargs=1)
 @click.argument(
-    'window', 
+    'window',
+    nargs=-1,
     metavar="WINDOW",
     type=int,
     )
@@ -49,3 +50,4 @@ def diamond_insulation(cool_path, window, min_dist_bad_bin, ignore_diags):
         ignore_diags=ignore_diags)
 
     print(ins_table.to_csv(sep='\t', index=False, na_rep='nan'))
+
