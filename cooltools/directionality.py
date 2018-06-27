@@ -102,6 +102,7 @@ def _dirscore_dense(A, window=10, signed_chi2=False):
 def directionality(
     clr,
     window_bp=100000,
+    balance='weight',
     min_dist_bad_bin=2, 
     ignore_diags=None,
     chromosomes=None):
@@ -144,7 +145,7 @@ def directionality(
     dir_chrom_tables = []
     for chrom in chromosomes:
         chrom_bins = clr.bins().fetch(chrom)
-        chrom_pixels = clr.matrix(as_pixels=True,balance=True).fetch(chrom)
+        chrom_pixels = clr.matrix(as_pixels=True, balance=balance).fetch(chrom)
 
         # mask neighbors of bad bins
         is_bad_bin = np.isnan(chrom_bins['weight'].values)
