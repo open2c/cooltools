@@ -6,7 +6,6 @@ import numpy as np
 import pandas as pd
 from scipy.linalg import toeplitz
 from scipy.signal import fftconvolve
-import distributed
 import dask.dataframe as dd
 import dask.array as da
 import dask

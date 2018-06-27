@@ -44,7 +44,6 @@ install_requires = [
     'numpy',
     'cython',
     'dask',
-    'distributed',
     'cytoolz',
     'numba',
     'click',
