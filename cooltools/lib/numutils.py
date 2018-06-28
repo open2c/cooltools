@@ -4,11 +4,6 @@ import scipy.sparse.linalg
 import numpy as np
 import numba
 import cooler
-import astropy.convolution as astroconv
-def smooth(y, box_pts):
-    box = np.ones(box_pts)/box_pts
-    y_smooth = astroconv.convolve(y, box, boundary='extend') # also: None, fill, wrap, extend
-    return y_smooth
 
 from ._numutils import (
     iterative_correction_symmetric as _iterative_correction_symmetric,
@@ -752,6 +747,16 @@ def coarsen(reduction, x, axes, trim_excess=False):
     return reduction(x.reshape(newshape), axis=reduction_axes)
 
 
+def smooth(y, box_pts):
+    try:
+        from astropy.convolution import convolve
+    except ImportError:
+        raise ImportError(
+            "The astropy module is required to use this function")
+    box = np.ones(box_pts)/box_pts
+    y_smooth = convolve(y, box, boundary='extend') # also: None, fill, wrap, extend
+    return y_smooth
+
     
 def infer_mask2D(mat):
     if mat.shape[0] != mat.shape[1]:
@@ -760,6 +765,7 @@ def infer_mask2D(mat):
     sum0 = np.sum(mat, axis=0) > 0
     mask = sum0[:, None] * sum0[None, :]
     return mask
+
         
 def remove_good_singletons(mat, mask=None, returnMask=False):
     mat = mat.copy()
@@ -776,6 +782,7 @@ def remove_good_singletons(mat, mask=None, returnMask=False):
         return mat, mask
     else:
         return mat
+
     
 def interpolate_bad_singletons(mat, mask=None, 
                                fillDiagonal=True, returnMask=False,
@@ -854,6 +861,3 @@ def interpolate_bad_singletons(mat, mask=None,
         return mat, mask
     else:
         return mat
-    
-
-
