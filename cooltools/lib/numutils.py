@@ -25,38 +25,20 @@ def get_diag(arr, i=0):
 
 
 def set_diag(arr, x, i=0, copy=False):
-    '''Rewrite in place the i-th diagonal of a matrix with a value or an array
-    of values.
-    This solution was borrowed from
-    http://stackoverflow.com/questions/9958577/changing-the-values-of-the-diagonal-of-a-matrix-in-numpy'''
-    if copy:
-        arr = arr.copy()
-    arr.flat[
-        max(i,-arr.shape[1]*i)
-        :max(0,(arr.shape[1]-i))*arr.shape[1]
-        :arr.shape[1]+1
-        ] = x
-    return arr
-
-
-def fill_diagonal(arr, values, k=0, wrap=False, copy=True):
     """
-    Based on numpy.fill_diagonal, but allows for kth diagonals as well.
-    Supports 2D arrays, square or rectangular. Returns a copy by default.
+    Rewrite the i-th diagonal of a matrix with a value or an array of values. 
+    Supports 2D arrays, square or rectangular. In-place by default.
 
     Parameters
     ----------
     arr : 2-D array
         Array whose diagonal is to be filled.
-    values : scalar or 1-D vector of correct length
+    x : scalar or 1-D vector of correct length
         Values to be written on the diagonal.
-    k : int, optional
+    i : int, optional
         Which diagonal to write to. Default is 0.
         Main diagonal is 0; upper diagonals are positive and
         lower diagonals are negative.
-    wrap : bool, optional
-        For tall matrices, the diagonal is "wrapped" after N columns.
-        Default is False.
     copy : bool, optional
         Return a copy. Diagonal is written in-place if false. 
         Default is True.
@@ -65,20 +47,25 @@ def fill_diagonal(arr, values, k=0, wrap=False, copy=True):
     -------
     Array with diagonal filled.
 
+    Notes
+    -----
+    Similar to numpy.fill_diagonal, but allows for kth diagonals as well.
+    This solution was borrowed from
+    http://stackoverflow.com/questions/9958577/changing-the-values-of-the-diagonal-of-a-matrix-in-numpy
+
     """
     if copy:
         arr = arr.copy()
-    else:
-        arr = np.asarray(arr)
-    start = k
+    start = max(i, -arr.shape[1] * i)
+    stop = max(0, (arr.shape[1] - i)) * arr.shape[1]
     step = arr.shape[1] + 1
-    # This is needed so a tall matrix doesn't have the diagonal wrap around.
-    if wrap:
-        end = None
-    else:
-        end = start + arr.shape[1] * arr.shape[1]
-    arr.flat[start:end:step] = values
+    arr.flat[start:stop:step] = x
     return arr
+
+
+def fill_diag(arr, x, i=0, copy=True):
+    '''Identical to set_diag, but returns a copy by default'''
+    return set_diag(arr, x, i, copy)
 
 
 def fill_na(arr, value=0, copy=True):
