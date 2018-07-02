@@ -391,6 +391,7 @@ def get_adjusted_expected_tile_some_nans(origin,
                                          expected,
                                          bal_weight,
                                          kernels,
+                                         balance_factor=None,
                                          verbose=False):
     """
     'get_adjusted_expected_tile_some_nans', get locally adjusted
@@ -559,6 +560,13 @@ def get_adjusted_expected_tile_some_nans(origin,
                                             E_raw,
                                             N_bal,
                                             kernel)
+
+        # this is the place where we would need to extract
+        # some results of convolution and multuplt it by the
+        # appropriate factor "cooler._load_attrs(‘bins/weight’)[‘scale’]" ...
+        if balance_factor:
+            # compare 16 with KO*balance_factor ...
+            pass
         if verbose:
             print("Convolution with kernel {} is complete.".format(kernel_name))
         #
