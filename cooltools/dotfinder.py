@@ -619,7 +619,7 @@ def get_adjusted_expected_tile_some_nans(origin,
         # some results of convolution and multuplt it by the
         # appropriate factor "cooler._load_attrs(‘bins/weight’)[‘scale’]" ...
         if balance_factor and (kernel_name == "lowleft"):
-            peaks_df["factor_balance."+kernel_name+".KerObs"] = KO * balance_factor        
+            peaks_df["factor_balance."+kernel_name+".KerObs"] = balance_factor * KO.flatten()
             # KO*balance_factor: to be compared with 16 ...
         if verbose:
             print("Convolution with kernel {} is complete.".format(kernel_name))

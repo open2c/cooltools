@@ -88,7 +88,7 @@ def score_tile(tile_cij, clr, cis_exp, exp_v_name, bal_v_name, kernels,
         origin=origin,
         observed=observed,
         expected=expected,
-        bal_weight=(bal_weight_i,bal_weight_j),
+        bal_weights=(bal_weight_i,bal_weight_j),
         kernels=kernels,
         balance_factor=balance_factor,
         verbose=verbose)
@@ -1097,7 +1097,7 @@ def call_dots(
     ###################
 
     filtered_pix = scoring_and_extraction_step(clr, expected, expected_name, tiles, kernels,
-                                               ledges, threshold_df, max_nans_tolerated, factor_balance,
+                                               ledges, threshold_df, max_nans_tolerated, balance_factor,
                                                loci_separation_bins, output_calls, nproc, verbose)
 
     ######################################
