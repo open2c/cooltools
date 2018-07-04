@@ -21,7 +21,7 @@ HiCCUPS_W2_MAX_INDX = 10000
 
 
 def score_tile(tile_cij, clr, cis_exp, exp_v_name, bal_v_name, kernels,
-               nans_tolerated, band_to_cover, verbose):
+               nans_tolerated, band_to_cover, balance_factor, verbose):
     """
     The main working function that given a tile of a heatmap, applies kernels to
     perform convolution to calculate locally-adjusted expected and then
@@ -51,6 +51,10 @@ def score_tile(tile_cij, clr, cis_exp, exp_v_name, bal_v_name, kernels,
     band_to_cover : int
         Results would be stored only for pixels connecting loci closer than
         'band_to_cover'.
+    balance_factor : float
+        Balancing factor to turn sum of balanced matrix back approximately
+        to the number of pairs (used for dynamic-donut criteria mostly).
+        use None value to disable dynamic-donut criteria calculation.
     verbose : bool
         Enable verbose output.
         
@@ -84,8 +88,9 @@ def score_tile(tile_cij, clr, cis_exp, exp_v_name, bal_v_name, kernels,
         origin=origin,
         observed=observed,
         expected=expected,
-        bal_weight=(bal_weight_i,bal_weight_j),
+        bal_weights=(bal_weight_i,bal_weight_j),
         kernels=kernels,
+        balance_factor=balance_factor,
         verbose=verbose)
 
     # Post-processing filters
@@ -339,6 +344,9 @@ def scoring_and_histogramming_step(clr, expected, expected_name, tiles, kernels,
         kernels=kernels,
         nans_tolerated=max_nans_tolerated,
         band_to_cover=loci_separation_bins,
+        # do not calculate dynamic-donut criteria
+        # for now.
+        balance_factor=None,
         verbose=very_verbose)
 
     # to hist per scored chunk:
@@ -419,7 +427,7 @@ def scoring_and_histogramming_step(clr, expected, expected_name, tiles, kernels,
 
 
 def scoring_and_extraction_step(clr, expected, expected_name, tiles, kernels,
-                               ledges, thresholds, max_nans_tolerated,
+                               ledges, thresholds, max_nans_tolerated, balance_factor,
                                loci_separation_bins, output_path, nproc, verbose):
     """
     This is a derivative of the 'scoring_step'
@@ -447,6 +455,7 @@ def scoring_and_extraction_step(clr, expected, expected_name, tiles, kernels,
         kernels=kernels,
         nans_tolerated=max_nans_tolerated,
         band_to_cover=loci_separation_bins,
+        balance_factor=balance_factor,
         verbose=very_verbose)
 
     # to hist per scored chunk:
@@ -719,6 +728,11 @@ def thresholding_step(centroids, output_path):
     # c_label
     # c_size
 
+    # ...
+    # to be added to the list of output columns:
+    # "factor_balance."+"lowleft"+".KerObs"
+    # ...
+
     # tentaive output columns list:
     columns_for_output = [
         'chrom1',
@@ -737,6 +751,7 @@ def thresholding_step(centroids, output_path):
         'la_exp.vertical.value',
         'la_exp.horizontal.value',
         'la_exp.lowleft.value',
+        "factor_balance.lowleft.KerObs",
         # # 'la_exp.upright.value',
         # # 'la_exp.upright.qval',
         # 'la_exp.donut.qval',
@@ -933,6 +948,7 @@ def call_dots(
     # # clustering would deal with bases-units for now, so
     # # supress this for now:
     # clustering_radius_bins = int(dots_clustering_radius/binsize)
+    balance_factor = clr._load_attrs("bins/weight")["scale"]
     
     ktypes = ['donut', 'vertical', 'horizontal', 'lowleft']
     # 'upright' is a symmetrical inversion of "lowleft", not needed.
@@ -959,7 +975,6 @@ def call_dots(
     if verbose:
         print("Kernels parameters are set as w,p={},{}"
               " for the cooler with {} bp resolution.".format(w,p,binsize))
-
 
 
     kernels = {k: get_kernel(w,p,k) for k in ktypes}
@@ -1082,7 +1097,7 @@ def call_dots(
     ###################
 
     filtered_pix = scoring_and_extraction_step(clr, expected, expected_name, tiles, kernels,
-                                               ledges, threshold_df, max_nans_tolerated,
+                                               ledges, threshold_df, max_nans_tolerated, balance_factor,
                                                loci_separation_bins, output_calls, nproc, verbose)
 
     ######################################
