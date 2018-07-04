@@ -59,6 +59,8 @@ def clust_2D_pixels(pixels_df,
                     threshold_cluster=2,
                     bin1_id_name='bin1_id',
                     bin2_id_name='bin2_id',
+                    clust_label_name='c_label',
+                    clust_size_name='c_size',
                     verbose=True):
     '''
     Group significant pixels by proximity using Birch clustering. We use
@@ -81,16 +83,21 @@ def clust_2D_pixels(pixels_df,
     bin2_id_name : str
         Name of the 2nd coordinate (column index) in 'pixel_df', by default
         'bin2_id'. 'start2/end2' could be usefull as well.
+    clust_label_name : str
+        Name of the cluster of pixels label. "c_label" by default.
+    clust_size_name : str
+        Name of the cluster of pixels size. "c_size" by default.
     verbose : bool
         Print verbose clustering summary report defaults is True.
     
     Returns
     -------
     peak_tmp : pandas.DataFrame
-        DataFrame with c_row,c_col,c_label,c_size - columns. row/col are
-        coordinates of centroids, label and sizes are unique pixel-cluster
+        DataFrame with the following columns:
+        [c+bin1_id_name, c+bin2_id_name, clust_label_name, clust_size_name]
+        row/col (bin1/bin2) are coordinates of centroids,
+        label and sizes are unique pixel-cluster
         labels and their corresponding sizes.
-
     '''
 
     # col (bin2) must precede row (bin1):
@@ -144,9 +151,9 @@ def clust_2D_pixels(pixels_df,
                                 index=pixel_idxs,
                                 columns=['c'+bin1_id_name,'c'+bin2_id_name])
     # add labels per pixel:
-    centroids_n_labels_df['c_label'] = clustered_labels.astype(np.int)
+    centroids_n_labels_df[clust_label_name] = clustered_labels.astype(np.int)
     # add cluster sizes:
-    centroids_n_labels_df['c_size'] = cluster_sizes.astype(np.int)
+    centroids_n_labels_df[clust_size_name] = cluster_sizes.astype(np.int)
     
 
     return centroids_n_labels_df
