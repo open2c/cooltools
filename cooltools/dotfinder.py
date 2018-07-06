@@ -540,6 +540,15 @@ def get_adjusted_expected_tile_some_nans(origin,
     O_bal = np.multiply(O_raw, np.outer(v_bal_i,v_bal_j))
     # O_bal is separate from O_raw memory-wise.
 
+    # fill lower triangle of O_bal and E_bal with NaNs
+    # in order to prevent peak calling from the lower triangle
+    # and also to provide fair locally adjusted expected
+    # estimation for pixels very close to diagonal, whose
+    # "donuts"(kernels) would be crossing the main diagonal.
+    # The trickiest thing here would be dealing with the origin: io,jo.
+    O_bal[np.tril_indices_from(O_bal,k=(i0-j0)-1)] = np.nan
+    E_bal[np.tril_indices_from(E_bal,k=(i0-j0)-1)] = np.nan
+
     # raw E_bal: element-wise division of E_bal[i,j] and
     # v_bal[i]*v_bal[j]:
     E_raw = np.divide(E_bal, np.outer(v_bal_i,v_bal_j))
@@ -657,9 +666,15 @@ def get_adjusted_expected_tile_some_nans(origin,
     # returning only pixels from upper triangle of a matrix
     # is likely here to stay:
     upper_band = (peaks_df["bin1_id"] < peaks_df["bin2_id"])
+    # Consider filling lower triangle of the OBSERVED matrix tile
+    # with NaNs, instead of this - we'd need this for a fair
+    # consideration of the pixels that are super close to the
+    # diagonal and in a case, when the corresponding donut would
+    # cross a diagonal line.
     # selecting pixels in relation to diagonal - too far, too
     # close etc, is now shifted to the outside of this function
     # a way to simplify code.
+
 
     # return good semi-sparsified DF:
     return peaks_df[~mask_ndx & upper_band].reset_index(drop=True)
