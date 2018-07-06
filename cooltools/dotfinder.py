@@ -546,8 +546,8 @@ def get_adjusted_expected_tile_some_nans(origin,
     # estimation for pixels very close to diagonal, whose
     # "donuts"(kernels) would be crossing the main diagonal.
     # The trickiest thing here would be dealing with the origin: io,jo.
-    O_bal[np.tril_indices_from(O_bal,k=(i0-j0)-1)] = np.nan
-    E_bal[np.tril_indices_from(E_bal,k=(i0-j0)-1)] = np.nan
+    O_bal[np.tril_indices_from(O_bal,k=(io-jo)-1)] = np.nan
+    E_bal[np.tril_indices_from(E_bal,k=(io-jo)-1)] = np.nan
 
     # raw E_bal: element-wise division of E_bal[i,j] and
     # v_bal[i]*v_bal[j]:
