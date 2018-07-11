@@ -554,8 +554,8 @@ def clustering_step_local(scores_df, expected_chroms,
         # existing 'scores_df'-DataFrame.
         # should we use groupby instead of 'scores_df['chrom12']==chrom' ?!
         # to be tested ...
-        df = scores_df[((scores_df['chrom1']==chrom) &
-                        (scores_df['chrom2']==chrom))]
+        df = scores_df[((scores_df['chrom1'].astype(str)==str(chrom)) &
+                        (scores_df['chrom2'].astype(str)==str(chrom)))]
 
         pixel_clust = dotfinder.clust_2D_pixels(
             df,

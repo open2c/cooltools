@@ -101,7 +101,10 @@ def clust_2D_pixels(pixels_df,
     '''
 
     # col (bin2) must precede row (bin1):
-    pixels     = pixels_df[[bin1_id_name, bin2_id_name]].values
+    pixels     = pixels_df[[bin1_id_name, bin2_id_name]].values.astype(np.float)
+    # added astype(float) to avoid further issues with clustering, as it
+    # turned out start1/start2 genome coordinates could be int32 or int64
+    # and int32 is not enough for some operations, i.e., integer overflow.
     pixel_idxs = pixels_df.index
 
     # perform BIRCH clustering of pixels:
