@@ -215,7 +215,7 @@ def histogram_scored_pixels(scored_df, kernels, ledges, verbose):
     return hists
 
 
-def extract_scored_pixels(scored_df, kernels, thresholds, ledges, verbose):
+def extract_scored_pixels(scored_df, kernels, thresholds, qvalues, ledges, verbose):
     """
     An attempt to implement HiCCUPS-like lambda-chunking
     statistical procedure.
@@ -234,6 +234,10 @@ def extract_scored_pixels(scored_df, kernels, thresholds, ledges, verbose):
         A dictionary with keys being kernel names and values pandas.Series
         indexed with Intervals defined by 'ledges' boundaries and storing FDR
         thresholds for observed values.
+    qvalues : dict
+        A dictionary with keys being kernel names and values pandas.DataFrame-s
+        storing q-values: each column corresponds to a lambda-chunk,
+        while rows correspond to observed pixels values.
     ledges : ndarray
         An ndarray with bin lambda-edges for groupping loc. adj. expecteds,
         i.e., classifying statistical hypothesis into lambda-classes.
@@ -260,6 +264,9 @@ def extract_scored_pixels(scored_df, kernels, thresholds, ledges, verbose):
         # corresponded with their Intervals (!!!):
         comply_fdr_k = (scored_df["obs.raw"].values > \
                         thresholds[k].loc[scored_df["la_exp."+k+".value"]].values)
+        # attempting to extract q-values using l-chunks and IntervalIndex:
+        qvalues[k].loc[scored_df["la_exp."+k+".value"]]
+        #
         # accumulate comply_fdr_k into comply_fdr_list
         # using np.logical_and:
         comply_fdr_list = np.logical_and(comply_fdr_list, comply_fdr_k)
@@ -1021,6 +1028,10 @@ def call_dots(
                                              kernels, ledges, max_nans_tolerated,
                                              loci_separation_bins, None, nproc,
                                              verbose)
+    # gw_hist for each kernel contains a histogram of
+    # raw pixel intensities for every lambda-chunk (one per column)
+    # in a row-wise order, i.e. each column is a histogram
+    # for each chunk ...
 
 
     if output_scores is not None:
@@ -1042,17 +1053,22 @@ def call_dots(
     rcs_Poisson = {}
     threshold_df = {}
     for k in kernels:
+        # generate a reverse cumulative histogram for each kernel,
+        #  such that 0th raw contains total # of pixels in each lambda-chunk:
         rcs_hist[k] = gw_hist[k].iloc[::-1].cumsum(axis=0).iloc[::-1]
-        # now for every kernel-type k - create rcsPoisson:
+        # now for every kernel-type k - create rcsPoisson,
+        # a unit Poisson distribution for every lambda-chunk
+        # using upper boundary of each lambda-chunk as the expected:
         rcs_Poisson[k] = pd.DataFrame()
-        for mu,column in zip(ledges[1:-1], gw_hist[k].columns):
+        for mu, column in zip(ledges[1:-1], gw_hist[k].columns):
             # poisson.sf = 1 - poisson.cdf, but more precise
             # poisson.sf(-1,mu) == 1.0, i.e. is equivalent to the
             # poisson.pmf(gw_hist[k].index,mu)[::-1].cumsum()[::-1]
             # i.e., the way unitPoissonPMF is generated in HiCCUPS:
-            rcs_Poisson[k][column] = rcs_hist[k].loc[0,column] * poisson.sf(gw_hist[k].index-1, mu)
+            renorm_factors = rcs_hist[k].loc[0,column]
+            rcs_Poisson[k][column] = renorm_factors * poisson.sf(gw_hist[k].index-1, mu)
         # once we have both RCS hist and the Poisson:
-        # now compare rcs_hist and normalized rcs_Poisson
+        # now compare rcs_hist and re-normalized rcs_Poisson
         # to infer FDR thresolds for every lambda-chunk:
         fdr_diff = fdr * rcs_hist[k] - rcs_Poisson[k]
         # determine the threshold by checking the value at which
