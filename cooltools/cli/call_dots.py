@@ -265,7 +265,12 @@ def extract_scored_pixels(scored_df, kernels, thresholds, qvalues, ledges, verbo
         comply_fdr_k = (scored_df["obs.raw"].values > \
                         thresholds[k].loc[scored_df["la_exp."+k+".value"]].values)
         # attempting to extract q-values using l-chunks and IntervalIndex:
-        qvalues[k].loc[scored_df["la_exp."+k+".value"]]
+        # we'll do it in an ugly but workign fashion, by simply
+        # iteration over pairs of obs, la_exp and extracting needed qvals
+        # one after another ...
+        scored_df["la_exp."+k+".qval"] = \
+                [ qvalues[k].loc[o,e] for o,e \
+                    in scored_df[["obs.raw","la_exp."+k+".value"]].itertuples() ]
         #
         # accumulate comply_fdr_k into comply_fdr_list
         # using np.logical_and:
@@ -434,8 +439,9 @@ def scoring_and_histogramming_step(clr, expected, expected_name, tiles, kernels,
 
 
 def scoring_and_extraction_step(clr, expected, expected_name, tiles, kernels,
-                               ledges, thresholds, max_nans_tolerated, balance_factor,
-                               loci_separation_bins, output_path, nproc, verbose):
+                               ledges, qvalues, thresholds, max_nans_tolerated,
+                               balance_factor, loci_separation_bins, output_path,
+                               nproc, verbose):
     """
     This is a derivative of the 'scoring_step'
     which is supposed to implement the 2nd of the
@@ -470,6 +476,7 @@ def scoring_and_extraction_step(clr, expected, expected_name, tiles, kernels,
         extract_scored_pixels,
         kernels=kernels,
         thresholds=thresholds,
+        qvalues=qvalues,
         ledges=ledges,
         verbose=very_verbose)
 
@@ -1051,6 +1058,7 @@ def call_dots(
     # Reverse Cumulative Sum of a histogram ...
     rcs_hist = {}
     rcs_Poisson = {}
+    qvalues = {}
     threshold_df = {}
     for k in kernels:
         # generate a reverse cumulative histogram for each kernel,
@@ -1074,6 +1082,11 @@ def call_dots(
         # determine the threshold by checking the value at which
         # 'fdr_diff' first turns positive:
         threshold_df[k] = fdr_diff.where(fdr_diff>0).apply(lambda col: col.first_valid_index())
+        # q-values ...
+        # roughly speaking, qvalues[k] =  rcs_Poisson[k]/rcs_hist[k]
+        # bear in mind some issues with lots of NaNs and Infs after
+        # such a brave operation ...
+        qvalues[k] = rcs_Poisson[k] / rcs_hist[k]
         # fill NaNs with the "unreachably" high value:
         very_high_value = len(rcs_hist[k])
         threshold_df[k] = threshold_df[k].fillna(very_high_value).astype(np.integer)
@@ -1113,8 +1126,9 @@ def call_dots(
     ###################
 
     filtered_pix = scoring_and_extraction_step(clr, expected, expected_name, tiles, kernels,
-                                               ledges, threshold_df, max_nans_tolerated, balance_factor,
-                                               loci_separation_bins, output_calls, nproc, verbose)
+                                               ledges, qvalues, threshold_df, max_nans_tolerated,
+                                               balance_factor, loci_separation_bins, output_calls,
+                                               nproc, verbose)
 
     ######################################
     # post processing starts from here on:
@@ -1124,6 +1138,8 @@ def call_dots(
     # 2. filter pixels by FDR
     # 3. merge different resolutions. (external script)
     ######################################
+    print(filtered_pix.head())
+
 
     if verbose:
         print("Subsequent clustering and thresholding steps are not production-ready")
