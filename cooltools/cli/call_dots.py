@@ -215,7 +215,7 @@ def histogram_scored_pixels(scored_df, kernels, ledges, verbose):
     return hists
 
 
-def extract_scored_pixels(scored_df, kernels, thresholds, qvalues, ledges, verbose):
+def extract_scored_pixels(scored_df, kernels, thresholds, ledges, verbose):
     """
     An attempt to implement HiCCUPS-like lambda-chunking
     statistical procedure.
@@ -234,10 +234,6 @@ def extract_scored_pixels(scored_df, kernels, thresholds, qvalues, ledges, verbo
         A dictionary with keys being kernel names and values pandas.Series
         indexed with Intervals defined by 'ledges' boundaries and storing FDR
         thresholds for observed values.
-    qvalues : dict
-        A dictionary with keys being kernel names and values pandas.DataFrame-s
-        storing q-values: each column corresponds to a lambda-chunk,
-        while rows correspond to observed pixels values.
     ledges : ndarray
         An ndarray with bin lambda-edges for groupping loc. adj. expecteds,
         i.e., classifying statistical hypothesis into lambda-classes.
@@ -264,15 +260,15 @@ def extract_scored_pixels(scored_df, kernels, thresholds, qvalues, ledges, verbo
         # corresponded with their Intervals (!!!):
         comply_fdr_k = (scored_df["obs.raw"].values > \
                         thresholds[k].loc[scored_df["la_exp."+k+".value"]].values)
-        # attempting to extract q-values using l-chunks and IntervalIndex:
-        # we'll do it in an ugly but workign fashion, by simply
-        # iteration over pairs of obs, la_exp and extracting needed qvals
-        # one after another ...
-        scored_df["la_exp."+k+".qval"] = \
-                [ qvalues[k].loc[o,e] for o,e \
-                    in scored_df[["obs.raw","la_exp."+k+".value"]].itertuples() ]
-        #
-        # accumulate comply_fdr_k into comply_fdr_list
+        ## attempting to extract q-values using l-chunks and IntervalIndex:
+        ## we'll do it in an ugly but workign fashion, by simply
+        ## iteration over pairs of obs, la_exp and extracting needed qvals
+        ## one after another ...
+        #scored_df["la_exp."+k+".qval"] = \
+        #        [ qvalues[k].loc[o,e] for o,e \
+        #            in scored_df[["obs.raw","la_exp."+k+".value"]].itertuples(index=False) ]
+        ##
+        ## accumulate comply_fdr_k into comply_fdr_list
         # using np.logical_and:
         comply_fdr_list = np.logical_and(comply_fdr_list, comply_fdr_k)
     # return a slice of 'scored_df' that complies FDR thresholds:
@@ -439,7 +435,7 @@ def scoring_and_histogramming_step(clr, expected, expected_name, tiles, kernels,
 
 
 def scoring_and_extraction_step(clr, expected, expected_name, tiles, kernels,
-                               ledges, qvalues, thresholds, max_nans_tolerated,
+                               ledges, thresholds, max_nans_tolerated,
                                balance_factor, loci_separation_bins, output_path,
                                nproc, verbose):
     """
@@ -476,7 +472,6 @@ def scoring_and_extraction_step(clr, expected, expected_name, tiles, kernels,
         extract_scored_pixels,
         kernels=kernels,
         thresholds=thresholds,
-        qvalues=qvalues,
         ledges=ledges,
         verbose=very_verbose)
 
@@ -678,29 +673,29 @@ def thresholding_step(centroids, output_path):
     ######################################################################
     # # Temporarily remove orphans filtering, until q-vals are calculated:
     ######################################################################
-    # enrichment_fdr_comply = (
-    #     (centroids["obs.raw"] > enrichment_factor_2 * centroids["la_exp.lowleft.value"]) &
-    #     (centroids["obs.raw"] > enrichment_factor_2 * centroids["la_exp.donut.value"]) &
-    #     (centroids["obs.raw"] > enrichment_factor_1 * centroids["la_exp.vertical.value"]) &
-    #     (centroids["obs.raw"] > enrichment_factor_1 * centroids["la_exp.horizontal.value"]) &
-    #     ( (centroids["obs.raw"] > enrichment_factor_3 * centroids["la_exp.lowleft.value"])
-    #         | (centroids["obs.raw"] > enrichment_factor_3 * centroids["la_exp.donut.value"]) ) &
-    #     ( (centroids["c_size"] > 1)
-    #        | ((centroids["la_exp.lowleft.qval"]
-    #            + centroids["la_exp.donut.qval"]
-    #            + centroids["la_exp.vertical.qval"]
-    #            + centroids["la_exp.horizontal.qval"]) <= FDR_orphan_threshold)
-    #     )
-    # )
-    #
     enrichment_fdr_comply = (
         (centroids["obs.raw"] > enrichment_factor_2 * centroids["la_exp.lowleft.value"]) &
         (centroids["obs.raw"] > enrichment_factor_2 * centroids["la_exp.donut.value"]) &
         (centroids["obs.raw"] > enrichment_factor_1 * centroids["la_exp.vertical.value"]) &
         (centroids["obs.raw"] > enrichment_factor_1 * centroids["la_exp.horizontal.value"]) &
         ( (centroids["obs.raw"] > enrichment_factor_3 * centroids["la_exp.lowleft.value"])
-            | (centroids["obs.raw"] > enrichment_factor_3 * centroids["la_exp.donut.value"]) )
+            | (centroids["obs.raw"] > enrichment_factor_3 * centroids["la_exp.donut.value"]) ) &
+        ( (centroids["c_size"] > 1)
+           | ((centroids["la_exp.lowleft.qval"]
+               + centroids["la_exp.donut.qval"]
+               + centroids["la_exp.vertical.qval"]
+               + centroids["la_exp.horizontal.qval"]) <= FDR_orphan_threshold)
+        )
     )
+    # #
+    # enrichment_fdr_comply = (
+    #     (centroids["obs.raw"] > enrichment_factor_2 * centroids["la_exp.lowleft.value"]) &
+    #     (centroids["obs.raw"] > enrichment_factor_2 * centroids["la_exp.donut.value"]) &
+    #     (centroids["obs.raw"] > enrichment_factor_1 * centroids["la_exp.vertical.value"]) &
+    #     (centroids["obs.raw"] > enrichment_factor_1 * centroids["la_exp.horizontal.value"]) &
+    #     ( (centroids["obs.raw"] > enrichment_factor_3 * centroids["la_exp.lowleft.value"])
+    #         | (centroids["obs.raw"] > enrichment_factor_3 * centroids["la_exp.donut.value"]) )
+    # )
     # use "enrichment_fdr_comply" to filter out
     # non-satisfying pixels:
     out = centroids[enrichment_fdr_comply]
@@ -766,12 +761,12 @@ def thresholding_step(centroids, output_path):
         'la_exp.horizontal.value',
         'la_exp.lowleft.value',
         "factor_balance.lowleft.KerObs",
-        # # 'la_exp.upright.value',
-        # # 'la_exp.upright.qval',
-        # 'la_exp.donut.qval',
-        # 'la_exp.vertical.qval',
-        # 'la_exp.horizontal.qval',
-        # 'la_exp.lowleft.qval'
+        # 'la_exp.upright.value',
+        # 'la_exp.upright.qval',
+        'la_exp.donut.qval',
+        'la_exp.vertical.qval',
+        'la_exp.horizontal.qval',
+        'la_exp.lowleft.qval'
     ]
 
     if output_path is not None:
@@ -962,7 +957,7 @@ def call_dots(
     # # clustering would deal with bases-units for now, so
     # # supress this for now:
     # clustering_radius_bins = int(dots_clustering_radius/binsize)
-    balance_factor = clr._load_attrs("bins/weight")["scale"]
+    balance_factor = 1.0 #clr._load_attrs("bins/weight")["scale"]
     
     ktypes = ['donut', 'vertical', 'horizontal', 'lowleft']
     # 'upright' is a symmetrical inversion of "lowleft", not needed.
@@ -1126,9 +1121,26 @@ def call_dots(
     ###################
 
     filtered_pix = scoring_and_extraction_step(clr, expected, expected_name, tiles, kernels,
-                                               ledges, qvalues, threshold_df, max_nans_tolerated,
+                                               ledges, threshold_df, max_nans_tolerated,
                                                balance_factor, loci_separation_bins, output_calls,
                                                nproc, verbose)
+
+    if verbose:
+        print("preparing to extract needed q-values ...")
+
+    # attempting to extract q-values using l-chunks and IntervalIndex:
+    # we'll do it in an ugly but workign fashion, by simply
+    # iteration over pairs of obs, la_exp and extracting needed qvals
+    # one after another ...
+    for k in kernels:
+        filtered_pix["la_exp."+k+".qval"] = \
+            [ qvalues[k].loc[o,e] for o,e \
+                 in filtered_pix[["obs.raw","la_exp."+k+".value"]].itertuples(index=False) ]
+    # qvalues : dict
+    #   A dictionary with keys being kernel names and values pandas.DataFrame-s
+    #   storing q-values: each column corresponds to a lambda-chunk,
+    #   while rows correspond to observed pixels values.
+
 
     ######################################
     # post processing starts from here on:
@@ -1138,8 +1150,6 @@ def call_dots(
     # 2. filter pixels by FDR
     # 3. merge different resolutions. (external script)
     ######################################
-    print(filtered_pix.head())
-
 
     if verbose:
         print("Subsequent clustering and thresholding steps are not production-ready")
