@@ -674,7 +674,11 @@ def get_kernel(w, p, ktype):
                 ((-p<=y)&(y<=p)) )
         # kernel masked:
         kernel[mask] = 0
-    elif ktype == 'lowleft':
+    # ACHTUNG!!! UPRIGHT AND LOWLEFT ARE SWITCHED ...
+    # IT SEEMS FOR UNKNOWN REASON THAT IT SHOULD
+    # BE THAT WAY ...
+    # OR IT'S A MISTAKE IN hIccups AS WELL ...
+    elif ktype == 'upright':
         # mask inner pXp square:
         mask = (((x>=-p))&
                 ((y<=p)) )
@@ -682,7 +686,7 @@ def get_kernel(w, p, ktype):
         mask += (y<=0)
         # kernel masked:
         kernel[mask] = 0
-    elif ktype == 'upright':
+    elif ktype == 'lowleft':
         # mask inner pXp square:
         mask = (((x>=-p))&
                 ((y<=p)) )
