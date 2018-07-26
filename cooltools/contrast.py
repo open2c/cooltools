@@ -1,3 +1,11 @@
+import numpy as np
+import joblib
+import os
+import warnings
+
+import cooltools
+from cooltools import eigdecomp
+
 
 def normratio_diags_indicatormatrix(M, I, ignore_diags=0, exclude_nans_from_paircounts=True):
     """
@@ -93,9 +101,7 @@ def normratio_diags_indicatormatrix(M, I, ignore_diags=0, exclude_nans_from_pair
             for each diagonal (but NANs arent here either)
         ]
     """
-    
-    import warnings
-    
+        
     # check if M is symmetric
     if 1:
         tol = 1e-8
@@ -344,72 +350,63 @@ def normratio_types(M, v, ignore_diags=0, compute_all_types=False, exclude_nans_
 
 
 
-def COMPscore_by_s(M, comp_identities ,ignore_diags=0, exclude_nans_from_paircounts=True, verbose=True):
+def COMPscore_by_s(M, bin_identities, ignore_diags=0, exclude_nans_from_paircounts=True, verbose=False):
     """
-    compute COMPscore, a measure for the "contrast" in M: 
+    compute the checkerboard contrast in M: 
         - COMPscore_by_s (contrast in diagonals with offset s=0..len(M))
         - COMPscore: weighted average over all s
     
     parameters:
     -----------
     M: 2D numpy array or string:
-        (filepath of) matrix
+        (filepath to) a matrix
         
-    comp_indentities: sequence or lambda function or None:
+    bin_identities: sequence or lambda function or None:
         if sequence:
-            true compartmental identities of the monomers, e.g. [1, 1, -1, -1, 1]
-            has to be same length as M (before internal coarsegraining)
+            compartmental identities of the bins, e.g. [1, 1, -1, -1, 1, ...]
+            len(bin_identities) must equal len(M) 
         if lambda function: 
-            comp_identities(EV) is used as compartmental identites of monomers
-            where EV is the eigenvector from 
-            params: an eigenvector (1D numpy array)
-            returns: a vector of compartmental identities of same length
-            example: comp_indentities=lambda x: x>np.nanmedian(x)
+            compartmental identities of bins are obtained from EV 
+            using the supplied lamda function
+            lambda must take: 1D numpy array (the eigenvector)
+            lambda must return: sequence of same length (the identities)
+            example: bin_identities=lambda x: x>np.nanmedian(x)
+            uses EV = cooltools.eigdecomp.cis_eig(M, phasing_track=phasing_track)[1][0]
         if None:
-            comp_identities(EV) is used as compartmental identites of monomers, where:
-                comp_identities=lambda x: x>np.nanmedian(x)
-                EV = cooltools.eigdecomp.cis_eig(M, phasing_track=phasing_track)[1][0]
+            compartmental identities of bins are obtained from EV 
+            using x>np.nanmedian(x)
+            uses EV = cooltools.eigdecomp.cis_eig(M, phasing_track=phasing_track)[1][0]
     
     phasing_track: vector, optional: 
-        to flip EVs (only effective if comp_indentities is a lambda function or None)        
-        use for example truecomps
-        has to be same length as M (before internal coarsegraining)
+        to flip EVs (only effective if bin_identities is a lambda function or None)        
+        use for example ture compartmental identites, if known
+        len(phasing_track) must equal len(M)
         
     ignore_diags: integer, optional: 
         number of diagonals to be ignored
         
     exclude_nans_from_paircounts: boolean, optional:
-        if True, pixels with NaN in M are not counted towards possible contacts
+        if True, pixels with NaN in M are not counted towards valid pixels
         
     
     returns:
     --------
     COMPscore_by_s: 1D numpy array, len=len(M): 
-        COMPscore(genomic separation) across conditions, 
-        using truecompsas compatmental types
+        COMPscore[s]: contrast in diagonals with offsets s=0..len(M)
 
     COMPscore: float:
         weighted mean of COMPscore_by_s:
         np.nansum(COMPscore*p)/np.nansum(p) with weights:
         p[s]=add_info_anytype[1][s]*add_info_anytype[3][s] # #wi_pairs*#ac_pairs  
     """
-
-    import joblib
-    import os
-    #from mirnylib.numutils import coarsegrain
-    import cooltools
-    from cooltools import eigdecomp
     
-    # get heatmap
+    # get matrix
     if isinstance(M, np.ndarray) and (len(M.shape)==2):
         if verbose:
             print('cmap was supplied as 2D array')
-    elif isinstance(cmaps[i], str): 
-        if verbose:
-            print('folder: ', cmaps[i].split('/')[-2])
-            print('hmap:', cmaps[i].split('/')[-1])
+    elif isinstance(M, str): 
         try:
-            c = joblib.load(cmaps[i])
+            c = joblib.load(M)
         except:
             raise ValueError("cmap could not be loaded")
     else:
@@ -417,26 +414,27 @@ def COMPscore_by_s(M, comp_identities ,ignore_diags=0, exclude_nans_from_paircou
     if verbose:
         print('got a contact map')    
     
-    # get compartmental identities
-    if (comp_identities is None) or (callable(comp_identities)):
+    # get compartmental identities of bins
+    if (bin_identities is None) or (callable(bin_identities)):
         
         # get eigenvector
         _, Evecs = cooltools.eigdecomp.cis_eig(M, phasing_track=phasing_track)
         EV = Evecs[0]
         
-        # use default for EV => comp_IDs
-        if comp_identities is None: 
-            comp_identities = lambda x: x>np.nanmedian(x)
+        # use default lambda function for comp_IDs(EV)
+        if bin_identities is None: 
+            bin_identities = lambda x: x>np.nanmedian(x)
 
-        # get comp_IDs (!!! comp_indentities changes type here - intended)
-        comp_identities = comp_identities(EV)
+        # get comp_IDs (!!! bin_identities changes type here - intended)
+        bin_identities = bin_identities(EV)
                     
     # get COMPscore_by_s
-    COMPscore_anytype, add_info_anytype, I_anytype, COMPscore_types, add_info_types, I_types = normratio_types(M, comp_identities, ignore_diags=ignore_diags)
-    COMPscore_by_s = COMPscore_anytype
+    COMPscore_by_s, add_info_anytype,_,_,_,_ = normratio_types(M, bin_identities, ignore_diags=ignore_diags, exclude_nans_from_paircounts=exclude_nans_from_paircounts)
     
     # get s-average
     p = add_info_anytype[1]*add_info_anytype[3] # weights: #wi_pairs*#ac_pairs            
     COMPscore = np.nansum(COMPscore_by_s*p)/np.nansum(p)
     
     return COMPscore_by_s, COMPscore
+
+
