@@ -3,8 +3,15 @@ import joblib
 import os
 import warnings
 
-import cooltools
-from cooltools import eigdecomp
+try:
+    import cooler
+except:
+    raise Warning("cooler could not be imported")
+try:
+    import cooltools
+    from cooltools import eigdecomp
+except: 
+    raise Warning("cooltols.eigdecomp could not be imported")
 
 
 def normratio_diags_indicatormatrix(M, I, ignore_diags=0, exclude_nans_from_paircounts=True):
@@ -350,7 +357,7 @@ def normratio_types(M, v, ignore_diags=0, compute_all_types=False, exclude_nans_
 
 
 
-def COMPscore_by_s(M, bin_identities, ignore_diags=0, exclude_nans_from_paircounts=True, verbose=False):
+def COMPscore_by_s(M, v=None, get_bin_identities=None, ignore_diags=0, exclude_nans_from_paircounts=True, balance=True, chrom_nr=1, start=None, stop=None, phasing_track=None, verbose=False):
     """
     compute the checkerboard contrast in M: 
         - COMPscore_by_s (contrast in diagonals with offset s=0..len(M))
@@ -360,34 +367,46 @@ def COMPscore_by_s(M, bin_identities, ignore_diags=0, exclude_nans_from_paircoun
     -----------
     M: 2D numpy array or string:
         (filepath to) a matrix
+        if string, I'll try loading as follows:
+        - joblib.load(M)
+        - c = cooler.Cooler(M).matrix(balance=balance)
+          c = c.fetch('chr{0}:{1}-{2}'.format(chrom_nr, bp_start, bp_stop))
         
-    bin_identities: sequence or lambda function or None:
-        if sequence:
-            compartmental identities of the bins, e.g. [1, 1, -1, -1, 1, ...]
-            len(bin_identities) must equal len(M) 
-        if lambda function: 
-            compartmental identities of bins are obtained from EV 
-            using the supplied lamda function
-            lambda must take: 1D numpy array (the eigenvector)
-            lambda must return: sequence of same length (the identities)
-            example: bin_identities=lambda x: x>np.nanmedian(x)
-            uses EV = cooltools.eigdecomp.cis_eig(M, phasing_track=phasing_track)[1][0]
-        if None:
-            compartmental identities of bins are obtained from EV 
-            using x>np.nanmedian(x)
-            uses EV = cooltools.eigdecomp.cis_eig(M, phasing_track=phasing_track)[1][0]
+    v: 1D numpy array, optional:
+        len(v) must equal len(M)
+        track used to assign compartmental identities to bins
+        examples:
+            - true compartmental identities, e.g. [1, 1, -1, -1, 1, ...]
+            - precomputed EV
+        if None, EV is used and computed here 
+        (cooltools.eigdecomp.cis_eig(M, phasing_track=phasing_track)[1][0])
+            
+    get_bin_identities: lambda function, optional:
+        computes compartmental identities of bins from v
+        lambda must take: 1D numpy array (the eigenvector)
+        lambda must return: sequence of same length (the identities)
+        default: get_bin_identities=lambda x: x>np.nanmedian(x)
+        !!! the number of compartmental types will be np.unique(get_bin_identities(v))
     
-    phasing_track: vector, optional: 
-        to flip EVs (only effective if bin_identities is a lambda function or None)        
+    phasing_track: 1D numpy array, optional: 
+        to flip EVs (only effective if v is None)        
         use for example ture compartmental identites, if known
         len(phasing_track) must equal len(M)
         
     ignore_diags: integer, optional: 
-        number of diagonals to be ignored
+        number of diagonals in M to be ignored
         
     exclude_nans_from_paircounts: boolean, optional:
         if True, pixels with NaN in M are not counted towards valid pixels
         
+    chrom_nr: integer, optional:
+        only effective if M is a cooler
+        which chromosome of the cooler to use
+        one-based, i.e. will use c.fetch('chr{0}'.format(chrom_nr)
+        
+    start, stop: integer, optional:
+        if M is 2d-array or joblib loadable: M=M[start:stop,start:stop]
+        if M is coolerparh: c.fetch('chr{0}:{1}-{2}'.format(chrom_nr, bp_start, bp_stop))
     
     returns:
     --------
@@ -401,35 +420,45 @@ def COMPscore_by_s(M, bin_identities, ignore_diags=0, exclude_nans_from_paircoun
     """
     
     # get matrix
-    if isinstance(M, np.ndarray) and (len(M.shape)==2):
-        if verbose:
-            print('cmap was supplied as 2D array')
+    if isinstance(M, np.ndarray):
+        if (len(M.shape)!=2):
+            raise ValueError("M was an array, but dimensionality was not 2")
+        elif (stat is not None) and (stop is not None):
+            M = M[start:stop, start:stop]
     elif isinstance(M, str): 
         try:
-            c = joblib.load(M)
+            M = joblib.load(M)
+            if (start is not None) and (stop is not None):
+                M = M[start:stop, start:stop]
         except:
-            raise ValueError("cmap could not be loaded")
+            try: 
+                c = cooler.Cooler(M)
+                i0,i1 = c.extent('chr{}'.format(chrom_nr))
+                M = c.matrix(balance=True).fetch('chr{0}'.format(chrom_nr))
+                i0 = max(i0,start)
+                i1 = min(i1,stop)
+                M = M[i0:i1,i0:i1]
+            except:
+                raise ValueError("cmap could not be loaded")
     else:
-        raise ValueError("M was neither 2d-array nor joblib loadable")
+        raise ValueError("M was neither 2d-array nor a string")
     if verbose:
         print('got a contact map')    
     
-    # get compartmental identities of bins
-    if (bin_identities is None) or (callable(bin_identities)):
-        
-        # get eigenvector
+    # get v, if not supplied
+    if v is None:
         _, Evecs = cooltools.eigdecomp.cis_eig(M, phasing_track=phasing_track)
-        EV = Evecs[0]
-        
-        # use default lambda function for comp_IDs(EV)
-        if bin_identities is None: 
-            bin_identities = lambda x: x>np.nanmedian(x)
+        v = Evecs[0]
 
-        # get comp_IDs (!!! bin_identities changes type here - intended)
-        bin_identities = bin_identities(EV)
+    # specify lambda function, if not supplied
+    if get_bin_identities is None: 
+        get_bin_identities = lambda x: x>np.nanmedian(x)
+    
+    # get compartmental identities of bins from v
+    v = get_bin_identities(v)
                     
     # get COMPscore_by_s
-    COMPscore_by_s, add_info_anytype,_,_,_,_ = normratio_types(M, bin_identities, ignore_diags=ignore_diags, exclude_nans_from_paircounts=exclude_nans_from_paircounts)
+    COMPscore_by_s, add_info_anytype,_,_,_,_ = normratio_types(M, v, ignore_diags=ignore_diags, exclude_nans_from_paircounts=exclude_nans_from_paircounts)
     
     # get s-average
     p = add_info_anytype[1]*add_info_anytype[3] # weights: #wi_pairs*#ac_pairs            
