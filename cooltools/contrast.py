@@ -434,11 +434,10 @@ def COMPscore_by_s(M, v=None, get_bin_identities=lambda x: x>np.nanmean(x), igno
         except:
             raise ValueError("cmap could not be loaded")
             
-    # trim matrix
+    # trim matrix and phasing track
     i0 = max(0, start)
     i1 = min(stop, len(M))
     M = M[i0:i1,i0:i1]
-    
     if phasing_track is not None:
         phasing_track=phasing_track[i0:i1]
         
@@ -467,5 +466,113 @@ def COMPscore_by_s(M, v=None, get_bin_identities=lambda x: x>np.nanmean(x), igno
 
 
 
+
+
+def COMPscore_by_s_clr(clr, v=None, get_bin_identities=lambda x: x>np.nanmean(x), ignore_diags=0, exclude_nans_from_paircounts=True, balance=True, chroms=None, extents=None, phasing_track=None, verbose=False):
+    """
+    compute the checkerboard contrast in M in cis: for all chromosomes computes: 
+        - COMPscore_by_s (contrast in diagonals with offset s=0..len(M))
+        - COMPscore: weighted average over all s
+    
+    parameters:
+    -----------
+    clr: cooler object or string:
+        (filepath to) a cooler
+        
+    v: 1D numpy array, optional:
+        len(v) must equal clr.info['nbins']
+        track used to assign compartmental identities to bins
+        example: precomputed EV
+        if None, EV is used and computed here (for each chromosome separately) using
+        cooltools.eigdecomp.cis_eig(clr[this_chrom], phasing_track[this_chrom])[1][0]
+            
+    get_bin_identities: lambda function, optional:
+        computes compartmental identities of bins from v
+        lambda must take: a sequence (e.g. the eigenvector)
+        lambda must return: sequence of same length (the identities)
+        default: get_bin_identities=lambda x: x>np.nanmean(x)
+        !!! the number of compartmental types will be np.unique(get_bin_identities(v))
+    
+    phasing_track: 1D numpy array, optional: 
+        to flip EVs (only effective if v is None)        
+        len(phasing_track) must equal clr.info['nbins']
+        
+    ignore_diags: integer, optional: 
+        number of diagonals to be ignored
+        
+    exclude_nans_from_paircounts: boolean, optional:
+        if True, pixels with NaN are not counted towards valid pixels
+        
+    chroms: list of strings, optional:
+        which chromosome of the cooler to use
+        have to match clr.chromnames, i.e. ['chr1', 'chr2', ...]
+        
+    extents: list of 2-tuples of integers, optional:
+        [(s0,e0), ...], where (s0,e0) specifies the extent in bp used in each of chroms
+        
+    
+    returns:
+    --------
+    COMPscores_by_s: list of 1D numpy arrays: 
+        COMPscore[chr]: contrast by diagonals for chromosome chr
+
+    COMPscores: list of floats:
+        COMPscores[chr] = weighted mean of COMPscores_by_s[chr]:
+        np.nansum(COMPscore*p)/np.nansum(p) with weights:
+        p[s]=add_info_anytype[1][s]*add_info_anytype[3][s] # #wi_pairs*#ac_pairs  
+        
+        
+    Note:
+    -----
+    v != None and phasing_track != None are NOT yet tested
+    """
+    
+    if isinstance(clr, str):
+        clr = cooler.Cooler(clr)
+
+    COMPscores_by_s = []
+    COMPscores = []
+    
+    for ch in chroms:
+        print(ch)
+        
+        # get extent
+        if extents is None:
+            i0,i1 = clr.extent(ch)
+        else:
+            i0,i1 = clr.extent(ch+':{}-{}'.format(extents[0][0], extents[0][1]))
+        print('i0,i1=', i0,i1)
+            
+        # matrix for this chromosome
+        o = clr.offset(ch)
+        M = clr.matrix(balance=balance).fetch(ch)[i0-o:i1-o,i0-o:i1-o]
+        print('len(M)=', len(M))
+            
+        # phasing track for this chromosome
+        if phasing_track is not None:
+            ph_ch = phasing_track[i0:i1]
+        else:
+            ph_ch = None
+        print('ph_ch=', ph_ch)    
+        
+        # bin identities for this chromosome
+        if v is None:
+            v_ch = cooltools.eigdecomp.cis_eig(M, phasing_track=ph_ch)[1][0]
+        else:
+            v_ch = v[i0,i1]            
+        v_ch = get_bin_identities(v_ch)
+        print('v_ch=', v_ch)
+        
+        # get COMPscore_by_s
+        COMPscore_by_s, add_info_anytype,_,_,_,_ = normratio_types(M, v_ch, ignore_diags=ignore_diags, exclude_nans_from_paircounts=exclude_nans_from_paircounts)
+        COMPscores_by_s.append(COMPscore_by_s)
+        
+        # get s-average
+        p = add_info_anytype[1]*add_info_anytype[3] # weights: #wi_pairs*#ac_pairs            
+        COMPscore = np.nansum(COMPscore_by_s*p)/np.nansum(p)
+        COMPscores.append(COMPscore)
+        
+       
+    return COMPscores_by_s, COMPscores
 
 
