@@ -387,6 +387,7 @@ def COMPscore_by_s(M, v=None, get_bin_identities=lambda x: x>np.nanmean(x), igno
         !!! the number of compartmental types will be np.unique(get_bin_identities(v))
     
     phasing_track: 1D numpy array, optional: 
+        len(phasing_track) has to be len(M)
         to flip EVs (only effective if v is None)        
         use for example ture compartmental identites, if known
         len(phasing_track) must equal len(M)
@@ -398,7 +399,10 @@ def COMPscore_by_s(M, v=None, get_bin_identities=lambda x: x>np.nanmean(x), igno
         if True, pixels with NaN in M are not counted towards valid pixels
         
     start, stop: integers, optional:
-        M=M[start:stop,start:stop] and v[start:stop] will be used (trimmed by len(M))
+        will use (trimmed by len(M)):
+        M[start:stop,start:stop] (!!! EV is computed from restriced M if v is None)
+        v[start:stop], 
+        phasing_track[start:stop]
                 
     
     returns:
@@ -433,10 +437,14 @@ def COMPscore_by_s(M, v=None, get_bin_identities=lambda x: x>np.nanmean(x), igno
     i1 = min(stop, len(M))
     M = M[i0:i1,i0:i1]
     
+    if phasing_track is not None:
+        phasing_track=phasing_track[i0:i1]
+        
     # get v, if not supplied
     if v is None:
-        _, v = cooltools.eigdecomp.cis_eig(M, phasing_track=phasing_track)[1][0]
-    v = v[i0:i1]
+        v = cooltools.eigdecomp.cis_eig(M, phasing_track=phasing_track)[1][0]
+    else:
+        v = v[i0:i1]
     
     # get compartmental identities of bins from v
     v = get_bin_identities(v)
@@ -449,8 +457,6 @@ def COMPscore_by_s(M, v=None, get_bin_identities=lambda x: x>np.nanmean(x), igno
     COMPscore = np.nansum(COMPscore_by_s*p)/np.nansum(p)
     
     return COMPscore_by_s, COMPscore
-
-
 
 
 
