@@ -319,9 +319,11 @@ def normratio_types(M, v, ignore_diags=0, compute_all_types=False, exclude_nans_
     L = len(v)
 
     # find types
-    types = np.unique(v[~np.isnan(v)]) # this casts all int to floats => work with thhose
+    types = np.unique(v[~np.isnan(v)]) # this casts all int to floats => work with those
     if verbosity:
         print(types)
+    if len(types) == 1:
+        raise ValueError("len(types)=1: there's only one type in v, but two are needed to compute a contrast")
 
     # construc indicator matrices
     I_types = []
@@ -448,6 +450,11 @@ def COMPscore_by_s(M, v=None, get_bin_identities=lambda x: x>np.nanmean(x), igno
     
     # get compartmental identities of bins from v
     v = get_bin_identities(v)
+    
+    # if just one type was found, return NANs
+    if len(np.unique(v[~np.isnan(v)])) == 1:
+        raise Warning("len(np.unique(v[~np.isnan(v)]))=1: there's only one type in v, but two are needed to compute COMPscore_by_s")
+        return np.ones(len(M))*np.nan, np.nan
                     
     # get COMPscore_by_s
     COMPscore_by_s, add_info_anytype,_,_,_,_ = normratio_types(M, v, ignore_diags=ignore_diags, exclude_nans_from_paircounts=exclude_nans_from_paircounts)
@@ -457,6 +464,7 @@ def COMPscore_by_s(M, v=None, get_bin_identities=lambda x: x>np.nanmean(x), igno
     COMPscore = np.nansum(COMPscore_by_s*p)/np.nansum(p)
     
     return COMPscore_by_s, COMPscore
+
 
 
 
