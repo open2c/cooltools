@@ -357,7 +357,9 @@ def normratio_types(M, v, ignore_diags=0, compute_all_types=False, exclude_nans_
 
 
 
-def COMPscore_by_s(M, v=None, get_bin_identities=None, ignore_diags=0, exclude_nans_from_paircounts=True, balance=True, chrom_nr=1, start=None, stop=None, phasing_track=None, verbose=False):
+
+
+def COMPscore_by_s(M, v=None, get_bin_identities=lambda x: x>np.nanmean(x), ignore_diags=0, exclude_nans_from_paircounts=True, start=0, stop=99999999999, phasing_track=None):
     """
     compute the checkerboard contrast in M: 
         - COMPscore_by_s (contrast in diagonals with offset s=0..len(M))
@@ -366,26 +368,22 @@ def COMPscore_by_s(M, v=None, get_bin_identities=None, ignore_diags=0, exclude_n
     parameters:
     -----------
     M: 2D numpy array or string:
-        (filepath to) a matrix
-        if string, I'll try loading as follows:
-        - joblib.load(M)
-        - c = cooler.Cooler(M).matrix(balance=balance)
-          c = c.fetch('chr{0}:{1}-{2}'.format(chrom_nr, bp_start, bp_stop))
+        if string, I'll do M=joblib.load(M)
         
     v: 1D numpy array, optional:
-        len(v) must equal len(M)
+        len(v) must equal len(M) 
         track used to assign compartmental identities to bins
         examples:
             - true compartmental identities, e.g. [1, 1, -1, -1, 1, ...]
             - precomputed EV
-        if None, EV is used and computed here 
-        (cooltools.eigdecomp.cis_eig(M, phasing_track=phasing_track)[1][0])
+        if None, EV is used and computed here, using:
+        cooltools.eigdecomp.cis_eig(M, phasing_track=phasing_track)[1][0]
             
     get_bin_identities: lambda function, optional:
         computes compartmental identities of bins from v
         lambda must take: 1D numpy array (the eigenvector)
         lambda must return: sequence of same length (the identities)
-        default: get_bin_identities=lambda x: x>np.nanmedian(x)
+        default: get_bin_identities=lambda x: x>np.nanmean(x)
         !!! the number of compartmental types will be np.unique(get_bin_identities(v))
     
     phasing_track: 1D numpy array, optional: 
@@ -399,14 +397,9 @@ def COMPscore_by_s(M, v=None, get_bin_identities=None, ignore_diags=0, exclude_n
     exclude_nans_from_paircounts: boolean, optional:
         if True, pixels with NaN in M are not counted towards valid pixels
         
-    chrom_nr: integer, optional:
-        only effective if M is a cooler
-        which chromosome of the cooler to use
-        one-based, i.e. will use c.fetch('chr{0}'.format(chrom_nr)
-        
-    start, stop: integer, optional:
-        if M is 2d-array or joblib loadable: M=M[start:stop,start:stop]
-        if M is coolerparh: c.fetch('chr{0}:{1}-{2}'.format(chrom_nr, bp_start, bp_stop))
+    start, stop: integers, optional:
+        M=M[start:stop,start:stop] and v[start:stop] will be used (trimmed by len(M))
+                
     
     returns:
     --------
@@ -417,42 +410,33 @@ def COMPscore_by_s(M, v=None, get_bin_identities=None, ignore_diags=0, exclude_n
         weighted mean of COMPscore_by_s:
         np.nansum(COMPscore*p)/np.nansum(p) with weights:
         p[s]=add_info_anytype[1][s]*add_info_anytype[3][s] # #wi_pairs*#ac_pairs  
+        
+        
+    ToDo: 
+    - asstert that there are two different compartmetns in get_bin_identities(v) 
+    - also in lower level functions
+        
     """
     
     # get matrix
     if isinstance(M, np.ndarray):
         if (len(M.shape)!=2):
             raise ValueError("M was an array, but dimensionality was not 2")
-        elif (stat is not None) and (stop is not None):
-            M = M[start:stop, start:stop]
-    elif isinstance(M, str): 
+    else: 
         try:
             M = joblib.load(M)
-            if (start is not None) and (stop is not None):
-                M = M[start:stop, start:stop]
         except:
-            try: 
-                c = cooler.Cooler(M)
-                i0,i1 = c.extent('chr{}'.format(chrom_nr))
-                M = c.matrix(balance=True).fetch('chr{0}'.format(chrom_nr))
-                i0 = max(i0,start)
-                i1 = min(i1,stop)
-                M = M[i0:i1,i0:i1]
-            except:
-                raise ValueError("cmap could not be loaded")
-    else:
-        raise ValueError("M was neither 2d-array nor a string")
-    if verbose:
-        print('got a contact map')    
+            raise ValueError("cmap could not be loaded")
+            
+    # trim matrix
+    i0 = max(0, start)
+    i1 = min(stop, len(M))
+    M = M[i0:i1,i0:i1]
     
     # get v, if not supplied
     if v is None:
-        _, Evecs = cooltools.eigdecomp.cis_eig(M, phasing_track=phasing_track)
-        v = Evecs[0]
-
-    # specify lambda function, if not supplied
-    if get_bin_identities is None: 
-        get_bin_identities = lambda x: x>np.nanmedian(x)
+        _, v = cooltools.eigdecomp.cis_eig(M, phasing_track=phasing_track)[1][0]
+    v = v[i0:i1]
     
     # get compartmental identities of bins from v
     v = get_bin_identities(v)
@@ -465,5 +449,9 @@ def COMPscore_by_s(M, v=None, get_bin_identities=None, ignore_diags=0, exclude_n
     COMPscore = np.nansum(COMPscore_by_s*p)/np.nansum(p)
     
     return COMPscore_by_s, COMPscore
+
+
+
+
 
 
