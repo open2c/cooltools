@@ -361,11 +361,11 @@ def normratio_types(M, v, ignore_diags=0, compute_all_types=False, exclude_nans_
 
 
 
-def COMPscore_by_s(M, v=None, get_bin_identities=lambda x: x>np.nanmean(x), ignore_diags=0, exclude_nans_from_paircounts=True, i0=None, i1=None, phasing_track=None):
+def contrast_diags(M, v=None, get_bin_identities=lambda x: x>np.nanmean(x), ignore_diags=0, exclude_nans_from_paircounts=True, i0=None, i1=None, phasing_track=None):
     """
     compute the checkerboard contrast in M: 
-        - COMPscore_by_s: contrast in diagonals with offset s=0..len(M)
-        - COMPscore: weighted average over all s
+        - contrast_diags: contrast in diagonals with offset s=0..len(M)
+        - contrast: weighted average over all s
     
     parameters:
     -----------
@@ -400,21 +400,21 @@ def COMPscore_by_s(M, v=None, get_bin_identities=lambda x: x>np.nanmean(x), igno
     exclude_nans_from_paircounts: boolean, optional:
         if True, pixels with NaN in M are not counted towards valid pixels
         
-    start, stop: integers, optional:
+    i0, i1: integers, optional:
         will use (trimmed by len(M)):
-        M[start:stop,start:stop] (!!! EV is computed from restriced M if v is None)
-        v[start:stop], 
-        phasing_track[start:stop]
+        M[i0:i1,i0:i1] (!!! EV is computed from restriced M if v is None)
+        v[i0:i1], 
+        phasing_track[i0:i1]
                 
     
     returns:
     --------
-    COMPscore_by_s: 1D numpy array, len=len(M): 
-        COMPscore[s]: contrast in diagonals with offsets s=0..len(M)
+    contrast_diags: 1D numpy array, len=len(M): 
+        contrast[s]: contrast in diagonals with offsets s=0..len(M)
 
-    COMPscore: float:
-        weighted mean of COMPscore_by_s:
-        np.nansum(COMPscore*p)/np.nansum(p) with weights (#wi_pairs(s)*#ac_pairs(s))**.5 
+    contrast: float:
+        weighted mean of contrast_diags:
+        np.nansum(contrast*p)/np.nansum(p) with weights (#wi_pairs(s)*#ac_pairs(s))**.5 
     """
     
     # get matrix
@@ -447,24 +447,23 @@ def COMPscore_by_s(M, v=None, get_bin_identities=lambda x: x>np.nanmean(x), igno
         warnings.warn("len(np.unique(v[np.isfinite(v)]))=1: there's only one valid type in v, at least two are needed")
         return np.ones(len(M))*np.nan, np.nan
                     
-    # get COMPscore_by_s
-    CS_by_s, add_info_anytype,_,_,_,_ = normratio_types(M, v, ignore_diags=ignore_diags, exclude_nans_from_paircounts=exclude_nans_from_paircounts)
+    # get contrast_diags
+    contr_diags, add_info_anytype,_,_,_,_ = normratio_types(M, v, ignore_diags=ignore_diags, exclude_nans_from_paircounts=exclude_nans_from_paircounts)
     
-    # get s-average
+    # weighted average over diagonals
     p = (add_info_anytype[1]*add_info_anytype[3])**.5 # weights of diagonals: (#wi_pairs(s)*#ac_pairs(s))**.5 
-    CS = np.nansum(CS_by_s*p)/np.nansum(p)
+    contr = np.nansum(contr_diags*p)/np.nansum(p)
     
-    return CS_by_s, CS
+    return contr_diags, contr
 
 
 
 
-
-def COMPscore_by_s_clr(clr, v=None, get_bin_identities=lambda x: x>np.nanmean(x), chroms=None, extents=None, ignore_diags=0, exclude_nans_from_paircounts=True, balance=True, phasing_track=None, verbose=False):
+def contrast_diags_clr(clr, v=None, get_bin_identities=lambda x: x>np.nanmean(x), chroms=None, extents=None, ignore_diags=0, exclude_nans_from_paircounts=True, balance=True, phasing_track=None, verbose=False):
     """
     compute the checkerboard contrast in M in cis: for all chromosomes computes: 
-        - COMPscore_by_s: contrast in diagonals with offset s=0..len(M)
-        - COMPscore: weighted average over all s
+        - contrast_diags: contrast in diagonals with offset s=0..len(M)
+        - contrast: weighted average over all s
     
     parameters:
     -----------
@@ -508,12 +507,12 @@ def COMPscore_by_s_clr(clr, v=None, get_bin_identities=lambda x: x>np.nanmean(x)
     
     returns:
     --------
-    COMPscores_by_s: list of 1D numpy arrays: 
-        COMPscore[chr]: contrast by diagonals for chromosome chr
+    contrasts_by_s: list of 1D numpy arrays: 
+        contrast[chr]: contrast by diagonals for chromosome chr
 
-    COMPscores: list of floats:
-        COMPscores[chr] = weighted mean of COMPscores_by_s[chr]:
-        np.nansum(COMPscore*p)/np.nansum(p) with weights:
+    contrasts: list of floats:
+        contrasts[chr] = weighted mean of contrasts_by_s[chr]:
+        np.nansum(contrast*p)/np.nansum(p) with weights:
         p[s]=add_info_anytype[1][s]*add_info_anytype[3][s] # #wi_pairs*#ac_pairs  
         
         
@@ -528,8 +527,8 @@ def COMPscore_by_s_clr(clr, v=None, get_bin_identities=lambda x: x>np.nanmean(x)
     if chroms is None:
         chroms = clr.chromnames
         
-    COMPscores_by_s = []
-    COMPscores = []
+    contrasts_by_s = []
+    contrasts = []
     
     for j in range(len(chroms)):
         ch = chroms[j]
@@ -558,12 +557,12 @@ def COMPscore_by_s_clr(clr, v=None, get_bin_identities=lambda x: x>np.nanmean(x)
         else:
             v_ch = v[i0,i1]            
         
-        CS_by_s, CS = cooltools.contrast.COMPscore_by_s(M, v_ch, get_bin_identities, ignore_diags, exclude_nans_from_paircounts,  phasing_track=ph_ch)
+        CS_by_s, CS = cooltools.contrast.contrast_diags(M, v_ch, get_bin_identities, ignore_diags, exclude_nans_from_paircounts,  phasing_track=ph_ch)
                     
-        COMPscores_by_s.append(CS_by_s)
-        COMPscores.append(CS)
+        contrasts_by_s.append(CS_by_s)
+        contrasts.append(CS)
 
-    return COMPscores_by_s, COMPscores
+    return contrasts_by_s, contrasts
 
 
 
