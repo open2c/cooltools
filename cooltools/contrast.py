@@ -414,14 +414,7 @@ def COMPscore_by_s(M, v=None, get_bin_identities=lambda x: x>np.nanmean(x), igno
 
     COMPscore: float:
         weighted mean of COMPscore_by_s:
-        np.nansum(COMPscore*p)/np.nansum(p) with weights:
-        p[s]=add_info_anytype[1][s]*add_info_anytype[3][s] # #wi_pairs*#ac_pairs  
-        
-        
-    ToDo: 
-    - asstert that there are two different compartmetns in get_bin_identities(v) 
-    - also in lower level functions
-        
+        np.nansum(COMPscore*p)/np.nansum(p) with weights (#wi_pairs(s)*#ac_pairs(s))**.5 
     """
     
     # get matrix
@@ -458,7 +451,7 @@ def COMPscore_by_s(M, v=None, get_bin_identities=lambda x: x>np.nanmean(x), igno
     CS_by_s, add_info_anytype,_,_,_,_ = normratio_types(M, v, ignore_diags=ignore_diags, exclude_nans_from_paircounts=exclude_nans_from_paircounts)
     
     # get s-average
-    p = add_info_anytype[1]*add_info_anytype[3] # weights: #wi_pairs*#ac_pairs            
+    p = (add_info_anytype[1]*add_info_anytype[3])**.5 # weights of diagonals: (#wi_pairs(s)*#ac_pairs(s))**.5 
     CS = np.nansum(CS_by_s*p)/np.nansum(p)
     
     return CS_by_s, CS
