@@ -77,7 +77,8 @@ from . import cli
     help="Dump 'saddledata', 'binedges' and 'hist' arrays in a numpy-specific "
          ".npz container. Use numpy.load to load these arrays into a "
          "dict-like object. The digitized signal values are saved to a "
-         "bedGraph-style TSV.")
+         "bedGraph-style TSV.",
+    required=True)
 @click.option(
     "--fig",
     type=click.Choice(['png', 'jpg', 'svg', 'pdf', 'ps', 'eps']),
