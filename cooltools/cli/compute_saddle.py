@@ -90,7 +90,8 @@ from . import cli
     '--scale',
     help="Value scale for the heatmap",
     type=click.Choice(['linear', 'log2', 'log10']),
-    default='log10')
+    default='log10',
+    show_default=True)
 @click.option(
     '--cmap',
     help="Name of matplotlib colormap",
