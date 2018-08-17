@@ -7,13 +7,8 @@ try:
     import cooler
 except:
     warnings.warn("cooler could not be imported")
-try:
-    import cooltools
-    from cooltools import eigdecomp
-except: 
 
-
-
+    
 # ==============================================================
 #  CONTRAST FUNCTIONS
 # ==============================================================
