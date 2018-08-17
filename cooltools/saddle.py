@@ -6,6 +6,8 @@ import numpy as np
 import pandas as pd
 from .lib import numutils
 
+import bioframe
+
 
 def ecdf(x, v, side='left'):
     """
@@ -31,7 +33,7 @@ def quantile(x, q, **kwargs):
     return np.nanpercentile(x, p, **kwargs)
 
 
-def digitize_track(binedges, track, chromosomes=None):
+def digitize_track(binedges, track, regions=None):
     """
     Digitize genomic signal tracks into integers between `1` and `n`.
 
@@ -42,8 +44,9 @@ def digitize_track(binedges, track, chromosomes=None):
         edges. See encoding details in Notes.
     track : tuple of (DataFrame, str)
         bedGraph-like dataframe along with the name of the value column.
-    chromosomes : sequence of chromosome names
-        List of chromosomes to include.
+    regions: sequence of str or tuples
+        List of genomic regions to include. Each can be a chromosome, a 
+        UCSC-style genomic region string or a tuple.
     
     Returns
     -------
@@ -70,9 +73,11 @@ def digitize_track(binedges, track, chromosomes=None):
     track, name = track
     
     # subset and re-order chromosome groups
-    if chromosomes is not None:
+    if regions is not None:
+        regions = [bioframe.parse_region(reg) for reg in regions]
         grouped = track.groupby('chrom')
-        track = pd.concat(grouped.get_group(chrom) for chrom in chromosomes)
+        track = pd.concat(bioframe.bedslice(grouped, chrom, st, end)
+                          for (chrom, st, end) in regions)
     
     # histogram the signal
     digitized = track.copy()
@@ -105,11 +110,14 @@ def make_cis_obsexp_fetcher(clr, expected):
     """
     expected, name = expected
     expected = {k: x.values for k, x in expected.groupby('chrom')[name]}
-    return lambda chrom, _: (
-            clr.matrix().fetch(chrom) / 
-                toeplitz(expected[chrom])
-        )
 
+    def _fetch_cis_oe(reg1, reg2):
+        obs_mat = clr.matrix().fetch(reg1)
+        exp_mat = toeplitz(expected[reg1[0]][:obs_mat.shape[0]])
+        return obs_mat/exp_mat
+
+    return _fetch_cis_oe
+                
 
 def make_trans_obsexp_fetcher(clr, expected):
     """
@@ -119,68 +127,81 @@ def make_trans_obsexp_fetcher(clr, expected):
     ----------
     clr : cooler.Cooler
         Observed matrix.
-    expected : DataFrame or scalar
+    expected : (DataFrame, name) or scalar
         Average trans values. If a scalar, it is assumed to be a global trans 
-        expected value. If a dataframe, it must have a MultiIndex with 'chrom1'
-        and 'chrom2' and must also have a column labeled ``name``.
-    name : str
-        Name of data column in ``expected`` if it is a data frame.
+        expected value. If a tuple of (dataframe, name), the dataframe must 
+        have a MultiIndex with 'chrom1' and 'chrom2' and must also have a column
+        labeled ``name``.
 
     Returns
     -----
-    getexpected(chrom1, chrom2)
+    getexpected(reg1, reg2)
     
     """
-    expected, name = expected
-    expected = {k: x.values for k, x in 
-                   expected.groupby(['chrom1', 'chrom2'])[name]}
-
-    def _fetch_trans_exp(chrom1, chrom2):
-        # Handle chrom flipping
-        if (chrom1, chrom2) in expected.keys():
-            return expected[chrom1, chrom2]
-        elif (chrom2, chrom1) in expected.keys():
-            return expected[chrom2, chrom1]
-        # .loc is the right way to get [chrom1,chrom2] value from MultiIndex df:
-        # https://pandas.pydata.org/pandas-docs/stable/advanced.html#advanced-indexing-with-hierarchical-index
-        else:
-            raise KeyError(
-                "trans-exp index is missing a pair of chromosomes: "
-                "{}, {}".format(chrom1,chrom2))
 
     if np.isscalar(expected):
-        return lambda chrom1, chrom2: (
-            clr.matrix().fetch(chrom1, chrom2) / expected)
-    else:
-        if name is None:
+        return lambda reg1, reg2: (
+            clr.matrix().fetch(reg1, reg2) / expected)
+
+    elif isinstance(expected, (tuple, list)):
+        expected, name = expected
+
+        if not name:
             raise ValueError("Name of data column not provided.")
-        return lambda chrom1, chrom2: (
-                clr.matrix().fetch(chrom1, chrom2) / 
-                    _fetch_trans_exp(chrom1, chrom2))
+
+        expected = {k: x.values for k, x in 
+                    expected.groupby(['chrom1', 'chrom2'])[name]}
+
+        def _fetch_trans_exp(chrom1, chrom2):
+            # Handle chrom flipping
+            if (chrom1, chrom2) in expected.keys():
+                return expected[chrom1, chrom2]
+            elif (chrom2, chrom1) in expected.keys():
+                return expected[chrom2, chrom1]
+            # .loc is the right way to get [chrom1,chrom2] value from MultiIndex df:
+            # https://pandas.pydata.org/pandas-docs/stable/advanced.html#advanced-indexing-with-hierarchical-index
+            else:
+                raise KeyError(
+                    "trans-exp index is missing a pair of chromosomes: "
+                    "{}, {}".format(chrom1,chrom2))
+
+        def _fetch_trans_oe(reg1, reg2):
+            reg1 = bioframe.parse_region(reg1)
+            reg2 = bioframe.parse_region(reg2)
+
+            return (
+                clr.matrix().fetch(reg1, reg2) / 
+                _fetch_trans_exp(reg1[0], reg2[0])
+            )
+
+        return _fetch_trans_oe
+
+    else:
+        raise ValueError("Unknown type of expected")
 
 
-def _accumulate(S, C, getmatrix, digitized, chrom1, chrom2, verbose):
+def _accumulate(S, C, getmatrix, digitized, reg1, reg2, verbose):
     n_bins = S.shape[0]
-    matrix = getmatrix(chrom1, chrom2)
+    matrix = getmatrix(reg1, reg2)
 
-    if chrom1 == chrom2:
+    if reg1[0] == reg2[0]:
         for d in [-2, -1, 0, 1, 2]:
             numutils.set_diag(matrix, np.nan, d)
 
     if verbose:
-        print('chromosomes {} vs {}'.format(chrom1, chrom2))
+        print('regions {} vs {}'.format(reg1, reg2))
         
     for i in range(n_bins):
-        row_mask = (digitized[chrom1] == i)
+        row_mask = (digitized[reg1] == i)
         for j in range(n_bins):
-            col_mask = (digitized[chrom2] == j)
+            col_mask = (digitized[reg2] == j)
             data = matrix[row_mask, :][:, col_mask]
             data = data[np.isfinite(data)]
             S[i, j] += np.sum(data)
             C[i, j] += float(len(data))
 
 
-def make_saddle(getmatrix, binedges, digitized, contact_type, chromosomes=None, 
+def make_saddle(getmatrix, binedges, digitized, contact_type, regions=None, 
                 trim_outliers=False, verbose=False):
     """
     Make a matrix of average interaction probabilities between genomic bin pairs
@@ -201,8 +222,9 @@ def make_saddle(getmatrix, binedges, digitized, contact_type, chromosomes=None,
     contact_type : str
         If 'cis' then only cis interactions are used to build the matrix.
         If 'trans', only trans interactions are used.
-    chromosomes : sequence of str, optional
-        A list of names/indices of all chromosomes to use.
+    regions : sequence of str or tuple, optional
+        A list of genomic regions to use. Each can be a chromosome, a UCSC-style
+        genomic region string or a tuple.
     trim_outliers : bool, optional
         Remove first and last row and column from the output matrix.
     verbose : bool, optional
@@ -218,7 +240,26 @@ def make_saddle(getmatrix, binedges, digitized, contact_type, chromosomes=None,
         corresponding pixel of ``interaction_sum``.
 
     """
-    digitized, name = digitized
+    digitized_df, name = digitized
+
+    if regions is None:
+        regions = [(chrom, df.start.min(), df.end.max())
+                   for chrom, df in digitized_df.groupby('chrom')]
+    else:                            
+        regions = [bioframe.parse_region(reg) for reg in regions]
+
+    digitized_tracks = {
+        reg:bioframe.bedslice(
+            digitized_df.groupby('chrom'), reg[0], reg[1], reg[2])[name] 
+        for reg in regions}
+    
+    if contact_type == 'cis':
+        supports = list(zip(regions, regions))
+    elif contact_type == 'trans':
+        supports = list(combinations(regions, 2))
+    else:
+        raise ValueError("The allowed values for the contact_type "
+                         "argument are 'cis' or 'trans'.")
 
     # n_bins here includes 2 open bins
     # for values <lo and >hi.
@@ -226,21 +267,9 @@ def make_saddle(getmatrix, binedges, digitized, contact_type, chromosomes=None,
     interaction_sum   = np.zeros((n_bins, n_bins))
     interaction_count = np.zeros((n_bins, n_bins))
 
-    digitized = {k: x.values for k, x in digitized.groupby('chrom')[name]}
-    if chromosomes is None:
-        chromosomes = list(digitized.keys())
-    
-    if contact_type == 'cis':
-        supports = list(zip(chromosomes, chromosomes))
-    elif contact_type == 'trans':
-        supports = list(combinations(chromosomes, 2))
-    else:
-        raise ValueError("The allowed values for the contact_type "
-                         "argument are 'cis' or 'trans'.")
-
-    for chrom1, chrom2 in supports:
-        _accumulate(interaction_sum, interaction_count, getmatrix, digitized,
-                    chrom1, chrom2, verbose)
+    for reg1, reg2 in supports:
+        _accumulate(interaction_sum, interaction_count, getmatrix, digitized_tracks,
+                    reg1, reg2, verbose)
 
     interaction_sum   += interaction_sum.T
     interaction_count += interaction_count.T

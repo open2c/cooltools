@@ -292,7 +292,7 @@ def compute_saddle(cool_path, track_path, expected_path, contact_type, n_bins,
     digitized, hist = saddle.digitize_track(
         binedges,
         track=(track, track_name),
-        chromosomes=track_chroms)
+        regions=track_chroms)
 
     S, C = saddle.make_saddle(
         getmatrix,
