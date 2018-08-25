@@ -2,6 +2,8 @@ from functools import partial, reduce
 import multiprocess as mp
 import click
 
+from os import path
+
 from scipy.stats import poisson
 import pandas as pd
 import numpy as np
@@ -15,6 +17,10 @@ from .. import dotfinder
 # for lambda-chunking are computed: W1 is the # of logspaced lambda bins,
 # and W2 is maximum "allowed" raw number of contacts per Hi-C heatmap bin:
 HiCCUPS_W1_MAX_INDX = 40
+
+# HFF combined exceeded this limit ...
+HiCCUPS_W1_MAX_INDX = 46
+
 # we are not using 'W2' as we're building
 # the histograms dynamically:
 HiCCUPS_W2_MAX_INDX = 10000
@@ -770,8 +776,10 @@ def thresholding_step(centroids, output_path):
     ]
 
     if output_path is not None:
+        final_output = path.join(path.dirname(output_path), \
+                       "final_"+path.basename(output_path))
         out[columns_for_output].to_csv(
-            "final_"+output_path,
+            final_output,
             sep='\t',
             header=True,
             index=False,
@@ -852,7 +860,7 @@ def thresholding_step(centroids, output_path):
          " all processed pixels before they get"
          " preprocessed in a BEDPE-like format.",
     type=str,
-    required=True)
+    required=False)
 @click.option(
     "--output-calls", "-o",
     help="Specify output file name where to store"
