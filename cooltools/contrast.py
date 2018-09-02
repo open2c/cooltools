@@ -3,6 +3,8 @@ import joblib
 import os
 import warnings
 
+from . import eigdecomp
+
 try:
     import cooler
 except:
@@ -56,7 +58,7 @@ def contrast_diags(M,
             Type: number:
                 one of the values in bin_types: singles out a specific type
         if None: modality_params = [EV>np.nanmean(EV)], 
-                 with EV computed here: cooltools.eigdecomp.cis_eig(M, phasing_track=phasing_track)[1][0]        
+                 with EV computed here: eigdecomp.cis_eig(M, phasing_track=phasing_track)[1][0]        
     
     I: indicator matrix, optional:
         specifies the two sets of pixels from which to compute contrast in M
@@ -143,7 +145,7 @@ def contrast_diags(M,
                 if verbose:
                     print('... getting types from EV...')
                 bin_types = np.ones(len(M))*np.nan
-                EV = cooltools.eigdecomp.cis_eig(M, phasing_track=phasing_track)[1][0]
+                EV = eigdecomp.cis_eig(M, phasing_track=phasing_track)[1][0]
                 val_inds = np.isfinite(EV)
                 get_bin_identities = lambda x: x>np.nanmean(x)
                 bin_types[val_inds] = get_bin_identities(EV[val_inds])
