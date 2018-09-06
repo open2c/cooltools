@@ -67,7 +67,7 @@ def gc(bins_path, fasta_path, mapped_only):
     fasta_records = bioframe.load_fasta(fasta_path, engine='pyfaidx', as_raw=True)
     if any(chrom not in fasta_records.keys() for chrom in chromosomes):
         raise ValueError("Some chromosomes mentioned in {}"
-                         " are not found in {}".format(chromsizes_path, fasta_path))
+                         " are not found in {}".format(bins_path, fasta_path))
     bins['GC'] = bioframe.tools.frac_gc(bins, fasta_records, mapped_only)
     print(bins.to_csv(sep='\t', index=False))
 
