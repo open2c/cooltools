@@ -6,7 +6,6 @@ import numpy as np
 import pandas as pd
 from scipy.linalg import toeplitz
 from scipy.signal import fftconvolve
-import distributed
 import dask.dataframe as dd
 import dask.array as da
 import dask
@@ -504,6 +503,17 @@ def trans_expected(clr, chromosomes, chunksize=1000000, use_dask=False):
 
 
 def make_diag_tables(clr, supports):
+
+    bins = clr.bins()[:]
+    if 'weight' in clr.bins().columns:
+        groups = dict(iter(bins.groupby('chrom')['weight']))
+        bad_bin_dict = {chrom: np.array(groups[chrom].isnull())
+                            for chrom in groups.keys()}
+    else:
+        sizes = dict(bins.groupby('chrom').size())
+        bad_bin_dict = {chrom: np.zeros(sizes[chrom], dtype=bool)
+                            for chrom in sizes.keys()}
+
     where = np.flatnonzero
     diag_tables = {}
     for region in supports:
@@ -523,8 +533,7 @@ def make_diag_tables(clr, supports):
             chrom, start1, end1, start2, end2 = region
         else:
             raise ValueError("Regions must be sequences of length 1, 3 or 5")
-        bins = clr.bins().fetch(chrom).reset_index(drop=True)
-        bad_mask = np.array(bins['weight'].isnull())
+        
         lo1, hi1 = clr.extent((chrom, start1, end1))
         lo2, hi2 = clr.extent((chrom, start2, end2))
         co = clr.offset(chrom)
@@ -532,8 +541,10 @@ def make_diag_tables(clr, supports):
         lo2 -= co
         hi1 -= co
         hi2 -= co
-        dt = make_diag_table(bad_mask, [lo1, hi1], [lo2, hi2])
-        diag_tables[region] = dt
+        
+        bad_mask = bad_bin_dict[chrom]
+        diag_tables[region] = make_diag_table(bad_mask, [lo1, hi1], [lo2, hi2])
+
     return diag_tables
 
 

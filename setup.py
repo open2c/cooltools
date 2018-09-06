@@ -44,12 +44,13 @@ install_requires = [
     'numpy',
     'cython',
     'dask',
-    'distributed',
     'cytoolz',
     'numba',
     'click',
     'cooler>=0.7',
     'bioframe',
+    'scikit-learn',
+    'tables'
 ]
 
 
