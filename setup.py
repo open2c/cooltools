@@ -50,7 +50,9 @@ install_requires = [
     'cooler>=0.7',
     'bioframe',
     'scikit-learn',
-    'tables'
+    'tables',
+    'pypairix',
+    'pandas'
 ]
 
 

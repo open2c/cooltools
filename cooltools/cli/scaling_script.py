@@ -3,13 +3,19 @@ import pandas as pd
 import numpy as np
 import cytoolz as toolz
 import itertools
-import cooltools
-from cooltools import expected
-from cooltools.lib import numutils
 from multiprocessing import Pool
-import click
 
+
+from .. import expected
+from ..lib.numutils import logbins
+
+import click
+from . import cli
+
+
+# we assume that the pairs file have the following header ...
 column_name = ["readid","chrom1", "pos1", "chrom2", "pos2", "strand1", "strand2", "pair_type"]
+
 
 def process_individual_chromosome(input_array):
     chrom, chr_sizes, distbins, dmin, dmax, pairs_file, chunksize  = input_array
@@ -51,7 +57,7 @@ def process_individual_chromosome(input_array):
     area = expected.contact_areas(distbins, region1=(start, end), region2=(start, end))
     return chrom, obs/area
 
-@click.command()
+@cli.command()
 @click.argument(
     "pairs_path",
     metavar="PAIRS_PATH",
@@ -59,7 +65,7 @@ def process_individual_chromosome(input_array):
     nargs=1)
 @click.argument(
     "chrom_sizes",
-    metavar="Chrom_Sizes_Path",
+    metavar="CHROM_SIZES_PATH",
     type=str,
     nargs=1)
 @click.option(
@@ -99,12 +105,21 @@ def process_individual_chromosome(input_array):
          "dict-like object.")
 
 def scaling_script(pairs_path, chrom_sizes, dmin, dmax, nbins, nproc, chunksize, out_prefix):
+    """
+    Calculate distance decay based on pairs interaction.
+    
+    PAIRS_PATH : The paths to a .nodups.pairs.gz file with pairs interactions.
+
+    CHROM_SIZES_PATH : The path to the file with chromosome sizes.
+
+    The script implies .nodups.pairs.gz.px2 (the corresponding pairix index file) is in the same directory as PAIRS_PATH
+    """
 
     chr_sizes = pd.read_table(chrom_sizes, 
                        header=None, index_col=0)
     chromosomes=list(chr_sizes.index) #chromosomes=list(chr_sizes[:-3]) for autosomale chr only
     
-    distbins = numutils.logbins(dmin, dmax, N=nbins)
+    distbins = logbins(dmin, dmax, N=nbins)
     output = {}
     input_list = []
 
@@ -122,7 +137,9 @@ def scaling_script(pairs_path, chrom_sizes, dmin, dmax, nbins, nproc, chunksize,
     output["Distbins"] = distbins
     
     np.savez(out_prefix + ".scalingdata", **output)
-    
-if __name__ == '__main__':
-    scaling_script()
+   
+
+# it was a standalone script before ... 
+# if __name__ == '__main__':
+#     scaling_script()
    
