@@ -960,8 +960,6 @@ def call_dots(
         print("Kernels parameters are set as w,p={},{}"
               " for the cooler with {} bp resolution.".format(w,p,binsize))
 
-
-
     kernels = {k: get_kernel(w,p,k) for k in ktypes}
 
     # creating logspace l(ambda)bins with base=2^(1/3), for lambda-chunking:
