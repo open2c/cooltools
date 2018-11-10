@@ -5,12 +5,13 @@ import sys
 import numpy as np
 import pandas as pd
 
+
 def test_compartment_cli(request, tmpdir):
     in_cool = op.join(request.fspath.dirname, 'data/sin_eigs_mat.cool')
     out_eig_prefix = op.join(tmpdir, 'test.eigs')
     try:
         result = subprocess.check_output(
-            f'python -m cooltools call_compartments -o {out_eig_prefix} {in_cool}',
+            f'python -m cooltools call-compartments -o {out_eig_prefix} {in_cool}',
             shell=True
             ).decode('ascii')
     except subprocess.CalledProcessError as e:
@@ -21,9 +22,10 @@ def test_compartment_cli(request, tmpdir):
     gb = test_eigs.groupby('chrom')
     for chrom in gb.groups:
         chrom_eigs = gb.get_group(chrom)
-        r = np.abs(np.corrcoef(chrom_eigs.E1.values, 
+        r = np.abs(np.corrcoef(chrom_eigs.E1.values,
                                np.sin(chrom_eigs.start * 2 * np.pi / 500))[0,1])
         assert r>0.95
+
 
 def test_saddle_cli(request, tmpdir):
     in_cool = op.join(request.fspath.dirname, 'data/sin_eigs_mat.cool')
@@ -33,7 +35,7 @@ def test_saddle_cli(request, tmpdir):
 
     try:
         result = subprocess.check_output(
-            f'python -m cooltools call_compartments -o {out_eig_prefix} {in_cool}',
+            f'python -m cooltools call-compartments -o {out_eig_prefix} {in_cool}',
             shell=True
             ).decode('ascii')
     except subprocess.CalledProcessError as e:
@@ -43,7 +45,7 @@ def test_saddle_cli(request, tmpdir):
 
     try:
         result = subprocess.check_output(
-            f'python -m cooltools compute_expected {in_cool} > {out_expected}',
+            f'python -m cooltools compute-expected {in_cool} > {out_expected}',
             shell=True
             ).decode('ascii')
     except subprocess.CalledProcessError as e:
@@ -53,7 +55,7 @@ def test_saddle_cli(request, tmpdir):
 
     try:
         result = subprocess.check_output(
-            f'python -m cooltools compute_saddle -o {out_saddle_prefix} --range -0.5 0.5 '
+            f'python -m cooltools compute-saddle -o {out_saddle_prefix} --range -0.5 0.5 '
             +f'--n-bins 30 --scale log2 {in_cool} {out_eig_prefix}.cis.vecs.tsv {out_expected}',
             shell=True
         ).decode('ascii')
