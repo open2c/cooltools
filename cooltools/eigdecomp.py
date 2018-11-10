@@ -389,4 +389,8 @@ def cooler_trans_eig(
     for i, eigvec in enumerate(eigvecs):
         eigvec_table['E{}'.format(i+1)] = eigvec
 
+    eigvals = pd.DataFrame(
+        data=np.atleast_2d(eigvals),
+        columns=['eigval'+str(i+1) for i in range(n_eigs)],
+    )
     return eigvals, eigvec_table
