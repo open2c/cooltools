@@ -38,6 +38,12 @@ from . import cli
     show_default=True,
     )
 @click.option(
+    '--weight-name',
+    help="Use balancing weight with this name.",
+    type=str,
+    default='weight',
+    show_default=True)
+@click.option(
     "--drop-diags",
     help="Number of diagonals to neglect for cis contact type",
     type=int,
@@ -63,7 +69,7 @@ from . import cli
 #     flag_value='trans',
 #     required=True
 #     )
-def compute_expected(cool_path, nproc, chunksize, contact_type, drop_diags):
+def compute_expected(cool_path, nproc, chunksize, contact_type, weight_name, drop_diags):
     """
     Calculate either expected Hi-C signal either for cis or for trans regions 
     of chromosomal interaction map.
@@ -73,6 +79,8 @@ def compute_expected(cool_path, nproc, chunksize, contact_type, drop_diags):
     """
     clr = cooler.Cooler(cool_path)
     supports = [(chrom, 0, clr.chromsizes[chrom]) for chrom in clr.chromnames]
+    weight1 = weight_name+"1"
+    weight2 = weight_name+"2"
 
     if nproc > 1:
         pool = mp.Pool(nproc)
@@ -86,7 +94,7 @@ def compute_expected(cool_path, nproc, chunksize, contact_type, drop_diags):
                 clr,
                 supports,
                 transforms={
-                    'balanced': lambda p: p['count'] * p['weight1'] * p['weight2']
+                    'balanced': lambda p: p['count'] * p[weight1] * p[weight2]
                 },
                 chunksize=chunksize,
                 ignore_diags=drop_diags,
@@ -103,7 +111,7 @@ def compute_expected(cool_path, nproc, chunksize, contact_type, drop_diags):
                 clr,                
                 supports, 
                 transforms={
-                    'balanced': lambda p: p['count'] * p['weight1'] * p['weight2']
+                    'balanced': lambda p: p['count'] * p[weight1] * p[weight2]
                 },
                 chunksize=chunksize,
                 map=map_)
