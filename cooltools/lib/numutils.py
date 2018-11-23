@@ -4,6 +4,7 @@ import scipy.sparse.linalg
 import numpy as np
 import numba
 import cooler
+
 from ._numutils import (
     iterative_correction_symmetric as _iterative_correction_symmetric,
     observed_over_expected as _observed_over_expected,
@@ -25,38 +26,20 @@ def get_diag(arr, i=0):
 
 
 def set_diag(arr, x, i=0, copy=False):
-    '''Rewrite in place the i-th diagonal of a matrix with a value or an array
-    of values.
-    This solution was borrowed from
-    http://stackoverflow.com/questions/9958577/changing-the-values-of-the-diagonal-of-a-matrix-in-numpy'''
-    if copy:
-        arr = arr.copy()
-    arr.flat[
-        max(i,-arr.shape[1]*i)
-        :max(0,(arr.shape[1]-i))*arr.shape[1]
-        :arr.shape[1]+1
-        ] = x
-    return arr
-
-
-def fill_diagonal(arr, values, k=0, wrap=False, copy=True):
     """
-    Based on numpy.fill_diagonal, but allows for kth diagonals as well.
-    Supports 2D arrays, square or rectangular. Returns a copy by default.
+    Rewrite the i-th diagonal of a matrix with a value or an array of values. 
+    Supports 2D arrays, square or rectangular. In-place by default.
 
     Parameters
     ----------
     arr : 2-D array
         Array whose diagonal is to be filled.
-    values : scalar or 1-D vector of correct length
+    x : scalar or 1-D vector of correct length
         Values to be written on the diagonal.
-    k : int, optional
+    i : int, optional
         Which diagonal to write to. Default is 0.
         Main diagonal is 0; upper diagonals are positive and
         lower diagonals are negative.
-    wrap : bool, optional
-        For tall matrices, the diagonal is "wrapped" after N columns.
-        Default is False.
     copy : bool, optional
         Return a copy. Diagonal is written in-place if false. 
         Default is True.
@@ -65,20 +48,25 @@ def fill_diagonal(arr, values, k=0, wrap=False, copy=True):
     -------
     Array with diagonal filled.
 
+    Notes
+    -----
+    Similar to numpy.fill_diagonal, but allows for kth diagonals as well.
+    This solution was borrowed from
+    http://stackoverflow.com/questions/9958577/changing-the-values-of-the-diagonal-of-a-matrix-in-numpy
+
     """
     if copy:
         arr = arr.copy()
-    else:
-        arr = np.asarray(arr)
-    start = k
+    start = max(i, -arr.shape[1] * i)
+    stop = max(0, (arr.shape[1] - i)) * arr.shape[1]
     step = arr.shape[1] + 1
-    # This is needed so a tall matrix doesn't have the diagonal wrap around.
-    if wrap:
-        end = None
-    else:
-        end = start + arr.shape[1] * arr.shape[1]
-    arr.flat[start:end:step] = values
+    arr.flat[start:stop:step] = x
     return arr
+
+
+def fill_diag(arr, x, i=0, copy=True):
+    '''Identical to set_diag, but returns a copy by default'''
+    return set_diag(arr, x, i, copy)
 
 
 def fill_na(arr, value=0, copy=True):
@@ -761,3 +749,119 @@ def coarsen(reduction, x, axes, trim_excess=False):
     newshape = tuple(np.concatenate(newdims))
     reduction_axes = tuple(range(1, x.ndim * 2, 2))
     return reduction(x.reshape(newshape), axis=reduction_axes)
+
+
+def smooth(y, box_pts):
+    try:
+        from astropy.convolution import convolve
+    except ImportError:
+        raise ImportError(
+            "The astropy module is required to use this function")
+    box = np.ones(box_pts)/box_pts
+    y_smooth = convolve(y, box, boundary='extend') # also: None, fill, wrap, extend
+    return y_smooth
+
+    
+def infer_mask2D(mat):
+    if mat.shape[0] != mat.shape[1]:
+        raise ValueError('matix must be symmetric!')
+    fill_na(mat, value=0, copy = False)        
+    sum0 = np.sum(mat, axis=0) > 0
+    mask = sum0[:, None] * sum0[None, :]
+    return mask
+
+        
+def remove_good_singletons(mat, mask=None, returnMask=False):
+    mat = mat.copy()
+    if mask == None:
+        mask = infer_mask2D(mat)
+    badBins = (np.sum(mask, axis=0)==0)
+    goodBins = badBins==0
+    good_singletons =( ( goodBins* smooth(goodBins,3) )   == 1/3    )
+    mat[ good_singletons,:] = np.nan
+    mat[ :,good_singletons] = np.nan
+    mask[ good_singletons,:] = 0
+    mask[ :,good_singletons] = 0
+    if returnMask == True:
+        return mat, mask
+    else:
+        return mat
+
+    
+def interpolate_bad_singletons(mat, mask=None, 
+                               fillDiagonal=True, returnMask=False,
+                               secondPass=True,verbose=False):  
+    ''' interpolate singleton missing bins for visualization
+    
+    Examples
+    --------
+    ax = plt.subplot(121)
+    maxval =  np.log(np.nanmean(np.diag(mat,3))*2 )
+    plt.matshow(np.log(mat)), vmax=maxval, fignum=False)
+    plt.set_cmap('fall');
+    plt.subplot(122,sharex=ax, sharey=ax)
+    plt.matshow(np.log(
+            interpolate_bad_singletons(remove_good_singletons(mat))), vmax=maxval, fignum=False)
+    plt.set_cmap('fall');
+    plt.show()
+    '''
+    mat = mat.copy()
+    if mask == None:
+        mask = infer_mask2D(mat)
+    antimask = mask==0
+    badBins = (np.sum(mask, axis=0)==0)
+    singletons =( ( badBins * smooth(badBins==0,3) )   > 1/3    )
+    bb_minus_singletons = (badBins.astype('int8')-singletons.astype('int8')).astype('bool')
+    
+    mat[antimask] = np.nan
+    locs = np.zeros(np.shape(mat)); 
+    locs[singletons,:]=1; locs[:,singletons] = 1
+    locs[bb_minus_singletons,:]=0; locs[:,bb_minus_singletons] = 0
+    locs = np.nonzero(locs)#np.isnan(mat))
+    interpvals = np.zeros(np.shape(mat))
+    if verbose==True: print('initial pass to interpolate:', len(locs[0]))
+    for loc in      zip(  locs[0],  locs[1]   ):
+        i,j = loc
+        if loc[0] > loc[1]:
+            if (loc[0]>0) and (loc[1] > 0) and (loc[0] < len(mat)-1) and (loc[1]< len(mat)-1):
+                interpvals[i,j] = np.nanmean(  [mat[i-1,j-1],mat[i+1,j+1]])
+            elif loc[0]==0:
+                interpvals[i,j] = np.nanmean(  [mat[i,j-1],mat[i,j+1]] )
+            elif loc[1]==0:
+                interpvals[i,j] = np.nanmean(  [mat[i-1,j],mat[i+1,j]])
+            elif loc[0]== (len(mat)-1):
+                interpvals[i,j] = np.nanmean(  [mat[i,j-1],mat[i,j+1]])
+            elif loc[1]==(len(mat)-1):
+                interpvals[i,j] = np.nanmean(  [mat[i-1,j],mat[i+1,j]])
+    interpvals = interpvals+interpvals.T        
+    mat[locs]  = interpvals[locs]
+    mask[locs] = 1
+
+    if secondPass == True: 
+        locs = np.nonzero(np.isnan(interpvals))#np.isnan(mat))
+        interpvals2 = np.zeros(np.shape(mat))
+        if verbose==True: print('still remaining: ', len(locs[0]))
+        for loc in      zip(  locs[0],  locs[1]   ):
+            i,j = loc
+            if loc[0] > loc[1]:
+                if (loc[0]>0) and (loc[1] > 0) and (loc[0] < len(mat)-1) and (loc[1]< len(mat)-1):
+                    interpvals2[i,j] = np.nanmean(  [mat[i-1,j-1],mat[i+1,j+1]])
+                elif loc[0]==0:
+                    interpvals2[i,j] = np.nanmean(  [mat[i,j-1],mat[i,j+1]] )
+                elif loc[1]==0:
+                    interpvals2[i,j] = np.nanmean(  [mat[i-1,j],mat[i+1,j]])
+                elif loc[0]== (len(mat)-1):
+                    interpvals2[i,j] = np.nanmean(  [mat[i,j-1],mat[i,j+1]])
+                elif loc[1]==(len(mat)-1):
+                    interpvals2[i,j] = np.nanmean(  [mat[i-1,j],mat[i+1,j]])
+        interpvals2 = interpvals2+interpvals2.T        
+        mat[locs] = interpvals2[locs]
+        mask[locs] = 1
+
+    if fillDiagonal==True:
+        for i in range(-1,2): set_diag(mat, np.nan,i=i ,copy=False )
+            
+    if returnMask == True:
+        return mat, mask
+    else:
+        return mat

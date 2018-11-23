@@ -283,16 +283,18 @@ def cooler_cis_eig(
         regions=None, 
         n_eigs=3, 
         phasing_track_col='GC', 
+        balance='weight',
         ignore_diags=None,
         clip_percentile = 99.9,
         sort_metric = None):
 
-    regions = (
-        [(chrom, 0, clr.chromsizes[chrom]) 
-         for chrom in bins['chrom'].unique()]
-        if regions is None 
-        else [bioframe.parse_region(r) for r in regions]
-    )
+    if regions is None:
+        regions = (
+            [(chrom, 0, clr.chromsizes[chrom]) 
+             for chrom in bins['chrom'].unique()]
+            if regions is None 
+            else [bioframe.parse_region(r) for r in regions]
+        )
 
     ignore_diags = (
         clr._load_attrs('/bins/weight')['ignore_diags']
@@ -304,7 +306,7 @@ def cooler_cis_eig(
         eigvec_table['E'+str(i+1)] = np.nan
     
     def _each(region):
-        A = clr.matrix(balance=True).fetch(region)
+        A = clr.matrix(balance=balance).fetch(region)
         if phasing_track_col and (phasing_track_col not in bins):
             raise ValueError('No column "{}" in the bin table'.format(
                 phasing_track_col))
@@ -355,6 +357,7 @@ def cooler_trans_eig(
         n_eigs=3, 
         partition=None, 
         phasing_track_col='GC', 
+        balance='weight',
         sort_metric=None,
         **kwargs):
 
@@ -364,7 +367,7 @@ def cooler_trans_eig(
     
     lo = partition[0]
     hi = partition[-1]
-    A = clr.matrix(balance=True)[lo:hi, lo:hi]
+    A = clr.matrix(balance=balance)[lo:hi, lo:hi]
     bins = bins[lo:hi]
 
     phasing_track = None
@@ -386,4 +389,8 @@ def cooler_trans_eig(
     for i, eigvec in enumerate(eigvecs):
         eigvec_table['E{}'.format(i+1)] = eigvec
 
+    eigvals = pd.DataFrame(
+        data=np.atleast_2d(eigvals),
+        columns=['eigval'+str(i+1) for i in range(n_eigs)],
+    )
     return eigvals, eigvec_table

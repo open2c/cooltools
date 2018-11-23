@@ -1,31 +1,31 @@
-.PHONY: init install clean-pyc clean-build build test publish docs-init docs
+.PHONY: init install clean-pyc clean-dist clean build test publish docs-init docs
 
 init:
 	conda install --file requirements.txt
 
-install:
-	pip install -e .
+build:
+	python setup.py build_ext --inplace
 
 test:
 	pytest
+
+install:
+	pip install -e .
 
 clean-pyc:
 	find . -name '*.pyc' -exec rm --force {} +
 	find . -name '*.pyo' -exec rm --force {} +
 	find . -name '*~' -exec rm --force  {} +
 
-clean-build:
+clean-dist:
 	rm -rf build/
 	rm -rf dist/
 
-clean: clean-pyc clean-build
+clean: clean-pyc clean-dist
 
-build: clean-build
+dist-build: clean-dist
 	python setup.py sdist
 	python setup.py bdist_wheel
-
-dev-build:
-	python setup.py build_ext --inplace
 
 # publish: build
 # 	python setup.py register
