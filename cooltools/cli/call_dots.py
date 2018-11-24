@@ -284,6 +284,14 @@ def extract_scored_pixels(scored_df, kernels, thresholds, ledges, verbose):
 def scoring_step(clr, expected, expected_name, tiles, kernels,
                  max_nans_tolerated, loci_separation_bins, output_path,
                  nproc, verbose):
+    """
+
+    Calculates locally adjusted expected
+    for each pixel in a designated area of
+    the heatmap and dumps it chunk by chunk
+    as an HDF table.
+
+    """
     if verbose:
         print("Preparing to convolve {} tiles:".format(len(tiles)))
 
@@ -298,6 +306,9 @@ def scoring_step(clr, expected, expected_name, tiles, kernels,
         kernels=kernels,
         nans_tolerated=max_nans_tolerated,
         band_to_cover=loci_separation_bins,
+        # do not calculate dynamic-donut criteria
+        # for now.
+        balance_factor=None,
         verbose=very_verbose)
 
     if nproc > 1:
@@ -862,6 +873,12 @@ def thresholding_step(centroids, output_path):
     type=str,
     required=False)
 @click.option(
+    "--output-hists",
+    help="Specify output file name to store"
+         " lambda-chunked histograms.",
+    type=str,
+    required=False)
+@click.option(
     "--output-calls", "-o",
     help="Specify output file name where to store"
          " the results of dot-calling, in a BEDPE-like format.",
@@ -878,6 +895,7 @@ def call_dots(
         dots_clustering_radius,
         verbose,
         output_scores,
+        output_hists,
         output_calls):
     """
     Call dots on a Hi-C heatmap that are not larger than max_loci_separation.
@@ -1020,15 +1038,15 @@ def call_dots(
         )
     )
 
-    # ######################
-    # # scoring only yields
-    # # a HUGE list of both
-    # # good and bad pixels
-    # # (dot-like, and not)
-    # ######################
-    # scoring_step(clr, expected, expected_name, tiles, kernels,
-    #              max_nans_tolerated, loci_separation_bins, output_scores,
-    #              nproc, verbose)
+    ######################
+    # scoring only yields
+    # a HUGE list of both
+    # good and bad pixels
+    # (dot-like, and not)
+    ######################
+    scoring_step(clr, expected, expected_name, tiles, kernels,
+                 max_nans_tolerated, loci_separation_bins, output_scores,
+                 nproc, verbose)
 
     ################################
     # calculates genome-wide histogram (gw_hist):
@@ -1043,10 +1061,10 @@ def call_dots(
     # for each chunk ...
 
 
-    if output_scores is not None:
+    if output_hists is not None:
         for k in kernels:
             gw_hist[k].to_csv(
-                "{}.{}.hist.txt".format(output_scores,k),
+                "{}.{}.hist.txt".format(output_hists,k),
                 sep='\t',
                 header=True,
                 index=False,
