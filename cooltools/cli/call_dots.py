@@ -110,17 +110,20 @@ def score_tile(tile_cij, clr, cis_exp, exp_v_name, bal_v_name, kernels,
     # so, selecting inside band and nNaNs compliant results:
     # ( drop dropping index maybe ??? ) ...
     res_df = result[is_inside_band & does_comply_nans].reset_index(drop=True)
-    ########################################################################
-    # consider retiring Poisson testing from here, in case we
-    # stick with l-chunking or opposite - add histogramming business here(!)
-    ########################################################################
-    # do Poisson tests:
-    get_pval = lambda la_exp : 1.0 - poisson.cdf(res_df["obs.raw"], la_exp)
-    for k in kernels:
-        res_df["la_exp."+k+".pval"] = get_pval( res_df["la_exp."+k+".value"] )
-    
-    # annotate and return
-    return cooler.annotate(res_df.reset_index(drop=True), clr.bins()[:])
+   # ########################################################################
+   # # consider retiring Poisson testing from here, in case we
+   # # stick with l-chunking or opposite - add histogramming business here(!)
+   # ########################################################################
+   # # do Poisson tests:
+   # get_pval = lambda la_exp : 1.0 - poisson.cdf(res_df["obs.raw"], la_exp)
+   # for k in kernels:
+   #     res_df["la_exp."+k+".pval"] = get_pval( res_df["la_exp."+k+".value"] )
+   # 
+   # # annotate and return
+   # return cooler.annotate(res_df.reset_index(drop=True), clr.bins()[:])
+    return res_df[["bin1_id","bin2_id","obs.raw"]+ \
+                   ["la_exp."+k+".value" for k in kernels]] \
+                    .astype(dtype={"la_exp."+k+".value":'float16' for k in kernels})
 
 
 def histogram_scored_pixels(scored_df, kernels, ledges, verbose):
@@ -333,6 +336,8 @@ def scoring_step(clr, expected, expected_name, tiles, kernels,
             chunk.to_hdf(output_path,
                          key='results',
                          format='table',
+                         complevel=9,
+                         complib="blosc:snappy",
                          append=append)
             append = True
     finally:
@@ -1013,18 +1018,18 @@ def call_dots(
 
     kernels = {k: get_kernel(w,p,k) for k in ktypes}
 
-    # creating logspace l(ambda)bins with base=2^(1/3), for lambda-chunking:
-    nlchunks = HiCCUPS_W1_MAX_INDX
-    base = 2**(1/3.0)
-    ledges = np.concatenate(([-np.inf,],
-                            np.logspace(0,
-                                        nlchunks-1,
-                                        num=nlchunks,
-                                        base=base,
-                                        dtype=np.float),
-                            [np.inf,]))
-    # the first bin must be (-inf,1]
-    # the last bin must be (2^(HiCCUPS_W1_MAX_INDX/3),+inf):
+#    # creating logspace l(ambda)bins with base=2^(1/3), for lambda-chunking:
+#    nlchunks = HiCCUPS_W1_MAX_INDX
+#    base = 2**(1/3.0)
+#    ledges = np.concatenate(([-np.inf,],
+#                            np.logspace(0,
+#                                        nlchunks-1,
+#                                        num=nlchunks,
+#                                        base=base,
+#                                        dtype=np.float),
+#                            [np.inf,]))
+#    # the first bin must be (-inf,1]
+#    # the last bin must be (2^(HiCCUPS_W1_MAX_INDX/3),+inf):
 
 
 
@@ -1038,6 +1043,7 @@ def call_dots(
         )
     )
 
+    print("2 latest for sure!!")
     ######################
     # scoring only yields
     # a HUGE list of both
@@ -1048,144 +1054,145 @@ def call_dots(
                  max_nans_tolerated, loci_separation_bins, output_scores,
                  nproc, verbose)
 
-    ################################
-    # calculates genome-wide histogram (gw_hist):
-    ################################
-    gw_hist = scoring_and_histogramming_step(clr, expected, expected_name, tiles,
-                                             kernels, ledges, max_nans_tolerated,
-                                             loci_separation_bins, None, nproc,
-                                             verbose)
-    # gw_hist for each kernel contains a histogram of
-    # raw pixel intensities for every lambda-chunk (one per column)
-    # in a row-wise order, i.e. each column is a histogram
-    # for each chunk ...
-
-
-    if output_hists is not None:
-        for k in kernels:
-            gw_hist[k].to_csv(
-                "{}.{}.hist.txt".format(output_hists,k),
-                sep='\t',
-                header=True,
-                index=False,
-                compression=None)
-
-    ##############
-    # prepare to determine the FDR threshold ...
-    ##############
-
-
-    # Reverse Cumulative Sum of a histogram ...
-    rcs_hist = {}
-    rcs_Poisson = {}
-    qvalues = {}
-    threshold_df = {}
-    for k in kernels:
-        # generate a reverse cumulative histogram for each kernel,
-        #  such that 0th raw contains total # of pixels in each lambda-chunk:
-        rcs_hist[k] = gw_hist[k].iloc[::-1].cumsum(axis=0).iloc[::-1]
-        # now for every kernel-type k - create rcsPoisson,
-        # a unit Poisson distribution for every lambda-chunk
-        # using upper boundary of each lambda-chunk as the expected:
-        rcs_Poisson[k] = pd.DataFrame()
-        for mu, column in zip(ledges[1:-1], gw_hist[k].columns):
-            # poisson.sf = 1 - poisson.cdf, but more precise
-            # poisson.sf(-1,mu) == 1.0, i.e. is equivalent to the
-            # poisson.pmf(gw_hist[k].index,mu)[::-1].cumsum()[::-1]
-            # i.e., the way unitPoissonPMF is generated in HiCCUPS:
-            renorm_factors = rcs_hist[k].loc[0,column]
-            rcs_Poisson[k][column] = renorm_factors * poisson.sf(gw_hist[k].index-1, mu)
-        # once we have both RCS hist and the Poisson:
-        # now compare rcs_hist and re-normalized rcs_Poisson
-        # to infer FDR thresolds for every lambda-chunk:
-        fdr_diff = fdr * rcs_hist[k] - rcs_Poisson[k]
-        # determine the threshold by checking the value at which
-        # 'fdr_diff' first turns positive:
-        threshold_df[k] = fdr_diff.where(fdr_diff>0).apply(lambda col: col.first_valid_index())
-        # q-values ...
-        # roughly speaking, qvalues[k] =  rcs_Poisson[k]/rcs_hist[k]
-        # bear in mind some issues with lots of NaNs and Infs after
-        # such a brave operation ...
-        qvalues[k] = rcs_Poisson[k] / rcs_hist[k]
-        # fill NaNs with the "unreachably" high value:
-        very_high_value = len(rcs_hist[k])
-        threshold_df[k] = threshold_df[k].fillna(very_high_value).astype(np.integer)
-
-    #################
-    # this way threshold_df's index is
-    # a Categorical, where each element is
-    # an IntervalIndex, which we can and should
-    # use in the downstream analysis:
-
-    ############################################
-    # TODO: add q-values calculations !!!
-    ############################################
-
-    ##################################################################
-    # each threshold_df[k] is a Series indexed by la_exp intervals
-    # and it is all we need to extract "good" pixels from each chunk ...
-    ##################################################################
-
-    ###################
-    # 'gw_hist' needs to be
-    # processed and corresponding
-    # FDR thresholds must be calculated
-    # for every kernel-type
-    # also q-vals for every 'obs.raw' value
-    # and for every kernel-type must be stored
-    # somewhere-somehow - the 'lognorm' thing
-    # from HiCCUPS that would be ...
-    ###################
-
-    ###################
-    # right after that
-    # we'd have a scoring_and_filtering step
-    # where the filtering part
-    # would use FDR thresholds 'threshold_df'
-    # calculated in the histogramming step ...
-    ###################
-
-    filtered_pix = scoring_and_extraction_step(clr, expected, expected_name, tiles, kernels,
-                                               ledges, threshold_df, max_nans_tolerated,
-                                               balance_factor, loci_separation_bins, output_calls,
-                                               nproc, verbose)
-
-    if verbose:
-        print("preparing to extract needed q-values ...")
-
-    # attempting to extract q-values using l-chunks and IntervalIndex:
-    # we'll do it in an ugly but workign fashion, by simply
-    # iteration over pairs of obs, la_exp and extracting needed qvals
-    # one after another ...
-    for k in kernels:
-        filtered_pix["la_exp."+k+".qval"] = \
-            [ qvalues[k].loc[o,e] for o,e \
-                 in filtered_pix[["obs.raw","la_exp."+k+".value"]].itertuples(index=False) ]
-    # qvalues : dict
-    #   A dictionary with keys being kernel names and values pandas.DataFrame-s
-    #   storing q-values: each column corresponds to a lambda-chunk,
-    #   while rows correspond to observed pixels values.
-
-
-    ######################################
-    # post processing starts from here on:
-    # it includes:
-    # 0. remove low MAPQ reads (done externally ?!?)
-    # 1. clustering
-    # 2. filter pixels by FDR
-    # 3. merge different resolutions. (external script)
-    ######################################
-
-    if verbose:
-        print("Subsequent clustering and thresholding steps are not production-ready")
-
-    if True:
-        # (1):
-        centroids = clustering_step_local(filtered_pix, expected_chroms,
-                                          dots_clustering_radius, verbose)
-        # (2):
-        thresholding_step(centroids, output_calls)
-        # (3):
-        # Call dots for different resolutions individually and then use external methods
-        # to merge the calls
-
+    print("2 latest for sure!! DONE")
+#    ################################
+#    # calculates genome-wide histogram (gw_hist):
+#    ################################
+#    gw_hist = scoring_and_histogramming_step(clr, expected, expected_name, tiles,
+#                                             kernels, ledges, max_nans_tolerated,
+#                                             loci_separation_bins, None, nproc,
+#                                             verbose)
+#    # gw_hist for each kernel contains a histogram of
+#    # raw pixel intensities for every lambda-chunk (one per column)
+#    # in a row-wise order, i.e. each column is a histogram
+#    # for each chunk ...
+#
+#
+#    if output_hists is not None:
+#        for k in kernels:
+#            gw_hist[k].to_csv(
+#                "{}.{}.hist.txt".format(output_hists,k),
+#                sep='\t',
+#                header=True,
+#                index=False,
+#                compression=None)
+#
+#    ##############
+#    # prepare to determine the FDR threshold ...
+#    ##############
+#
+#
+#    # Reverse Cumulative Sum of a histogram ...
+#    rcs_hist = {}
+#    rcs_Poisson = {}
+#    qvalues = {}
+#    threshold_df = {}
+#    for k in kernels:
+#        # generate a reverse cumulative histogram for each kernel,
+#        #  such that 0th raw contains total # of pixels in each lambda-chunk:
+#        rcs_hist[k] = gw_hist[k].iloc[::-1].cumsum(axis=0).iloc[::-1]
+#        # now for every kernel-type k - create rcsPoisson,
+#        # a unit Poisson distribution for every lambda-chunk
+#        # using upper boundary of each lambda-chunk as the expected:
+#        rcs_Poisson[k] = pd.DataFrame()
+#        for mu, column in zip(ledges[1:-1], gw_hist[k].columns):
+#            # poisson.sf = 1 - poisson.cdf, but more precise
+#            # poisson.sf(-1,mu) == 1.0, i.e. is equivalent to the
+#            # poisson.pmf(gw_hist[k].index,mu)[::-1].cumsum()[::-1]
+#            # i.e., the way unitPoissonPMF is generated in HiCCUPS:
+#            renorm_factors = rcs_hist[k].loc[0,column]
+#            rcs_Poisson[k][column] = renorm_factors * poisson.sf(gw_hist[k].index-1, mu)
+#        # once we have both RCS hist and the Poisson:
+#        # now compare rcs_hist and re-normalized rcs_Poisson
+#        # to infer FDR thresolds for every lambda-chunk:
+#        fdr_diff = fdr * rcs_hist[k] - rcs_Poisson[k]
+#        # determine the threshold by checking the value at which
+#        # 'fdr_diff' first turns positive:
+#        threshold_df[k] = fdr_diff.where(fdr_diff>0).apply(lambda col: col.first_valid_index())
+#        # q-values ...
+#        # roughly speaking, qvalues[k] =  rcs_Poisson[k]/rcs_hist[k]
+#        # bear in mind some issues with lots of NaNs and Infs after
+#        # such a brave operation ...
+#        qvalues[k] = rcs_Poisson[k] / rcs_hist[k]
+#        # fill NaNs with the "unreachably" high value:
+#        very_high_value = len(rcs_hist[k])
+#        threshold_df[k] = threshold_df[k].fillna(very_high_value).astype(np.integer)
+#
+#    #################
+#    # this way threshold_df's index is
+#    # a Categorical, where each element is
+#    # an IntervalIndex, which we can and should
+#    # use in the downstream analysis:
+#
+#    ############################################
+#    # TODO: add q-values calculations !!!
+#    ############################################
+#
+#    ##################################################################
+#    # each threshold_df[k] is a Series indexed by la_exp intervals
+#    # and it is all we need to extract "good" pixels from each chunk ...
+#    ##################################################################
+#
+#    ###################
+#    # 'gw_hist' needs to be
+#    # processed and corresponding
+#    # FDR thresholds must be calculated
+#    # for every kernel-type
+#    # also q-vals for every 'obs.raw' value
+#    # and for every kernel-type must be stored
+#    # somewhere-somehow - the 'lognorm' thing
+#    # from HiCCUPS that would be ...
+#    ###################
+#
+#    ###################
+#    # right after that
+#    # we'd have a scoring_and_filtering step
+#    # where the filtering part
+#    # would use FDR thresholds 'threshold_df'
+#    # calculated in the histogramming step ...
+#    ###################
+#
+#    filtered_pix = scoring_and_extraction_step(clr, expected, expected_name, tiles, kernels,
+#                                               ledges, threshold_df, max_nans_tolerated,
+#                                               balance_factor, loci_separation_bins, output_calls,
+#                                               nproc, verbose)
+#
+#    if verbose:
+#        print("preparing to extract needed q-values ...")
+#
+#    # attempting to extract q-values using l-chunks and IntervalIndex:
+#    # we'll do it in an ugly but workign fashion, by simply
+#    # iteration over pairs of obs, la_exp and extracting needed qvals
+#    # one after another ...
+#    for k in kernels:
+#        filtered_pix["la_exp."+k+".qval"] = \
+#            [ qvalues[k].loc[o,e] for o,e \
+#                 in filtered_pix[["obs.raw","la_exp."+k+".value"]].itertuples(index=False) ]
+#    # qvalues : dict
+#    #   A dictionary with keys being kernel names and values pandas.DataFrame-s
+#    #   storing q-values: each column corresponds to a lambda-chunk,
+#    #   while rows correspond to observed pixels values.
+#
+#
+#    ######################################
+#    # post processing starts from here on:
+#    # it includes:
+#    # 0. remove low MAPQ reads (done externally ?!?)
+#    # 1. clustering
+#    # 2. filter pixels by FDR
+#    # 3. merge different resolutions. (external script)
+#    ######################################
+#
+#    if verbose:
+#        print("Subsequent clustering and thresholding steps are not production-ready")
+#
+#    if True:
+#        # (1):
+#        centroids = clustering_step_local(filtered_pix, expected_chroms,
+#                                          dots_clustering_radius, verbose)
+#        # (2):
+#        thresholding_step(centroids, output_calls)
+#        # (3):
+#        # Call dots for different resolutions individually and then use external methods
+#        # to merge the calls
+#
