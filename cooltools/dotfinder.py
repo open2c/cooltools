@@ -59,6 +59,8 @@ def clust_2D_pixels(pixels_df,
                     threshold_cluster=2,
                     bin1_id_name='bin1_id',
                     bin2_id_name='bin2_id',
+                    clust_label_name='c_label',
+                    clust_size_name='c_size',
                     verbose=True):
     '''
     Group significant pixels by proximity using Birch clustering. We use
@@ -81,20 +83,28 @@ def clust_2D_pixels(pixels_df,
     bin2_id_name : str
         Name of the 2nd coordinate (column index) in 'pixel_df', by default
         'bin2_id'. 'start2/end2' could be usefull as well.
+    clust_label_name : str
+        Name of the cluster of pixels label. "c_label" by default.
+    clust_size_name : str
+        Name of the cluster of pixels size. "c_size" by default.
     verbose : bool
         Print verbose clustering summary report defaults is True.
     
     Returns
     -------
     peak_tmp : pandas.DataFrame
-        DataFrame with c_row,c_col,c_label,c_size - columns. row/col are
-        coordinates of centroids, label and sizes are unique pixel-cluster
+        DataFrame with the following columns:
+        [c+bin1_id_name, c+bin2_id_name, clust_label_name, clust_size_name]
+        row/col (bin1/bin2) are coordinates of centroids,
+        label and sizes are unique pixel-cluster
         labels and their corresponding sizes.
-
     '''
 
     # col (bin2) must precede row (bin1):
-    pixels     = pixels_df[[bin1_id_name, bin2_id_name]].values
+    pixels     = pixels_df[[bin1_id_name, bin2_id_name]].values.astype(np.float)
+    # added astype(float) to avoid further issues with clustering, as it
+    # turned out start1/start2 genome coordinates could be int32 or int64
+    # and int32 is not enough for some operations, i.e., integer overflow.
     pixel_idxs = pixels_df.index
 
     # perform BIRCH clustering of pixels:
@@ -144,9 +154,9 @@ def clust_2D_pixels(pixels_df,
                                 index=pixel_idxs,
                                 columns=['c'+bin1_id_name,'c'+bin2_id_name])
     # add labels per pixel:
-    centroids_n_labels_df['c_label'] = clustered_labels.astype(np.int)
+    centroids_n_labels_df[clust_label_name] = clustered_labels.astype(np.int)
     # add cluster sizes:
-    centroids_n_labels_df['c_size'] = cluster_sizes.astype(np.int)
+    centroids_n_labels_df[clust_size_name] = cluster_sizes.astype(np.int)
     
 
     return centroids_n_labels_df
@@ -389,7 +399,7 @@ def _convolve_and_count_nans(O_bal,E_bal,E_raw,N_bal,kernel):
 def get_adjusted_expected_tile_some_nans(origin,
                                          observed,
                                          expected,
-                                         bal_weight,
+                                         bal_weights,
                                          kernels,
                                          balance_factor=None,
                                          verbose=False):
@@ -425,8 +435,8 @@ def get_adjusted_expected_tile_some_nans(origin,
                               KERNEL[i,j](E_bal)
     where E_raw[i,j] is:
           1               1                 
-    ------------- * ------------- * E_bal[i,j]
-    bal_weight[i]   bal_weight[j]             
+    -------------- * -------------- * E_bal[i,j]
+    bal_weights[i]   bal_weights[j]             
     
 
     Parameters
@@ -451,7 +461,7 @@ def get_adjusted_expected_tile_some_nans(origin,
         good for now, but expected might change later ...
         Tanay's expected, expected with modeled TAD's etc ...
         !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-    bal_weight : numpy.ndarray or (numpy.ndarray, numpy.ndarray)
+    bal_weights : numpy.ndarray or (numpy.ndarray, numpy.ndarray)
         1D vector used to turn raw observed
         into balanced observed for a slice of
         a matrix with the origin on the diagonal;
@@ -474,6 +484,17 @@ def get_adjusted_expected_tile_some_nans(origin,
         only then multiplied to matrix by
         scipy.ndimage.convolve 
         !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    balance_factor: float
+        Multiplicative Balancing factor:
+        balanced matrix multiplied by this factor
+        sums up to the total number of reads (taking
+        symmetry into account) instead of number of
+        bins in matrix. defaults to None and skips
+        a lowleft KernelObserved factor calculation.
+        !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+        We need this to test how dynamic donut size
+        is affecting peak calling results.
+        !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     verbose: bool
         Set to True to print some progress
         messages to stdout.
@@ -500,14 +521,14 @@ def get_adjusted_expected_tile_some_nans(origin,
     # let's extract full matrices and ice_vector:
     O_raw = observed # raw observed, no need to copy, no modifications.
     E_bal = np.copy(expected)
-    # 'bal_weight': ndarray or a couple of those ...
-    if isinstance(bal_weight, np.ndarray):
-        v_bal_i = bal_weight
-        v_bal_j = bal_weight
-    elif isinstance(bal_weight, (tuple,list)):
-        v_bal_i,v_bal_j = bal_weight
+    # 'bal_weights': ndarray or a couple of those ...
+    if isinstance(bal_weights, np.ndarray):
+        v_bal_i = bal_weights
+        v_bal_j = bal_weights
+    elif isinstance(bal_weights, (tuple,list)):
+        v_bal_i,v_bal_j = bal_weights
     else:
-        raise ValueError("'bal_weight' must be an numpy.ndarray"
+        raise ValueError("'bal_weights' must be an numpy.ndarray"
                     "for slices of a matrix with diagonal-origin or"
                     "a tuple/list of a couple of numpy.ndarray-s"
                     "for a slice of matrix with an arbitrary origin.")
@@ -521,6 +542,15 @@ def get_adjusted_expected_tile_some_nans(origin,
     # by element-wise multiply:
     O_bal = np.multiply(O_raw, np.outer(v_bal_i,v_bal_j))
     # O_bal is separate from O_raw memory-wise.
+
+    # fill lower triangle of O_bal and E_bal with NaNs
+    # in order to prevent peak calling from the lower triangle
+    # and also to provide fair locally adjusted expected
+    # estimation for pixels very close to diagonal, whose
+    # "donuts"(kernels) would be crossing the main diagonal.
+    # The trickiest thing here would be dealing with the origin: io,jo.
+    O_bal[np.tril_indices_from(O_bal,k=(io-jo)-1)] = np.nan
+    E_bal[np.tril_indices_from(E_bal,k=(io-jo)-1)] = np.nan
 
     # raw E_bal: element-wise division of E_bal[i,j] and
     # v_bal[i]*v_bal[j]:
@@ -555,18 +585,61 @@ def get_adjusted_expected_tile_some_nans(origin,
         # kernel paramters such as width etc
         # are taken into account implicitly ...
         ########################################
-        Ek_raw, NN = _convolve_and_count_nans(O_bal,
-                                            E_bal,
-                                            E_raw,
-                                            N_bal,
-                                            kernel)
+        #####################
+        # unroll _convolve_and_count_nans function back
+        # for us to test the dynamic donut criteria ...
+        #####################
+        # Ek_raw, NN = _convolve_and_count_nans(O_bal,
+        #                                     E_bal,
+        #                                     E_raw,
+        #                                     N_bal,
+        #                                     kernel)
+        # Dense versions of a bunch of matrices needed for convolution and 
+        # calculation of number of NaNs in a vicinity of each pixel. And a kernel to 
+        # be provided of course.
+        # a matrix filled with the kernel-weighted sums
+        # based on a balanced observed matrix:
+        KO = convolve(O_bal,
+                      kernel,
+                      mode='constant',
+                      cval=0.0,
+                      origin=0)
+        # a matrix filled with the kernel-weighted sums
+        # based on a balanced expected matrix:
+        KE = convolve(E_bal,
+                      kernel,
+                      mode='constant',
+                      cval=0.0,
+                      origin=0)
+        # get number of NaNs in a vicinity of every
+        # pixel (kernel's nonzero footprint)
+        # based on the NaN-matrix N_bal.
+        # N_bal is shared NaNs between O_bal E_bal,
+        NN = convolve(N_bal.astype(np.int),
+                      # we have to use kernel's
+                      # nonzero footprint:
+                      (kernel != 0).astype(np.int),
+                      mode='constant',
+                      # there are only NaNs 
+                      # beyond the boundary:
+                      cval=1,
+                      origin=0)
+        ######################################
+        # using cval=0 for actual data and
+        # cval=1 for NaNs matrix reduces 
+        # "boundary issue" to the "number of
+        # NaNs"-issue
+        # ####################################
+        # now finally, E_raw*(KO/KE), as the 
+        # locally-adjusted expected with raw counts as values:
+        Ek_raw = np.multiply(E_raw, np.divide(KO, KE))
 
         # this is the place where we would need to extract
         # some results of convolution and multuplt it by the
         # appropriate factor "cooler._load_attrs(‘bins/weight’)[‘scale’]" ...
-        if balance_factor:
-            # compare 16 with KO*balance_factor ...
-            pass
+        if balance_factor and (kernel_name == "lowleft"):
+            peaks_df["factor_balance."+kernel_name+".KerObs"] = balance_factor * KO.flatten()
+            # KO*balance_factor: to be compared with 16 ...
         if verbose:
             print("Convolution with kernel {} is complete.".format(kernel_name))
         #
@@ -596,9 +669,15 @@ def get_adjusted_expected_tile_some_nans(origin,
     # returning only pixels from upper triangle of a matrix
     # is likely here to stay:
     upper_band = (peaks_df["bin1_id"] < peaks_df["bin2_id"])
+    # Consider filling lower triangle of the OBSERVED matrix tile
+    # with NaNs, instead of this - we'd need this for a fair
+    # consideration of the pixels that are super close to the
+    # diagonal and in a case, when the corresponding donut would
+    # cross a diagonal line.
     # selecting pixels in relation to diagonal - too far, too
     # close etc, is now shifted to the outside of this function
     # a way to simplify code.
+
 
     # return good semi-sparsified DF:
     return peaks_df[~mask_ndx & upper_band].reset_index(drop=True)

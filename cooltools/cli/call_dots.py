@@ -2,6 +2,8 @@ from functools import partial, reduce
 import multiprocess as mp
 import click
 
+from os import path
+
 from scipy.stats import poisson
 import pandas as pd
 import numpy as np
@@ -15,13 +17,17 @@ from .. import dotfinder
 # for lambda-chunking are computed: W1 is the # of logspaced lambda bins,
 # and W2 is maximum "allowed" raw number of contacts per Hi-C heatmap bin:
 HiCCUPS_W1_MAX_INDX = 40
+
+# HFF combined exceeded this limit ...
+HiCCUPS_W1_MAX_INDX = 46
+
 # we are not using 'W2' as we're building
 # the histograms dynamically:
 HiCCUPS_W2_MAX_INDX = 10000
 
 
 def score_tile(tile_cij, clr, cis_exp, exp_v_name, bal_v_name, kernels,
-               nans_tolerated, band_to_cover, verbose):
+               nans_tolerated, band_to_cover, balance_factor, verbose):
     """
     The main working function that given a tile of a heatmap, applies kernels to
     perform convolution to calculate locally-adjusted expected and then
@@ -51,6 +57,10 @@ def score_tile(tile_cij, clr, cis_exp, exp_v_name, bal_v_name, kernels,
     band_to_cover : int
         Results would be stored only for pixels connecting loci closer than
         'band_to_cover'.
+    balance_factor : float
+        Balancing factor to turn sum of balanced matrix back approximately
+        to the number of pairs (used for dynamic-donut criteria mostly).
+        use None value to disable dynamic-donut criteria calculation.
     verbose : bool
         Enable verbose output.
         
@@ -84,8 +94,9 @@ def score_tile(tile_cij, clr, cis_exp, exp_v_name, bal_v_name, kernels,
         origin=origin,
         observed=observed,
         expected=expected,
-        bal_weight=(bal_weight_i,bal_weight_j),
+        bal_weights=(bal_weight_i,bal_weight_j),
         kernels=kernels,
+        balance_factor=balance_factor,
         verbose=verbose)
 
     # Post-processing filters
@@ -255,7 +266,15 @@ def extract_scored_pixels(scored_df, kernels, thresholds, ledges, verbose):
         # corresponded with their Intervals (!!!):
         comply_fdr_k = (scored_df["obs.raw"].values > \
                         thresholds[k].loc[scored_df["la_exp."+k+".value"]].values)
-        # accumulate comply_fdr_k into comply_fdr_list
+        ## attempting to extract q-values using l-chunks and IntervalIndex:
+        ## we'll do it in an ugly but workign fashion, by simply
+        ## iteration over pairs of obs, la_exp and extracting needed qvals
+        ## one after another ...
+        #scored_df["la_exp."+k+".qval"] = \
+        #        [ qvalues[k].loc[o,e] for o,e \
+        #            in scored_df[["obs.raw","la_exp."+k+".value"]].itertuples(index=False) ]
+        ##
+        ## accumulate comply_fdr_k into comply_fdr_list
         # using np.logical_and:
         comply_fdr_list = np.logical_and(comply_fdr_list, comply_fdr_k)
     # return a slice of 'scored_df' that complies FDR thresholds:
@@ -339,6 +358,9 @@ def scoring_and_histogramming_step(clr, expected, expected_name, tiles, kernels,
         kernels=kernels,
         nans_tolerated=max_nans_tolerated,
         band_to_cover=loci_separation_bins,
+        # do not calculate dynamic-donut criteria
+        # for now.
+        balance_factor=None,
         verbose=very_verbose)
 
     # to hist per scored chunk:
@@ -420,7 +442,8 @@ def scoring_and_histogramming_step(clr, expected, expected_name, tiles, kernels,
 
 def scoring_and_extraction_step(clr, expected, expected_name, tiles, kernels,
                                ledges, thresholds, max_nans_tolerated,
-                               loci_separation_bins, output_path, nproc, verbose):
+                               balance_factor, loci_separation_bins, output_path,
+                               nproc, verbose):
     """
     This is a derivative of the 'scoring_step'
     which is supposed to implement the 2nd of the
@@ -447,6 +470,7 @@ def scoring_and_extraction_step(clr, expected, expected_name, tiles, kernels,
         kernels=kernels,
         nans_tolerated=max_nans_tolerated,
         band_to_cover=loci_separation_bins,
+        balance_factor=balance_factor,
         verbose=very_verbose)
 
     # to hist per scored chunk:
@@ -545,8 +569,8 @@ def clustering_step_local(scores_df, expected_chroms,
         # existing 'scores_df'-DataFrame.
         # should we use groupby instead of 'scores_df['chrom12']==chrom' ?!
         # to be tested ...
-        df = scores_df[((scores_df['chrom1']==chrom) &
-                        (scores_df['chrom2']==chrom))]
+        df = scores_df[((scores_df['chrom1'].astype(str)==str(chrom)) &
+                        (scores_df['chrom2'].astype(str)==str(chrom)))]
 
         pixel_clust = dotfinder.clust_2D_pixels(
             df,
@@ -655,29 +679,29 @@ def thresholding_step(centroids, output_path):
     ######################################################################
     # # Temporarily remove orphans filtering, until q-vals are calculated:
     ######################################################################
-    # enrichment_fdr_comply = (
-    #     (centroids["obs.raw"] > enrichment_factor_2 * centroids["la_exp.lowleft.value"]) &
-    #     (centroids["obs.raw"] > enrichment_factor_2 * centroids["la_exp.donut.value"]) &
-    #     (centroids["obs.raw"] > enrichment_factor_1 * centroids["la_exp.vertical.value"]) &
-    #     (centroids["obs.raw"] > enrichment_factor_1 * centroids["la_exp.horizontal.value"]) &
-    #     ( (centroids["obs.raw"] > enrichment_factor_3 * centroids["la_exp.lowleft.value"])
-    #         | (centroids["obs.raw"] > enrichment_factor_3 * centroids["la_exp.donut.value"]) ) &
-    #     ( (centroids["c_size"] > 1)
-    #        | ((centroids["la_exp.lowleft.qval"]
-    #            + centroids["la_exp.donut.qval"]
-    #            + centroids["la_exp.vertical.qval"]
-    #            + centroids["la_exp.horizontal.qval"]) <= FDR_orphan_threshold)
-    #     )
-    # )
-    #
     enrichment_fdr_comply = (
         (centroids["obs.raw"] > enrichment_factor_2 * centroids["la_exp.lowleft.value"]) &
         (centroids["obs.raw"] > enrichment_factor_2 * centroids["la_exp.donut.value"]) &
         (centroids["obs.raw"] > enrichment_factor_1 * centroids["la_exp.vertical.value"]) &
         (centroids["obs.raw"] > enrichment_factor_1 * centroids["la_exp.horizontal.value"]) &
         ( (centroids["obs.raw"] > enrichment_factor_3 * centroids["la_exp.lowleft.value"])
-            | (centroids["obs.raw"] > enrichment_factor_3 * centroids["la_exp.donut.value"]) )
+            | (centroids["obs.raw"] > enrichment_factor_3 * centroids["la_exp.donut.value"]) ) &
+        ( (centroids["c_size"] > 1)
+           | ((centroids["la_exp.lowleft.qval"]
+               + centroids["la_exp.donut.qval"]
+               + centroids["la_exp.vertical.qval"]
+               + centroids["la_exp.horizontal.qval"]) <= FDR_orphan_threshold)
+        )
     )
+    # #
+    # enrichment_fdr_comply = (
+    #     (centroids["obs.raw"] > enrichment_factor_2 * centroids["la_exp.lowleft.value"]) &
+    #     (centroids["obs.raw"] > enrichment_factor_2 * centroids["la_exp.donut.value"]) &
+    #     (centroids["obs.raw"] > enrichment_factor_1 * centroids["la_exp.vertical.value"]) &
+    #     (centroids["obs.raw"] > enrichment_factor_1 * centroids["la_exp.horizontal.value"]) &
+    #     ( (centroids["obs.raw"] > enrichment_factor_3 * centroids["la_exp.lowleft.value"])
+    #         | (centroids["obs.raw"] > enrichment_factor_3 * centroids["la_exp.donut.value"]) )
+    # )
     # use "enrichment_fdr_comply" to filter out
     # non-satisfying pixels:
     out = centroids[enrichment_fdr_comply]
@@ -719,6 +743,11 @@ def thresholding_step(centroids, output_path):
     # c_label
     # c_size
 
+    # ...
+    # to be added to the list of output columns:
+    # "factor_balance."+"lowleft"+".KerObs"
+    # ...
+
     # tentaive output columns list:
     columns_for_output = [
         'chrom1',
@@ -737,17 +766,20 @@ def thresholding_step(centroids, output_path):
         'la_exp.vertical.value',
         'la_exp.horizontal.value',
         'la_exp.lowleft.value',
-        # # 'la_exp.upright.value',
-        # # 'la_exp.upright.qval',
-        # 'la_exp.donut.qval',
-        # 'la_exp.vertical.qval',
-        # 'la_exp.horizontal.qval',
-        # 'la_exp.lowleft.qval'
+        "factor_balance.lowleft.KerObs",
+        # 'la_exp.upright.value',
+        # 'la_exp.upright.qval',
+        'la_exp.donut.qval',
+        'la_exp.vertical.qval',
+        'la_exp.horizontal.qval',
+        'la_exp.lowleft.qval'
     ]
 
     if output_path is not None:
+        final_output = path.join(path.dirname(output_path), \
+                       "final_"+path.basename(output_path))
         out[columns_for_output].to_csv(
-            "final_"+output_path,
+            final_output,
             sep='\t',
             header=True,
             index=False,
@@ -828,7 +860,7 @@ def thresholding_step(centroids, output_path):
          " all processed pixels before they get"
          " preprocessed in a BEDPE-like format.",
     type=str,
-    required=True)
+    required=False)
 @click.option(
     "--output-calls", "-o",
     help="Specify output file name where to store"
@@ -933,6 +965,7 @@ def call_dots(
     # # clustering would deal with bases-units for now, so
     # # supress this for now:
     # clustering_radius_bins = int(dots_clustering_radius/binsize)
+    balance_factor = 1.0 #clr._load_attrs("bins/weight")["scale"]
     
     ktypes = ['donut', 'vertical', 'horizontal', 'lowleft']
     # 'upright' is a symmetrical inversion of "lowleft", not needed.
@@ -1004,6 +1037,10 @@ def call_dots(
                                              kernels, ledges, max_nans_tolerated,
                                              loci_separation_bins, None, nproc,
                                              verbose)
+    # gw_hist for each kernel contains a histogram of
+    # raw pixel intensities for every lambda-chunk (one per column)
+    # in a row-wise order, i.e. each column is a histogram
+    # for each chunk ...
 
 
     if output_scores is not None:
@@ -1023,24 +1060,35 @@ def call_dots(
     # Reverse Cumulative Sum of a histogram ...
     rcs_hist = {}
     rcs_Poisson = {}
+    qvalues = {}
     threshold_df = {}
     for k in kernels:
+        # generate a reverse cumulative histogram for each kernel,
+        #  such that 0th raw contains total # of pixels in each lambda-chunk:
         rcs_hist[k] = gw_hist[k].iloc[::-1].cumsum(axis=0).iloc[::-1]
-        # now for every kernel-type k - create rcsPoisson:
+        # now for every kernel-type k - create rcsPoisson,
+        # a unit Poisson distribution for every lambda-chunk
+        # using upper boundary of each lambda-chunk as the expected:
         rcs_Poisson[k] = pd.DataFrame()
-        for mu,column in zip(ledges[1:-1], gw_hist[k].columns):
+        for mu, column in zip(ledges[1:-1], gw_hist[k].columns):
             # poisson.sf = 1 - poisson.cdf, but more precise
             # poisson.sf(-1,mu) == 1.0, i.e. is equivalent to the
             # poisson.pmf(gw_hist[k].index,mu)[::-1].cumsum()[::-1]
             # i.e., the way unitPoissonPMF is generated in HiCCUPS:
-            rcs_Poisson[k][column] = rcs_hist[k].loc[0,column] * poisson.sf(gw_hist[k].index-1, mu)
+            renorm_factors = rcs_hist[k].loc[0,column]
+            rcs_Poisson[k][column] = renorm_factors * poisson.sf(gw_hist[k].index-1, mu)
         # once we have both RCS hist and the Poisson:
-        # now compare rcs_hist and normalized rcs_Poisson
+        # now compare rcs_hist and re-normalized rcs_Poisson
         # to infer FDR thresolds for every lambda-chunk:
         fdr_diff = fdr * rcs_hist[k] - rcs_Poisson[k]
         # determine the threshold by checking the value at which
         # 'fdr_diff' first turns positive:
         threshold_df[k] = fdr_diff.where(fdr_diff>0).apply(lambda col: col.first_valid_index())
+        # q-values ...
+        # roughly speaking, qvalues[k] =  rcs_Poisson[k]/rcs_hist[k]
+        # bear in mind some issues with lots of NaNs and Infs after
+        # such a brave operation ...
+        qvalues[k] = rcs_Poisson[k] / rcs_hist[k]
         # fill NaNs with the "unreachably" high value:
         very_high_value = len(rcs_hist[k])
         threshold_df[k] = threshold_df[k].fillna(very_high_value).astype(np.integer)
@@ -1081,7 +1129,25 @@ def call_dots(
 
     filtered_pix = scoring_and_extraction_step(clr, expected, expected_name, tiles, kernels,
                                                ledges, threshold_df, max_nans_tolerated,
-                                               loci_separation_bins, output_calls, nproc, verbose)
+                                               balance_factor, loci_separation_bins, output_calls,
+                                               nproc, verbose)
+
+    if verbose:
+        print("preparing to extract needed q-values ...")
+
+    # attempting to extract q-values using l-chunks and IntervalIndex:
+    # we'll do it in an ugly but workign fashion, by simply
+    # iteration over pairs of obs, la_exp and extracting needed qvals
+    # one after another ...
+    for k in kernels:
+        filtered_pix["la_exp."+k+".qval"] = \
+            [ qvalues[k].loc[o,e] for o,e \
+                 in filtered_pix[["obs.raw","la_exp."+k+".value"]].itertuples(index=False) ]
+    # qvalues : dict
+    #   A dictionary with keys being kernel names and values pandas.DataFrame-s
+    #   storing q-values: each column corresponds to a lambda-chunk,
+    #   while rows correspond to observed pixels values.
+
 
     ######################################
     # post processing starts from here on:
