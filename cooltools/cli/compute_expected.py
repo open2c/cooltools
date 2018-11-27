@@ -30,6 +30,18 @@ from . import cli
     default=int(10e6),
     show_default=True)
 @click.option(
+    "--output", "-o",
+    help="Specify output file name to store"
+         " the expected in a tsv format.",
+    type=str,
+    required=False)
+@click.option(
+    "--hdf",
+    help="Use hdf5 format instead of tsv."
+         " Output file name must be specified.",
+    is_flag=True,
+    default=False)
+@click.option(
     '--contact-type', "-t",
     help="compute expected for cis or trans region"
     "of a Hi-C map.",
