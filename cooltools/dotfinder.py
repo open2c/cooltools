@@ -596,78 +596,78 @@ def get_adjusted_expected_tile_some_nans(origin,
     peaks_df = pd.DataFrame({"bin1_id": i.flatten()+io,
                              "bin2_id": j.flatten()+jo})
 
+    with np.errstate(divide='ignore', invalid='ignore'):
+        for kernel_name, kernel in kernels.items():
+            ###############################
+            # kernel-specific calculations:
+            ###############################
+            # kernel paramters such as width etc
+            # are taken into account implicitly ...
+            ########################################
+            #####################
+            # unroll _convolve_and_count_nans function back
+            # for us to test the dynamic donut criteria ...
+            #####################
+            # Ek_raw, NN = _convolve_and_count_nans(O_bal,
+            #                                     E_bal,
+            #                                     E_raw,
+            #                                     N_bal,
+            #                                     kernel)
+            # Dense versions of a bunch of matrices needed for convolution and
+            # calculation of number of NaNs in a vicinity of each pixel. And a kernel to
+            # be provided of course.
+            # a matrix filled with the kernel-weighted sums
+            # based on a balanced observed matrix:
+            KO = convolve(O_bal,
+                          kernel,
+                          mode='constant',
+                          cval=0.0,
+                          origin=0)
+            # a matrix filled with the kernel-weighted sums
+            # based on a balanced expected matrix:
+            KE = convolve(E_bal,
+                          kernel,
+                          mode='constant',
+                          cval=0.0,
+                          origin=0)
+            # get number of NaNs in a vicinity of every
+            # pixel (kernel's nonzero footprint)
+            # based on the NaN-matrix N_bal.
+            # N_bal is shared NaNs between O_bal E_bal,
+            NN = convolve(N_bal.astype(np.int),
+                          # we have to use kernel's
+                          # nonzero footprint:
+                          (kernel != 0).astype(np.int),
+                          mode='constant',
+                          # there are only NaNs
+                          # beyond the boundary:
+                          cval=1,
+                          origin=0)
+            ######################################
+            # using cval=0 for actual data and
+            # cval=1 for NaNs matrix reduces
+            # "boundary issue" to the "number of
+            # NaNs"-issue
+            # ####################################
+            # now finally, E_raw*(KO/KE), as the
+            # locally-adjusted expected with raw counts as values:
+            Ek_raw = np.multiply(E_raw, np.divide(KO, KE))
 
-    for kernel_name, kernel in kernels.items():
-        ###############################
-        # kernel-specific calculations:
-        ###############################
-        # kernel paramters such as width etc
-        # are taken into account implicitly ...
-        ########################################
-        #####################
-        # unroll _convolve_and_count_nans function back
-        # for us to test the dynamic donut criteria ...
-        #####################
-        # Ek_raw, NN = _convolve_and_count_nans(O_bal,
-        #                                     E_bal,
-        #                                     E_raw,
-        #                                     N_bal,
-        #                                     kernel)
-        # Dense versions of a bunch of matrices needed for convolution and
-        # calculation of number of NaNs in a vicinity of each pixel. And a kernel to
-        # be provided of course.
-        # a matrix filled with the kernel-weighted sums
-        # based on a balanced observed matrix:
-        KO = convolve(O_bal,
-                      kernel,
-                      mode='constant',
-                      cval=0.0,
-                      origin=0)
-        # a matrix filled with the kernel-weighted sums
-        # based on a balanced expected matrix:
-        KE = convolve(E_bal,
-                      kernel,
-                      mode='constant',
-                      cval=0.0,
-                      origin=0)
-        # get number of NaNs in a vicinity of every
-        # pixel (kernel's nonzero footprint)
-        # based on the NaN-matrix N_bal.
-        # N_bal is shared NaNs between O_bal E_bal,
-        NN = convolve(N_bal.astype(np.int),
-                      # we have to use kernel's
-                      # nonzero footprint:
-                      (kernel != 0).astype(np.int),
-                      mode='constant',
-                      # there are only NaNs
-                      # beyond the boundary:
-                      cval=1,
-                      origin=0)
-        ######################################
-        # using cval=0 for actual data and
-        # cval=1 for NaNs matrix reduces
-        # "boundary issue" to the "number of
-        # NaNs"-issue
-        # ####################################
-        # now finally, E_raw*(KO/KE), as the
-        # locally-adjusted expected with raw counts as values:
-        Ek_raw = np.multiply(E_raw, np.divide(KO, KE))
-
-        # this is the place where we would need to extract
-        # some results of convolution and multuplt it by the
-        # appropriate factor "cooler._load_attrs(‘bins/weight’)[‘scale’]" ...
-        if balance_factor and (kernel_name == "lowleft"):
-            peaks_df["factor_balance."+kernel_name+".KerObs"] = balance_factor * KO.flatten()
-            # KO*balance_factor: to be compared with 16 ...
-        if verbose:
-            print("Convolution with kernel {} is complete.".format(kernel_name))
-        #
-        # accumulation into single DataFrame:
-        # store locally adjusted expected for each kernel
-        # and number of NaNs in the footprint of each kernel
-        peaks_df["la_exp."+kernel_name+".value"] = Ek_raw.flatten()
-        peaks_df["la_exp."+kernel_name+".nnans"] = NN.flatten()
-        # do all the filter/logic/masking etc on the complete DataFrame ...
+            # this is the place where we would need to extract
+            # some results of convolution and multuplt it by the
+            # appropriate factor "cooler._load_attrs(‘bins/weight’)[‘scale’]" ...
+            if balance_factor and (kernel_name == "lowleft"):
+                peaks_df["factor_balance."+kernel_name+".KerObs"] = balance_factor * KO.flatten()
+                # KO*balance_factor: to be compared with 16 ...
+            if verbose:
+                print("Convolution with kernel {} is complete.".format(kernel_name))
+            #
+            # accumulation into single DataFrame:
+            # store locally adjusted expected for each kernel
+            # and number of NaNs in the footprint of each kernel
+            peaks_df["la_exp."+kernel_name+".value"] = Ek_raw.flatten()
+            peaks_df["la_exp."+kernel_name+".nnans"] = NN.flatten()
+            # do all the filter/logic/masking etc on the complete DataFrame ...
     #####################################
     # downstream stuff is supposed to be
     # aggregated over all kernels ...
@@ -1295,6 +1295,8 @@ def clustering_step_local(scores_df, expected_chroms,
         # to be tested ...
         df = scores_df[((scores_df['chrom1'].astype(str)==str(chrom)) &
                         (scores_df['chrom2'].astype(str)==str(chrom)))]
+        if not len(df):
+            continue
 
         pixel_clust = clust_2D_pixels(
             df,
