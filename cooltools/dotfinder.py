@@ -1058,13 +1058,11 @@ def scoring_and_histogramming_step(clr, expected, expected_name, tiles, kernels,
                                    ledges, max_nans_tolerated, loci_separation_bins,
                                    output_path, nproc, verbose):
     """
-    This is a derivative of the 'scoring_step'
-    which is supposed to implement the 1st of the
-    lambda-chunking procedure - histogramming.
+    This is a derivative of the 'scoring_step' which is supposed to implement
+    the 1st of the lambda-chunking procedure - histogramming.
 
-    Basically we are piping scoring operation
-    together with histogramming into a single
-    pipeline of per-chunk operations/transforms.
+    Basically we are piping scoring operation together with histogramming into a
+    single pipeline of per-chunk operations/transforms.
     """
     if verbose:
         print("Preparing to convolve {} tiles:".format(len(tiles)))
@@ -1169,14 +1167,13 @@ def scoring_and_extraction_step(clr, expected, expected_name, tiles, kernels,
                                balance_factor, loci_separation_bins, output_path,
                                nproc, verbose):
     """
-    This is a derivative of the 'scoring_step'
-    which is supposed to implement the 2nd of the
-    lambda-chunking procedure - extracting pixels
-    that are FDR compliant.
+    This is a derivative of the 'scoring_step' which is supposed to implement
+    the 2nd of the lambda-chunking procedure - extracting pixels that are FDR
+    compliant.
 
-    Basically we are piping scoring operation
-    together with extraction into a single
-    pipeline of per-chunk operations/transforms.
+    Basically we are piping scoring operation together with extraction into a
+    single pipeline of per-chunk operations/transforms.
+
     """
     if verbose:
         print("Preparing to convolve {} tiles:".format(len(tiles)))
@@ -1244,17 +1241,16 @@ def scoring_and_extraction_step(clr, expected, expected_name, tiles, kernels,
                 .reset_index(drop=True)
 
 
-
 def clustering_step_local(scores_df, expected_chroms,
                           dots_clustering_radius, verbose):
     """
-    This is a new "clustering" step updated for the pixels
-    processed by lambda-chunking multiple hypothesis testing.
 
-    This method assumes that 'scores_df' is a DataFrame with
-    all of the pixels that needs to be clustered, thus there is
-    no additional 'comply_fdr' column and selection of compliant
-    pixels.
+    This is a new "clustering" step updated for the pixels processed by lambda-
+    chunking multiple hypothesis testing.
+
+    This method assumes that 'scores_df' is a DataFrame with all of the pixels
+    that needs to be clustered, thus there is no additional 'comply_fdr' column
+    and selection of compliant pixels.
 
     This step is a clustering-only (using Birch from scikit).
 
@@ -1273,17 +1269,15 @@ def clustering_step_local(scores_df, expected_chroms,
     Returns
     -------
     centroids : pandas.DataFrame
-        Pixels from 'scores_df' annotated with clustering
-        information.
+        Pixels from 'scores_df' annotated with clustering information.
 
     Notes
     -----
-    'dots_clustering_radius' in Birch clustering algorithm
-    corresponds to a double the clustering radius in the
-    "greedy"-clustering used in HiCCUPS (to be tested).
+    'dots_clustering_radius' in Birch clustering algorithm corresponds to a
+    double the clustering radius in the "greedy"-clustering used in HiCCUPS
+    (to be tested).
 
     """
-
     # using different bin12_id_names since all
     # pixels are annotated at this point.
     pixel_clust_list = []
@@ -1393,6 +1387,45 @@ def clustering_step(scores_file, expected_chroms, ktypes, fdr,
     chrom_clust_group = df.groupby(["chrom1", "chrom2", "c_label"])
     centroids = df.loc[chrom_clust_group["obs.raw"].idxmax()]
     return centroids
+
+
+def determine_thresholds(kernels, ledges, gw_hist, fdr):
+    rcs_hist = {}
+    rcs_Poisson = {}
+    qvalues = {}
+    threshold_df = {}
+    for k in kernels:
+        # Reverse cumulative histogram for this kernel.
+        # First row contains total # of pixels in each lambda-chunk.
+        rcs_hist[k] = gw_hist[k].iloc[::-1].cumsum(axis=0).iloc[::-1]
+
+        # Assign a unit Poisson distribution to each lambda-chunk.
+        # The expected value is the upper boundary of the lambda-chunk.
+        #   poisson.sf = 1 - poisson.cdf, but more precise
+        #   poisson.sf(-1,mu) == 1.0, i.e. is equivalent to the
+        #   poisson.pmf(gw_hist[k].index, mu)[::-1].cumsum()[::-1]
+        rcs_Poisson[k] = pd.DataFrame()
+        for mu, column in zip(ledges[1:-1], gw_hist[k].columns):
+            renorm_factors = rcs_hist[k].loc[0, column]
+            rcs_Poisson[k][column] = (
+                renorm_factors * poisson.sf(gw_hist[k].index - 1, mu))
+
+        # Determine the threshold by checking the value at which 'fdr_diff'
+        # first turns positive. Fill NaNs with an "unreachably" high value.
+        fdr_diff = fdr * rcs_hist[k] - rcs_Poisson[k]
+        very_high_value = len(rcs_hist[k])
+        threshold_df[k] = (
+            fdr_diff.where(fdr_diff > 0)
+                    .apply(lambda col: col.first_valid_index())
+                    .fillna(very_high_value)
+                    .astype(np.integer)
+        )
+        # q-values
+        # bear in mind some issues with lots of NaNs and Infs after
+        # such a brave operation ...
+        qvalues[k] = rcs_Poisson[k] / rcs_hist[k]
+
+    return threshold_df, qvalues
 
 
 def thresholding_step(centroids):
