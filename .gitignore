@@ -1,5 +1,6 @@
 # Vim's cache
 *.un~
+
 # Byte-compiled / optimized / DLL files
 __pycache__
 cooltools/__pycache__
@@ -92,3 +93,5 @@ ENV/
 
 # Rope project settings
 .ropeproject
+
+tmp/

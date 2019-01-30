@@ -11,7 +11,7 @@ import dask.array as da
 import dask
 
 from cooler.tools import split, partition
-from cooler.contrib.dask import daskify
+from cooler.sandbox.dask import read_table
 import cooler
 import bioframe
 from .lib import assign_supports, numutils
@@ -315,7 +315,7 @@ def cis_expected(clr, regions, field='balanced', chunksize=1000000,
 
     """
     if use_dask:
-        pixels = daskify(clr.filename, clr.root + '/pixels', chunksize=chunksize)
+        pixels = read_table(clr.uri + '/pixels', chunksize=chunksize)
     else:
         pixels = clr.pixels()[:]
     pixels = cooler.annotate(pixels, clr.bins(), replace=False)
