@@ -297,7 +297,7 @@ def cooler_cis_eig(
         )
 
     ignore_diags = (
-        clr._load_attrs('/bins/weight')['ignore_diags']
+        clr._load_attrs('bins/weight')['ignore_diags']
         if ignore_diags is None
         else ignore_diags)
 
