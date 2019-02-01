@@ -835,17 +835,32 @@ def score_tile(tile_cij, clr, cis_exp, exp_v_name, bal_v_name, kernels,
     # so, selecting inside band and nNaNs compliant results:
     # ( drop dropping index maybe ??? ) ...
     res_df = result[is_inside_band & does_comply_nans].reset_index(drop=True)
-    ########################################################################
-    # consider retiring Poisson testing from here, in case we
-    # stick with l-chunking or opposite - add histogramming business here(!)
-    ########################################################################
-    # do Poisson tests:
-    get_pval = lambda la_exp : 1.0 - poisson.cdf(res_df["obs.raw"], la_exp)
-    for k in kernels:
-        res_df["la_exp."+k+".pval"] = get_pval( res_df["la_exp."+k+".value"] )
-
-    # annotate and return
-    return cooler.annotate(res_df.reset_index(drop=True), clr.bins()[:])
+    # #######################################################################
+    # # the following should be rewritten such that we return
+    # # opnly bare minimum number of columns per chunk - i.e. annotating is too heavy
+    # # to be performed here ...
+    # #
+    # # I'll do it here - switch off annotation, it'll break "extraction" and other
+    # # downstream stuff - but we'll fix it afterwards ...
+    # #
+    # ########################################################################
+    # ########################################################################
+    # # consider retiring Poisson testing from here, in case we
+    # # stick with l-chunking or opposite - add histogramming business here(!)
+    # ########################################################################
+    # # do Poisson tests:
+    # get_pval = lambda la_exp : 1.0 - poisson.cdf(res_df["obs.raw"], la_exp)
+    # for k in kernels:
+    #     res_df["la_exp."+k+".pval"] = get_pval( res_df["la_exp."+k+".value"] )
+    # # annotate and return
+    # return cooler.annotate(res_df.reset_index(drop=True), clr.bins()[:])
+    #
+    # so return only bin_ids , observed-raw (rename to counts, by Nezar's suggestion)
+    # and a bunch of locally adjusted expected estimates - 1 per kernel -
+    # that's the bare minimum ...
+    return res_df[["bin1_id","bin2_id","obs.raw"]+ \
+                 ["la_exp."+k+".value" for k in kernels]] \
+                  .astype(dtype={"la_exp."+k+".value":'float16' for k in kernels})
 
 
 def histogram_scored_pixels(scored_df, kernels, ledges, verbose):
@@ -1009,6 +1024,12 @@ def extract_scored_pixels(scored_df, kernels, thresholds, ledges, verbose):
 def scoring_step(clr, expected, expected_name, tiles, kernels,
                  max_nans_tolerated, loci_separation_bins, output_path,
                  nproc, verbose):
+    """
+    Calculates locally adjusted expected
+    for each pixel in a designated area of
+    the heatmap and dumps it chunk by chunk
+    as an HDF table.
+    """
     if verbose:
         print("Preparing to convolve {} tiles:".format(len(tiles)))
 
@@ -1023,6 +1044,9 @@ def scoring_step(clr, expected, expected_name, tiles, kernels,
         kernels=kernels,
         nans_tolerated=max_nans_tolerated,
         band_to_cover=loci_separation_bins,
+        # do not calculate dynamic-donut criteria
+        # for now.
+        balance_factor=None,
         verbose=very_verbose)
 
     if nproc > 1:
@@ -1041,12 +1065,20 @@ def scoring_step(clr, expected, expected_name, tiles, kernels,
         # consider using
         # https://github.com/mirnylab/cooler/blob/9e72ee202b0ac6f9d93fd2444d6f94c524962769/cooler/tools.py#L59
         # here:
+        ###########################################
+        #
+        # this is to be rewritten using cooler output
+        # as in https://github.com/mirnylab/cooltools/issues/51#issuecomment-458664781
+        #
+        ###########################################
         chunks = map_(job, tiles, **map_kwargs)
         append = False
         for chunk in chunks:
             chunk.to_hdf(output_path,
                          key='results',
                          format='table',
+                         complevel=9,
+                         complib="blosc:snappy",
                          append=append)
             append = True
     finally:
