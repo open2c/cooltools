@@ -673,7 +673,8 @@ def get_adjusted_expected_tile_some_nans(origin,
     # aggregated over all kernels ...
     #####################################
     peaks_df["exp.raw"] = E_raw.flatten()
-    peaks_df["obs.raw"] = O_raw.flatten()
+    # obs.raw -> count
+    peaks_df["count"] = O_raw.flatten()
 
     # TO BE REFACTORED/deprecated ...
     # compatibility with legacy API is completely BROKEN
@@ -858,9 +859,14 @@ def score_tile(tile_cij, clr, cis_exp, exp_v_name, bal_v_name, kernels,
     # so return only bin_ids , observed-raw (rename to counts, by Nezar's suggestion)
     # and a bunch of locally adjusted expected estimates - 1 per kernel -
     # that's the bare minimum ...
-    return res_df[["bin1_id","bin2_id","obs.raw"]+ \
+    #
+    # per Nezar's suggestion
+    # rename obs.raw -> count
+    # this would break A LOT of downstream stuff - but let it be ...
+    #
+    return res_df[["bin1_id","bin2_id","count"]+ \
                  ["la_exp."+k+".value" for k in kernels]] \
-                  .astype(dtype={"la_exp."+k+".value":'float16' for k in kernels})
+                  .astype(dtype={"la_exp."+k+".value":'float64' for k in kernels})
 
 
 def histogram_scored_pixels(scored_df, kernels, ledges, verbose):
@@ -1023,7 +1029,7 @@ def extract_scored_pixels(scored_df, kernels, thresholds, ledges, verbose):
 
 def scoring_step(clr, expected, expected_name, tiles, kernels,
                  max_nans_tolerated, loci_separation_bins, output_path,
-                 nproc, verbose):
+                 nproc, output_mode, verbose):
     """
     Calculates locally adjusted expected
     for each pixel in a designated area of
@@ -1065,22 +1071,56 @@ def scoring_step(clr, expected, expected_name, tiles, kernels,
         # consider using
         # https://github.com/mirnylab/cooler/blob/9e72ee202b0ac6f9d93fd2444d6f94c524962769/cooler/tools.py#L59
         # here:
+        chunks = map_(job, tiles, **map_kwargs)
         ###########################################
         #
         # this is to be rewritten using cooler output
         # as in https://github.com/mirnylab/cooltools/issues/51#issuecomment-458664781
         #
         ###########################################
-        chunks = map_(job, tiles, **map_kwargs)
-        append = False
-        for chunk in chunks:
-            chunk.to_hdf(output_path,
-                         key='results',
-                         format='table',
-                         complevel=9,
-                         complib="blosc:snappy",
-                         append=append)
-            append = True
+        if output_mode == "hdf":
+            print("pandas hdf output ...")
+            append = False
+            for chunk in chunks:
+                chunk.to_hdf(output_path,
+                             key='results',
+                             format='table',
+                             complevel=9,
+                             complib="blosc:snappy",
+                             append=append)
+                append = True
+        # ###########################################
+        # #
+        # # cooler as an output for the dump:
+        # #
+        # ###########################################
+        if output_mode == "cooler":
+            print("cooler output ...")
+            columns = ["la_exp."+k+".value" for k in kernels]
+            # extra columns would be float64 by default ...
+            # dtypes = {'la_exp.donut.value': np.float64, ...}
+            cooler.create_cooler(output_path,
+                                clr.bins()[:],
+                                chunks, # iterator of pixel chunks ...
+                                columns=columns,
+                                # # should be float64 by default:
+                                # dtypes=dtypes,
+                                # to be included later ?!
+                                # # metadata : dict, optional
+                                # # assembly : str, optional
+                                ordered = True, # is it really ? should be
+                                symmetric_upper = True, # is it really ? should be
+                                mode = 'w')
+        # ###########################################
+        # #
+        # # parquet  - how do I use it with my chunks ?!
+        # #
+        # ###########################################
+        if output_mode == "parquet":
+            print("parquet output ...")
+            raise NotImplementedError("To be implemented")
+        else:
+            raise ValueError("{} mode is not supported".format(output_mode))
     finally:
         if nproc > 1:
             pool.close()

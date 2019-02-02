@@ -96,6 +96,11 @@ from .. import dotfinder
     help="Specify output file name where to store"
          " the results of dot-calling, in a BEDPE-like format.",
     type=str)
+@click.option(
+    "--score-dump-mode",
+    help="Specify file format for the dump of convolved scores"
+         " now it could be 'cooler' or 'hdf', 'parquet' not ready yet.",
+    type=str)
 def call_dots(
         cool_path,
         expected_path,
@@ -109,7 +114,8 @@ def call_dots(
         verbose,
         output_scores,
         output_hists,
-        output_calls):
+        output_calls,
+        score_dump_mode):
     """
     Call dots on a Hi-C heatmap that are not larger than max_loci_separation.
 
@@ -237,101 +243,104 @@ def call_dots(
     ######################
     dotfinder.scoring_step(clr, expected, expected_name, tiles, kernels,
                  max_nans_tolerated, loci_separation_bins, output_scores,
-                 nproc, verbose)
-    ###############################
-    # this is just a scoring step that dumps kernel-scores
-    # real calculations happen below ...
-    ###############################
-    # add a switch here, to prevent downstream from happening
-    # as the purpose of this branch is to break a dot-caller
-    # into 3 independent steps
+                 nproc, score_dump_mode, verbose)
 
-    
-    
-    # 1. Calculate genome-wide histograms of scores.
-    # creating logspace l(ambda)bins with base=2^(1/3), for lambda-chunking
-    # the first bin must be (-inf,1]
-    # the last bin must be (2^(HiCCUPS_W1_MAX_INDX/3),+inf)
-    nlchunks = dotfinder.HiCCUPS_W1_MAX_INDX
-    base = 2 ** (1/3)
-    ledges = np.concatenate((
-        [-np.inf],
-        np.logspace(0, nlchunks - 1, num=nlchunks, base=base, dtype=np.float),
-        [np.inf]))
-    # gw_hist for each kernel contains a histogram of raw pixel intensities
-    # for every lambda-chunk (one per column) in a row-wise order, i.e.
-    # each column is a histogram for each chunk ...
-    gw_hist = dotfinder.scoring_and_histogramming_step(
-        clr, expected, expected_name,
-        tiles, kernels, ledges, max_nans_tolerated,
-        loci_separation_bins, None, nproc, verbose)
+    # the following should be uncommented to proceed with the actual dot-calling ...
 
-    if output_scores is not None:
-        for k in kernels:
-            gw_hist[k].to_csv(
-                "{}.{}.hist.txt".format(output_scores, k),
-                sep='\t',
-                header=True,
-                index=False,
-                compression=None)
+    # ###############################
+    # # this is just a scoring step that dumps kernel-scores
+    # # real calculations happen below ...
+    # ###############################
+    # # add a switch here, to prevent downstream from happening
+    # # as the purpose of this branch is to break a dot-caller
+    # # into 3 independent steps
 
 
-    # 2. Determine the FDR thresholds.
-    # threshold_df : dict
-    #   each threshold_df[k] is a Series indexed by la_exp intervals
-    #   (IntervalIndex) and it is all we need to extract "good" pixels from
-    #   each chunk ...
-    # qvalues : dict
-    #   A dictionary with keys being kernel names and values pandas.DataFrames
-    #   storing q-values: each column corresponds to a lambda-chunk,
-    #   while rows correspond to observed pixels values.
-    threshold_df, qvalues = dotfinder.determine_thresholds(
-        kernels, ledges, gw_hist, fdr)
+    # # 1. Calculate genome-wide histograms of scores.
+    # # creating logspace l(ambda)bins with base=2^(1/3), for lambda-chunking
+    # # the first bin must be (-inf,1]
+    # # the last bin must be (2^(HiCCUPS_W1_MAX_INDX/3),+inf)
+    # nlchunks = dotfinder.HiCCUPS_W1_MAX_INDX
+    # base = 2 ** (1/3)
+    # ledges = np.concatenate((
+    #     [-np.inf],
+    #     np.logspace(0, nlchunks - 1, num=nlchunks, base=base, dtype=np.float),
+    #     [np.inf]))
+    # # gw_hist for each kernel contains a histogram of raw pixel intensities
+    # # for every lambda-chunk (one per column) in a row-wise order, i.e.
+    # # each column is a histogram for each chunk ...
+    # gw_hist = dotfinder.scoring_and_histogramming_step(
+    #     clr, expected, expected_name,
+    #     tiles, kernels, ledges, max_nans_tolerated,
+    #     loci_separation_bins, None, nproc, verbose)
+
+    # if output_scores is not None:
+    #     for k in kernels:
+    #         gw_hist[k].to_csv(
+    #             "{}.{}.hist.txt".format(output_scores, k),
+    #             sep='\t',
+    #             header=True,
+    #             index=False,
+    #             compression=None)
 
 
-    # 3. Filter using FDR thresholds calculated in the histogramming step
-    filtered_pix = dotfinder.scoring_and_extraction_step(
-        clr, expected, expected_name,
-        tiles, kernels, ledges, threshold_df, max_nans_tolerated,
-        balance_factor, loci_separation_bins, output_calls,
-        nproc, verbose)
-    # Extract q-values using l-chunks and IntervalIndex.
-    # we'll do it in an ugly but workign fashion, by simply
-    # iteration over pairs of obs, la_exp and extracting needed qvals
-    # one after another ...
-    if verbose:
-        print("Extracting q-values ...")
-    for k in kernels:
-        x = "la_exp." + k
-        filtered_pix[x  + ".qval"] = [
-            qvalues[k].loc[o, e] for o, e
-                in filtered_pix[["obs.raw", x + ".value"]].itertuples(index=False)
-        ]
+
+    # # 2. Determine the FDR thresholds.
+    # # threshold_df : dict
+    # #   each threshold_df[k] is a Series indexed by la_exp intervals
+    # #   (IntervalIndex) and it is all we need to extract "good" pixels from
+    # #   each chunk ...
+    # # qvalues : dict
+    # #   A dictionary with keys being kernel names and values pandas.DataFrames
+    # #   storing q-values: each column corresponds to a lambda-chunk,
+    # #   while rows correspond to observed pixels values.
+    # threshold_df, qvalues = dotfinder.determine_thresholds(
+    #     kernels, ledges, gw_hist, fdr)
 
 
-    # 4. Post-processing
-    if verbose:
-        print("Subsequent clustering and thresholding steps are not production-ready")
+    # # 3. Filter using FDR thresholds calculated in the histogramming step
+    # filtered_pix = dotfinder.scoring_and_extraction_step(
+    #     clr, expected, expected_name,
+    #     tiles, kernels, ledges, threshold_df, max_nans_tolerated,
+    #     balance_factor, loci_separation_bins, output_calls,
+    #     nproc, verbose)
+    # # Extract q-values using l-chunks and IntervalIndex.
+    # # we'll do it in an ugly but workign fashion, by simply
+    # # iteration over pairs of obs, la_exp and extracting needed qvals
+    # # one after another ...
+    # if verbose:
+    #     print("Extracting q-values ...")
+    # for k in kernels:
+    #     x = "la_exp." + k
+    #     filtered_pix[x  + ".qval"] = [
+    #         qvalues[k].loc[o, e] for o, e
+    #             in filtered_pix[["obs.raw", x + ".value"]].itertuples(index=False)
+    #     ]
 
-    # 4a. clustering
-    centroids = dotfinder.clustering_step_local(
-        filtered_pix, expected_chroms, dots_clustering_radius, verbose)
 
-    # 4b. filter by enrichment and qval
-    out = dotfinder.thresholding_step(centroids)
+    # # 4. Post-processing
+    # if verbose:
+    #     print("Subsequent clustering and thresholding steps are not production-ready")
+
+    # # 4a. clustering
+    # centroids = dotfinder.clustering_step_local(
+    #     filtered_pix, expected_chroms, dots_clustering_radius, verbose)
+
+    # # 4b. filter by enrichment and qval
+    # out = dotfinder.thresholding_step(centroids)
 
 
-    # Final result
-    if output_calls is not None:
+    # # Final result
+    # if output_calls is not None:
 
-        final_output = op.join(
-            op.dirname(output_calls),
-            "final_" + op.basename(output_calls))
+    #     final_output = op.join(
+    #         op.dirname(output_calls),
+    #         "final_" + op.basename(output_calls))
 
-        out.to_csv(
-            final_output,
-            sep='\t',
-            header=True,
-            index=False,
-            compression=None)
+    #     out.to_csv(
+    #         final_output,
+    #         sep='\t',
+    #         header=True,
+    #         index=False,
+    #         compression=None)
 
