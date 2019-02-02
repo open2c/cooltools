@@ -1094,7 +1094,7 @@ def scoring_step(clr, expected, expected_name, tiles, kernels,
         # # cooler as an output for the dump:
         # #
         # ###########################################
-        if output_mode == "cooler":
+        elif output_mode == "cooler":
             print("cooler output ...")
             columns = ["la_exp."+k+".value" for k in kernels]
             # extra columns would be float64 by default ...
@@ -1116,7 +1116,7 @@ def scoring_step(clr, expected, expected_name, tiles, kernels,
         # # parquet  - how do I use it with my chunks ?!
         # #
         # ###########################################
-        if output_mode == "parquet":
+        elif output_mode == "parquet":
             print("parquet output ...")
             raise NotImplementedError("To be implemented")
         else:
