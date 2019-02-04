@@ -1098,7 +1098,7 @@ def scoring_step(clr, expected, expected_name, tiles, kernels,
         # ###########################################
         elif output_mode == "cooler":
             print("cooler output ...")
-            columns = ["la_exp."+k+".value" for k in kernels]
+            columns = ['count',] + ["la_exp."+k+".value" for k in kernels]
             # extra columns would be float64 by default ...
             # dtypes = {'la_exp.donut.value': np.float64, ...}
             cooler.create_cooler(output_path,
@@ -1110,7 +1110,7 @@ def scoring_step(clr, expected, expected_name, tiles, kernels,
                                 # to be included later ?!
                                 # # metadata : dict, optional
                                 # # assembly : str, optional
-                                ordered = True, # is it really ? should be
+                                ordered = False, # is it really ? should be
                                 symmetric_upper = True, # is it really ? should be
                                 mode = 'w')
         # ###########################################
