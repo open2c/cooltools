@@ -32,6 +32,38 @@ HiCCUPS_W1_MAX_INDX = 46
 HiCCUPS_W2_MAX_INDX = 10000
 
 
+def buffer_df_chunks(chunks, size=25000000):
+    """
+    A buffer that consumes "small" chunks
+    and yields larger "chunks" of an
+    approximate size "size".
+
+    Following @nvictus:
+    https://github.com/mirnylab/cooltools/issues/51#issuecomment-460091252
+
+    """
+    buf = []
+    n = 0
+    for chunk in chunks:
+        # accumulate chunks until size
+        # is reached:
+        n += len(chunk)
+        buf.append(chunk)
+        if n > size:
+            print("large chunk of size {} is ready, made up of {} chunks".format(n,len(buf)))
+            yield pd.concat(buf, axis=0)
+            print("cleaning buffers ...")
+            # reset buffer and counter:
+            buf = []
+            n = 0
+    #  yield the remainder of the buffer:
+    if len(buf):
+        print("LAST chunk of size {} is ready, made up of {} chunks".format(n,len(buf)))
+        yield pd.concat(buf, axis=0)
+        print("last guy shipped ...")
+
+
+
 def get_qvals(pvals):
     '''
     B&H FDR control procedure: sort a given array of N p-values, determine their
@@ -1098,19 +1130,25 @@ def scoring_step(clr, expected, expected_name, tiles, kernels,
         # ###########################################
         elif output_mode == "cooler":
             print("cooler output ...")
-            columns = ['count',] + ["la_exp."+k+".value" for k in kernels]
-            # extra columns would be float64 by default ...
-            # dtypes = {'la_exp.donut.value': np.float64, ...}
+            # "create_cooler" API needs more consistency:
+            # https://github.com/mirnylab/cooler/issues/149
+            #  manually describing "data"-columns (except for bin_ids).
+            columns = ['count',]+["la_exp."+k+".value" for k in kernels]
+            # # dtype them just in case as well:
+            # dtypes = {"la_exp."+k+".value":np.float64 for k in kernels}
+            # dtypes["count"] = np.int32
+            # create_cooler using buffered chunks iterator, to speed up
+            # cooler merge, as suggested by @nvictus
             cooler.create_cooler(output_path,
                                 clr.bins()[:],
-                                chunks, # iterator of pixel chunks ...
+                                # iterator of larger pixel chunks ...
+                                buffer_df_chunks(chunks),
                                 columns=columns,
-                                # # should be float64 by default:
                                 # dtypes=dtypes,
-                                # to be included later ?!
-                                # # metadata : dict, optional
-                                # # assembly : str, optional
-                                ordered = False, # is it really ? should be
+                                # # to be included later, copy from original clr?
+                                # metadata : dict, optional
+                                # assembly : str, optional
+                                ordered = False, # not ordered for sure
                                 symmetric_upper = True, # is it really ? should be
                                 mode = 'w')
         # ###########################################

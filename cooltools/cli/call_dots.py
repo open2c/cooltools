@@ -45,7 +45,10 @@ from .. import dotfinder
     )
 @click.option(
     '--max-nans-tolerated',
-    help='Maximum number of NaNs tolerated in a footprint of every used filter.',
+    help='Maximum number of NaNs tolerated in a footprint of every used filter.'
+         ' Must be controlled with caution, as large max-nans-tolerated, might lead to'
+         ' pixels scored in the padding area of the tiles to "penetrate" to the list'
+         ' of scored pixels for the statistical testing. [max-nans-tolerated <= 2*w ]',
     type=int,
     default=1,
     show_default=True,
