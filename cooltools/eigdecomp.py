@@ -297,7 +297,7 @@ def cooler_cis_eig(
         )
 
     ignore_diags = (
-        clr._load_attrs('/bins/weight')['ignore_diags']
+        clr._load_attrs('bins/weight')['ignore_diags']
         if ignore_diags is None
         else ignore_diags)
 
@@ -389,4 +389,8 @@ def cooler_trans_eig(
     for i, eigvec in enumerate(eigvecs):
         eigvec_table['E{}'.format(i+1)] = eigvec
 
+    eigvals = pd.DataFrame(
+        data=np.atleast_2d(eigvals),
+        columns=['eigval'+str(i+1) for i in range(n_eigs)],
+    )
     return eigvals, eigvec_table

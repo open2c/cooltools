@@ -79,7 +79,7 @@ def test_adjusted_expected_tile_some_nans_and_diag_tiling():
         res = dotfinder.get_adjusted_expected_tile_some_nans(origin = origin,
                                                  observed = observed,
                                                  expected = expected,
-                                                 bal_weight = ice_weight,
+                                                 bal_weights = ice_weight,
                                                  kernels = {"donut":kernel,
                                                          "footprint":np.ones_like(kernel)} )
         is_inside_band = (res["bin1_id"] > (res["bin2_id"]-band_1_idx))
@@ -142,7 +142,7 @@ def test_adjusted_expected_tile_some_nans_and_square_tiling():
         res = dotfinder.get_adjusted_expected_tile_some_nans(origin = origin,
                                                  observed = observed,
                                                  expected = expected,
-                                                 bal_weight = (ice_weight_i, ice_weight_j),
+                                                 bal_weights = (ice_weight_i, ice_weight_j),
                                                  kernels = {"donut":kernel,
                                                          "footprint":np.ones_like(kernel)},
                                                  # nan_threshold=1,
@@ -228,7 +228,7 @@ def test_adjusted_expected_tile_some_nans_and_square_tiling_diag_band():
             res = dotfinder.get_adjusted_expected_tile_some_nans(origin = origin,
                                                      observed = observed,
                                                      expected = expected,
-                                                     bal_weight = (ice_weight_i, ice_weight_j),
+                                                     bal_weights = (ice_weight_i, ice_weight_j),
                                                      kernels = {"donut":kernel,
                                                              "footprint":np.ones_like(kernel)},
                                                      # nan_threshold=1,

@@ -46,7 +46,7 @@ install_requires = [
     'dask',
     'cytoolz',
     'numba',
-    'click',
+    'click>=7',
     'cooler>=0.7',
     'bioframe',
     'scikit-learn',
