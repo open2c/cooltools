@@ -1174,6 +1174,159 @@ def scoring_step(clr, expected, expected_name, tiles, kernels,
             pool.close()
 
 
+
+def histogramming_step(scores_input, input_mode, kernels, ledges, output_path=None, nproc=1, verbose=False):
+    """
+    This is an implementation of the 1st step of lambda-chunking - histogramming.
+    This function expects a BEDPE-style dataframe with the scores to be
+    hitogrammed.
+
+    we would need a handle or a file name for the dataframe, list of columns to use
+
+    Parameters
+    ----------
+    scores_input : file name or handle
+        File name or handle of the file with the DataFrame of scores.
+        Only parquet files are supported for now.
+    input_mode : str
+        What type of file is provided as input: parquet, cooler, hdf, etc.
+        Only parquet is supported at the moment.
+    kernels : dict
+        A dictionary with keys being kernel names and values pandas.Series
+        indexed with Intervals defined by 'ledges' boundaries and storing FDR
+        thresholds for observed values.
+        [We should replace it with a simple set of column names  -
+        to be histogrammed, or column positions  - make it more generic]
+    ledges : ndarray
+        An ndarray with bin lambda-edges for groupping loc. adj. expecteds,
+        i.e., classifying statistical hypothesis into lambda-classes.
+        Left-most bin (-inf, 1], and right-most one (value,+inf].
+    output_path : file name or handle
+        Where to store an output - i.e. a 2D histogram.
+    nproc : int
+        Number of workerks to split processing with.
+        [reconsider that - as the parquet reading is a bit strange
+        in a way it utilizes the cores ...]
+    verbose : bool
+        Enable verbose output.
+
+    Returns
+    -------
+    final_hist : pandas.DataFrame
+        Filtered DataFrame of pixels extracted applying FDR thresholds.
+
+    Notes
+    -----
+    This is just an attempt to implement HiCCUPS-like lambda-chunking.
+    """
+    if verbose:
+        print("Preparing to histogram the scores ...")
+
+    # add very_verbose to supress output from convolution of every tile
+    very_verbose = False
+        
+    if input_mode == "parquet":
+        print("parquet input ...")
+        # quick attempt - to be updated later
+        # ask @nvictus for best practises
+        #  wrap it in try statement at least ...
+        from pyarrow.parquet import ParquetFile
+        # check if scored_input is of str instance
+        # or a file handle or whatever ...
+        pf = ParquetFile(scores_input)
+        # read number of groups
+        # still don't know how to control that
+        # maybe:
+        # "formats.to_parquet(... row_group_size = chunksize...)" ?!?
+        tiles = range(pf.num_row_groups)
+        # gg.read_row_group(i, columns=None,
+        #                    nthreads=None, use_threads=True,
+        #                    use_pandas_metadata=False)
+        extract_df = lambda idx: pf.read_row_group(idx, use_threads=True).to_pandas()
+    else:
+        raise ValueError("{} mode is not supported".format(input_mode))
+
+
+    # to hist per scored chunk:
+    to_hist = partial(
+        histogram_scored_pixels,
+        kernels=kernels,
+        ledges=ledges,
+        verbose=very_verbose)
+
+    # composing/piping scoring and histogramming
+    # together :
+    job = lambda tile : to_hist(extract_df(tile))
+
+    # copy paste from @nvictus modified 'scoring_step':
+    if nproc > 1:
+        raise  NotImplementedError("reading parquet in chunks using multiprocess breaks!")
+        # pool = mp.Pool(nproc)
+        # map_ = pool.imap
+        # map_kwargs = dict(chunksize=int(np.ceil(len(tiles)/nproc)))
+        # if verbose:
+        #     print("creating a Pool of {} workers to tackle {} tiles".format(
+        #             nproc, len(tiles)))
+    else:
+        map_ = map
+        if verbose:
+            print("fallback to serial implementation.")
+        map_kwargs = {}
+    try:
+        # consider using
+        # https://github.com/mirnylab/cooler/blob/9e72ee202b0ac6f9d93fd2444d6f94c524962769/cooler/tools.py#L59
+        # here:
+        hchunks = map_(job, tiles, **map_kwargs)
+        # hchunks TO BE ACCUMULATED
+        # hopefully 'hchunks' would stay in memory
+        # until we would get a chance to accumulate them:
+    finally:
+        if nproc > 1:
+            pool.close()
+    #
+    # now we need to combine/sum all of the histograms
+    # for different kernels:
+    #
+    # assuming we know "kernels"
+    # this is very ugly, but ok
+    # for the draft lambda-chunking
+    # lambda version of lambda-chunking:
+    def _sum_hists(hx,hy):
+        # perform a DataFrame summation
+        # for every value of the dictionary:
+        hxy = {}
+        for k in kernels:
+            hxy[k] = hx[k].add(hy[k],fill_value=0).astype(np.integer)
+        # returning the sum:
+        return hxy
+
+    # ######################################################
+    # this approach is tested and at the very least
+    # number of pixels in a dump list matches
+    # with the .sum().sum() of the histogram
+    # both for 10kb and 5kb,
+    # thus we should consider this as a reference
+    # implementation, albeit not a very efficient one ...
+    # ######################################################
+    final_hist = reduce(_sum_hists, hchunks)
+    # we have to make sure there is nothing in the
+    # top bin, i.e., there are no l.a. expecteds > base^(len(ledges)-1)
+    for k in kernels:
+        last_la_exp_bin = final_hist[k].columns[-1]
+        last_la_exp_vals = final_hist[k].iloc[:,-1]
+        # checking the top bin:
+        assert (last_la_exp_vals.sum()==0), \
+                "There are la_exp.{}.value in {}, please check the histogram" \
+                                                    .format(k,last_la_exp_bin)
+        # drop that last column/bin (last_edge, +inf]:
+        final_hist[k] = final_hist[k].drop(columns=last_la_exp_bin)
+        # consider dropping all of the columns that have zero .sum()
+    # returning filtered histogram
+    return final_hist
+
+
+
+
 def scoring_and_histogramming_step(clr, expected, expected_name, tiles, kernels,
                                    ledges, max_nans_tolerated, loci_separation_bins,
                                    output_path, nproc, verbose):
