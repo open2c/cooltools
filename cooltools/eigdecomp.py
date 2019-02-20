@@ -288,6 +288,19 @@ def cooler_cis_eig(
         clip_percentile = 99.9,
         sort_metric = None):
 
+    # Perform consitency checks.
+    if regions is None:
+        chroms_not_in_clr = [
+            chrom for chrom in bins['chrom'].unique()
+            if chrom not in clr.chromsizes]
+
+        if len(chroms_not_in_clr)>0:
+            raise ValueError(
+                'The following chromosomes are found in the bin table, but not '
+                'in the cooler: '+str(chroms_not_in_clr)
+            )
+
+
     if regions is None:
         regions = (
             [(chrom, 0, clr.chromsizes[chrom]) 
