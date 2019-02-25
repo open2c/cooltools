@@ -104,6 +104,15 @@ from .. import dotfinder
     help="Specify file format for the dump of convolved scores"
          " now it could be 'cooler' or 'hdf', 'parquet' not ready yet.",
     type=str)
+@click.option(
+    "--temp-dir",
+    help="Create temporary files in specified directory.",
+    type=str)
+@click.option(
+    "--no-delete-temp",
+    help="Do not delete temporary files when finished.",
+    is_flag=True,
+    default=False)
 def call_dots(
         cool_path,
         expected_path,
@@ -118,7 +127,9 @@ def call_dots(
         output_scores,
         output_hists,
         output_calls,
-        score_dump_mode):
+        score_dump_mode,
+        temp_dir,
+        no_delete_temp):
     """
     Call dots on a Hi-C heatmap that are not larger than max_loci_separation.
 
@@ -244,11 +255,13 @@ def call_dots(
     # 0. scoring only yields a HUGE list of both
     # good and bad pixels (dot-like, and not)
     ######################
-    dotfinder.scoring_step(clr, expected, expected_name, tiles, kernels,
-                 max_nans_tolerated, loci_separation_bins, output_scores,
-                 nproc, score_dump_mode, verbose)
+    # Sort pass
+    tmp_scores = tempfile.NamedTemporaryFile(
+        suffix='.parquet',
+        delete= not no_delete_temp,
+        dir=temp_dir)
 
-    # the following should be uncommented to proceed with the actual dot-calling ...
+
 
     # ###############################
     # # this is just a scoring step that dumps kernel-scores
@@ -257,6 +270,31 @@ def call_dots(
     # # add a switch here, to prevent downstream from happening
     # # as the purpose of this branch is to break a dot-caller
     # # into 3 independent steps
+    dotfinder.scoring_step(clr,
+                        expected,
+                        expected_name,
+                        tiles,
+                        kernels,
+                        max_nans_tolerated,
+                        loci_separation_bins,
+                        tmp_scores,
+                        nproc,
+                        score_dump_mode,
+                        verbose)
+
+    # # little idea here:
+    # # what if we would assign ledges-indices
+    # # here on the fly - in the "tmp_scores"
+    # # would that allow us to speed up processing
+    # # downstream ?
+    # # that's more like storing "la_exp."+k+".index"
+    # # instead of "la_exp."+k+".value" ...
+    # # would that help ?
+    # # are we going to use "la_exp."+k+".value" elsewhere ?
+    # # well sort of in a cooler-dump - that's the whole purpose
+    # # - to see the "la_exp."+k+".value" heatmap, but other than
+    # # that ?!
+    # # [ just consider it ]
 
 
     # # 1. Calculate genome-wide histograms of scores.
@@ -286,19 +324,27 @@ def call_dots(
     #             index=False,
     #             compression=None)
 
+    gw_hist = dotfinder.histogramming_step(tmp_scores,
+                                        score_dump_mode,
+                                        kernels,
+                                        ledges,
+                                        output_path=None,
+                                        nproc=1,
+                                        verbose=False)
 
 
-    # # 2. Determine the FDR thresholds.
-    # # threshold_df : dict
-    # #   each threshold_df[k] is a Series indexed by la_exp intervals
-    # #   (IntervalIndex) and it is all we need to extract "good" pixels from
-    # #   each chunk ...
-    # # qvalues : dict
-    # #   A dictionary with keys being kernel names and values pandas.DataFrames
-    # #   storing q-values: each column corresponds to a lambda-chunk,
-    # #   while rows correspond to observed pixels values.
-    # threshold_df, qvalues = dotfinder.determine_thresholds(
-    #     kernels, ledges, gw_hist, fdr)
+
+    # 2. Determine the FDR thresholds.
+    # threshold_df : dict
+    #   each threshold_df[k] is a Series indexed by la_exp intervals
+    #   (IntervalIndex) and it is all we need to extract "good" pixels from
+    #   each chunk ...
+    # qvalues : dict
+    #   A dictionary with keys being kernel names and values pandas.DataFrames
+    #   storing q-values: each column corresponds to a lambda-chunk,
+    #   while rows correspond to observed pixels values.
+    threshold_df, qvalues = dotfinder.determine_thresholds(
+        kernels, ledges, gw_hist, fdr)
 
 
     # # 3. Filter using FDR thresholds calculated in the histogramming step
@@ -319,6 +365,16 @@ def call_dots(
     #         qvalues[k].loc[o, e] for o, e
     #             in filtered_pix[["obs.raw", x + ".value"]].itertuples(index=False)
     #     ]
+
+
+
+
+    # don't forget to close the file handle
+    # so that it would be deleted if needed.
+    tmp_scores.close()
+
+
+
 
 
     # # 4. Post-processing
@@ -346,4 +402,5 @@ def call_dots(
     #         header=True,
     #         index=False,
     #         compression=None)
+
 
