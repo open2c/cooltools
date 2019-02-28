@@ -63,6 +63,46 @@ def buffer_df_chunks(chunks, size=25000000):
         print("last guy shipped ...")
 
 
+def recommend_kernel_params(binsize):
+    """
+    Recommned kernel parameters for the
+    standard convolution kernels, 'donut', etc
+    same as in Rao et al 2014
+
+    Parameters
+    ----------
+    binsize : integer
+        binsize of the provided cooler
+
+    Returns
+    -------
+    (w,p) : (integer, integer)
+        tuple of the outer and inner kernel sizes
+    """
+    # kernel parameters depend on the cooler resolution
+    # TODO: rename w, p to wid, pix probably, or _w, _p to avoid naming conflicts
+    if binsize > 28000:
+        # > 30 kb - is probably too much ...
+        raise ValueError(
+            "Provided cooler has resolution {} bases, "
+            "which is too coarse for analysis.".format(binsize))
+    elif binsize >= 18000:
+        # ~ 20-25 kb:
+        w, p = 3, 1
+    elif binsize >= 8000:
+        # ~ 10 kb
+        w, p = 5, 2
+    elif binsize >= 4000:
+        # ~5 kb
+        w, p = 7, 4
+    else:
+        # < 5 kb - is probably too fine ...
+        raise ValueError(
+            "Provided cooler has resolution {} bases, "
+            "which is too fine for analysis.".format(binsize))
+    # return the results:
+    return w,p
+
 
 def get_qvals(pvals):
     '''

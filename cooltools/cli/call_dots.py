@@ -62,6 +62,18 @@ from .. import dotfinder
     show_default=True,
     )
 @click.option(
+    '--kernel-width',
+    help="Outer half-width of the convolution kernel in pixels"
+         " e.g. outer size (w) of the 'donut' kernel, with the 2*w+1"
+         " overall footprint of the 'donut'.",
+    type=int)
+@click.option(
+    '--kernel-peak',
+    help="Inner half-width of the convolution kernel in pixels"
+         " e.g. inner size (p) of the 'donut' kernel, with the 2*p+1"
+         " overall footprint of the punch-hole.",
+    type=int)
+@click.option(
     "--fdr",
     help="False discovery rate (FDR) to control in the multiple"
          " hypothesis testing BH-FDR procedure.",
@@ -121,6 +133,8 @@ def call_dots(
         max_loci_separation,
         max_nans_tolerated,
         tile_size,
+        kernel_width,
+        kernel_peak,
         fdr,
         dots_clustering_radius,
         verbose,
@@ -211,33 +225,24 @@ def call_dots(
     # 'upright' is a symmetrical inversion of "lowleft", not needed.
     ktypes = ['donut', 'vertical', 'horizontal', 'lowleft']
 
-    # kernel parameters depend on the cooler resolution
-    # TODO: rename w, p to wid, pix probably, or _w, _p to avoid naming conflicts
-    if binsize > 28000:
-        # > 30 kb - is probably too much ...
-        raise ValueError(
-            "Provided cooler '{}' has resolution {} bases, "
-            "which is too coarse for analysis.".format(cool_path, binsize))
-    elif binsize >= 18000:
-        # ~ 20-25 kb:
-        w, p = 3, 1
-    elif binsize >= 8000:
-        # ~ 10 kb
-        w, p = 5, 2
-    elif binsize >= 4000:
-        # ~5 kb
-        w, p = 7, 4
+    if (kernel_width is None) or (kernel_peak is None):
+        w,p = dotfinder.recommend_kernel_params(binsize)
+        print( "Using kernel parameters w={}, p={} recommended for binsize {}".format(w,p,binsize) )
     else:
-        # < 5 kb - is probably too fine ...
-        raise ValueError(
-            "Provided cooler {} has resolution {} bases, "
-            "which is too fine for analysis.".format(cool_path, binsize))
+        w,p = kernel_width, kernel_peak
+        # add some sanity check for w,p:
+        assert w > p, "Wrong inner/outer kernel parameters w={}, p={}".format(w,p)
+        print( "Using kernel parameters w={}, p={} provided by user".format(w,p) )
 
+    # once kernel parameters are setup check max_nans_allowed
+    # to make sure kernel footprints overlaping 1 side with the
+    # NaNs filled row/column are not "allowed"
+    # this requires dynamic adjustment for the "shrinking donut"
+    assert max_nans_allowed <= 2*w, "Too many NaNs allowed!"
+    # may lead to scoring the same pixel twice, - i.e. duplicates.
+
+    # generate standard kernels - consider providing custom ones
     kernels = {k: dotfinder.get_kernel(w, p, k) for k in ktypes}
-
-    if verbose:
-        print("Kernels parameters are set as w,p={},{} "
-              "for the cooler with {} bp resolution.".format(w,p,binsize))
 
     # list of tile coordinate ranges
     tiles = list(
