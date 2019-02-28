@@ -1021,9 +1021,10 @@ def histogram_scored_pixels(scored_df, kernels, ledges, verbose):
         obs_hist = {}
         for lbin, grp_df in scored_df.groupby(lbins):
             # check if obs.raw is integer of spome kind (temporary):
-            assert np.issubdtype(grp_df["obs.raw"].dtype, np.integer)
+            # obs.raw -> count
+            assert np.issubdtype(grp_df["count"].dtype, np.integer)
             # perform bincounting ...
-            obs_hist[lbin] = pd.Series(np.bincount(grp_df["obs.raw"]))
+            obs_hist[lbin] = pd.Series(np.bincount(grp_df["count"]))
             # ACHTUNG! assigning directly to empty DF leads to data loss!
             # turn ndarray in Series for ease of handling, i.e.
             # assign a bunch of columns of different sizes to DataFrame.
@@ -1163,6 +1164,8 @@ def scoring_step(clr, expected, expected_name, tiles, kernels,
                              complib="blosc:snappy",
                              append=append)
                 append = True
+            # success
+            return 0
         # ###########################################
         # #
         # # cooler as an output for the dump:
@@ -1191,6 +1194,8 @@ def scoring_step(clr, expected, expected_name, tiles, kernels,
                                 ordered = False, # not ordered for sure
                                 symmetric_upper = True, # is it really ? should be
                                 mode = 'w')
+            # success
+            return 0
         # ###########################################
         # #
         # # parquet  - how do I use it with my chunks ?!
@@ -1207,6 +1212,16 @@ def scoring_step(clr, expected, expected_name, tiles, kernels,
                 # use_dictionary=True,
                 # version=2.0
                 )
+            # success
+            return 0
+        # ###########################################
+        # #
+        # # local - in memory copy of the dataframe (danger of RAM overuse)
+        # #
+        # ###########################################
+        elif output_mode == "local":
+            print("returning local copy of the dataframe ...")
+            return pd.concat(chunks)
         else:
             raise ValueError("{} mode is not supported".format(output_mode))
     finally:
