@@ -278,6 +278,7 @@ def call_dots(
     dotfinder.scoring_step(clr,
                         expected,
                         expected_name,
+                        "weight",
                         tiles,
                         kernels,
                         max_nans_tolerated,
@@ -288,7 +289,7 @@ def call_dots(
                         verbose)
 
     # # little idea here:
-    # # what if we would assign ledges-indices
+    # # what if we would assign ledges-indices (lambda-chunk index, basically)
     # # here on the fly - in the "tmp_scores"
     # # would that allow us to speed up processing
     # # downstream ?
@@ -376,7 +377,7 @@ def call_dots(
     # might break due to "sort_values (chrom1,chrom2,start1,start2)"
     # we need to do it in binids for as long as we can ...
     # cause it's faster that way !
-    significant_pixels = dotfinder.extraction_step(tmp_scores,
+    filtered_pixels = dotfinder.extraction_step(tmp_scores,
                                                 score_dump_mode,
                                                 kernels,
                                                 ledges,
@@ -392,33 +393,30 @@ def call_dots(
     tmp_scores.close()
 
 
+    # 4. Post-processing
+    if verbose:
+        print("Subsequent clustering and thresholding steps are not production-ready")
+
+    # 4a. clustering
+    centroids = dotfinder.clustering_step_local(
+        filtered_pixels, expected_chroms, dots_clustering_radius, verbose)
+
+    # 4b. filter by enrichment and qval
+    out = dotfinder.thresholding_step(centroids)
 
 
+    # Final result
+    if output_calls is not None:
 
-    # # 4. Post-processing
-    # if verbose:
-    #     print("Subsequent clustering and thresholding steps are not production-ready")
+        final_output = op.join(
+            op.dirname(output_calls),
+            "final_" + op.basename(output_calls))
 
-    # # 4a. clustering
-    # centroids = dotfinder.clustering_step_local(
-    #     filtered_pix, expected_chroms, dots_clustering_radius, verbose)
-
-    # # 4b. filter by enrichment and qval
-    # out = dotfinder.thresholding_step(centroids)
-
-
-    # # Final result
-    # if output_calls is not None:
-
-    #     final_output = op.join(
-    #         op.dirname(output_calls),
-    #         "final_" + op.basename(output_calls))
-
-    #     out.to_csv(
-    #         final_output,
-    #         sep='\t',
-    #         header=True,
-    #         index=False,
-    #         compression=None)
+        out.to_csv(
+            final_output,
+            sep='\t',
+            header=True,
+            index=False,
+            compression=None)
 
 
