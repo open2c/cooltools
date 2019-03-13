@@ -371,6 +371,19 @@ def call_dots(
     #             in filtered_pix[["obs.raw", x + ".value"]].itertuples(index=False)
     #     ]
 
+    # simply extracting pixels with counts above FDR thresholds (per lambda chunk)
+    # dump into output_scores if needed as well.
+    # might break due to "sort_values (chrom1,chrom2,start1,start2)"
+    # we need to do it in binids for as long as we can ...
+    # cause it's faster that way !
+    significant_pixels = dotfinder.extraction_step(tmp_scores,
+                                                score_dump_mode,
+                                                kernels,
+                                                ledges,
+                                                threshold_df,
+                                                nproc=1,
+                                                output_scores,
+                                                verbose=False)
 
 
 
