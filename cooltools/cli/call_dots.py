@@ -383,7 +383,7 @@ def call_dots(
                                                 ledges,
                                                 threshold_df,
                                                 nproc=1,
-                                                output_scores,
+                                                output_path=output_scores,
                                                 verbose=False)
 
 
@@ -393,16 +393,29 @@ def call_dots(
     tmp_scores.close()
 
 
+
     # 4. Post-processing
     if verbose:
-        print("Subsequent clustering and thresholding steps are not production-ready")
+        print("Begin post-processing of {} filtered pixels".format(len(filtered_pixels)))
+        print("preparing to extract needed q-values ...")
 
+    filtered_pixels_qvals = dotfinder.annotate_pixels_with_qvalues(filtered_pixels,
+                                                                    qvalues,
+                                                                    kernels)
     # 4a. clustering
-    centroids = dotfinder.clustering_step_local(
-        filtered_pixels, expected_chroms, dots_clustering_radius, verbose)
+    ########################################################################
+    # Clustering has to be done using annotated DataFrame of filtered pixels
+    # why ? - because - clustering has to be done chromosome by chromosome !
+    ########################################################################
+    filtered_pixels_annotated = cooler.annotate(filtered_pixels_qvals, clr.bins()[:])
+    centroids = dotfinder.clustering_step(
+                                filtered_pixels_annotated,
+                                expected_chroms,
+                                dots_clustering_radius,
+                                verbose)
 
     # 4b. filter by enrichment and qval
-    out = dotfinder.thresholding_step(centroids)
+    final_output = dotfinder.thresholding_step(centroids)
 
 
     # Final result
@@ -412,7 +425,7 @@ def call_dots(
             op.dirname(output_calls),
             "final_" + op.basename(output_calls))
 
-        out.to_csv(
+        final_output.to_csv(
             final_output,
             sep='\t',
             header=True,

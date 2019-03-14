@@ -118,6 +118,57 @@ def recommend_kernel_params(binsize):
     # return the results:
     return w,p
 
+def annotate_pixels_with_qvalues(pixels_df, qvalues, kernels, inplace=False, obs_raw_name = observed_count_name):
+    """
+    Add columns with the qvalues to a DataFrame of pixels
+
+    Parameters
+    ----------
+    pixels_df : pandas.DataFrame
+        a DataFrame with pixel coordinates that must have at least 2 columns
+        named 'bin1_id' and 'bin2_id', where first is pixels's row and the
+        second is pixel's column index.
+    qvalues : dict of DataFrames
+        A dictionary with keys being kernel names and values DataFrames
+        storing q-values for each observed count values in each lambda-
+        chunk. Colunms are Intervals defined by 'ledges' boundaries.
+        Rows corresponding to a range of observed count values.
+    kernels : dict
+        A dictionary with keys being kernels names and values being ndarrays
+        representing those kernels.
+
+    Returns
+    -------
+    pixels_qvalue_df : pandas.DataFrame
+        DataFrame of pixels with additional columns
+        storing qvalues corresponding to the observed
+        count value of a given pixel, given kernel-type,
+        and a lambda-chunk.
+
+    Notes
+    -----
+    Should be applied to a filtered DF of pixels, otherwise would
+    be too resource-hungry.
+    """
+    if inplace:
+        pixels_qvalue_df = pixel_df
+    else:
+        # let's do it "safe" - using a copy:
+        pixels_qvalue_df = pixels_df.copy()
+    # attempting to extract q-values using l-chunks and IntervalIndex:
+    # we'll do it in an ugly but workign fashion, by simply
+    # iteration over pairs of obs, la_exp and extracting needed qvals
+    # one after another ...
+    for k in kernels:
+        pixels_qvalue_df["la_exp."+k+".qval"] = \
+                [ qvalues[k].loc[o,e] for o,e \
+                     in pixels_df[[obs_raw_name,"la_exp."+k+".value"]].itertuples(index=False) ]
+    # qvalues : dict
+    #   A dictionary with keys being kernel names and values pandas.DataFrame-s
+    #   storing q-values: each column corresponds to a lambda-chunk,
+    #   while rows correspond to observed pixels values.
+    return pixels_qvalue_df
+
 def clust_2D_pixels(pixels_df,
                     threshold_cluster=2,
                     bin1_id_name='bin1_id',
@@ -1032,6 +1083,12 @@ def histogram_scored_pixels(scored_df,
     return hists
 
 def determine_thresholds(kernels, ledges, gw_hist, fdr):
+    """
+    given a 'gw_hist' histogram of observed counts
+    for each lambda-chunk for each kernel-type, and
+    also given a FDR, calculate q-values for each observed
+    count value in each lambda-chunk for each kernel-type.
+    """
     rcs_hist = {}
     rcs_Poisson = {}
     qvalues = {}
@@ -1425,7 +1482,9 @@ def extraction_step(scores_input,
                     thresholds,
                     nproc=1,
                     output_path=None,
-                    verbose=False):
+                    verbose=False,
+                    bin1_id_name='bin1_id',
+                    bin2_id_name='bin2_id'):
     """
 
     This would be an implementation of the second step of lambda-chunking, i.e.
@@ -1546,10 +1605,14 @@ def extraction_step(scores_input,
     finally:
         if nproc > 1:
             pool.close()
-    # # concat and store the results if needed:
-    # significant_pixels = pd.concat(filtered_pix_chunks)
+    # there should be no duplicates in the "significant_pixels" DataFrame of pixels:
+    significant_pixels_dups = significant_pixels.duplicated()
+    assert not significant_pixels_dups.any(), \
+         "Duplicated pixels detected during exctraction {}". \
+            format(significant_pixels[significant_pixels_dups])
+    # sort the result just in case and drop its index:
     return significant_pixels \
-                .sort_values(by=["chrom1","chrom2","start1","start2"]) \
+                .sort_values(by=[bin1_id_name,bin2_id_name]) \
                 .reset_index(drop=True)
 
 def clustering_step(scores_df, expected_chroms,
@@ -1627,7 +1690,7 @@ def clustering_step(scores_df, expected_chroms,
 
     # report only centroids with highest Observed:
     chrom_clust_group = df.groupby(["chrom1", "chrom2", "c_label"])
-    centroids = df.loc[chrom_clust_group["obs.raw"].idxmax()]
+    centroids = df.loc[chrom_clust_group[obs_raw_name].idxmax()]
     return centroids
 
 # consider switching step names - "extraction" to "FDR-thresholding"
@@ -1723,13 +1786,13 @@ def thresholding_step(centroids, obs_raw_name = observed_count_name):
         'cstart2',
         'c_label',
         'c_size',
-        'obs.raw',
-        'exp.raw',
+        obs_raw_name,
+        # 'exp.raw',
         'la_exp.donut.value',
         'la_exp.vertical.value',
         'la_exp.horizontal.value',
         'la_exp.lowleft.value',
-        "factor_balance.lowleft.KerObs",
+        # "factor_balance.lowleft.KerObs",
         # 'la_exp.upright.value',
         # 'la_exp.upright.qval',
         'la_exp.donut.qval',
@@ -1855,7 +1918,7 @@ def scoring_and_histogramming_step(clr, expected, expected_name, balance_name, t
 def scoring_and_extraction_step(clr, expected, expected_name, balance_name, tiles, kernels,
                                ledges, thresholds, max_nans_tolerated,
                                balance_factor, loci_separation_bins, output_path,
-                               nproc, verbose):
+                               nproc, verbose, bin1_id_name='bin1_id', bin2_id_name='bin2_id'):
     """
     This is a derivative of the 'scoring_step' which is supposed to implement
     the 2nd of the lambda-chunking procedure - extracting pixels that are FDR
@@ -1924,10 +1987,14 @@ def scoring_and_extraction_step(clr, expected, expected_name, balance_name, tile
     finally:
         if nproc > 1:
             pool.close()
-    # # concat and store the results if needed:
-    # significant_pixels = pd.concat(filtered_pix_chunks)
+    # there should be no duplicates in the "significant_pixels" DataFrame of pixels:
+    significant_pixels_dups = significant_pixels.duplicated()
+    assert not significant_pixels_dups.any(), \
+         "Duplicated pixels detected during exctraction {}". \
+            format(significant_pixels[significant_pixels_dups])
+    # sort the result just in case and drop its index:
     return significant_pixels \
-                .sort_values(by=["chrom1","chrom2","start1","start2"]) \
+                .sort_values(by=[bin1_id_name,bin2_id_name]) \
                 .reset_index(drop=True)
 
 ##################################
