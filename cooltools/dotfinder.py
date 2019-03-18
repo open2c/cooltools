@@ -23,9 +23,7 @@ from bioframe.io import formats
 # for lambda-chunking are computed: W1 is the # of logspaced lambda bins,
 # and W2 is maximum "allowed" raw number of contacts per Hi-C heatmap bin:
 HiCCUPS_W1_MAX_INDX = 40
-
-# HFF combined exceeded this limit ...
-HiCCUPS_W1_MAX_INDX = 46
+# there are datasets out there that can exceed this limit.
 
 # we are not using 'W2' as we're building
 # the histograms dynamically:

@@ -3,6 +3,7 @@ from scipy.stats import poisson
 import pandas as pd
 import numpy as np
 import cooler
+import tempfile
 
 import click
 from . import cli
@@ -31,14 +32,14 @@ from .. import dotfinder
 @click.option(
     '--nproc', '-n',
     help="Number of processes to split the work between."
-         "[default: 1, i.e. no process pool]",
+         " [default: 1, i.e. no process pool]",
     default=1,
     type=int)
 @click.option(
     '--max-loci-separation',
     help='Limit loci separation for dot-calling, i.e., do not call dots for'
-         ' loci that are further than max_loci_separation that basepairs apart.'
-         ' [current implementation is not ready to tackle max_loci_separation>3Mb].',
+         ' loci that are further than max_loci_separation basepair apart.'
+         ' 2-20MB is reasonable and would capture most of CTCF-dots.',
     type=int,
     default=2000000,
     show_default=True,
@@ -56,7 +57,7 @@ from .. import dotfinder
 @click.option(
     '--tile-size',
     help='Tile size for the Hi-C heatmap tiling.'
-         ' Typically on order of several mega-bases, and >= max_loci_separation.',
+         ' Typically on order of several mega-bases, and <= max_loci_separation.',
     type=int,
     default=6000000,
     show_default=True,
@@ -74,6 +75,13 @@ from .. import dotfinder
          " overall footprint of the punch-hole.",
     type=int)
 @click.option(
+    '--num-lambda-chunks',
+    help="Number of log-spaced bins to divide your adjusted expected"
+         " between. Same as HiCCUPS_W1_MAX_INDX in the original HiCCUPS.",
+    type=int,
+    default=45,
+    show_default=True)
+@click.option(
     "--fdr",
     help="False discovery rate (FDR) to control in the multiple"
          " hypothesis testing BH-FDR procedure.",
@@ -86,8 +94,7 @@ from .. import dotfinder
          'Typically on order of 40 kilo-bases, and >= binsize.',
     type=int,
     default=39000,
-    show_default=True,
-    )
+    show_default=True)
 @click.option(
     "--verbose", "-v",
     help="Enable verbose output",
@@ -95,9 +102,9 @@ from .. import dotfinder
     default=False)
 @click.option(
     "--output-scores", "-s",
-    help="Specify a pandas HDF5 table file where to dump"
-         " all processed pixels before they get"
-         " preprocessed in a BEDPE-like format.",
+    help="At the moment it is a redundant option that"
+         " does nothing. Reserve it for a better dump"
+         " of convolved scores.",
     type=str,
     required=False)
 @click.option(
@@ -109,17 +116,25 @@ from .. import dotfinder
 @click.option(
     "--output-calls", "-o",
     help="Specify output file name where to store"
-         " the results of dot-calling, in a BEDPE-like format.",
+         " the results of dot-calling, in a BEDPE format."
+         " Pre-processed dots are stored in that file."
+         " Post-processed dots are stored in the .postproc one.",
     type=str)
 @click.option(
     "--score-dump-mode",
-    help="Specify file format for the dump of convolved scores"
-         " now it could be 'cooler' or 'hdf', 'parquet' not ready yet.",
-    type=str)
+    help="Specify file format for the dump of convolved scores."
+         " This dump is used for the downstream processing and"
+         " is read twice. Now 'parquet' is the only supported"
+         " format. 'cooler' and 'hdf' in the future.",
+    type=str,
+    default="parquet",
+    show_default=True)
 @click.option(
     "--temp-dir",
     help="Create temporary files in specified directory.",
-    type=str)
+    type=str,
+    default='.',
+    show_default=True)
 @click.option(
     "--no-delete-temp",
     help="Do not delete temporary files when finished.",
@@ -135,6 +150,7 @@ def call_dots(
         tile_size,
         kernel_width,
         kernel_peak,
+        num_lambda_chunks,
         fdr,
         dots_clustering_radius,
         verbose,
@@ -234,11 +250,11 @@ def call_dots(
         assert w > p, "Wrong inner/outer kernel parameters w={}, p={}".format(w,p)
         print( "Using kernel parameters w={}, p={} provided by user".format(w,p) )
 
-    # once kernel parameters are setup check max_nans_allowed
+    # once kernel parameters are setup check max_nans_tolerated
     # to make sure kernel footprints overlaping 1 side with the
     # NaNs filled row/column are not "allowed"
     # this requires dynamic adjustment for the "shrinking donut"
-    assert max_nans_allowed <= 2*w, "Too many NaNs allowed!"
+    assert max_nans_tolerated <= 2*w, "Too many NaNs allowed!"
     # may lead to scoring the same pixel twice, - i.e. duplicates.
 
     # generate standard kernels - consider providing custom ones
@@ -256,6 +272,16 @@ def call_dots(
     )
 
     
+    # lambda-chunking edges ...
+    assert dotfinder.HiCCUPS_W1_MAX_INDX <= num_lambda_chunks <= 50
+    base = 2 ** (1/3)
+    ledges = np.concatenate((
+        [-np.inf],
+        np.logspace(0, num_lambda_chunks - 1, num=num_lambda_chunks, base=base, dtype=np.float),
+        [np.inf]))
+
+
+
     ######################
     # 0. scoring only yields a HUGE list of both
     # good and bad pixels (dot-like, and not)
@@ -307,11 +333,11 @@ def call_dots(
     # # creating logspace l(ambda)bins with base=2^(1/3), for lambda-chunking
     # # the first bin must be (-inf,1]
     # # the last bin must be (2^(HiCCUPS_W1_MAX_INDX/3),+inf)
-    # nlchunks = dotfinder.HiCCUPS_W1_MAX_INDX
+    # num_lambda_chunks = dotfinder.HiCCUPS_W1_MAX_INDX
     # base = 2 ** (1/3)
     # ledges = np.concatenate((
     #     [-np.inf],
-    #     np.logspace(0, nlchunks - 1, num=nlchunks, base=base, dtype=np.float),
+    #     np.logspace(0, num_lambda_chunks - 1, num=num_lambda_chunks, base=base, dtype=np.float),
     #     [np.inf]))
     # # gw_hist for each kernel contains a histogram of raw pixel intensities
     # # for every lambda-chunk (one per column) in a row-wise order, i.e.
@@ -373,8 +399,7 @@ def call_dots(
     #     ]
 
     # simply extracting pixels with counts above FDR thresholds (per lambda chunk)
-    # dump into output_scores if needed as well.
-    # might break due to "sort_values (chrom1,chrom2,start1,start2)"
+    # dump into output_calls if needed as well.
     # we need to do it in binids for as long as we can ...
     # cause it's faster that way !
     filtered_pixels = dotfinder.extraction_step(tmp_scores,
@@ -383,7 +408,7 @@ def call_dots(
                                                 ledges,
                                                 threshold_df,
                                                 nproc=1,
-                                                output_path=output_scores,
+                                                output_path=output_calls,
                                                 verbose=False)
 
 
@@ -415,18 +440,18 @@ def call_dots(
                                 verbose)
 
     # 4b. filter by enrichment and qval
-    final_output = dotfinder.thresholding_step(centroids)
+    postprocessed_calls = dotfinder.thresholding_step(centroids)
 
 
     # Final result
     if output_calls is not None:
 
-        final_output = op.join(
+        postprocessed_fname = op.join(
             op.dirname(output_calls),
-            "final_" + op.basename(output_calls))
+            op.basename(output_calls)+".postproc")
 
-        final_output.to_csv(
-            final_output,
+        postprocessed_calls.to_csv(
+            postprocessed_fname,
             sep='\t',
             header=True,
             index=False,
