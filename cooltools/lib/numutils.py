@@ -895,12 +895,12 @@ def zoom_array(in_array, final_shape, same_sum=False,
     Parameters
     ----------
 
-    inArray: n-dimensional numpy array (1D also works)
-    finalShape: resulting shape of an array
-    sameSum: bool, preserve a sum of the array, rather than values.
+    in_array: n-dimensional numpy array (1D also works)
+    final_shape: resulting shape of an array
+    same_sum: bool, preserve a sum of the array, rather than values.
              by default, values are preserved
-    zoomFunction: by default, scipy.ndimage.zoom. You can plug your own.
-    zoomKwargs:  a dict of options to pass to zoomFunction.
+    zoom_function: by default, scipy.ndimage.zoom. You can plug your own.
+    zoom_kwargs:  a dict of options to pass to zoomFunction.
     """
     in_array = np.asarray(in_array, dtype=np.double)
     in_shape = in_array.shape
