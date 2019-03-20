@@ -867,8 +867,8 @@ def interpolate_bad_singletons(mat, mask=None,
     else:
         return mat
 
-def zoomArray(inArray, finalShape, sameSum=False,
-          zoomFunction=scipy.ndimage.zoom, **zoomKwargs):
+def zoom_array(in_array, final_shape, same_sum=False,
+          zoom_function=scipy.ndimage.zoom, **zoom_kwargs):
     """
 
     Normally, one can use scipy.ndimage.zoom to do array/image rescaling.
@@ -902,25 +902,25 @@ def zoomArray(inArray, finalShape, sameSum=False,
     zoomFunction: by default, scipy.ndimage.zoom. You can plug your own.
     zoomKwargs:  a dict of options to pass to zoomFunction.
     """
-    inArray = np.asarray(inArray, dtype=np.double)
-    inShape = inArray.shape
-    assert len(inShape) == len(finalShape)
+    in_array = np.asarray(in_array, dtype=np.double)
+    in_shape = in_array.shape
+    assert len(in_shape) == len(final_shape)
     mults = []  # multipliers for the final coarsegraining
-    for i in range(len(inShape)):
-        if finalShape[i] < inShape[i]:
-            mults.append(int(np.ceil(inShape[i] / finalShape[i])))
+    for i in range(len(in_shape)):
+        if final_shape[i] < in_shape[i]:
+            mults.append(int(np.ceil(in_shape[i] / in_shape[i])))
         else:
             mults.append(1)
     # shape to which to blow up
-    tempShape = tuple([i * j for i, j in zip(finalShape, mults)])
+    temp_shape = tuple([i * j for i, j in zip(final_shape, mults)])
 
     # stupid zoom doesn't accept the final shape. Carefully crafting the
     # multipliers to make sure that it will work.
-    zoomMultipliers = np.array(tempShape) / np.array(inShape) + 0.0000001
-    assert zoomMultipliers.min() >= 1
+    zoom_multipliers = np.array(temp_shape) / np.array(in_shape) + 0.0000001
+    assert zoom_multipliers.min() >= 1
 
     # applying scipy.ndimage.zoom
-    rescaled = zoomFunction(inArray, zoomMultipliers, **zoomKwargs)
+    rescaled = zoom_function(in_array, zoom_multipliers, **zoom_kwargs)
 
     for ind, mult in enumerate(mults):
         if mult != 1:
@@ -929,9 +929,9 @@ def zoomArray(inArray, finalShape, sameSum=False,
             newshape = sh[:ind] + [sh[ind] // mult, mult] + sh[ind + 1:]
             rescaled.shape = newshape
             rescaled = np.mean(rescaled, axis=ind + 1)
-    assert rescaled.shape == finalShape
+    assert rescaled.shape == final_shape
 
-    if sameSum:
-        extraSize = np.prod(finalShape) / np.prod(inShape)
-        rescaled /= extraSize
+    if same_sum:
+        extra_size = np.prod(final_shape) / np.prod(in_shape)
+        rescaled /= extra_size
     return rescaled
