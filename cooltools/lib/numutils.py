@@ -890,7 +890,7 @@ def zoom_array(in_array, final_shape, same_sum=False,
     array to become a 60x120 array, it will blow up the first and the second
     dimension to 120, and then block-average only the first dimension.
 
-    (Copied from mirnylib/numutils)
+    (Copied from mirnylib.numutils)
 
     Parameters
     ----------
