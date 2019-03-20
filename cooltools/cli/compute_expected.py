@@ -71,9 +71,9 @@ from . import cli
 #     )
 def compute_expected(cool_path, nproc, chunksize, contact_type, weight_name, drop_diags):
     """
-    Calculate either expected Hi-C signal either for cis or for trans regions 
+    Calculate expected Hi-C signal either for cis or for trans regions
     of chromosomal interaction map.
-    
+
     COOL_PATH : The paths to a .cool file with a balanced Hi-C map.
 
     """
@@ -101,24 +101,24 @@ def compute_expected(cool_path, nproc, chunksize, contact_type, weight_name, dro
                 map=map_)
             result = pd.concat(
                 [tables[support] for support in supports],
-                keys=[support[0] for support in supports], 
+                keys=[support[0] for support in supports],
                 names=['chrom'])
             result['balanced.avg'] = result['balanced.sum'] / result['n_valid']
             result = result.reset_index()
 
         elif contact_type == 'trans':
             records = expected.blocksum_pairwise(
-                clr,                
-                supports, 
+                clr,
+                supports,
                 transforms={
                     'balanced': lambda p: p['count'] * p[weight1] * p[weight2]
                 },
                 chunksize=chunksize,
                 map=map_)
             result = pd.DataFrame(
-                [{'chrom1': s1[0], 'chrom2': s2[0], **rec} 
-                    for (s1, s2), rec in records.items()], 
-                columns=['chrom1', 'chrom2', 'n_valid', 
+                [{'chrom1': s1[0], 'chrom2': s2[0], **rec}
+                    for (s1, s2), rec in records.items()],
+                columns=['chrom1', 'chrom2', 'n_valid',
                          'count.sum', 'balanced.sum'])
             result['balanced.avg'] = result['balanced.sum'] / result['n_valid']
     finally:
