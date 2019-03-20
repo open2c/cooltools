@@ -5,6 +5,7 @@ from scipy.ndimage.interpolation import zoom
 import numpy as np
 import numba
 import cooler
+from functools import partial
 
 from ._numutils import (
     iterative_correction_symmetric as _iterative_correction_symmetric,
@@ -867,8 +868,10 @@ def interpolate_bad_singletons(mat, mask=None,
     else:
         return mat
 
+zoom_function = partial(zoom, order=1)
+
 def zoom_array(in_array, final_shape, same_sum=False,
-          zoom_function=scipy.ndimage.zoom, **zoom_kwargs):
+          zoom_function=zoom_function, **zoom_kwargs):
     """
 
     Normally, one can use scipy.ndimage.zoom to do array/image rescaling.
@@ -899,7 +902,8 @@ def zoom_array(in_array, final_shape, same_sum=False,
     final_shape: resulting shape of an array
     same_sum: bool, preserve a sum of the array, rather than values.
              by default, values are preserved
-    zoom_function: by default, scipy.ndimage.zoom. You can plug your own.
+    zoom_function: by default, scipy.ndimage.zoom with order=1. You can plug
+                   your own.
     zoom_kwargs:  a dict of options to pass to zoomFunction.
     """
     in_array = np.asarray(in_array, dtype=np.double)
