@@ -30,6 +30,12 @@ from .. import dotfinder
     show_default=True,
     )
 @click.option(
+    '--balancing-weight-name',
+    help="Use balancing weight with this name.",
+    type=str,
+    default='weight',
+    show_default=True)
+@click.option(
     '--nproc', '-n',
     help="Number of processes to split the work between."
          " [default: 1, i.e. no process pool]",
@@ -144,6 +150,7 @@ def call_dots(
         cool_path,
         expected_path,
         expected_name,
+        balancing_weight_name,
         nproc,
         max_loci_separation,
         max_nans_tolerated,
@@ -304,7 +311,7 @@ def call_dots(
     dotfinder.scoring_step(clr,
                         expected,
                         expected_name,
-                        "weight",
+                        balancing_weight_name,
                         tiles,
                         kernels,
                         max_nans_tolerated,
