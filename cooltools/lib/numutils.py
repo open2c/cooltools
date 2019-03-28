@@ -912,7 +912,7 @@ def zoom_array(in_array, final_shape, same_sum=False,
     mults = []  # multipliers for the final coarsegraining
     for i in range(len(in_shape)):
         if final_shape[i] < in_shape[i]:
-            mults.append(int(np.ceil(in_shape[i] / in_shape[i])))
+            mults.append(int(np.ceil(in_shape[i] / final_shape[i])))
         else:
             mults.append(1)
     # shape to which to blow up
