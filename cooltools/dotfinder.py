@@ -119,6 +119,12 @@ def recommend_kernel_params(binsize):
 def annotate_pixels_with_qvalues(pixels_df, qvalues, kernels, inplace=False, obs_raw_name = observed_count_name):
     """
     Add columns with the qvalues to a DataFrame of pixels
+    ... detailed but unedited notes ...
+    Extract q-values using l-chunks and IntervalIndex.
+    we'll do it in an ugly but workign fashion, by simply
+    iteration over pairs of obs, la_exp and extracting needed qvals
+    one after another
+    ...
 
     Parameters
     ----------
@@ -1086,6 +1092,19 @@ def determine_thresholds(kernels, ledges, gw_hist, fdr):
     for each lambda-chunk for each kernel-type, and
     also given a FDR, calculate q-values for each observed
     count value in each lambda-chunk for each kernel-type.
+
+    Returns
+    -------
+    threshold_df : dict
+      each threshold_df[k] is a Series indexed by la_exp intervals
+      (IntervalIndex) and it is all we need to extract "good" pixels from
+      each chunk ...
+    qvalues : dict
+      A dictionary with keys being kernel names and values pandas.DataFrames
+      storing q-values: each column corresponds to a lambda-chunk,
+      while rows correspond to observed pixels values.
+
+
     """
     rcs_hist = {}
     rcs_Poisson = {}
@@ -1178,15 +1197,11 @@ def extract_scored_pixels(scored_df,
         # obs.raw -> count
         comply_fdr_k = (scored_df[obs_raw_name].values > \
                         thresholds[k].loc[scored_df["la_exp."+k+".value"]].values)
-        ## attempting to extract q-values using l-chunks and IntervalIndex:
-        ## we'll do it in an ugly but workign fashion, by simply
-        ## iteration over pairs of obs, la_exp and extracting needed qvals
-        ## one after another ...
-        #scored_df["la_exp."+k+".qval"] = \
-        #        [ qvalues[k].loc[o,e] for o,e \
-        #            in scored_df[["obs.raw","la_exp."+k+".value"]].itertuples(index=False) ]
-        ##
-        ## accumulate comply_fdr_k into comply_fdr_list
+        # extracting q-values for all of the pixels takes a lot of time
+        # we'll do it externally for filtered_pixels only, in order to save
+        # time
+        #
+        # accumulate comply_fdr_k into comply_fdr_list
         # using np.logical_and:
         comply_fdr_list = np.logical_and(comply_fdr_list, comply_fdr_k)
     # return a slice of 'scored_df' that complies FDR thresholds:
@@ -1807,8 +1822,7 @@ def thresholding_step(centroids, obs_raw_name = observed_count_name):
 ##################################
 
 def scoring_and_histogramming_step(clr, expected, expected_name, balance_name, tiles, kernels,
-                                   ledges, max_nans_tolerated, loci_separation_bins,
-                                   output_path, nproc, verbose):
+                                   ledges, max_nans_tolerated, loci_separation_bins, nproc, verbose):
     """
     This is a derivative of the 'scoring_step' which is supposed to implement
     the 1st of the lambda-chunking procedure - histogramming.
