@@ -301,13 +301,16 @@ def call_dots(
                                             nproc,
                                             verbose)
 
+    if verbose:
+        print("Done building histograms ...")
+
     # 2. Determine the FDR thresholds.
     threshold_df, qvalues = dotfinder.determine_thresholds(
         kernels, ledges, gw_hist, fdr)
 
 
     # 3. Filter using FDR thresholds calculated in the histogramming step
-    filtered_pixels = scoring_and_extraction_step(clr,
+    filtered_pixels = dotfinder.scoring_and_extraction_step(clr,
                                             expected,
                                             expected_name,
                                             balancing_weight_name,
