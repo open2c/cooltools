@@ -1,3 +1,4 @@
+import sys
 import click
 from . import cli
 
@@ -62,6 +63,8 @@ def digest(chromsizes_path, fasta_path, enzyme_name):
 def gc(bins_path, fasta_path, mapped_only):
     import bioframe
     import pandas as pd
+    if bins_path == '-':
+        bins_path = sys.stdin
     bins = pd.read_table(bins_path)
     chromosomes = bins['chrom'].unique()
     fasta_records = bioframe.load_fasta(fasta_path, engine='pyfaidx', as_raw=True)
