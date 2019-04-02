@@ -868,11 +868,10 @@ def interpolate_bad_singletons(mat, mask=None,
     else:
         return mat
 
-zoom_function = partial(zoom, order=1)
 
 def zoom_array(in_array, final_shape, same_sum=False,
-          zoom_function=zoom_function, **zoom_kwargs):
-    """
+               zoom_function=partial(zoom, order=3), **zoom_kwargs):
+    """Rescale an array or image.
 
     Normally, one can use scipy.ndimage.zoom to do array/image rescaling.
     However, scipy.ndimage.zoom does not coarsegrain images well. It basically
@@ -897,14 +896,23 @@ def zoom_array(in_array, final_shape, same_sum=False,
 
     Parameters
     ----------
+    in_array : ndarray
+        n-dimensional numpy array (1D also works)
+    final_shape : shape tuple
+        resulting shape of an array
+    same_sum : bool, optional
+        Preserve a sum of the array, rather than values. By default, values
+        are preserved
+    zoom_function : callable
+        By default, scipy.ndimage.zoom with order=1. You can plug your own.
+    **zoom_kwargs :
+        Options to pass to zoomFunction.
 
-    in_array: n-dimensional numpy array (1D also works)
-    final_shape: resulting shape of an array
-    same_sum: bool, preserve a sum of the array, rather than values.
-             by default, values are preserved
-    zoom_function: by default, scipy.ndimage.zoom with order=1. You can plug
-                   your own.
-    zoom_kwargs:  a dict of options to pass to zoomFunction.
+    Returns
+    -------
+    rescaled : ndarray
+        Rescaled version of in_array
+
     """
     in_array = np.asarray(in_array, dtype=np.double)
     in_shape = in_array.shape
