@@ -403,7 +403,7 @@ def saddleplot(binedges, counts, saddledata, cmap='coolwarm', vmin=-1, vmax=1,
     plt.gca().xaxis.set_visible(False)
     # top margin hist
     grid['ax_margin_x'] = plt.subplot(gs[1], sharex=grid['ax_heatmap'])
-    plt.bar(left=binedges[:-1], 
+    plt.bar(binedges[:-1], 
             width=np.diff(binedges), 
             height=hist,
             align='edge',
