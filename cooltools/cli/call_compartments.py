@@ -76,7 +76,7 @@ def call_compartments(cool_path, reference_track, contact_type, n_eigs,
                 raise click.BadParameter(
                     'No header found. '
                     'Cannot find "{}" column without a header.'.format(col))
-            
+
             track_name = 'ref'
             kwargs = dict(
                 header=None,
@@ -95,14 +95,14 @@ def call_compartments(cool_path, reference_track, contact_type, n_eigs,
                     raise click.BadParameter(
                         'Column "{}" not found in header "{}"'.format(
                             col, ','.join(names)))
-            
+
             track_name = col
             kwargs = dict(
                 header='infer',
                 usecols=['chrom', 'start', 'end', track_name])
-        
+
         track_df = pd.read_table(
-            buf, 
+            buf,
             dtype={
                 'chrom': str,
                 'start': np.int64,
@@ -158,7 +158,7 @@ def call_compartments(cool_path, reference_track, contact_type, n_eigs,
     eigvec_table.to_csv(out_prefix + '.' + contact_type + '.vecs.tsv', sep='\t', index=False)
     if bigwig:
         bioframe.to_bigwig(
-            eigvec_table, 
-            clr.chromsizes, 
-            out_prefix + '.' + contact_type + '.bw', 
+            eigvec_table,
+            clr.chromsizes,
+            out_prefix + '.' + contact_type + '.bw',
             value_field='E1')

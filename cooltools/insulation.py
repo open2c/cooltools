@@ -22,7 +22,8 @@ def insul_diamond(pixel_query, bins, window=10, ignore_diags=2, balanced=True,
         and the locations of bad bins.
 
     window : int
-        The width (in bins) of the diamond window to calculate the insulation score.
+        The width (in bins) of the diamond window to calculate the insulation
+        score.
 
     ignore_diags : int
         If > 0, the interactions at separations < `ignore_diags` are ignored
@@ -42,7 +43,8 @@ def insul_diamond(pixel_query, bins, window=10, ignore_diags=2, balanced=True,
     bad_bin_mask = bins.weight.isnull().values if balanced else np.zeros(N, dtype=bool)
 
     for chunk_dict in pixel_query.read_chunked():
-        chunk = pd.DataFrame(chunk_dict, columns=['bin1_id', 'bin2_id', 'count'])
+        chunk = pd.DataFrame(chunk_dict, columns=[
+                             'bin1_id', 'bin2_id', 'count'])
         diag_pixels = chunk[chunk.bin2_id - chunk.bin1_id <= (window - 1) * 2]
         if balanced:
             diag_pixels = cooler.annotate(diag_pixels, bins[['weight']])
@@ -61,9 +63,11 @@ def insul_diamond(pixel_query, bins, window=10, ignore_diags=2, balanced=True,
                 if i_shift+j_shift < ignore_diags:
                     continue
 
-                mask = (i+i_shift == j-j_shift) & (i + i_shift < N ) & (j - j_shift >= 0 )
+                mask = ((i + i_shift == j - j_shift) &
+                        (i + i_shift < N) & (j - j_shift >= 0))
 
-                sum_pixels += np.bincount(i[mask] + i_shift, val[mask], minlength=N)
+                sum_pixels += np.bincount(i[mask] +
+                                          i_shift, val[mask], minlength=N)
 
                 loc_bad_bin_mask = np.zeros(N, dtype=bool)
                 if i_shift == 0:
@@ -76,7 +80,7 @@ def insul_diamond(pixel_query, bins, window=10, ignore_diags=2, balanced=True,
                     loc_bad_bin_mask[:-j_shift] |= bad_bin_mask[j_shift:]
 
                 n_pixels[i_shift:(-j_shift if j_shift else None)] += (
-                     1 - loc_bad_bin_mask[i_shift:(-j_shift if j_shift else None)])
+                    1 - loc_bad_bin_mask[i_shift:(-j_shift if j_shift else None)])
 
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
@@ -125,15 +129,15 @@ def find_insulating_boundaries(
 
     bin_size = clr.info['bin-size']
     ignore_diags = (ignore_diags
-        if ignore_diags is not None
-        else clr._load_attrs(clr.root.rstrip('/')+'/bins/weight')['ignore_diags'] )
+                    if ignore_diags is not None
+                    else clr._load_attrs(clr.root.rstrip('/')+'/bins/weight')['ignore_diags'])
 
     if isinstance(window_bp, int):
         window_bp = [window_bp]
     window_bp = np.array(window_bp)
     window_bins = window_bp // bin_size
 
-    bad_win_sizes = window_bp % bin_size !=0
+    bad_win_sizes = window_bp % bin_size != 0
     if np.any(bad_win_sizes):
         raise Exception(
             'The window sizes {} has to be a multiple of the bin size {}'.format(
@@ -157,8 +161,10 @@ def find_insulating_boundaries(
             if i == 0:
                 bad_bin_neighbor = bad_bin_neighbor | is_bad_bin
             else:
-                bad_bin_neighbor = bad_bin_neighbor | np.r_[[True]*i, is_bad_bin[:-i]]
-                bad_bin_neighbor = bad_bin_neighbor | np.r_[is_bad_bin[i:], [True]*i]
+                bad_bin_neighbor = bad_bin_neighbor | np.r_[
+                    [True]*i, is_bad_bin[:-i]]
+                bad_bin_neighbor = bad_bin_neighbor | np.r_[
+                    is_bad_bin[i:], [True]*i]
 
         ins_chrom = chrom_bins[['chrom', 'start', 'end']].copy()
         ins_chrom['bad_bin_masked'] = bad_bin_neighbor
@@ -177,18 +183,20 @@ def find_insulating_boundaries(
                     chrom_bins,
                     window=win_bin,
                     ignore_diags=ignore_diags)
-                ins_track[ins_track==0] = np.nan
+                ins_track[ins_track == 0] = np.nan
                 ins_track = np.log2(ins_track)
 
             ins_track[bad_bin_neighbor] = np.nan
             ins_track[~np.isfinite(ins_track)] = np.nan
 
-            ins_chrom['log2_insulation_score_{}'.format(window_bp[j])] = ins_track
+            ins_chrom['log2_insulation_score_{}'.format(
+                window_bp[j])] = ins_track
 
             poss, proms = peaks.find_peak_prominence(-ins_track)
             ins_prom_track = np.zeros_like(ins_track) * np.nan
             ins_prom_track[poss] = proms
-            ins_chrom['boundary_strength_{}'.format(window_bp[j])] = ins_prom_track
+            ins_chrom['boundary_strength_{}'.format(
+                window_bp[j])] = ins_prom_track
 
         ins_chrom_tables.append(ins_chrom)
 
@@ -238,6 +246,7 @@ def _insul_diamond_dense(mat, window=10, ignore_diags=2, norm_by_median=True):
             score /= np.nanmedian(score)
     return score
 
+
 def _find_insulating_boundaries_dense(
     clr,
     window_bp=100000,
@@ -273,11 +282,11 @@ def _find_insulating_boundaries_dense(
 
     bin_size = clr.info['bin-size']
     ignore_diags = (ignore_diags
-        if ignore_diags is not None
-        else clr._load_attrs(clr.root.rstrip('/')+'/bins/weight')['ignore_diags'] )
+                    if ignore_diags is not None
+                    else clr._load_attrs(clr.root.rstrip('/')+'/bins/weight')['ignore_diags'])
     window_bins = window_bp // bin_size
 
-    if (window_bp % bin_size !=0):
+    if (window_bp % bin_size != 0):
         raise Exception(
             'The window size ({}) has to be a multiple of the bin size {}'.format(
                 window_bp, bin_size))
@@ -293,7 +302,7 @@ def _find_insulating_boundaries_dense(
             warnings.simplefilter("ignore", RuntimeWarning)
             ins_track = _insul_diamond_dense(
                 m, window_bins, ignore_diags)
-            ins_track[ins_track==0] = np.nan
+            ins_track[ins_track == 0] = np.nan
             ins_track = np.log2(ins_track)
 
         bad_bin_neighbor = np.zeros_like(is_bad_bin)
@@ -301,8 +310,10 @@ def _find_insulating_boundaries_dense(
             if i == 0:
                 bad_bin_neighbor = bad_bin_neighbor | is_bad_bin
             else:
-                bad_bin_neighbor = bad_bin_neighbor | np.r_[[True]*i, is_bad_bin[:-i]]
-                bad_bin_neighbor = bad_bin_neighbor | np.r_[is_bad_bin[i:], [True]*i]
+                bad_bin_neighbor = bad_bin_neighbor | np.r_[
+                    [True]*i, is_bad_bin[:-i]]
+                bad_bin_neighbor = bad_bin_neighbor | np.r_[
+                    is_bad_bin[i:], [True]*i]
 
         ins_track[bad_bin_neighbor] = np.nan
         ins_chrom['bad_bin_masked'] = bad_bin_neighbor
@@ -321,5 +332,3 @@ def _find_insulating_boundaries_dense(
 
     ins_table = pd.concat(ins_chrom_tables)
     return ins_table
-
-
