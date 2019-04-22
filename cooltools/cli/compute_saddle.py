@@ -336,6 +336,8 @@ def compute_saddle(cool_path, track_path, expected_path, contact_type, n_bins,
 
         if hist_color is None:
             color = sns.color_palette('muted')[2]
+        else:
+            color = mpl.colors.colorConverter.to_rgb(hist_color)
         heatmap_kws = dict(vmin=vmin, vmax=vmax)
         title = op.basename(cool_path) + ' ({})'.format(contact_type)
         if quantiles:
