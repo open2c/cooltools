@@ -200,10 +200,10 @@ def call_dots(
     expected = pd.read_table(
         expected_path,
         usecols=expected_columns,
-        index_col=expected_index,
         dtype=expected_dtypes,
         comment=None,
         verbose=verbose)
+    expected.set_index(expected_index,inplace=True)
 
 
     # Input validation
