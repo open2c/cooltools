@@ -3,10 +3,12 @@ from scipy.stats import poisson
 import pandas as pd
 import numpy as np
 import cooler
+import tempfile
 
 import click
 from . import cli
 from .. import dotfinder
+
 
 
 @cli.command()
@@ -28,23 +30,32 @@ from .. import dotfinder
     show_default=True,
     )
 @click.option(
+    '--balancing-weight-name',
+    help="Use balancing weight with this name.",
+    type=str,
+    default='weight',
+    show_default=True)
+@click.option(
     '--nproc', '-n',
     help="Number of processes to split the work between."
-         "[default: 1, i.e. no process pool]",
+         " [default: 1, i.e. no process pool]",
     default=1,
     type=int)
 @click.option(
     '--max-loci-separation',
     help='Limit loci separation for dot-calling, i.e., do not call dots for'
-         ' loci that are further than max_loci_separation that basepairs apart.'
-         ' [current implementation is not ready to tackle max_loci_separation>3Mb].',
+         ' loci that are further than max_loci_separation basepair apart.'
+         ' 2-20MB is reasonable and would capture most of CTCF-dots.',
     type=int,
     default=2000000,
     show_default=True,
     )
 @click.option(
     '--max-nans-tolerated',
-    help='Maximum number of NaNs tolerated in a footprint of every used filter.',
+    help='Maximum number of NaNs tolerated in a footprint of every used filter.'
+         ' Must be controlled with caution, as large max-nans-tolerated, might lead to'
+         ' pixels scored in the padding area of the tiles to "penetrate" to the list'
+         ' of scored pixels for the statistical testing. [max-nans-tolerated <= 2*w ]',
     type=int,
     default=1,
     show_default=True,
@@ -52,11 +63,30 @@ from .. import dotfinder
 @click.option(
     '--tile-size',
     help='Tile size for the Hi-C heatmap tiling.'
-         ' Typically on order of several mega-bases, and >= max_loci_separation.',
+         ' Typically on order of several mega-bases, and <= max_loci_separation.',
     type=int,
     default=6000000,
     show_default=True,
     )
+@click.option(
+    '--kernel-width',
+    help="Outer half-width of the convolution kernel in pixels"
+         " e.g. outer size (w) of the 'donut' kernel, with the 2*w+1"
+         " overall footprint of the 'donut'.",
+    type=int)
+@click.option(
+    '--kernel-peak',
+    help="Inner half-width of the convolution kernel in pixels"
+         " e.g. inner size (p) of the 'donut' kernel, with the 2*p+1"
+         " overall footprint of the punch-hole.",
+    type=int)
+@click.option(
+    '--num-lambda-chunks',
+    help="Number of log-spaced bins to divide your adjusted expected"
+         " between. Same as HiCCUPS_W1_MAX_INDX in the original HiCCUPS.",
+    type=int,
+    default=45,
+    show_default=True)
 @click.option(
     "--fdr",
     help="False discovery rate (FDR) to control in the multiple"
@@ -70,8 +100,7 @@ from .. import dotfinder
          'Typically on order of 40 kilo-bases, and >= binsize.',
     type=int,
     default=39000,
-    show_default=True,
-    )
+    show_default=True)
 @click.option(
     "--verbose", "-v",
     help="Enable verbose output",
@@ -79,29 +108,65 @@ from .. import dotfinder
     default=False)
 @click.option(
     "--output-scores", "-s",
-    help="Specify a pandas HDF5 table file where to dump"
-         " all processed pixels before they get"
-         " preprocessed in a BEDPE-like format.",
+    help="At the moment it is a redundant option that"
+         " does nothing. Reserve it for a better dump"
+         " of convolved scores.",
+    type=str,
+    required=False)
+@click.option(
+    "--output-hists",
+    help="Specify output file name to store"
+         " lambda-chunked histograms. [Not implemented yet]",
     type=str,
     required=False)
 @click.option(
     "--output-calls", "-o",
     help="Specify output file name where to store"
-         " the results of dot-calling, in a BEDPE-like format.",
+         " the results of dot-calling, in a BEDPE format."
+         " Pre-processed dots are stored in that file."
+         " Post-processed dots are stored in the .postproc one.",
     type=str)
+@click.option(
+    "--score-dump-mode",
+    help="Specify file format for the dump of convolved scores."
+         " This dump is used for the downstream processing and"
+         " is read twice. Now 'parquet' is the only supported"
+         " format. 'cooler' and 'hdf' in the future.",
+    type=str,
+    default="parquet",
+    show_default=True)
+@click.option(
+    "--temp-dir",
+    help="Create temporary files in specified directory.",
+    type=str,
+    default='.',
+    show_default=True)
+@click.option(
+    "--no-delete-temp",
+    help="Do not delete temporary files when finished.",
+    is_flag=True,
+    default=False)
 def call_dots(
         cool_path,
         expected_path,
         expected_name,
+        balancing_weight_name,
         nproc,
         max_loci_separation,
         max_nans_tolerated,
         tile_size,
+        kernel_width,
+        kernel_peak,
+        num_lambda_chunks,
         fdr,
         dots_clustering_radius,
         verbose,
         output_scores,
-        output_calls):
+        output_hists,
+        output_calls,
+        score_dump_mode,
+        temp_dir,
+        no_delete_temp):
     """
     Call dots on a Hi-C heatmap that are not larger than max_loci_separation.
 
@@ -124,112 +189,83 @@ def call_dots(
     """
     clr = cooler.Cooler(cool_path)
 
-    # read expected and make preparations for validation,
-    # that's what we expect as column names:
     expected_columns = ['chrom', 'diag', 'n_valid', expected_name]
-    # what would become a MultiIndex:
     expected_index = ['chrom', 'diag']
-    # expected dtype as a rudimentary form of validation:
-    expected_dtype = {
+    expected_dtypes = {
         'chrom': np.str,
         'diag': np.int64,
         'n_valid': np.int64,
         expected_name: np.float64
     }
-    # unique list of chroms mentioned in expected_path:
-    get_exp_chroms = lambda df: df.index.get_level_values("chrom").unique()
-    # compute # of bins by comparing matching indexes:
-    get_exp_bins = lambda df, ref_chroms: (
-        df.index.get_level_values("chrom").isin(ref_chroms).sum())
-    # use 'usecols' as a rudimentary form of validation,
-    # and dtype. Keep 'comment' and 'verbose' - explicit,
-    # as we may use them later:
     expected = pd.read_table(
         expected_path,
         usecols=expected_columns,
-        index_col=expected_index,
-        dtype=expected_dtype,
+        dtype=expected_dtypes,
         comment=None,
         verbose=verbose)
+    expected.set_index(expected_index,inplace=True)
 
-    #############################################
-    # CROSS-VALIDATE COOLER and EXPECTED:
-    #############################################
-    # EXPECTED vs COOLER:
-    # chromosomes to deal with
-    # are by default extracted
-    # from the expected-file:
+
+    # Input validation
+    # unique list of chroms mentioned in expected_path
+    # do simple column-name validation for now
+    get_exp_chroms = lambda df: df.index.get_level_values("chrom").unique()
     expected_chroms = get_exp_chroms(expected)
-    # do simple column-name validation for now:
     if not set(expected_chroms).issubset(clr.chromnames):
         raise ValueError(
             "Chromosomes in {} must be subset of ".format(expected_path) +
             "chromosomes in cooler {}".format(cool_path))
-    # check number of bins:
+    # check number of bins
+    # compute # of bins by comparing matching indexes
+    get_exp_bins = lambda df, ref_chroms: (
+        df.index.get_level_values("chrom").isin(ref_chroms).sum())
     expected_bins = get_exp_bins(expected, expected_chroms)
-    cool_bins   = clr.bins()[:]["chrom"].isin(expected_chroms).sum()
+    cool_bins = clr.bins()[:]["chrom"].isin(expected_chroms).sum()
     if not (expected_bins == cool_bins):
         raise ValueError(
-            "Number of bins is not matching:",
-            " {} in {}, and {} in {} for chromosomes {}".format(expected_bins,
-                                                                expected_path,
-                                                                cool_bins,
-                                                                cool_path,
-                                                                expected_chroms))
+            "Number of bins is not matching: ",
+            "{} in {}, and {} in {} for chromosomes {}".format(
+                expected_bins,
+                expected_path,
+                cool_bins,
+                cool_path,
+                expected_chroms))
     if verbose:
         print("{} and {} passed cross-compatibility checks.".format(
             cool_path, expected_path))
 
-    # prepare some parameters:
-    # turn them from nucleotides dims to bins, etc.:
+
+    # Prepare some parameters.
     binsize = clr.binsize
-    loci_separation_bins = int(max_loci_separation/binsize)
-    tile_size_bins = int(tile_size/binsize)
-    # # clustering would deal with bases-units for now, so
-    # # supress this for now:
+    loci_separation_bins = int(max_loci_separation / binsize)
+    tile_size_bins = int(tile_size / binsize)
+    balance_factor = 1.0  #clr._load_attrs("bins/weight")["scale"]
+
+    # clustering would deal with bases-units for now, so supress this for now
     # clustering_radius_bins = int(dots_clustering_radius/binsize)
-    balance_factor = 1.0 #clr._load_attrs("bins/weight")["scale"]
 
-    ktypes = ['donut', 'vertical', 'horizontal', 'lowleft']
+    # kernels
     # 'upright' is a symmetrical inversion of "lowleft", not needed.
+    ktypes = ['donut', 'vertical', 'horizontal', 'lowleft']
 
-    # define kernel parameteres based on the cooler resolution:
-    if binsize > 28000:
-        # > 30 kb - is probably too much ...
-        raise ValueError("Provided cooler {} has resolution {} bases,\
-                         which is too low for analysis.".format(cool_path, binsize))
-    elif binsize >= 18000:
-        # ~ 20-25 kb:
-        w, p = 3, 1
-    elif binsize >= 8000:
-        # ~ 10 kb
-        w, p = 5, 2
-    elif binsize >= 4000:
-        # ~5 kb
-        w, p = 7, 4
+    if (kernel_width is None) or (kernel_peak is None):
+        w,p = dotfinder.recommend_kernel_params(binsize)
+        print( "Using kernel parameters w={}, p={} recommended for binsize {}".format(w,p,binsize) )
     else:
-        # < 5 kb - is probably too fine ...
-        raise ValueError("Provided cooler {} has resolution {} bases, \
-                        which is too fine for analysis.".format(cool_path, binsize))
-    # rename w, p to wid, pix probably, or _w, _p to avoid naming conflicts ...
-    if verbose:
-        print("Kernels parameters are set as w,p={},{}"
-              " for the cooler with {} bp resolution.".format(w,p,binsize))
+        w,p = kernel_width, kernel_peak
+        # add some sanity check for w,p:
+        assert w > p, "Wrong inner/outer kernel parameters w={}, p={}".format(w,p)
+        print( "Using kernel parameters w={}, p={} provided by user".format(w,p) )
 
-    kernels = {k: dotfinder.get_kernel(w,p,k) for k in ktypes}
+    # once kernel parameters are setup check max_nans_tolerated
+    # to make sure kernel footprints overlaping 1 side with the
+    # NaNs filled row/column are not "allowed"
+    # this requires dynamic adjustment for the "shrinking donut"
+    assert max_nans_tolerated <= 2*w, "Too many NaNs allowed!"
+    # may lead to scoring the same pixel twice, - i.e. duplicates.
 
-    # creating logspace l(ambda)bins with base=2^(1/3), for lambda-chunking:
-    nlchunks = dotfinder.HiCCUPS_W1_MAX_INDX
-    base = 2**(1/3.0)
-    ledges = np.concatenate(([-np.inf,],
-                            np.logspace(0,
-                                        nlchunks-1,
-                                        num=nlchunks,
-                                        base=base,
-                                        dtype=np.float),
-                            [np.inf,]))
-    # the first bin must be (-inf,1]
-    # the last bin must be (2^(HiCCUPS_W1_MAX_INDX/3),+inf):
+    # generate standard kernels - consider providing custom ones
+    kernels = {k: dotfinder.get_kernel(w, p, k) for k in ktypes}
 
     # list of tile coordinate ranges
     tiles = list(
@@ -242,164 +278,89 @@ def call_dots(
         )
     )
 
-    # ######################
-    # # scoring only yields
-    # # a HUGE list of both
-    # # good and bad pixels
-    # # (dot-like, and not)
-    # ######################
-    # scoring_step(clr, expected, expected_name, tiles, kernels,
-    #              max_nans_tolerated, loci_separation_bins, output_scores,
-    #              nproc, verbose)
-
-    ################################
-    # calculates genome-wide histogram (gw_hist):
-    ################################
-    gw_hist = dotfinder.scoring_and_histogramming_step(
-        clr, expected, expected_name, tiles,
-        kernels, ledges, max_nans_tolerated,
-        loci_separation_bins, None, nproc,
-        verbose)
-    # gw_hist for each kernel contains a histogram of
-    # raw pixel intensities for every lambda-chunk (one per column)
-    # in a row-wise order, i.e. each column is a histogram
-    # for each chunk ...
-
-    if output_scores is not None:
-        for k in kernels:
-            gw_hist[k].to_csv(
-                "{}.{}.hist.txt".format(output_scores,k),
-                sep='\t',
-                header=True,
-                index=False,
-                compression=None)
-
-    ##############
-    # prepare to determine the FDR threshold ...
-    ##############
+    
+    # lambda-chunking edges ...
+    assert dotfinder.HiCCUPS_W1_MAX_INDX <= num_lambda_chunks <= 50
+    base = 2 ** (1/3)
+    ledges = np.concatenate((
+        [-np.inf],
+        np.logspace(0, num_lambda_chunks - 1, num=num_lambda_chunks, base=base, dtype=np.float),
+        [np.inf]))
 
 
-    # Reverse Cumulative Sum of a histogram ...
-    rcs_hist = {}
-    rcs_Poisson = {}
-    qvalues = {}
-    threshold_df = {}
-    for k in kernels:
-        # generate a reverse cumulative histogram for each kernel,
-        #  such that 0th raw contains total # of pixels in each lambda-chunk:
-        rcs_hist[k] = gw_hist[k].iloc[::-1].cumsum(axis=0).iloc[::-1]
-        # now for every kernel-type k - create rcsPoisson,
-        # a unit Poisson distribution for every lambda-chunk
-        # using upper boundary of each lambda-chunk as the expected:
-        rcs_Poisson[k] = pd.DataFrame()
-        for mu, column in zip(ledges[1:-1], gw_hist[k].columns):
-            # poisson.sf = 1 - poisson.cdf, but more precise
-            # poisson.sf(-1,mu) == 1.0, i.e. is equivalent to the
-            # poisson.pmf(gw_hist[k].index,mu)[::-1].cumsum()[::-1]
-            # i.e., the way unitPoissonPMF is generated in HiCCUPS:
-            renorm_factors = rcs_hist[k].loc[0,column]
-            rcs_Poisson[k][column] = renorm_factors * poisson.sf(gw_hist[k].index-1, mu)
-        # once we have both RCS hist and the Poisson:
-        # now compare rcs_hist and re-normalized rcs_Poisson
-        # to infer FDR thresolds for every lambda-chunk:
-        fdr_diff = fdr * rcs_hist[k] - rcs_Poisson[k]
-        # determine the threshold by checking the value at which
-        # 'fdr_diff' first turns positive:
-        threshold_df[k] = fdr_diff.where(fdr_diff>0).apply(lambda col: col.first_valid_index())
-        # q-values ...
-        # roughly speaking, qvalues[k] =  rcs_Poisson[k]/rcs_hist[k]
-        # bear in mind some issues with lots of NaNs and Infs after
-        # such a brave operation ...
-        qvalues[k] = rcs_Poisson[k] / rcs_hist[k]
-        # fill NaNs with the "unreachably" high value:
-        very_high_value = len(rcs_hist[k])
-        threshold_df[k] = threshold_df[k].fillna(very_high_value).astype(np.integer)
-
-    #################
-    # this way threshold_df's index is
-    # a Categorical, where each element is
-    # an IntervalIndex, which we can and should
-    # use in the downstream analysis:
-
-    ############################################
-    # TODO: add q-values calculations !!!
-    ############################################
-
-    ##################################################################
-    # each threshold_df[k] is a Series indexed by la_exp intervals
-    # and it is all we need to extract "good" pixels from each chunk ...
-    ##################################################################
-
-    ###################
-    # 'gw_hist' needs to be
-    # processed and corresponding
-    # FDR thresholds must be calculated
-    # for every kernel-type
-    # also q-vals for every 'obs.raw' value
-    # and for every kernel-type must be stored
-    # somewhere-somehow - the 'lognorm' thing
-    # from HiCCUPS that would be ...
-    ###################
-
-    ###################
-    # right after that
-    # we'd have a scoring_and_filtering step
-    # where the filtering part
-    # would use FDR thresholds 'threshold_df'
-    # calculated in the histogramming step ...
-    ###################
-
-    filtered_pix = dotfinder.scoring_and_extraction_step(
-        clr, expected, expected_name, tiles, kernels,
-        ledges, threshold_df, max_nans_tolerated,
-        balance_factor, loci_separation_bins, output_calls,
-        nproc, verbose)
+    # 1. Calculate genome-wide histograms of scores.
+    gw_hist = dotfinder.scoring_and_histogramming_step(clr,
+                                            expected,
+                                            expected_name,
+                                            balancing_weight_name,
+                                            tiles,
+                                            kernels,
+                                            ledges,
+                                            max_nans_tolerated,
+                                            loci_separation_bins,
+                                            nproc,
+                                            verbose)
 
     if verbose:
+        print("Done building histograms ...")
+
+    # 2. Determine the FDR thresholds.
+    threshold_df, qvalues = dotfinder.determine_thresholds(
+        kernels, ledges, gw_hist, fdr)
+
+
+    # 3. Filter using FDR thresholds calculated in the histogramming step
+    filtered_pixels = dotfinder.scoring_and_extraction_step(clr,
+                                            expected,
+                                            expected_name,
+                                            balancing_weight_name,
+                                            tiles,
+                                            kernels,
+                                            ledges,
+                                            threshold_df,
+                                            max_nans_tolerated,
+                                            balance_factor,
+                                            loci_separation_bins,
+                                            output_calls,
+                                            nproc,
+                                            verbose)
+
+    # 4. Post-processing
+    if verbose:
+        print("Begin post-processing of {} filtered pixels".format(len(filtered_pixels)))
         print("preparing to extract needed q-values ...")
 
-    # attempting to extract q-values using l-chunks and IntervalIndex:
-    # we'll do it in an ugly but workign fashion, by simply
-    # iteration over pairs of obs, la_exp and extracting needed qvals
-    # one after another ...
-    for k in kernels:
-        filtered_pix["la_exp."+k+".qval"] = \
-            [ qvalues[k].loc[o,e] for o,e \
-                 in filtered_pix[["obs.raw","la_exp."+k+".value"]].itertuples(index=False) ]
-    # qvalues : dict
-    #   A dictionary with keys being kernel names and values pandas.DataFrame-s
-    #   storing q-values: each column corresponds to a lambda-chunk,
-    #   while rows correspond to observed pixels values.
+    filtered_pixels_qvals = dotfinder.annotate_pixels_with_qvalues(filtered_pixels,
+                                                                    qvalues,
+                                                                    kernels)
+    # 4a. clustering
+    ########################################################################
+    # Clustering has to be done using annotated DataFrame of filtered pixels
+    # why ? - because - clustering has to be done chromosome by chromosome !
+    ########################################################################
+    filtered_pixels_annotated = cooler.annotate(filtered_pixels_qvals, clr.bins()[:])
+    centroids = dotfinder.clustering_step(
+                                filtered_pixels_annotated,
+                                expected_chroms,
+                                dots_clustering_radius,
+                                verbose)
+
+    # 4b. filter by enrichment and qval
+    postprocessed_calls = dotfinder.thresholding_step(centroids)
 
 
-    ######################################
-    # post processing starts from here on:
-    # it includes:
-    # 0. remove low MAPQ reads (done externally ?!?)
-    # 1. clustering
-    # 2. filter pixels by FDR
-    # 3. merge different resolutions. (external script)
-    ######################################
-
-    if verbose:
-        print("Subsequent clustering and thresholding steps are not production-ready")
-
-    # (1):
-    centroids = dotfinder.clustering_step_local(filtered_pix, expected_chroms,
-                                      dots_clustering_radius, verbose)
-    # (2):
-    out = dotfinder.thresholding_step(centroids)
+    # Final-postprocessed result
     if output_calls is not None:
-        final_output = op.join(
+
+        postprocessed_fname = op.join(
             op.dirname(output_calls),
-            "final_" + op.basename(output_calls))
-        out.to_csv(
-            final_output,
+            op.basename(output_calls)+".postproc")
+
+        postprocessed_calls.to_csv(
+            postprocessed_fname,
             sep='\t',
             header=True,
             index=False,
             compression=None)
 
-    # (3):
-    # Call dots for different resolutions individually and then use external methods
-    # to merge the calls
+
