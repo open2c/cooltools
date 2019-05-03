@@ -9,15 +9,15 @@ from setuptools.extension import Extension
 from Cython.Build import cythonize
 import numpy as np
 
+
 classifiers = """\
     Development Status :: 4 - Beta
-    Operating System :: OS Independent
     Programming Language :: Python
     Programming Language :: Python :: 3
-    Programming Language :: Python :: 3.3
     Programming Language :: Python :: 3.4
     Programming Language :: Python :: 3.5
     Programming Language :: Python :: 3.6
+    Programming Language :: Python :: 3.7
 """
 
 
@@ -27,6 +27,7 @@ def _read(*parts, **kwargs):
     with io.open(filepath, encoding=encoding) as fh:
         text = fh.read()
     return text
+
 
 def get_version():
     version = re.search(
@@ -40,17 +41,26 @@ def get_long_description():
     return _read('README.md')
 
 
-install_requires = [
-    'numpy',
+setup_requires = [
     'cython',
-    'dask',
-    'cytoolz',
-    'numba',
+    'numpy',
+]
+
+
+install_requires = [
     'click>=7',
-    'cooler>=0.7',
+    'cooler>=0.8.5',
     'bioframe',
+    'cython',
+    'numba',
+    'numpy',
+    'scipy',
+    'pandas',
+    'multiprocess',
+    'cytoolz',
     'scikit-learn',
-    'tables'
+    'tables',
+    'joblib',
 ]
 
 
@@ -65,28 +75,32 @@ extensions = [
     ),
 ]
 
+
 packages = find_packages()
+
+
 setup(
     name='cooltools',
     author='Mirny Lab',
     author_email='espresso@mit.edu',
     version=get_version(),
-    license='BSD3',
+    license='MIT',
     description='Analysis tools for genomic interaction data stored in .cool format',
     long_description=get_long_description(),
-    keywords=['genomics', 'bioinformatics', 'Hi-C', 'contact', 'matrix', 'format', 'hdf5'],
+    long_description_content_type='text/markdown',
+    keywords=['genomics', 'bioinformatics', 'Hi-C', 'analysis', 'cooler'],
     url='https://github.com/mirnylab/cooltools',
-    packages=find_packages(),
-    ext_modules = cythonize(extensions),
     zip_safe=False,
     classifiers=[s.strip() for s in classifiers.split('\n') if s],
-    include_dirs=[np.get_include()],
 
+    packages=packages,
+    ext_modules=cythonize(extensions),
+    include_dirs=[np.get_include()],
+    setup_requires=setup_requires,
     install_requires=install_requires,
     entry_points={
         'console_scripts': [
              'cooltools = cooltools.cli:cli',
         ]
     }
-
 )
