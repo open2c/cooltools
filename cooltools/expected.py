@@ -6,12 +6,8 @@ import numpy as np
 import pandas as pd
 from scipy.linalg import toeplitz
 from scipy.signal import fftconvolve
-import dask.dataframe as dd
-import dask.array as da
-import dask
 
 from cooler.tools import split, partition
-from cooler.sandbox.dask import read_table
 import cooler
 import bioframe
 from .lib import assign_supports, numutils
@@ -53,6 +49,8 @@ def compute_scaling(df, region1, region2=None,
                     dmin=int(1e1),
                     dmax=int(1e7),
                     n_bins=50):
+
+    import dask.array as da
 
     if region2 is None:
         region2 = region1
@@ -314,6 +312,9 @@ def cis_expected(clr, regions, field='balanced', chunksize=1000000,
     Dataframe of diagonal statistics, indexed by region and diagonal number
 
     """
+    import dask.dataframe as dd
+    from cooler.sandbox.dask import read_table
+
     if use_dask:
         pixels = read_table(clr.uri + '/pixels', chunksize=chunksize)
     else:
