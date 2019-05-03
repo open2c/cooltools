@@ -20,8 +20,8 @@ class TabularFilePath(click.Path):
 
         """
         self.default_column_index = default_column_index
-        super().__init__(exists=exists, 
-                         resolve_path=resolve_path, 
+        super().__init__(exists=exists,
+                         resolve_path=resolve_path,
                          allow_dash=allow_dash)
 
     def convert(self, value, param, ctx):

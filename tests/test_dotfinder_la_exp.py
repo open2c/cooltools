@@ -62,7 +62,7 @@ def test_adjusted_expected_tile_some_nans():
                          origin=(0,0),
                          observed=mock_M_raw, # should be RAW ...
                          expected=mock_E_ice,
-                         bal_weight=mock_v_ice,
+                         bal_weights=mock_v_ice,
                          kernels={"donut":kernel,
                                  "footprint":np.ones_like(kernel)})
     # mock results are supposedly for
@@ -99,7 +99,7 @@ def test_adjusted_expected_tile_some_nans():
                      origin=(0,0),
                      observed=mock_M_raw, # should be RAW...
                      expected=mock_E_ice,
-                     bal_weight=mock_v_ice,
+                     bal_weights=mock_v_ice,
                      kernels={"donut":kernel,
                              "footprint":np.ones_like(kernel)})
     # post-factum filtering resides
