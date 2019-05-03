@@ -19,60 +19,60 @@ def isrle(starts, lengths, values):
 def rlencode(x, dropna=False):
     """
     Run length encoding.
-    Based on http://stackoverflow.com/a/32681075, which is based on the rle 
+    Based on http://stackoverflow.com/a/32681075, which is based on the rle
     function from R.
-    
+
     Parameters
     ----------
     x : 1D array_like
         Input array to encode
     dropna: bool, optional
         Drop all runs of NaNs.
-    
+
     Returns
     -------
     start positions, run lengths, run values
-    
+
     """
     where = np.flatnonzero
     x = np.asarray(x)
     n = len(x)
     if n == 0:
-        return (np.array([], dtype=int), 
-                np.array([], dtype=int), 
+        return (np.array([], dtype=int),
+                np.array([], dtype=int),
                 np.array([], dtype=x.dtype))
-    
+
     isnumeric = np.issubdtype(x.dtype, np.number)
-    
+
     if isnumeric:
         starts = np.r_[0, where(~np.isclose(x[1:], x[:-1], equal_nan=True)) + 1]
     else:
         starts = np.r_[0, where(x[1:] != x[:-1]) + 1]
     lengths = np.diff(np.r_[starts, n])
     values = x[starts]
-    
+
     if isnumeric and dropna:
         mask = ~np.isnan(values)
         starts, lengths, values = starts[mask], lengths[mask], values[mask]
-    
+
     return starts, lengths, values
 
 
 def rldecode(starts, lengths, values, minlength=None):
     """
     Decode a run-length encoding of a 1D array.
-    
+
     Parameters
     ----------
     starts, lengths, values : 1D array_like
         The run-length encoding.
     minlength : int, optional
         Minimum length of the output array.
-    
+
     Returns
     -------
     1D array. Missing data will be filled with NaNs.
-    
+
     """
     starts, lengths, values = map(np.asarray, (starts, lengths, values))
     # TODO: check validity of rle
@@ -108,8 +108,8 @@ def fillgaps(starts, lengths, values, minlength=None, fill_value=np.nan):
         n = max(minlength, n)
 
     ends = starts + lengths
-    lo = np.r_[0, ends] 
-    hi = np.r_[starts, n]    
+    lo = np.r_[0, ends]
+    hi = np.r_[starts, n]
     gap_locs = where((hi - lo) > 0)
     if len(gap_locs):
         starts = np.insert(starts, gap_locs, lo[gap_locs])
@@ -131,7 +131,7 @@ def align(slv1, slv2, minlength=None):
     """
     Remove NaN runs and runs of length zero and stich together consecutive runs
     of the same value.
-    
+
     """
     starts1, lengths1, values1 = fillgaps(*slv1)
     starts2, lengths2, values2 = fillgaps(*slv2)
@@ -153,19 +153,19 @@ def simplify(starts, lengths, values, minlength=None):
     """
     Remove NaN runs and runs of length zero and stich together consecutive runs
     of the same value.
-    
+
     """
     starts, lengths, values = fill_gaps(starts, lengths, values, minlength)
     n = starts[-1] + lengths[-1]
-    
+
     is_nontrivial = lengths > 0
     starts = starts[is_nontrivial]
     values = values[is_nontrivial]
-    
+
     is_new_run = np.r_[True, ~np.isclose(values[:-1], values[1:], equal_nan=True)]
     starts = starts[is_new_run]
     values = values[is_new_run]
-    
+
     lengths = np.r_[starts[1:] - starts[:-1], n - starts[-1]]
 
     mask = ~np.isnan(values)
