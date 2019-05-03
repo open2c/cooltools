@@ -81,7 +81,8 @@ def digitize_track(binedges, track, regions=None):
 
     # histogram the signal
     digitized = track.copy()
-    digitized[name+'.d'] = np.digitize(track[name].values, binedges, right=False)
+    digitized[name + '.d'] = np.digitize(track[name].values, binedges,
+                                         right=False)
     mask = track[name].isnull()
     digitized.loc[mask, name+'.d'] = -1
     x = digitized[name + '.d'].values.copy()
@@ -163,7 +164,7 @@ def make_trans_obsexp_fetcher(clr, expected):
             else:
                 raise KeyError(
                     "trans-exp index is missing a pair of chromosomes: "
-                    "{}, {}".format(chrom1,chrom2))
+                    "{}, {}".format(chrom1, chrom2))
 
         def _fetch_trans_oe(reg1, reg2):
             reg1 = bioframe.parse_region(reg1)
@@ -204,9 +205,9 @@ def _accumulate(S, C, getmatrix, digitized, reg1, reg2, verbose):
 def make_saddle(getmatrix, binedges, digitized, contact_type, regions=None,
                 trim_outliers=False, verbose=False):
     """
-    Make a matrix of average interaction probabilities between genomic bin pairs
-    as a function of a specified genomic track. The provided genomic track must
-    be pre-quantized as integers (i.e. digitized).
+    Make a matrix of average interaction probabilities between genomic bin
+    pairs as a function of a specified genomic track. The provided genomic
+    track must be pre-quantized as integers (i.e. digitized).
 
     Parameters
     ----------
@@ -223,8 +224,8 @@ def make_saddle(getmatrix, binedges, digitized, contact_type, regions=None,
         If 'cis' then only cis interactions are used to build the matrix.
         If 'trans', only trans interactions are used.
     regions : sequence of str or tuple, optional
-        A list of genomic regions to use. Each can be a chromosome, a UCSC-style
-        genomic region string or a tuple.
+        A list of genomic regions to use. Each can be a chromosome, a
+        UCSC-style genomic region string or a tuple.
     trim_outliers : bool, optional
         Remove first and last row and column from the output matrix.
     verbose : bool, optional
@@ -249,7 +250,7 @@ def make_saddle(getmatrix, binedges, digitized, contact_type, regions=None,
         regions = [bioframe.parse_region(reg) for reg in regions]
 
     digitized_tracks = {
-        reg:bioframe.bedslice(
+        reg: bioframe.bedslice(
             digitized_df.groupby('chrom'), reg[0], reg[1], reg[2])[name]
         for reg in regions}
 
@@ -264,14 +265,14 @@ def make_saddle(getmatrix, binedges, digitized, contact_type, regions=None,
     # n_bins here includes 2 open bins
     # for values <lo and >hi.
     n_bins = len(binedges) + 1
-    interaction_sum   = np.zeros((n_bins, n_bins))
+    interaction_sum = np.zeros((n_bins, n_bins))
     interaction_count = np.zeros((n_bins, n_bins))
 
     for reg1, reg2 in supports:
-        _accumulate(interaction_sum, interaction_count, getmatrix, digitized_tracks,
-                    reg1, reg2, verbose)
+        _accumulate(interaction_sum, interaction_count, getmatrix,
+                    digitized_tracks, reg1, reg2, verbose)
 
-    interaction_sum   += interaction_sum.T
+    interaction_sum += interaction_sum.T
     interaction_count += interaction_count.T
 
     if trim_outliers:
@@ -407,9 +408,9 @@ def saddleplot(binedges, counts, saddledata, cmap='coolwarm', vmin=-1, vmax=1,
             width=np.diff(binedges),
             height=hist,
             align='edge',
-             **margin_kws)
+            **margin_kws)
     plt.xlim(lo, hi)
-    #plt.ylim(plt.ylim())  # correct
+    # plt.ylim(plt.ylim())  # correct
     plt.gca().spines['top'].set_visible(False)
     plt.gca().spines['right'].set_visible(False)
     plt.gca().spines['left'].set_visible(False)
@@ -431,7 +432,7 @@ def saddleplot(binedges, counts, saddledata, cmap='coolwarm', vmin=-1, vmax=1,
         decimal = 10
         nsegments = 5
         cd_ticks = np.trunc(np.linspace(vmin, vmax, nsegments)*decimal)/decimal
-        cb.set_ticks( cd_ticks )
+        cb.set_ticks(cd_ticks)
 
     # extra settings
     grid['ax_heatmap'].set_xlim(lo, hi)
@@ -473,7 +474,7 @@ def saddle_strength(S, C):
         intra = intra_sum / intra_count
 
         inter_sum = S[0:k, n-k:n].sum() + S[n-k:n, 0:k].sum()
-        inter_count =  C[0:k, n-k:n].sum() + C[n-k:n, 0:k].sum()
+        inter_count = C[0:k, n-k:n].sum() + C[n-k:n, 0:k].sum()
         inter = inter_sum / inter_count
 
         ratios[k] = intra / inter

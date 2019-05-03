@@ -5,7 +5,7 @@ import pandas as pd
 def assign_supports(features, supports, labels=False, suffix=''):
     """
     Assign support regions to a table of genomic intervals.
-    
+
     Parameters
     ----------
     features : DataFrame
@@ -17,7 +17,7 @@ def assign_supports(features, supports, labels=False, suffix=''):
     """
     features = features.copy()
     supp_col = pd.Series(index=features.index, data=np.nan)
-    
+
     c = 'chrom' + suffix
     s = 'start' + suffix
     e = 'end' + suffix
@@ -25,7 +25,7 @@ def assign_supports(features, supports, labels=False, suffix=''):
         if col not in features.columns:
             raise ValueError(
                 'Column "{}" not found in features data frame.'.format(col))
-    
+
     for i, region in enumerate(supports):
         # single-region support
         if len(region) == 3:
@@ -43,7 +43,7 @@ def assign_supports(features, supports, labels=False, suffix=''):
                 sel2 &= (features[s] < region2[2])
             sel = sel1 | sel2
         supp_col.loc[sel] = i
-    
+
     if labels:
         supp_col = supp_col.map(lambda i: supports[int(i)], na_action='ignore')
 
