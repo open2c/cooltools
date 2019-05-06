@@ -70,6 +70,7 @@ def validate_csv(ctx, param, value, default_column):
     file_path, _, field_name = value.partition('::')
     if not op.exists(file_path):
         raise click.BadParameter(
+            'Path not found: "{}"'.format(file_path),
             ctx=ctx, param=param)
     if not field_name:
         field_name = default_column
