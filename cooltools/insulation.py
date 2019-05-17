@@ -58,18 +58,20 @@ def insul_diamond(pixel_query, bins, window=10, ignore_diags=2, balanced=True,
         j = diag_pixels.bin2_id.values - lo_bin_id
         val = diag_pixels.balanced.values if balanced else diag_pixels['count'].values
 
+        loc_bad_bin_mask = np.zeros(N, dtype=bool)
         for i_shift in range(0, window):
             for j_shift in range(0, window):
                 if i_shift+j_shift < ignore_diags:
                     continue
-
+                    
+                loc_bad_bin_mask[:] = False
+                
                 mask = ((i + i_shift == j - j_shift) &
                         (i + i_shift < N) & (j - j_shift >= 0))
 
                 sum_pixels += np.bincount(i[mask] +
                                           i_shift, val[mask], minlength=N)
 
-                loc_bad_bin_mask = np.zeros(N, dtype=bool)
                 if i_shift == 0:
                     loc_bad_bin_mask |= bad_bin_mask
                 else:
