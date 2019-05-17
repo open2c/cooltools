@@ -43,7 +43,8 @@ def diamond_insulation(cool_path, window, balance, balance_weight, min_dist_bad_
 
     COOL_PATH : The paths to a .cool file with a balanced Hi-C map.
 
-    WINDOW : The window size for the insulation score calculations.
+    WINDOW : The window size for the insulation score calculations. 
+             Multiple space-separated values can be provided.
     """
 
     clr = cooler.Cooler(cool_path)
