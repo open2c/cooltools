@@ -482,10 +482,10 @@ def trans_expected(clr, chromosomes, chunksize=1000000, use_dask=False):
     trans_area.name = 'n_valid'
     # processing with use_dask=True is different:
     if use_dask:
-        # trans_sum = pixels.groupby(('chrom1', 'chrom2'))['balanced'].sum().compute()
+        # trans_sum = pixels.groupby(['chrom1', 'chrom2'])['balanced'].sum().compute()
         pass
     else:
-        trans_sum = pixels.groupby(('chrom1', 'chrom2'))['balanced'].sum()
+        trans_sum = pixels.groupby(['chrom1', 'chrom2'])['balanced'].sum()
     # for consistency with the cis_expected function:
     trans_sum.name = trans_sum.name + '.sum'
 
@@ -588,7 +588,7 @@ def _diagsum_asymm(clr, fields, transforms, contact_type, supports1, supports2, 
     pixels['support1'] = assign_supports(pixels, supports1, suffix='1')
     pixels['support2'] = assign_supports(pixels, supports1, suffix='2')
 
-    pixel_groups = dict(iter(pixels.groupby(('support1', 'support2'))))
+    pixel_groups = dict(iter(pixels.groupby(['support1', 'support2'])))
     return {(int(i), int(j)): group.groupby('diag')[fields].sum()
             for (i, j), group in pixel_groups.items()}
 
@@ -607,7 +607,7 @@ def _blocksum_asymm(clr, fields, transforms, supports1, supports2, span):
     pixels['support2'] = assign_supports(pixels, supports2, suffix='2')
     pixels = pixels.dropna()
 
-    pixel_groups = dict(iter(pixels.groupby(('support1', 'support2'))))
+    pixel_groups = dict(iter(pixels.groupby(['support1', 'support2'])))
     return {(int(i), int(j)): group[fields].sum()
             for (i, j), group in pixel_groups.items()}
 
