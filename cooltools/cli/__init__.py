@@ -17,12 +17,12 @@ CONTEXT_SETTINGS = {
 @click.version_option(version=__version__)
 @click.group(context_settings=CONTEXT_SETTINGS)
 @click.option(
-    '--debug/--no-debug', 
-    help="Verbose logging", 
+    '--debug/--no-debug',
+    help="Verbose logging",
     default=False)
 @click.option(
-    '-pm', '--post-mortem', 
-    help="Post mortem debugging", 
+    '-pm', '--post-mortem',
+    help="Post mortem debugging",
     is_flag=True,
     default=False)
 def cli(debug, post_mortem):

@@ -12,12 +12,12 @@ import cooler
 from .lib.numutils import LazyToeplitz
 
 
-def make_bin_aligned_windows(binsize, chroms, centers_bp, flank_bp=0, 
+def make_bin_aligned_windows(binsize, chroms, centers_bp, flank_bp=0,
                              region_start_bp=0, ignore_index=False):
     """
-    Convert genomic loci into bin spans on a fixed bin-size segmentation of a 
+    Convert genomic loci into bin spans on a fixed bin-size segmentation of a
     genomic region. Window limits are adjusted to align with bin edges.
-    
+
     Parameters
     -----------
     binsize : int
@@ -31,23 +31,24 @@ def make_bin_aligned_windows(binsize, chroms, centers_bp, flank_bp=0,
     region_start_bp : int, optional
         If region is a subset of a chromosome, shift coordinates by this amount.
         Default is 0.
-    
+
     Returns
     -------
-    DataFrame with columns: 
+    DataFrame with columns:
         'chrom'        - chromosome
         'start', 'end' - window limits in base pairs
         'lo', 'hi'     - window limits in bins
-    
+
     """
     if not (flank_bp % binsize == 0):
-        raise ValueError("Flanking distance must be divisible by the bin size.")
-    
+        raise ValueError(
+            "Flanking distance must be divisible by the bin size.")
+
     if isinstance(chroms, pd.Series) and not ignore_index:
         index = chroms.index
     else:
         index = None
-    
+
     chroms = np.asarray(chroms)
     centers_bp = np.asarray(centers_bp)
     if len(centers_bp.shape) == 2:
@@ -55,16 +56,16 @@ def make_bin_aligned_windows(binsize, chroms, centers_bp, flank_bp=0,
         right_bp = centers_bp[:, 1]
     else:
         left_bp = right_bp = centers_bp
-    
+
     if np.any(left_bp > right_bp):
         raise ValueError("Found interval with end > start.")
-    
+
     left = left_bp - region_start_bp
     right = right_bp - region_start_bp
     left_bin = (left / binsize).astype(int)
     right_bin = (right / binsize).astype(int)
     flank_bin = flank_bp // binsize
-    
+
     lo = left_bin - flank_bin
     hi = right_bin + flank_bin + 1
     windows = pd.DataFrame(index=index)
@@ -81,7 +82,7 @@ def assign_regions(features, supports):
 
     """
     features = features.copy()
-    
+
     # on-diagonal features
     if 'chrom' in features.columns:
         for i, region in enumerate(supports):
@@ -90,23 +91,23 @@ def assign_regions(features, supports):
                 sel &= (features.end >= region[1])
                 if region[2] is not None:
                     sel &= (features.start < region[2])
-                
+
                 features.loc[sel, 'region'] = i
-                
+
             elif len(region) == 2:
                 region1, region2 = region
                 sel1 = (features.chrom == region1[0])
                 sel1 &= (features.end >= region1[1])
                 if region1[2] is not None:
                     sel1 &= (features.start < region1[2])
-                
+
                 sel2 = (features.chrom == region2[0])
                 sel2 &= (features.end >= region2[1])
                 if region2[2] is not None:
                     sel2 &= (features.start < region2[2])
-                
+
                 features.loc[(sel1 | sel2), 'region'] = i
-                
+
     # off-diagonal features
     elif 'chrom1' in features.columns:
         for i, region in enumerate(supports):
@@ -114,7 +115,7 @@ def assign_regions(features, supports):
                 region1, region2 = region, region
             elif len(region) == 2:
                 region1, region2 = region[0], region[1]
-                
+
             sel1 = (features.chrom1 == region1[0])
             sel1 &= (features.end1 >= region1[1])
             if region1[2] is not None:
@@ -128,9 +129,9 @@ def assign_regions(features, supports):
             features.loc[(sel1 | sel2), 'region'] = i
     else:
         raise ValueError('Could not parse `features` data frame.')
-        
+
     features['region'] = features['region'].map(
-        lambda i: '{}:{}-{}'.format(*supports[int(i)]), 
+        lambda i: '{}:{}-{}'.format(*supports[int(i)]),
         na_action='ignore')
     return features
 
@@ -142,7 +143,7 @@ def _pileup(data_select, data_snip, arg):
         region1, region2 = map(bioframe.parse_region_string, support)
     else:
         region1 = region2 = bioframe.parse_region_string(support)
-        
+
     # check if features are on- or off-diagonal
     if 'start' in feature_group:
         s1 = feature_group['start'].values
@@ -153,9 +154,9 @@ def _pileup(data_select, data_snip, arg):
         e1 = feature_group['end1'].values
         s2 = feature_group['start2'].values
         e2 = feature_group['end2'].values
-        
+
     data = data_select(region1, region2)
-    stack = list(map(partial(data_snip, data, region1, region2), 
+    stack = list(map(partial(data_snip, data, region1, region2),
                      zip(s1, e1, s2, e2)))
 
     return np.dstack(stack), feature_group['_rank'].values
@@ -164,7 +165,7 @@ def _pileup(data_select, data_snip, arg):
 def pileup(features, data_select, data_snip, map=map):
     """
     Handles on-diagonal and off-diagonal cases.
-    
+
     Parameters
     ----------
     features : DataFrame
@@ -172,35 +173,35 @@ def pileup(features, data_select, data_snip, map=map):
         Or ['chrom1', 'start1', 'end1', 'chrom1', 'start2', 'end2'].
         start, end are bp coordinates.
         lo, hi are bin coordinates.
-    
+
     data_select : callable
         Callable that takes a region as argument and returns
         the data, mask and bin offset of a support region
-    
+
     data_snip : callable
         Callable that takes data, mask and a 2D bin span (lo1, hi1, lo2, hi2)
         and returns a snippet from the selected support region
-    
-    
+
+
     """
     if features.region.isnull().any():
         raise ValueError(
             'Drop features with no region assignment before calling pileup!')
-    
+
     features = features.copy()
     features['_rank'] = range(len(features))
-    
+
     # cumul_stack = []
     # orig_rank = []
     cumul_stack, orig_rank = zip(*map(
-        partial(_pileup, data_select, data_snip), 
+        partial(_pileup, data_select, data_snip),
         features.groupby('region', sort=False)
     ))
 
     # Restore the original rank of the input features
     cumul_stack = np.dstack(cumul_stack)
     orig_rank = np.concatenate(orig_rank)
-    
+
     idx = np.argsort(orig_rank)
     cumul_stack = cumul_stack[:, :, idx]
     return cumul_stack
@@ -210,7 +211,7 @@ def pair_sites(sites, separation, slop):
     """
     Create "hand" intervals to the right and to the left of each site.
     Then join right hands with left hands to pair sites together.
-    
+
     """
     from bioframe.tools import tsv, bedtools
 
@@ -222,7 +223,7 @@ def pair_sites(sites, separation, slop):
     left_hand['direction'] = 'L'
     left_hand['snip_mid'] = mids
     left_hand['snip_strand'] = sites['strand']
-    
+
     right_hand = sites[['chrom']].copy()
     right_hand['start'] = mids + separation - slop
     right_hand['end'] = mids + separation + slop
@@ -235,12 +236,12 @@ def pair_sites(sites, separation, slop):
     mask = (left_hand['start'] > 0) & (right_hand['start'] > 0)
     left_hand = left_hand[mask].copy()
     right_hand = right_hand[mask].copy()
-    
-    # intersect right hands (left anchor site) 
+
+    # intersect right hands (left anchor site)
     # with left hands (right anchor site)
     with tsv(right_hand) as R, tsv(left_hand) as L:
         out = bedtools.intersect(a=R.name, b=L.name, wa=True, wb=True)
-        out.columns = ([c+'_r' for c in right_hand.columns] + 
+        out.columns = ([c+'_r' for c in right_hand.columns] +
                        [c+'_l' for c in left_hand.columns])
     return out
 
@@ -253,10 +254,12 @@ class CoolerSnipper:
         self.pad = True
         self.cooler_opts = {} if cooler_opts is None else cooler_opts
         self.cooler_opts.setdefault('sparse', True)
-    
+
     def select(self, region1, region2):
-        self.offsets[region1] = self.clr.offset(region1) - self.clr.offset(region1[0])
-        self.offsets[region2] = self.clr.offset(region2) - self.clr.offset(region2[0])
+        self.offsets[region1] = self.clr.offset(
+            region1) - self.clr.offset(region1[0])
+        self.offsets[region2] = self.clr.offset(
+            region2) - self.clr.offset(region2[0])
         matrix = (self.clr.matrix(**self.cooler_opts)
                           .fetch(region1, region2))
         if self.cooler_opts['sparse']:
@@ -267,12 +270,12 @@ class CoolerSnipper:
         s1, e1, s2, e2 = tup
         offset1 = self.offsets[region1]
         offset2 = self.offsets[region2]
-        binsize = self.binsize        
+        binsize = self.binsize
         lo1, hi1 = (s1 // binsize) - offset1, (e1 // binsize) - offset1
         lo2, hi2 = (s2 // binsize) - offset2, (e2 // binsize) - offset2
         assert hi1 >= 0
         assert hi2 >= 0
-        
+
         m, n = matrix.shape
         dm, dn = hi1 - lo1, hi2 - lo2
         out_of_bounds = False
@@ -289,21 +292,21 @@ class CoolerSnipper:
         if hi2 > n:
             pad_right = dn - (hi2 - n)
             out_of_bounds = True
-        
-        if out_of_bounds:        
+
+        if out_of_bounds:
             i0 = max(lo1, 0)
             i1 = min(hi1, m)
             j0 = max(lo2, 0)
             j1 = min(hi2, n)
             snippet = np.full((dm, dn), np.nan)
-#             snippet[pad_bottom:pad_top, 
+#             snippet[pad_bottom:pad_top,
 #                     pad_left:pad_right] = matrix[i0:i1, j0:j1].toarray()
         else:
             snippet = matrix[lo1:hi1, lo2:hi2].toarray()
-        
+
         return snippet
-    
-    
+
+
 class ObsExpSnipper:
     def __init__(self, clr, expected, cooler_opts=None):
         self.clr = clr
@@ -313,10 +316,12 @@ class ObsExpSnipper:
         self.pad = True
         self.cooler_opts = {} if cooler_opts is None else cooler_opts
         self.cooler_opts.setdefault('sparse', True)
-    
+
     def select(self, region1, region2):
-        self.offsets[region1] = self.clr.offset(region1) - self.clr.offset(region1[0])
-        self.offsets[region2] = self.clr.offset(region2) - self.clr.offset(region2[0])
+        self.offsets[region1] = self.clr.offset(
+            region1) - self.clr.offset(region1[0])
+        self.offsets[region2] = self.clr.offset(
+            region2) - self.clr.offset(region2[0])
         matrix = (self.clr.matrix(**self.cooler_opts)
                           .fetch(region1, region2))
         if self.cooler_opts['sparse']:
@@ -331,12 +336,12 @@ class ObsExpSnipper:
         s1, e1, s2, e2 = tup
         offset1 = self.offsets[region1]
         offset2 = self.offsets[region2]
-        binsize = self.binsize        
+        binsize = self.binsize
         lo1, hi1 = (s1 // binsize) - offset1, (e1 // binsize) - offset1
         lo2, hi2 = (s2 // binsize) - offset2, (e2 // binsize) - offset2
         assert hi1 >= 0
         assert hi2 >= 0
-        
+
         m, n = matrix.shape
         dm, dn = hi1 - lo1, hi2 - lo2
         out_of_bounds = False
@@ -353,18 +358,18 @@ class ObsExpSnipper:
         if hi2 > n:
             pad_right = dn - (hi2 - n)
             out_of_bounds = True
-        
-        if out_of_bounds:        
+
+        if out_of_bounds:
             i0 = max(lo1, 0)
             i1 = min(hi1, m)
             j0 = max(lo2, 0)
             j1 = min(hi2, n)
             return np.full((dm, dn), np.nan)
-#             snippet[pad_bottom:pad_top, 
+#             snippet[pad_bottom:pad_top,
 #                     pad_left:pad_right] = matrix[i0:i1, j0:j1].toarray()
         else:
             snippet = matrix[lo1:hi1, lo2:hi2].toarray()
-        
+
         e = self._expected[lo1:hi1, lo2:hi2]
         return snippet / e
 
@@ -375,10 +380,12 @@ class ExpectedSnipper:
         self.expected = expected
         self.binsize = self.clr.binsize
         self.offsets = {}
-    
+
     def select(self, region1, region2):
-        self.offsets[region1] = self.clr.offset(region1) - self.clr.offset(region1[0])
-        self.offsets[region2] = self.clr.offset(region2) - self.clr.offset(region2[0])
+        self.offsets[region1] = self.clr.offset(
+            region1) - self.clr.offset(region1[0])
+        self.offsets[region2] = self.clr.offset(
+            region2) - self.clr.offset(region2[0])
         return (self.expected.groupby('chrom')
                              .get_group(region1[0])
                              ['balanced.avg']
@@ -388,7 +395,7 @@ class ExpectedSnipper:
         s1, e1, s2, e2 = tup
         offset1 = self.offsets[region1]
         offset2 = self.offsets[region2]
-        binsize = self.binsize        
+        binsize = self.binsize
         lo1, hi1 = (s1 // binsize) - offset1, (e1 // binsize) - offset1
         lo2, hi2 = (s2 // binsize) - offset2, (e2 // binsize) - offset2
         assert hi1 >= 0

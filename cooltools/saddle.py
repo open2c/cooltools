@@ -12,9 +12,9 @@ import bioframe
 def ecdf(x, v, side='left'):
     """
     Return array `x`'s empirical CDF value(s) at the points in `v`.
-    This is based on the :func:`statsmodels.distributions.ECDF` step function. 
+    This is based on the :func:`statsmodels.distributions.ECDF` step function.
     This is the inverse of `quantile`.
-    
+
     """
     x = np.asarray(x)
     ind = np.searchsorted(np.sort(x), v, side=side) - 1
@@ -24,9 +24,9 @@ def ecdf(x, v, side='left'):
 
 def quantile(x, q, **kwargs):
     """
-    Return the values of the quantile cut points specified by fractions `q` of 
+    Return the values of the quantile cut points specified by fractions `q` of
     a sequence of data given by `x`.
-    
+
     """
     x = np.asarray(x)
     p = np.asarray(q) * 100
@@ -45,16 +45,16 @@ def digitize_track(binedges, track, regions=None):
     track : tuple of (DataFrame, str)
         bedGraph-like dataframe along with the name of the value column.
     regions: sequence of str or tuples
-        List of genomic regions to include. Each can be a chromosome, a 
+        List of genomic regions to include. Each can be a chromosome, a
         UCSC-style genomic region string or a tuple.
-    
+
     Returns
     -------
     digitized : DataFrame
         New bedGraph-like dataframe with value column and an additional
         digitized value column with name suffixed by '.d'
     hist : 1D array (length n + 2)
-        Histogram of digitized signal values. Its length is `n + 2` because 
+        Histogram of digitized signal values. Its length is `n + 2` because
         the first and last elements correspond to outliers. See notes.
 
     Notes
@@ -65,23 +65,24 @@ def digitize_track(binedges, track, regions=None):
     - `0` <-> left outlier values
     - `n+1` <-> right outlier values
     - `-1` <-> missing data (NaNs)
-    
+
     """
     if not isinstance(track, tuple):
         raise ValueError(
             "``track`` should be a tuple of (dataframe, column_name)")
     track, name = track
-    
+
     # subset and re-order chromosome groups
     if regions is not None:
         regions = [bioframe.parse_region(reg) for reg in regions]
         grouped = track.groupby('chrom')
         track = pd.concat(bioframe.bedslice(grouped, chrom, st, end)
                           for (chrom, st, end) in regions)
-    
+
     # histogram the signal
     digitized = track.copy()
-    digitized[name+'.d'] = np.digitize(track[name].values, binedges, right=False)
+    digitized[name + '.d'] = np.digitize(track[name].values, binedges,
+                                         right=False)
     mask = track[name].isnull()
     digitized.loc[mask, name+'.d'] = -1
     x = digitized[name + '.d'].values.copy()
@@ -98,7 +99,7 @@ def make_cis_obsexp_fetcher(clr, expected):
     ----------
     clr : cooler.Cooler
         Observed matrix.
-    expected : DataFrame 
+    expected : DataFrame
         Diagonal summary statistics for each chromosome.
     name : str
         Name of data column in ``expected`` to use.
@@ -117,7 +118,7 @@ def make_cis_obsexp_fetcher(clr, expected):
         return obs_mat/exp_mat
 
     return _fetch_cis_oe
-                
+
 
 def make_trans_obsexp_fetcher(clr, expected):
     """
@@ -128,15 +129,15 @@ def make_trans_obsexp_fetcher(clr, expected):
     clr : cooler.Cooler
         Observed matrix.
     expected : (DataFrame, name) or scalar
-        Average trans values. If a scalar, it is assumed to be a global trans 
-        expected value. If a tuple of (dataframe, name), the dataframe must 
+        Average trans values. If a scalar, it is assumed to be a global trans
+        expected value. If a tuple of (dataframe, name), the dataframe must
         have a MultiIndex with 'chrom1' and 'chrom2' and must also have a column
         labeled ``name``.
 
     Returns
     -----
     getexpected(reg1, reg2)
-    
+
     """
 
     if np.isscalar(expected):
@@ -149,7 +150,7 @@ def make_trans_obsexp_fetcher(clr, expected):
         if not name:
             raise ValueError("Name of data column not provided.")
 
-        expected = {k: x.values for k, x in 
+        expected = {k: x.values for k, x in
                     expected.groupby(['chrom1', 'chrom2'])[name]}
 
         def _fetch_trans_exp(chrom1, chrom2):
@@ -163,14 +164,14 @@ def make_trans_obsexp_fetcher(clr, expected):
             else:
                 raise KeyError(
                     "trans-exp index is missing a pair of chromosomes: "
-                    "{}, {}".format(chrom1,chrom2))
+                    "{}, {}".format(chrom1, chrom2))
 
         def _fetch_trans_oe(reg1, reg2):
             reg1 = bioframe.parse_region(reg1)
             reg2 = bioframe.parse_region(reg2)
 
             return (
-                clr.matrix().fetch(reg1, reg2) / 
+                clr.matrix().fetch(reg1, reg2) /
                 _fetch_trans_exp(reg1[0], reg2[0])
             )
 
@@ -190,7 +191,7 @@ def _accumulate(S, C, getmatrix, digitized, reg1, reg2, verbose):
 
     if verbose:
         print('regions {} vs {}'.format(reg1, reg2))
-        
+
     for i in range(n_bins):
         row_mask = (digitized[reg1] == i)
         for j in range(n_bins):
@@ -201,17 +202,17 @@ def _accumulate(S, C, getmatrix, digitized, reg1, reg2, verbose):
             C[i, j] += float(len(data))
 
 
-def make_saddle(getmatrix, binedges, digitized, contact_type, regions=None, 
+def make_saddle(getmatrix, binedges, digitized, contact_type, regions=None,
                 trim_outliers=False, verbose=False):
     """
-    Make a matrix of average interaction probabilities between genomic bin pairs
-    as a function of a specified genomic track. The provided genomic track must
-    be pre-quantized as integers (i.e. digitized).
-    
+    Make a matrix of average interaction probabilities between genomic bin
+    pairs as a function of a specified genomic track. The provided genomic
+    track must be pre-quantized as integers (i.e. digitized).
+
     Parameters
     ----------
     getmatrix : function
-        A function returning a matrix of interaction between two chromosomes 
+        A function returning a matrix of interaction between two chromosomes
         given their names/indicies.
     binedges : 1D array (length n + 1)
         Bin edges of the digitized signal. For `n` bins, there are `n + 1`
@@ -223,8 +224,8 @@ def make_saddle(getmatrix, binedges, digitized, contact_type, regions=None,
         If 'cis' then only cis interactions are used to build the matrix.
         If 'trans', only trans interactions are used.
     regions : sequence of str or tuple, optional
-        A list of genomic regions to use. Each can be a chromosome, a UCSC-style
-        genomic region string or a tuple.
+        A list of genomic regions to use. Each can be a chromosome, a
+        UCSC-style genomic region string or a tuple.
     trim_outliers : bool, optional
         Remove first and last row and column from the output matrix.
     verbose : bool, optional
@@ -233,10 +234,10 @@ def make_saddle(getmatrix, binedges, digitized, contact_type, regions=None,
     Returns
     -------
     interaction_sum : 2D array
-        The matrix of summed interaction probability between two genomic bins 
+        The matrix of summed interaction probability between two genomic bins
         given their values of the provided genomic track.
     interaction_count : 2D array
-        The matrix of the number of genomic bin pairs that contributed to the 
+        The matrix of the number of genomic bin pairs that contributed to the
         corresponding pixel of ``interaction_sum``.
 
     """
@@ -245,14 +246,14 @@ def make_saddle(getmatrix, binedges, digitized, contact_type, regions=None,
     if regions is None:
         regions = [(chrom, df.start.min(), df.end.max())
                    for chrom, df in digitized_df.groupby('chrom')]
-    else:                            
+    else:
         regions = [bioframe.parse_region(reg) for reg in regions]
 
     digitized_tracks = {
-        reg:bioframe.bedslice(
-            digitized_df.groupby('chrom'), reg[0], reg[1], reg[2])[name] 
+        reg: bioframe.bedslice(
+            digitized_df.groupby('chrom'), reg[0], reg[1], reg[2])[name]
         for reg in regions}
-    
+
     if contact_type == 'cis':
         supports = list(zip(regions, regions))
     elif contact_type == 'trans':
@@ -264,16 +265,16 @@ def make_saddle(getmatrix, binedges, digitized, contact_type, regions=None,
     # n_bins here includes 2 open bins
     # for values <lo and >hi.
     n_bins = len(binedges) + 1
-    interaction_sum   = np.zeros((n_bins, n_bins))
+    interaction_sum = np.zeros((n_bins, n_bins))
     interaction_count = np.zeros((n_bins, n_bins))
 
     for reg1, reg2 in supports:
-        _accumulate(interaction_sum, interaction_count, getmatrix, digitized_tracks,
-                    reg1, reg2, verbose)
+        _accumulate(interaction_sum, interaction_count, getmatrix,
+                    digitized_tracks, reg1, reg2, verbose)
 
-    interaction_sum   += interaction_sum.T
+    interaction_sum += interaction_sum.T
     interaction_count += interaction_count.T
-    
+
     if trim_outliers:
         interaction_sum = interaction_sum[1:-1, 1:-1]
         interaction_count = interaction_count[1:-1, 1:-1]
@@ -282,8 +283,8 @@ def make_saddle(getmatrix, binedges, digitized, contact_type, regions=None,
 
 
 def saddleplot(binedges, counts, saddledata, cmap='coolwarm', vmin=-1, vmax=1,
-               color=None, title=None, xlabel=None, ylabel=None, clabel=None, 
-               fig=None, fig_kws=None, heatmap_kws=None, margin_kws=None, 
+               color=None, title=None, xlabel=None, ylabel=None, clabel=None,
+               fig=None, fig_kws=None, heatmap_kws=None, margin_kws=None,
                cbar_kws=None, subplot_spec=None):
     """
     Generate a saddle plot.
@@ -294,8 +295,8 @@ def saddleplot(binedges, counts, saddledata, cmap='coolwarm', vmin=-1, vmax=1,
         For `n` bins, there should be `n + 1` bin edges
     counts : 1D array-like
         Signal track histogram produced by `digitize_track`. It will include
-        2 flanking elements for outlier values, thus the length should be 
-        `n + 2`. 
+        2 flanking elements for outlier values, thus the length should be
+        `n + 2`.
     saddledata : 2D array-like
         Saddle matrix produced by `make_saddle`. It will include 2 flanking
         rows/columns for outlier signal values, thus the shape should be
@@ -307,7 +308,7 @@ def saddleplot(binedges, counts, saddledata, cmap='coolwarm', vmin=-1, vmax=1,
     color : matplotlib color value
         Face color for margin bar plots
     fig : matplotlib Figure, optional
-        Specified figure to plot on. A new figure is created if none is 
+        Specified figure to plot on. A new figure is created if none is
         provided.
     fig_kws : dict, optional
         Passed on to `plt.Figure()`
@@ -347,14 +348,14 @@ def saddleplot(binedges, counts, saddledata, cmap='coolwarm', vmin=-1, vmax=1,
         GridSpec = partial(GridSpecFromSubplotSpec, subplot_spec=subplot_spec)
     grid = {}
     gs = GridSpec(
-        nrows=3, 
-        ncols=3, 
-        width_ratios=[0.2, 1, 0.1], 
+        nrows=3,
+        ncols=3,
+        width_ratios=[0.2, 1, 0.1],
         height_ratios=[0.2, 1, 0.1],
         wspace=0.05,
         hspace=0.05,
     )
-        
+
     # Figure
     if fig is None:
         fig_kws_default = dict(figsize=(5, 5))
@@ -367,8 +368,8 @@ def saddleplot(binedges, counts, saddledata, cmap='coolwarm', vmin=-1, vmax=1,
 
     # Heatmap
     grid['ax_heatmap'] = ax = plt.subplot(gs[4])
-    heatmap_kws_default = dict( 
-        cmap='coolwarm', 
+    heatmap_kws_default = dict(
+        cmap='coolwarm',
         rasterized=True,
         vmin=vmin,
         vmax=vmax)
@@ -390,8 +391,8 @@ def saddleplot(binedges, counts, saddledata, cmap='coolwarm', vmin=-1, vmax=1,
         margin_kws if margin_kws is not None else {})
     # left margin hist
     grid['ax_margin_y'] = plt.subplot(gs[3], sharey=grid['ax_heatmap'])
-    plt.barh(binedges[:-1], 
-             height=np.diff(binedges), 
+    plt.barh(binedges[:-1],
+             height=np.diff(binedges),
              width=hist,
              align='edge',
              **margin_kws)
@@ -403,19 +404,19 @@ def saddleplot(binedges, counts, saddledata, cmap='coolwarm', vmin=-1, vmax=1,
     plt.gca().xaxis.set_visible(False)
     # top margin hist
     grid['ax_margin_x'] = plt.subplot(gs[1], sharex=grid['ax_heatmap'])
-    plt.bar(left=binedges[:-1], 
-            width=np.diff(binedges), 
+    plt.bar(binedges[:-1],
+            width=np.diff(binedges),
             height=hist,
             align='edge',
-             **margin_kws)
+            **margin_kws)
     plt.xlim(lo, hi)
-    #plt.ylim(plt.ylim())  # correct
+    # plt.ylim(plt.ylim())  # correct
     plt.gca().spines['top'].set_visible(False)
     plt.gca().spines['right'].set_visible(False)
     plt.gca().spines['left'].set_visible(False)
     plt.gca().xaxis.set_visible(False)
     plt.gca().yaxis.set_visible(False)
-    
+
     # Colorbar
     grid['ax_cbar'] = plt.subplot(gs[5])
     cbar_kws_default = dict(
@@ -431,7 +432,7 @@ def saddleplot(binedges, counts, saddledata, cmap='coolwarm', vmin=-1, vmax=1,
         decimal = 10
         nsegments = 5
         cd_ticks = np.trunc(np.linspace(vmin, vmax, nsegments)*decimal)/decimal
-        cb.set_ticks( cd_ticks )
+        cb.set_ticks(cd_ticks)
 
     # extra settings
     grid['ax_heatmap'].set_xlim(lo, hi)
@@ -454,13 +455,13 @@ def saddle_strength(S, C):
     ----------
     S, C : 2D arrays, square, same shape
         Saddle sums and counts, respectively
-        
+
     Returns
     -------
     1D array
-    Ratios of cumulative corner interaction scores, where the saddle data is 
+    Ratios of cumulative corner interaction scores, where the saddle data is
     grouped over the AA+BB corners and AB+BA corners with increasing extent.
-    
+
     """
     m, n = S.shape
     if m != n:
@@ -468,13 +469,13 @@ def saddle_strength(S, C):
 
     ratios = np.zeros(n)
     for k in range(1, n):
-        intra_sum = S[0:k, 0:k].sum() + S[n-k:n, n-k:n].sum() 
+        intra_sum = S[0:k, 0:k].sum() + S[n-k:n, n-k:n].sum()
         intra_count = C[0:k, 0:k].sum() + C[n-k:n, n-k:n].sum()
         intra = intra_sum / intra_count
-        
+
         inter_sum = S[0:k, n-k:n].sum() + S[n-k:n, 0:k].sum()
-        inter_count =  C[0:k, n-k:n].sum() + C[n-k:n, 0:k].sum()
+        inter_count = C[0:k, n-k:n].sum() + C[n-k:n, 0:k].sum()
         inter = inter_sum / inter_count
-        
+
         ratios[k] = intra / inter
     return ratios

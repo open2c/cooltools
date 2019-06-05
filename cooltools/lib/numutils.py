@@ -947,3 +947,137 @@ def zoom_array(in_array, final_shape, same_sum=False,
         extra_size = np.prod(final_shape) / np.prod(in_shape)
         rescaled /= extra_size
     return rescaled
+
+
+
+
+
+def adaptive_coarsegrain(ar, countar,  cutoff=3, maxLevels=8):
+    """
+    Performs adaptive coarsegraining of the Hi-C matrix in powers of two 
+
+    
+    Algorithm is as follows. 
+    
+    First it pads an array with NANs to the nearest power of two
+    
+    Second, it coarsegrains the array in powers of two until it's size is less than minshape. 
+    
+    Third, it starts with the most coarsegrained array, and goes one level up. 
+    For the second-to-last coarsegrained array, it looks at all  4 pixels that make each pixel in the coarsegrained array. 
+    If Hi-C counts for any valid (non-NAN) pixel of the 4 are less than cutoff, it replaces the values of the valid (4 or less) pixels 
+    with NAN-aware average. 
+    
+    It is then applied to the next (less coarsegrained) level until it reaches the original resolution.
+    
+    In a resulting matrix, there are guaranteed to be no zeros, unless very large zero-only areas were provided, and it left 
+    zeros when coarsegraining the matrix maxLevels times 
+    
+    ar: a square Hi-C matrix to coarsegrain. Usually this would be a balanced matrix
+    
+    countar: a raw Hi-C matrix for the same area. Has to be the same shape as the Hi-C matrix 
+    
+    cutoff: float, a minimum number of raw reads to include the pixel (stop coarsegraining)
+        larger cutoff values would lead to a more pixelated, but smoother map 
+        3 is a good default value for display purposes, could be lowered to 1 or 2 to make map less pixelated
+        setting it to 1 will only ensure there are no zeros in the map 
+        
+    
+    maxLevels: how many levels of coarsegraining to perform. 
+        It is safe to keep this number large as very coarsegrained map will have large counts 
+        and no substitutions would be made at larger levels 
+    
+    A sample code is below: 
+    
+    c = cooler.Cooler("/path/to/some/cooler/at/about/2000bp/resolution")
+    mat = c.matrix(balance=True).fetch("chr1:10000000-22000000")  # sample region of about 6000x6000 
+    mat_raw = c.matrix(balance=False).fetch("chr1:10000000-22000000")  # same region 
+
+    mat_cg = adaptive_coarsegrain(mat, mat_raw)
+    plt.figure(figsize=(16,7))
+    ax = plt.subplot(121)
+    plt.imshow(np.log(mat), vmax=-3)
+    plt.colorbar()
+
+    plt.subplot(122, sharex=ax, sharey=ax)
+    plt.imshow(np.log(mat_cg), vmax=-3)
+    plt.colorbar()
+
+
+    """
+    
+    def _coarsen(ar):
+        """Coarsegrains an array by a factor of 2"""
+        M = ar.shape[0]//2
+        newar = np.reshape(ar, (M,2,M,2))
+        cg = np.sum(newar, axis=1)
+        cg = np.sum(cg, axis=2)
+        return cg 
+
+
+    def _nancoarsen(ar):
+        """Coarsegrains an array by a factor of 2, properly managing NANs 
+        (all-NAN sum is NAN), but NAN + non-NAN is a number """
+        mask = np.isfinite(ar)
+        arzero = ar.copy()
+        arzero[~mask] = 0 
+        count = _coarsen(mask)
+        vals = _coarsen(arzero)
+        vals[count==0] = np.nan
+        return vals, count
+
+
+    def _expand(ar, counts):
+        """
+        Performs an inverse of nancoarsen 
+        """
+        N = ar.shape[0] * 2 
+        newar = np.zeros((N,N))
+        newar[::2,::2] = ar/counts
+        newar[1::2, ::2] = ar/counts
+        newar[::2, 1::2] = ar/counts
+        newar[1::2, 1::2] = ar/counts
+        return newar
+    
+    ar = np.asarray(ar, float)
+    countar = np.asarray(countar, float)
+    assert np.isfinite(countar).all()
+    assert countar.shape == ar.shape 
+    
+    # TODO: change this to the nearest shape correctly counting the smallest shape the algorithm will reach 
+    Norig = ar.shape[0]
+    Nlog = np.log2(Norig)
+    if not np.allclose(Nlog, np.rint(Nlog)):
+        newN = np.int(2**np.ceil(Nlog))   # next power-of-two sized matrix 
+        newar = np.empty((newN, newN), dtype=float)  # fitting things in there 
+        newar[:] = np.nan
+        newcountar = np.zeros((newN, newN), dtype=float)
+        newar[:Norig, :Norig] = ar
+        newcountar[:Norig, :Norig] = countar 
+        ar = newar
+        countar = newcountar 
+    
+    countar[~np.isfinite(ar)] = 0   # make sure two arrays are in sync (masked elements in balanced array are zero-counts)
+    ar_cg, counts = _nancoarsen(ar)   # coarsegrain the array and the counts 
+    countar_cg = _coarsen(countar)
+    
+    newcountar = countar * 1. # take an array of counts. 
+    mask = np.isfinite(ar)
+    newcountar[~mask] = np.nan  #Mask is with NANs (because it doesnt' have them the way cooler raw matrix is returned, and balancing masks more rows) 
+    M = newcountar.shape[0]//2
+    newcounar_reshaped = np.reshape(newcountar, (M,2,M,2))
+    newcountar_min = np.nanmin(np.nanmin(newcounar_reshaped, axis=1), axis=2) #, Then fine minimum of each 2x2 square  ignoring NANs    
+    newcountar_min_exp = _expand(newcountar_min, _coarsen(mask))
+    
+    # calling itself recursively here - as opposed to creating a set of arrays and then collapsing them 
+    if (maxLevels > 0) and (ar_cg.shape[0] > 3):
+        ar_cg = adaptive_coarsegrain(ar_cg, countar_cg, cutoff, maxLevels-1)        
+    
+    # we expand the coarsegrained array here, and replace the values that have min_counts less than cutoff 
+    exp = _expand(ar_cg, counts)
+    replaced = ar.copy()
+    mask = newcountar_min_exp < cutoff
+    replaced[mask] = exp[mask]
+    replaced[~np.isfinite(ar)] = np.nan
+        
+    return replaced[:Norig, :Norig]

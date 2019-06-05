@@ -115,17 +115,17 @@ from . import cli
     help="Enable verbose output",
     is_flag=True,
     default=False)
-def compute_saddle(cool_path, track_path, expected_path, contact_type, n_bins, 
-                   quantiles, range_, qrange, strength, out_prefix, fig, scale, 
+def compute_saddle(cool_path, track_path, expected_path, contact_type, n_bins,
+                   quantiles, range_, qrange, strength, out_prefix, fig, scale,
                    cmap, vmin, vmax, hist_color, verbose):
     """
     Calculate saddle statistics and generate saddle plots for an arbitrary
     signal track on the genomic bins of a contact matrix.
-    
+
     COOL_PATH : The paths to a .cool file with a balanced Hi-C map. Use the
     '::' syntax to specify a group path in a multicooler file.
 
-    TRACK_PATH : The path to bedGraph-like file with a binned compartment track 
+    TRACK_PATH : The path to bedGraph-like file with a binned compartment track
     (eigenvector), including a header. Use the '::' syntax to specify a column
     name.
 
@@ -158,9 +158,9 @@ def compute_saddle(cool_path, track_path, expected_path, contact_type, n_bins,
         expected_index = ['chrom', 'diag']
         # expected dtype as a rudimentary form of validation:
         expected_dtype = {
-            'chrom': np.str, 
-            'diag': np.int64, 
-            'n_valid': np.int64, 
+            'chrom': np.str,
+            'diag': np.int64,
+            'n_valid': np.int64,
             expected_name: np.float64
         }
         # unique list of chroms mentioned in expected_path:
@@ -176,9 +176,9 @@ def compute_saddle(cool_path, track_path, expected_path, contact_type, n_bins,
         expected_index = ['chrom1', 'chrom2']
         # expected dtype as a rudimentary form of validation:
         expected_dtype = {
-            'chrom1': np.str, 
-            'chrom2': np.str, 
-            'n_valid': np.int64, 
+            'chrom1': np.str,
+            'chrom2': np.str,
+            'n_valid': np.int64,
             expected_name: np.float64
         }
         # unique list of chroms mentioned in expected_path:
@@ -206,9 +206,9 @@ def compute_saddle(cool_path, track_path, expected_path, contact_type, n_bins,
     track_columns = ['chrom', 'start', 'end', track_name]
     # specify dtype as a rudimentary form of validation:
     track_dtype = {
-        'chrom': np.str, 
-        'start': np.int64, 
-        'end': np.int64, 
+        'chrom': np.str,
+        'start': np.int64,
+        'end': np.int64,
         track_name: np.float64
     }
     track = pd.read_table(
@@ -273,7 +273,7 @@ def compute_saddle(cool_path, track_path, expected_path, contact_type, n_bins,
 
     if quantiles:
         if len(range_):
-            qlo, qhi = saddle.ecdf(track[track_name], range_)   
+            qlo, qhi = saddle.ecdf(track[track_name], range_)
         elif len(qrange):
             qlo, qhi = qrange
         else:
@@ -319,8 +319,8 @@ def compute_saddle(cool_path, track_path, expected_path, contact_type, n_bins,
         out_prefix + ".saddledump",  # .npz auto-added
         **to_save)
     digitized.to_csv(
-        out_prefix + '.digitized.tsv', 
-        sep='\t', 
+        out_prefix + '.digitized.tsv',
+        sep='\t',
         index=False)
 
     # Generate figure
@@ -336,6 +336,8 @@ def compute_saddle(cool_path, track_path, expected_path, contact_type, n_bins,
 
         if hist_color is None:
             color = sns.color_palette('muted')[2]
+        else:
+            color = mpl.colors.colorConverter.to_rgb(hist_color)
         heatmap_kws = dict(vmin=vmin, vmax=vmax)
         title = op.basename(cool_path) + ' ({})'.format(contact_type)
         if quantiles:
