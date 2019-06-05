@@ -3,6 +3,7 @@ from operator import add
 from cooler.balance import _zero_diags, _zero_trans, _init
 from cooler.tools import split, partition
 
+
 def _mainDiag_marginalize(chunk, data):
     n = len(chunk['bins']['chrom'])
     pixels = chunk['pixels']
@@ -29,6 +30,7 @@ def get_cis( clr, spans, filters, chunksize, map, use_lock):
             split(clr, spans=spans, map=map, use_lock=use_lock)
                 .prepare(_init)
                 .pipe(filters)
+                .pipe(_zero_trans)
                 .pipe(_mainDiag_marginalize)
                 .reduce(add, np.zeros(n_bins))
         )
@@ -99,7 +101,7 @@ def get_cistot(clr, chunksize=None, map=map, ignore_diags=False,
         base_filters.append(partial(_zero_diags, ignore_diags))
 
     cis_sum = get_cis(
-        clr, spans, base_filters.append(_zero_trans), chunksize, map, use_lock)
+        clr, spans, base_filters, chunksize, map, use_lock)
 
     tot_sum = get_tot(
         clr, spans, base_filters, chunksize, map, use_lock)
