@@ -4,9 +4,31 @@ import pandas as pd
 import cooler, cooler.tools, cooler.io
 
 
-def sample_pixels(pixels, frac):
+def sample_pixels_approx(pixels, frac):
     pixels['count'] = np.random.binomial(pixels['count'], frac)
     mask = pixels['count'] > 0
+    if issubclass(type(pixels), pd.DataFrame):
+        pixels = pixels[mask]
+    elif issubclass(type(pixels), dict):
+        pixels = {k:arr[mask] for k, arr in pixels.items()}
+    
+    return pixels
+
+
+def sample_pixels_exact(pixels, count):
+    count_cumsum = np.cumsum(np.asarray(pixels['count']))
+    contact_indices = np.random.choice(count_cumsum[-1], size=count, replace=False)
+
+    # testing:
+    # contact_indices = np.arange(count_cumsum[-1])
+    new_counts = np.bincount(
+        np.searchsorted(count_cumsum, contact_indices, side='right'), 
+            minlength=count_cumsum.shape[0])
+    # assert (pixels['count'] != new_counts).sum() == 0 
+
+    pixels['count'] = new_counts
+    mask = pixels['count']>0
+    
     if issubclass(type(pixels), pd.DataFrame):
         pixels = pixels[mask]
     elif issubclass(type(pixels), dict):
@@ -19,7 +41,7 @@ def _extract_pixel_chunk(chunk):
     return chunk['pixels']
 
 
-def sample_cooler(clr, out_clr_path, count=None, frac=None, map_func=map, chunksize=int(1e7)):
+def sample_cooler(clr, out_clr_path, count=None, frac=None, exact=False, map_func=map, chunksize=int(1e7)):
     """
     Pick a random subset of contacts from a Hi-C map.
     
@@ -33,12 +55,17 @@ def sample_cooler(clr, out_clr_path, count=None, frac=None, map_func=map, chunks
     
     count : float
         The target number of contacts in the sample. 
-        The resulting sample size will not match it precisely. 
         Mutually exclusive with `frac`.
         
     frac : float
         The target sample size as a fraction of contacts in the original dataset.
         Mutually exclusive with `count`.
+    
+    exact : bool
+        If True, the resulting sample size will exactly match the target value.
+        Exact sampling will load the whole pixel table into memory!
+        If False, binomial sampling will be used instead and the sample size will be
+        randomly distributed around the target value.
         
     map_func : function
         A map implementation.
@@ -52,18 +79,24 @@ def sample_cooler(clr, out_clr_path, count=None, frac=None, map_func=map, chunks
 
     if count is not None and frac is None:
         frac = count / clr.info['sum']
-        if frac >= 1.0:
-            raise ValueError('The target number of contacts must be ')
-    elif count is None and frac is None:
-        raise ValueError('Either frac or tot_count must be specified!')
-    elif count is not None and frac is not None:
+    elif count is None and frac is not None:
+        count = np.round(frac * clr.info['sum'])
+    else:
         raise ValueError('Either frac or tot_count must be specified!')
         
-    iter_chunks = (
-        cooler.tools.split(clr, include_bins=False, map=map_func, chunksize=chunksize)
-        .pipe(_extract_pixel_chunk)
-        .pipe(sample_pixels, frac=frac)
-        .__iter__()
-    )
+    if frac >= 1.0:
+        raise ValueError('The number of contacts in a sample cannot exceed that in the original dataset.')
+        
+    if exact:
+        pixels = sample_pixels_exact(clr.pixels()[:], count)
+        cooler.create_cooler(out_clr_path, clr.bins()[:], pixels)
+        
+    else:
+        iter_chunks = (
+            cooler.tools.split(clr, include_bins=False, map=map_func, chunksize=chunksize)
+            .pipe(_extract_pixel_chunk)
+            .pipe(sample_pixels, frac=frac)
+            .__iter__()
+        )
 
-    cooler.create_cooler(out_clr_path, clr.bins()[:], iter_chunks)
+        cooler.create_cooler(out_clr_path, clr.bins()[:], iter_chunks)

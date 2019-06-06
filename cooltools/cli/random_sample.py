@@ -39,6 +39,13 @@ from .. import sample
     default=None,
     show_default=False)
 
+@click.option(
+    '--exact',
+    help='If specified, use exact sampling that guarantees the size of the output sample. '
+         'Otherwise, binomial sampling will be used and the sample size will be distributed around the target value. ',
+    is_flag=True,
+)
+
 
 @click.option(
     '--chunksize',
@@ -48,7 +55,7 @@ from .. import sample
     show_default=True)
 
 
-def random_sample(in_path, out_path, count, frac, chunksize):
+def random_sample(in_path, out_path, count, frac, exact, chunksize):
     """
     Pick a random sample of contacts from a Hi-C map, w/o replacement.
 
@@ -56,10 +63,10 @@ def random_sample(in_path, out_path, count, frac, chunksize):
     
     OUT_PATH : Output cooler path or URI.
     
-    Specify the target sample size with either --target-count or --target-frac.
+    Specify the target sample size with either --count or --frac.
 
     """
     
     sample.sample_cooler(in_path, out_path, count=count, 
-                     frac=frac, chunksize=chunksize, map_func=map)
+                     frac=frac, exact=exact, chunksize=chunksize, map_func=map)
     
