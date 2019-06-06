@@ -95,7 +95,7 @@ def sample_cooler(clr, out_clr_path, count=None, frac=None, exact=False, map_fun
         iter_chunks = (
             cooler.tools.split(clr, include_bins=False, map=map_func, chunksize=chunksize)
             .pipe(_extract_pixel_chunk)
-            .pipe(sample_pixels, frac=frac)
+            .pipe(sample_pixels_approx, frac=frac)
             .__iter__()
         )
 

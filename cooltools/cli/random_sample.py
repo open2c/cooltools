@@ -18,7 +18,6 @@ from .. import sample
     type=str,
     nargs=1)
 
-
 @click.option(
     '-c',
     '--count',
@@ -28,7 +27,6 @@ from .. import sample
     type=int,
     default=None,
     show_default=False)
-
 
 @click.option(
     '-f',
@@ -45,7 +43,6 @@ from .. import sample
          'Otherwise, binomial sampling will be used and the sample size will be distributed around the target value. ',
     is_flag=True,
 )
-
 
 @click.option(
     '--chunksize',
