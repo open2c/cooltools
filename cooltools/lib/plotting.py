@@ -4,6 +4,7 @@ Migrated from :mod:`mirnylib.plotting`.
 """
 from matplotlib.cm import register_cmap
 import matplotlib as mpl
+import matplotlib.pyplot as plt
 import numpy as np
 
 
@@ -87,3 +88,45 @@ def _register_cmaps():
 
 
 _register_cmaps()
+
+
+def gridspec_inches(
+    wcols,
+    hrows,
+    fig_kwargs={}):
+
+    fig_height_inches = (
+        sum(hrows)
+        )
+
+    fig_width_inches = (
+        sum(wcols)
+        )
+
+    fig = plt.figure(
+        figsize=(fig_width_inches,fig_height_inches),
+        subplotpars=mpl.figure.SubplotParams(
+        left=0,
+        right=1,
+        bottom=0,
+        top=1,
+        wspace =0,
+        hspace = 0.0),
+        frameon=False,
+        **fig_kwargs)
+    fig.set_size_inches(fig_width_inches,fig_height_inches,forward=True)
+
+    gs = mpl.gridspec.GridSpec(
+        len(hrows),
+        len(wcols),
+        left=0,
+        right=1,
+        top=1,
+        bottom=0,
+        wspace=0,
+        hspace=0,
+        width_ratios=wcols,
+        height_ratios=hrows
+        )
+
+    return fig, gs
