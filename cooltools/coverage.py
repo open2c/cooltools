@@ -90,7 +90,7 @@ def get_coverage(clr,
                         if ignore_diags is not None
                         else clr._load_attrs(clr.root.rstrip('/')+'/bins/weight')['ignore_diags'])
     except:
-        raise ValueError('Please, specify ignore_diags! Cannot access the value used in IC balancing. ')
+        raise ValueError('Please, specify ignore_diags and/or IC balance this cooler! Cannot access the value used in IC balancing. ')
     
     chunks = cooler.tools.split(clr, chunksize=chunksize, map=map, use_lock=use_lock)
     
