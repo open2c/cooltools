@@ -1,63 +1,61 @@
 import numpy as np
-from operator import add
-from cooler.balance import _zero_diags, _zero_trans, _init
-from cooler.tools import split, partition
+import cooler.tools
 
 
-def _mainDiag_marginalize(chunk, data):
-    n = len(chunk['bins']['chrom'])
+def _zero_diags(chunk, n_diags):
+    if n_diags > 0:
+        mask = np.abs(chunk['pixels']['bin1_id'] - chunk['pixels']['bin2_id']) < n_diags
+        chunk['pixels']['count'][mask] = 0
+    
+    return chunk
+
+
+def _get_chunk_coverage(chunk, pixel_weight_key='count'):
+    '''
+    Compute cis and total coverages of a cooler chunk.
+    
+    Parameters
+    ----------
+    chunk : dict of dict/pd.DataFrame
+        A cooler chunk produced by the cooler split-apply-combine pipeline.
+    pixel_weight_key: str
+        The key of a pixel chunk to retrieve pixel weights.
+    
+    Returns
+    -------
+    covs : np.array 2 x n_bins    
+        A numpy array with cis (the first row) and total (the 4nd) coverages.
+    '''
+    
+    bins = chunk['bins']
     pixels = chunk['pixels']
-    marg =  np.bincount(pixels['bin1_id'], weights=data, minlength=n)
-    mask =  pixels['bin1_id']  ==  pixels['bin2_id'] 
-    data[mask] = 0
-    marg += np.bincount(pixels['bin2_id'], weights=data, minlength=n)
-    return marg
+    n_bins = len(bins['chrom'])
+    covs = np.zeros((2, n_bins))
+    pixel_weights = pixels[pixel_weight_key]
+    
+    cis_mask = bins['chrom'][pixels['bin1_id']] == bins['chrom'][pixels['bin2_id']]
+    covs[0] += np.bincount(pixels['bin1_id'], weights=pixel_weights*cis_mask, minlength=n_bins)
+    covs[0] += np.bincount(pixels['bin2_id'], weights=pixel_weights*cis_mask, minlength=n_bins)
+    
+    covs[1] += np.bincount(pixels['bin1_id'], weights=pixel_weights, minlength=n_bins)
+    covs[1] += np.bincount(pixels['bin2_id'], weights=pixel_weights, minlength=n_bins)
+    
+    covs = covs / 2
+    
+    return covs
 
 
-def get_cis( clr, spans, filters, chunksize, map, use_lock):
-    chroms = clr.chroms()['name'][:]
-    chrom_ids = np.arange(len(clr.chroms()))
-    chrom_offsets = clr._load_dset('indexes/chrom_offset')
-    bin1_offsets = clr._load_dset('indexes/bin1_offset')
-    n_bins = clr.info['nbins']
-    cis_marg = np.zeros(n_bins, dtype=float)
-
-    for cid, lo, hi in zip(chrom_ids, chrom_offsets[:-1], chrom_offsets[1:]):
-        plo, phi = bin1_offsets[lo], bin1_offsets[hi]
-        spans = list(partition(plo, phi, chunksize))
-
-        marg = (
-            split(clr, spans=spans, map=map, use_lock=use_lock)
-                .prepare(_init)
-                .pipe(filters)
-                .pipe(_zero_trans)
-                .pipe(_mainDiag_marginalize)
-                .reduce(add, np.zeros(n_bins))
-        )
-        marg = marg[lo:hi]
-        cis_marg[lo:hi] = marg
-    return cis_marg
-
-
-def get_tot(  clr, spans, filters, chunksize, map, use_lock):
-    n_bins = clr.info['nbins']
-    marg = (
-        split(clr, spans=spans, map=map, use_lock=use_lock)
-            .prepare(_init)
-            .pipe(filters)
-            .pipe(_mainDiag_marginalize)
-            .reduce(add, np.zeros(n_bins))
-    )
-    return marg
-
-
-def get_cistot(clr, chunksize=None, map=map, ignore_diags=False,
-                   use_lock=False, blacklist=None, 
-                   store=False, store_names=['cis','tot']):
+def get_coverage(clr, 
+                 ignore_diags=None,
+                 chunksize=int(1e7), 
+                 map=map, 
+                 use_lock=False, 
+                 store=False, 
+                 store_names=['cis_raw_cov', 'tot_raw_cov']):
 
     """
-    Calculation of cis and total sums (margingals) for sparse Hi-C contact map in
-    Cooler HDF5 format. Adapted from Cooler balance.py.
+    Calculate the sums of cis and genome-wide contacts (aka coverage aka marginals) for 
+    a sparse Hi-C contact map in Cooler HDF5 format. 
 
     Parameters
     ----------
@@ -71,52 +69,48 @@ def get_cistot(clr, chunksize=None, map=map, ignore_diags=False,
         Map function to dispatch the matrix chunks to workers.
         Default is the builtin ``map``, but alternatives include parallel map
         implementations from a multiprocessing pool.
-    ignore_diags : int or False, optional
+    ignore_diags : int, optional
         Drop elements occurring on the first ``ignore_diags`` diagonals of the
-        matrix (including the main diagonal).
+        matrix (including the main diagonal). 
+        If None, equals the number of diagonals ignored during IC balancing.
     store : bool, optional
-        Whether to store the results in the file when finished. Default is False.
+        If True, store the results in the file when finished. Default is False.
     store_names : list, optional
-        Names of the columns of the bin table to save to. 
-        Must contain 'cis' for cis counts, and 'tot' for total counts.
+        Names of the columns of the bin table to save cis and total coverages. 
     
     Returns
     -------
-    cis : 1D array, whose shape is the number of bins in ``h5``. Vector of bin sums in cis.
-    tot : 1D array, whose shape is the number of bins in ``h5``. Vector of bin sums.
+    cis_cov : 1D array, whose shape is the number of bins in ``h5``. Vector of bin sums in cis.
+    tot_cov : 1D array, whose shape is the number of bins in ``h5``. Vector of bin sums.
 
     """
 
-    nnz = clr.info['nnz']
-    if chunksize is None:
-        chunksize = nnz
-        spans = [(0, nnz)]
-    else:
-        edges = np.arange(0, nnz+chunksize, chunksize)
-        spans = list(zip(edges[:-1], edges[1:]))
-
-    # option to ignore diagonals for calculating cis/tot
-    base_filters = []
+    try:
+        ignore_diags = (ignore_diags
+                        if ignore_diags is not None
+                        else clr._load_attrs(clr.root.rstrip('/')+'/bins/weight')['ignore_diags'])
+    except:
+        raise ValueError('Please, specify ignore_diags! Cannot access the value used in IC balancing. ')
+    
+    chunks = cooler.tools.split(clr, chunksize=chunksize, map=map, use_lock=use_lock)
+    
     if ignore_diags:
-        base_filters.append(partial(_zero_diags, ignore_diags))
-
-    cis_sum = get_cis(
-        clr, spans, base_filters, chunksize, map, use_lock)
-
-    tot_sum = get_tot(
-        clr, spans, base_filters, chunksize, map, use_lock)
+        chunks = chunks.pipe(_zero_diags, n_diags=ignore_diags)
+        
+    n_bins = clr.info['nbins']
+    covs = (
+        chunks
+            .pipe(_get_chunk_coverage)
+            .reduce(np.add, np.zeros((2, n_bins)))
+    )
 
     if store:
         with clr.open('r+') as grp:
-            for store_name in store_names:
+            for store_name, cov_arr in zip(store_names, covs):
                 if store_name in grp['bins']:
                     del grp['bins'][store_name]
                 h5opts = dict(compression='gzip', compression_opts=6)
-                if 'cis' in store_name:
-                    grp['bins'].create_dataset(store_name, data=cis_sum, **h5opts)
-                elif 'tot' in store_name:
-                    grp['bins'].create_dataset(store_name, data=tot_sum, **h5opts)
+                grp['bins'].create_dataset(store_name, data=cov_arr, **h5opts)
 
-    return cis_sum, tot_sum	
-
+    return covs
 
