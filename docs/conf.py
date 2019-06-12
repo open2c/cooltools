@@ -72,3 +72,4 @@ autodoc_mock_imports = [
     'click',
 ]
 
+master_doc = 'index'
