@@ -382,10 +382,12 @@ class ExpectedSnipper:
         self.offsets = {}
 
     def select(self, region1, region2):
-        self.offsets[region1] = self.clr.offset(
-            region1) - self.clr.offset(region1[0])
-        self.offsets[region2] = self.clr.offset(
-            region2) - self.clr.offset(region2[0])
+        self.offsets[region1] = \
+            self.clr.offset(region1) - self.clr.offset(region1[0])
+        self.offsets[region2] = \
+            self.clr.offset(region2) - self.clr.offset(region2[0])
+        self.m = np.diff(self.clr.extent(region1))
+        self.n = np.diff(self.clr.extent(region2))
         return (self.expected.groupby('chrom')
                              .get_group(region1[0])
                              ['balanced.avg']
@@ -401,4 +403,8 @@ class ExpectedSnipper:
         assert hi1 >= 0
         assert hi2 >= 0
         dm, dn = hi1 - lo1, hi2 - lo2
+
+        if (lo1 < 0 or lo2 < 0 or hi1 > self.m or hi2 > self.n):
+            return np.full((dm, dn), np.nan)
+
         return toeplitz(exp[:dm], exp[:dn])
