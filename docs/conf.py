@@ -78,7 +78,10 @@ nbsphinx_prolog = r"""
         :format: html
 
     .. nbinfo::
-        This page was generated from `{{ docname }}`__.
+
+        This page was generated from `{{ docname }}`__
+
+    __ https://github.com/mirnylab/cooltools/blob/master{{ env.config.release }}/{{ docname }}
 
 """
 nbsphinx_epilog = """

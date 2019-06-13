@@ -18,8 +18,8 @@ The tools for your *.cool*\ s
    :maxdepth: 2
    :caption: Tutorials
 
-   ./examples/pileups-example.ipynb
    ./examples/saddle_plot_tutorial.ipynb
+   ./examples/pileups-example.ipynb
 
 
 
