@@ -22,6 +22,12 @@ The tools for your *.cool*\ s
    ./examples/pileups-example.ipynb
 
 
+.. toctree::
+   :maxdepth: 1
+   :caption: News
+   
+   releases
+
 
 Indices and tables
 ==================

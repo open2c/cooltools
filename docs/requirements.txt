@@ -1,3 +1,5 @@
 Sphinx
 sphinx-rtd-theme
+recommonmark
 nbsphinx
+numpy
