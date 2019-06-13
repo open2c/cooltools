@@ -30,8 +30,5 @@ dist-build: clean-dist
 publish: build
 	twine upload dist/*
 
-# docs-init:
-# 	conda install --file docs/requirements.txt
-
-# docs:
-# 	cd docs && make html
+docs:
+	cd docs && make html
