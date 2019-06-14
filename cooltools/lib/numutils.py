@@ -557,6 +557,74 @@ def iterative_correction_symmetric(
 
     return _x, totalBias, report
 
+@numba.jit #(nopython=True)
+def iterative_correction_asymmetric(
+    x, max_iter=1000,  tol=1e-5, verbose=False):
+    """ adapted from iterative_correction_symmetric
+
+    Parameters
+    ----------
+    x : np.ndarray
+        An asymmetric matrix to correct.
+    max_iter : int
+        The maximal number of iterations to take.
+    ignore_diags : int
+        The number of diagonals to ignore during iterative correction.
+    tol : float
+        If less or equal to zero, will perform max_iter iterations.
+    """
+    N2, N = x.shape
+    _x = x.copy()
+    totalBias = np.ones(N, np.double)
+    totalBias2 = np.ones(N2, np.double)
+    iternum = 0
+    mask  = np.sum(_x, axis=0)==0
+    mask2 = np.sum(_x, axis=1)==0
+
+    for iternum in range(max_iter):
+        s = np.sum(_x, axis = 0)
+        mask = (s == 0)
+        s = s / np.mean(s[~mask])
+        s[mask] = 1.
+        s -= 1.
+        s *= 0.8
+        s += 1.
+        totalBias *= s
+
+        s2 = np.sum(_x, axis = 1)
+        mask2 = (s2 == 0)
+        s2 = s2 / np.mean(s2[~mask2])
+        s2[mask2] = 1.
+        s2 -= 1.
+        s2 *= 0.8
+        s2 += 1.
+        totalBias2 *= s2
+
+        #_x = _x / s[:, None]  / s[None,:]
+        # an explicit cycle is 2x faster here
+        for i in range(N2):
+            for j in range(N):
+                _x[i,j] /= s[j] * s2[i]
+
+        crit = np.var(s) #np.abs(s - 1).max()
+        crit2 = np.var(s2) #np.abs(s - 1).max()
+        if verbose:
+            print(crit)
+
+        if (tol > 0) and (crit < tol) and (crit2 < tol):
+            converged=True
+            break
+
+    corr = totalBias[~mask].mean()  #mean correction factor
+    corr2 = totalBias2[~mask2].mean()  #mean correction factor
+    _x = _x * corr * corr2 #renormalizing everything
+    totalBias /= corr    
+    totalBias2 /= corr2    
+    report = {'converged':converged, 'iternum':iternum}
+
+    return _x, totalBias, totalBias2, report
+
+
 
 class LazyToeplitz(cooler.core._IndexingMixin):
     """
