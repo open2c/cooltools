@@ -7,7 +7,7 @@ from .. import io
 @click.argument(
     "cool_paths",
     metavar="COOL_PATHS",
-    type=click.Path(exists=True),
+    type=str,
     nargs=-1)
 @click.argument(
     "out_path",
