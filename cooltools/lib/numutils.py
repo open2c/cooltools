@@ -930,6 +930,7 @@ def interpolate_bad_singletons(mat, mask=None,
 
     if fillDiagonal==True:
         for i in range(-1,2): set_diag(mat, np.nan,i=i ,copy=False )
+        for i in range(-1,2): set_diag(mask, 0,i=i ,copy=False )
 
     if returnMask == True:
         return mat, mask
