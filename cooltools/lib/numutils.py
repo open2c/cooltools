@@ -876,7 +876,7 @@ def interpolate_bad_singletons(mat, mask=None,
     plt.show()
     '''
     mat = mat.copy()
-    if mask == None:
+    if mask is None:
         mask = infer_mask2D(mat)
     antimask = mask==0
     badBins = (np.sum(mask, axis=0)==0)
