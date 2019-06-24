@@ -149,16 +149,11 @@ def directionality(
         chrom_pixels = clr.matrix(as_pixels=True, balance=balance).fetch(chrom)
 
         # mask neighbors of bad bins
-        is_bad_bin = np.isnan(chrom_bins['weight'].values)
-        bad_bin_neighbor = np.zeros_like(is_bad_bin)
-        for i in range(0, min_dist_bad_bin):
-            if i == 0:
-                bad_bin_neighbor = bad_bin_neighbor | is_bad_bin
-            else:
-                bad_bin_neighbor = bad_bin_neighbor | np.r_[
-                    [True]*i, is_bad_bin[:-i]]
-                bad_bin_neighbor = bad_bin_neighbor | np.r_[
-                    is_bad_bin[i:], [True]*i]
+        bad_bin_neighbor = np.isnan(chrom_bins['weight'].values)
+        for i in range(min_dist_bad_bin):
+            bad_bin_neighbor |= np.r_[bad_bin_neighbor[1:], [False]]
+            bad_bin_neighbor |= np.r_[[False], bad_bin_neighbor[: -1]]
+
 
         dir_chrom = chrom_bins[['chrom', 'start', 'end']].copy()
         dir_chrom['bad_bin_masked'] = bad_bin_neighbor
