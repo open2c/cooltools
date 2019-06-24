@@ -1,6 +1,7 @@
 import warnings
 from scipy.linalg import toeplitz
 import scipy.sparse.linalg
+import scipy.interpolate
 from scipy.ndimage.interpolation import zoom
 import numpy as np
 import numba
@@ -159,33 +160,39 @@ def interp_nan(a_init, pad_zeros=True, verbose=False):
 
     Notes
     -----
-    adapted from:
-        https://stackoverflow.com/a/37882746   
-        https://stackoverflow.com/a/39592604
+    1D case adapted from: https://stackoverflow.com/a/39592604
+    2D case assumes that entire rows or columns are masked & edges to be nan-free, 
+        but is much faster than griddata implementation
     '''
 
     init_shape = np.shape(a_init)
     if len(init_shape) == 2 and init_shape[0] != 1 and init_shape[1] !=1:
         if verbose==True: print('interpolating 2D matrix')
-        if pad_zeros == True:
+        if pad_zeros:
             a = np.zeros((init_shape[0]+2,init_shape[1]+2))
             a[1:-1,1:-1] = a_init
         else:
             a = a_init
-        x, y = np.indices(a.shape)
-        interp = np.array(a)
-        interp[np.isnan(interp)] = scipy.interpolate.griddata(
-                 (x[~np.isnan(a)], y[~np.isnan(a)]), # points we know
-                  a[~np.isnan(a)],                    # values we know
-                 (x[np.isnan(a)], y[np.isnan(a)]) ,method='linear')
-        if pad_zeros == True:
+            if (np.sum(np.isnan(a[:,0]))+ np.sum(np.isnan(a[0,:]))+
+                np.sum(np.isnan(a[:,-1]))+ np.sum(np.isnan(a[-1,:]))) > 0: 
+                raise ValueError('edges must not have nans')
+
+        x_inds = np.where(np.nansum(a,axis=1)> 0)[0]
+        y_inds = np.where(np.nansum(a,axis=0)> 0)[0]
+        rg = scipy.interpolate.RegularGridInterpolator( 
+                                points=[x_inds,y_inds] , values=a[np.ix_(x_inds,y_inds)]   )
+        b = np.where(np.isnan(a))
+        interp = np.copy(a)
+        interp[b] = rg(b)  
+
+        if pad_zeros:
             return interp[1:-1,1:-1]
         else:
             return interp
     else:
-        if verbose==True: print('interpolating 1D vector')
+        if verbose: print('interpolating 1D vector')
         a_init = a_init.ravel()
-        if pad_zeros == True:
+        if pad_zeros:
             A = np.zeros(len(a_init)+2,)
             A[1:-1] = a_init
         else:
