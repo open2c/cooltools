@@ -141,6 +141,64 @@ def fill_nainf(arr, value=0, copy=True):
     arr[~np.isfinite(arr)] = value
     return arr
 
+def interp_nan(a_init, pad_zeros=True, verbose=False):
+    '''linearly interpolate to fill nans in a vector or a matrix
+    
+    Parameters
+    ----------
+
+    a_init : np.array
+
+    pad_zeros : bool, optional
+        If True, pads the matrix with zeros to fill nans at the edges.
+        By default, True.
+    
+    Returns
+    -------
+    interp : flattened np.array with nans linearly interpolated
+
+    Notes
+    -----
+    adapted from:
+        https://stackoverflow.com/a/37882746   
+        https://stackoverflow.com/a/39592604
+    '''
+
+    init_shape = np.shape(a_init)
+    if len(init_shape) == 2 and init_shape[0] != 1 and init_shape[1] !=1:
+        if verbose==True: print('interpolating 2D matrix')
+        if pad_zeros == True:
+            a = np.zeros((init_shape[0]+2,init_shape[1]+2))
+            a[1:-1,1:-1] = a_init
+        else:
+            a = a_init
+        x, y = np.indices(a.shape)
+        interp = np.array(a)
+        interp[np.isnan(interp)] = scipy.interpolate.griddata(
+                 (x[~np.isnan(a)], y[~np.isnan(a)]), # points we know
+                  a[~np.isnan(a)],                    # values we know
+                 (x[np.isnan(a)], y[np.isnan(a)]) ,method='linear')
+        if pad_zeros == True:
+            return interp[1:-1,1:-1]
+        else:
+            return interp
+    else:
+        if verbose==True: print('interpolating 1D vector')
+        a_init = a_init.ravel()
+        if pad_zeros == True:
+            A = np.zeros(len(a_init)+2,)
+            A[1:-1] = a_init
+        else:
+            A = a_init
+        x = np.arange(len(A))
+        interp = np.array(A)
+        interp[np.isnan(A)] = scipy.interpolate.interp1d(
+                                    x[~np.isnan(A)],A[~np.isnan(A)], bounds_error=False)(x[np.isnan(A)])
+        if pad_zeros == True:
+            return interp[1:-1]
+        else:
+            return interp
+
 
 def slice_sorted(arr, lo, hi):
     '''Get the subset of a sorted array with values >=lo and <hi.
@@ -878,7 +936,7 @@ def interpolate_bad_singletons(mat, mask=None,
     mat = mat.copy()
     if mask is None:
         mask = infer_mask2D(mat)
-    antimask = mask==0
+    antimask = ( ~mask)
     badBins = (np.sum(mask, axis=0)==0)
     singletons =( ( badBins * smooth(badBins==0,3) )   > 1/3    )
     bb_minus_singletons = (badBins.astype('int8')-singletons.astype('int8')).astype('bool')
