@@ -167,6 +167,7 @@ def interp_nan(a_init, pad_zeros=True, verbose=False):
 
     init_shape = np.shape(a_init)
     if np.sum(np.isnan(a_init))==0:
+        if verbose==True: print('no nans to interpolate')
         return a_init
 
     if len(init_shape) == 2 and init_shape[0] != 1 and init_shape[1] !=1:
@@ -184,7 +185,6 @@ def interp_nan(a_init, pad_zeros=True, verbose=False):
         x_inds = np.where(x_sum < np.max(x_sum))[0]
         y_sum = np.sum(a_nan,axis=0)
         y_inds = np.where(y_sum < np.max(y_sum))[0]
-        print(np.max(x_inds), np.min(x_inds))
         rg = scipy.interpolate.RegularGridInterpolator( 
                                 points=[x_inds,y_inds] , values=a[np.ix_(x_inds,y_inds)]   )
         b = np.where(np.isnan(a))
