@@ -166,6 +166,9 @@ def interp_nan(a_init, pad_zeros=True, verbose=False):
     '''
 
     init_shape = np.shape(a_init)
+    if np.sum(np.isnan(a_init))==0:
+        return a_init
+
     if len(init_shape) == 2 and init_shape[0] != 1 and init_shape[1] !=1:
         if verbose==True: print('interpolating 2D matrix')
         if pad_zeros:
@@ -176,9 +179,12 @@ def interp_nan(a_init, pad_zeros=True, verbose=False):
             if (np.sum(np.isnan(a[:,0]))+ np.sum(np.isnan(a[0,:]))+
                 np.sum(np.isnan(a[:,-1]))+ np.sum(np.isnan(a[-1,:]))) > 0: 
                 raise ValueError('edges must not have nans')
-
-        x_inds = np.where(np.nansum(a,axis=1)> 0)[0]
-        y_inds = np.where(np.nansum(a,axis=0)> 0)[0]
+        a_nan = np.isnan(a)
+        x_sum = np.sum(a_nan,axis=1)
+        x_inds = np.where(x_sum < np.max(x_sum))[0]
+        y_sum = np.sum(a_nan,axis=0)
+        y_inds = np.where(y_sum < np.max(y_sum))[0]
+        print(np.max(x_inds), np.min(x_inds))
         rg = scipy.interpolate.RegularGridInterpolator( 
                                 points=[x_inds,y_inds] , values=a[np.ix_(x_inds,y_inds)]   )
         b = np.where(np.isnan(a))
