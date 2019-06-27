@@ -37,7 +37,17 @@ from .. import insulation
     type=int,
     default=None,
     show_default=True)
-def diamond_insulation(cool_path, window, balance, balance_weight, min_dist_bad_bin, ignore_diags):
+@click.option(
+    '--append-raw-scores',
+    help='Append columns with raw scores (sum_counts, sum_balanced, n_pixels) '
+         'to the output table.',
+    is_flag=True)
+@click.option(
+    '--verbose',
+    help='Report real-time progress.',
+    is_flag=True)
+
+def diamond_insulation(cool_path, window, balance, balance_weight, min_dist_bad_bin, ignore_diags, append_raw_scores, verbose):
     """
     Calculate the diamond insulation scores and call insulating boundaries.
 
@@ -53,7 +63,9 @@ def diamond_insulation(cool_path, window, balance, balance_weight, min_dist_bad_
         window_bp=window,
         balance=balance_weight if balance else False,
         min_dist_bad_bin=min_dist_bad_bin,
-        ignore_diags=ignore_diags)
+        ignore_diags=ignore_diags,
+        append_raw_scores=append_raw_scores,
+        verbose=verbose)
 
     print(ins_table.to_csv(sep='\t', index=False, na_rep='nan'))
 
