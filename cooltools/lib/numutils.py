@@ -92,6 +92,57 @@ def fill_na(arr, value=0, copy=True):
     return arr
 
 
+def dist_to_mask(mask, side='min'):
+    '''
+    Calculate the distance to the nearest True element of an array.
+    
+    Parameters
+    ----------
+    mask : iterable of bool
+        A boolean array.
+        
+    side : str
+        The side . Accepted values are:
+        'left' : calculate the distance to the nearest True value on the left
+        'right' : calculate the distance to the nearest True value on the right
+        'min' : calculate the distance to the closest True value
+        'max' : calculate the distance to the furthest of the two neighbouring True values
+        
+    Returns
+    -------
+    dist: array of int
+    
+    Notes:
+    ------
+    The solution is borrowed from https://stackoverflow.com/questions/18196811/cumsum-reset-at-nan
+    
+    '''
+    if side not in ['left', 'right', 'min', 'max']:
+        raise ValueError('side can be `left`, `right`, `min` or `max`')
+    if side == 'min':
+        return np.minimum(dist_to_mask(mask, side='left'), dist_to_mask(mask, side='right'))
+    if side == 'max':
+        return np.maximum(dist_to_mask(mask, side='left'), dist_to_mask(mask, side='right'))
+    
+    mask = np.asarray(mask)
+    if side == 'right':
+        mask = mask[::-1]
+    
+    d = np.diff(np.r_[0., np.cumsum(~mask)[mask]])
+    v = mask.astype(int).copy()
+    v[mask] = d
+    dist = (~mask).cumsum() - np.cumsum(v)
+    
+    return dist[::-1] if side == 'right' else dist
+
+
+def get_finite(arr):
+    '''
+    Select only finite elements of an array.
+    '''
+    return arr[np.isfinite(arr)]
+
+
 def fill_inf(arr, pos_value=0, neg_value=0, copy=True):
     '''Replaces positive and negative infinity entries in an array
        with the provided values.
