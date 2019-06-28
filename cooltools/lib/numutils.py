@@ -1,6 +1,7 @@
 import warnings
 from scipy.linalg import toeplitz
 import scipy.sparse.linalg
+import scipy.interpolate
 from scipy.ndimage.interpolation import zoom
 import numpy as np
 import numba
@@ -191,6 +192,76 @@ def fill_nainf(arr, value=0, copy=True):
         arr = arr.copy()
     arr[~np.isfinite(arr)] = value
     return arr
+
+def interp_nan(a_init, pad_zeros=True, verbose=False):
+    '''linearly interpolate to fill nans in a vector or a matrix
+    
+    Parameters
+    ----------
+
+    a_init : np.array
+
+    pad_zeros : bool, optional
+        If True, pads the matrix with zeros to fill nans at the edges.
+        By default, True.
+    
+    Returns
+    -------
+    interp : flattened np.array with nans linearly interpolated
+
+    Notes
+    -----
+    1D case adapted from: https://stackoverflow.com/a/39592604
+    2D case assumes that entire rows or columns are masked & edges to be nan-free, 
+        but is much faster than griddata implementation
+    '''
+
+    init_shape = np.shape(a_init)
+    if np.sum(np.isnan(a_init))==0:
+        if verbose==True: print('no nans to interpolate')
+        return a_init
+
+    if len(init_shape) == 2 and init_shape[0] != 1 and init_shape[1] !=1:
+        if verbose==True: print('interpolating 2D matrix')
+        if pad_zeros:
+            a = np.zeros((init_shape[0]+2,init_shape[1]+2))
+            a[1:-1,1:-1] = a_init
+        else:
+            a = a_init
+            if (np.sum(np.isnan(a[:,0]))+ np.sum(np.isnan(a[0,:]))+
+                np.sum(np.isnan(a[:,-1]))+ np.sum(np.isnan(a[-1,:]))) > 0: 
+                raise ValueError('edges must not have nans')
+        a_nan = np.isnan(a)
+        x_sum = np.sum(a_nan,axis=1)
+        x_inds = np.where(x_sum < np.max(x_sum))[0]
+        y_sum = np.sum(a_nan,axis=0)
+        y_inds = np.where(y_sum < np.max(y_sum))[0]
+        rg = scipy.interpolate.RegularGridInterpolator( 
+                                points=[x_inds,y_inds] , values=a[np.ix_(x_inds,y_inds)]   )
+        b = np.where(np.isnan(a))
+        interp = np.copy(a)
+        interp[b] = rg(b)  
+
+        if pad_zeros:
+            return interp[1:-1,1:-1]
+        else:
+            return interp
+    else:
+        if verbose: print('interpolating 1D vector')
+        a_init = a_init.ravel()
+        if pad_zeros:
+            A = np.zeros(len(a_init)+2,)
+            A[1:-1] = a_init
+        else:
+            A = a_init
+        x = np.arange(len(A))
+        interp = np.array(A)
+        interp[np.isnan(A)] = scipy.interpolate.interp1d(
+                                    x[~np.isnan(A)],A[~np.isnan(A)], bounds_error=False)(x[np.isnan(A)])
+        if pad_zeros == True:
+            return interp[1:-1]
+        else:
+            return interp
 
 
 def slice_sorted(arr, lo, hi):
@@ -929,7 +1000,7 @@ def interpolate_bad_singletons(mat, mask=None,
     mat = mat.copy()
     if mask is None:
         mask = infer_mask2D(mat)
-    antimask = mask==0
+    antimask = ( ~mask)
     badBins = (np.sum(mask, axis=0)==0)
     singletons =( ( badBins * smooth(badBins==0,3) )   > 1/3    )
     bb_minus_singletons = (badBins.astype('int8')-singletons.astype('int8')).astype('bool')
