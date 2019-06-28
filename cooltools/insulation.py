@@ -120,7 +120,6 @@ def insul_diamond(pixel_query, bins, window=10, ignore_diags=2,
 def calculate_insulation_score(
     clr,
     window_bp,
-    balance='weight',
     ignore_diags=None,
     chromosomes=None,
     append_raw_scores=False,
@@ -129,7 +128,7 @@ def calculate_insulation_score(
     '''Calculate the diamond insulation scores and call insulating boundaries.
     Parameters
     ----------
-    c : cooler.Cooler
+    clr : cooler.Cooler
         A cooler with balanced Hi-C data.
     window_bp : int or list
         The size of the sliding diamond window used to calculate the insulation
@@ -186,8 +185,6 @@ def calculate_insulation_score(
         ins_chrom = chrom_bins[['chrom', 'start', 'end']].copy()
         ins_chrom['is_bad_bin'] = chrom_bins['weight'].isnull()
 
-        #chrom_pixels = clr.matrix(as_pixels=True, balance=balance).fetch(chrom)
-
         # XXX --- Create a delayed selection
         c0, c1 = clr.extent(chrom)
         chrom_query = selector[c0:c1, c0:c1]
@@ -218,7 +215,7 @@ def calculate_insulation_score(
     return ins_table
 
 
-def find_insulating_boundaries(
+def find_boundaries(
     ins_table,
     min_frac_valid_pixels=0.66,
     min_dist_bad_bin=0,
