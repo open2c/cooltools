@@ -499,6 +499,7 @@ def get_eig(mat, n=3, mask_zero_rows=False, subtract_mean=False, divide_by_mean=
         return eigvecs, eigvals
 
 
+@numba.jit
 def logbins(lo, hi, ratio=0, N=0, prepend_zero=False):
     """Make bins with edges evenly spaced in log-space.
 
