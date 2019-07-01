@@ -499,7 +499,6 @@ def get_eig(mat, n=3, mask_zero_rows=False, subtract_mean=False, divide_by_mean=
         return eigvecs, eigvals
 
 
-@numba.jit
 def logbins(lo, hi, ratio=0, N=0, prepend_zero=False):
     """Make bins with edges evenly spaced in log-space.
 
@@ -573,8 +572,8 @@ def observed_over_expected(
 
     N = matrix.shape[0]
     mask2d = np.empty(shape=(0,0), dtype=np.bool)
-    if (mask.ndim == 1):
-        if (mask.size > 0):
+    if mask.ndim == 1:
+        if mask.size > 0:
             mask2d = mask[:,None] * mask[None, :]
     elif mask.ndim == 2:
         mask2d = mask
