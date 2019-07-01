@@ -1,7 +1,7 @@
 channels:
-    - conda-forge
-    - defaults
-    - bioconda
+  - conda-forge
+  - defaults
+  - bioconda
 dependencies:
   - numpy
   - scipy
@@ -9,7 +9,7 @@ dependencies:
   - matplotlib
   - pandas
   - h5py
-  - numba
+  - numba<0.44.1
   - dask
   - scikit-learn
   - cooler
