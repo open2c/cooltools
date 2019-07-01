@@ -6,5 +6,6 @@ dependencies:
   - numpy
   - cython
   - matplotlib
+  - pip
   - pip:
     - -r requirements-dev.txt
