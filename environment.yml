@@ -9,7 +9,7 @@ dependencies:
   - matplotlib
   - pandas
   - h5py
-  - numba<0.44.1
+  - numba
   - dask
   - scikit-learn
   - cooler
