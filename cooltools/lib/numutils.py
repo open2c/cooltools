@@ -419,9 +419,9 @@ def get_eig(mat, n=3, mask_zero_rows=False, subtract_mean=False, divide_by_mean=
         return eigvecs, eigvals
 
 
-def logbins(lo, hi, ratio=0, N=0, prepend_zero=False):
+@numba.njit
+def _logbins_numba(lo, hi, ratio=0, N=0, prepend_zero=False):
     """Make bins with edges evenly spaced in log-space.
-
     Parameters
     ----------
     lo, hi : int
@@ -432,7 +432,6 @@ def logbins(lo, hi, ratio=0, N=0, prepend_zero=False):
     N : int
         The target number of bins. The resulting number of bins is not guaranteed.
         Either ratio or N must be specified.
-
     """
     lo = int(lo)
     hi = int(hi)
@@ -442,31 +441,28 @@ def logbins(lo, hi, ratio=0, N=0, prepend_zero=False):
         N = np.log(hi / lo) / np.log(ratio)
     elif N == 0:
         raise ValueError("Please specify N or ratio")
-    data10 = np.logspace(np.log10(lo), np.log10(hi), N)
-    data10 = np.array(np.rint(data10), dtype=int)
-    data10 = np.sort(np.unique(data10))
-    assert data10[0] == lo
-    assert data10[-1] == hi
+    data10 = 10**np.linspace(np.log10(lo), np.log10(hi), int(N))
+    data10 = np.rint(data10)
+    data10_int = np.sort(np.unique(data10)).astype(np.int_)
+    assert data10_int[0] == lo
+    assert data10_int[-1] == hi
     if prepend_zero:
-        data10 = np.r_[0, data10]
-    return data10
+        data10_int = np.concatenate((np.array([0]), data10_int))
+    return data10_int
 
 
-@numba.jit
+@numba.njit
 def observed_over_expected(
         matrix,
-        mask=np.empty(shape=(0), dtype=np.bool),
+        mask=np.empty(shape=(0), dtype=np.bool_),
         dist_bin_edge_ratio=1.03):
     '''
     Normalize the contact matrix for distance-dependent contact decay.
-
     The diagonals of the matrix, corresponding to contacts between loci pairs
     with a fixed distance, are grouped into exponentially growing bins of
     distances; the diagonals from each bin are normalized by their average value.
-
     Parameters
     ----------
-
     matrix : np.ndarray
         A 2D symmetric matrix of contact frequencies.
     mask : np.ndarray
@@ -475,7 +471,6 @@ def observed_over_expected(
         If 2D, it is interpreted as a mask of "good" pixels.
     dist_bin_edge_ratio : float
         The ratio of the largest and the shortest distance in each distance bin.
-
     Returns
     -------
     OE : np.ndarray
@@ -487,25 +482,28 @@ def observed_over_expected(
         The sum of contact frequencies in each distance bin.
     n_pixels : np.ndarray
         The total number of valid pixels in each distance bin.
-
     '''
 
     N = matrix.shape[0]
-    mask2d = np.empty(shape=(0,0), dtype=np.bool)
-    if (mask.ndim == 1):
-        if (mask.size > 0):
-            mask2d = mask[:,None] * mask[None, :]
+    
+    mask2d = np.empty(shape=(0,0), dtype=np.bool_)
+    if mask.ndim == 1:
+        if mask.size > 0:
+            mask2d = mask.reshape((1,-1)) * mask.reshape((-1,1))
     elif mask.ndim == 2:
-        mask2d = mask
+        # Numba expects mask to be a 1d array, so we need to hint
+        # that it is not a 2d array
+        mask2d = mask.reshape((int(np.sqrt(mask.size)),int(np.sqrt(mask.size))))
     else:
         raise ValueError('The mask must be either 1D or 2D.')
-
-    data = np.array(matrix, dtype = np.double, order = "C")
+  
+    data = np.copy(matrix).astype(np.float64)
 
     has_mask = mask2d.size>0
-    dist_bins = np.r_[0, np.array(logbins(1, N, dist_bin_edge_ratio))]
+    dist_bins = _logbins_numba(1, N, dist_bin_edge_ratio)
+    dist_bins = np.concatenate((np.array([0]), dist_bins))
     n_pixels_arr = np.zeros_like(dist_bins[1:])
-    sum_pixels_arr = np.zeros_like(dist_bins[1:], dtype='float64')
+    sum_pixels_arr = np.zeros_like(dist_bins[1:], dtype=np.float64)
 
     bin_idx, n_pixels, sum_pixels = 0, 0, 0
 
