@@ -1,6 +1,7 @@
 import warnings
 from scipy.linalg import toeplitz
 import scipy.sparse.linalg
+import scipy.interpolate
 from scipy.ndimage.interpolation import zoom
 import numpy as np
 import numba
@@ -95,27 +96,27 @@ def fill_na(arr, value=0, copy=True):
 def dist_to_mask(mask, side='min'):
     '''
     Calculate the distance to the nearest True element of an array.
-    
+
     Parameters
     ----------
     mask : iterable of bool
         A boolean array.
-        
+
     side : str
         The side . Accepted values are:
         'left' : calculate the distance to the nearest True value on the left
         'right' : calculate the distance to the nearest True value on the right
         'min' : calculate the distance to the closest True value
         'max' : calculate the distance to the furthest of the two neighbouring True values
-        
+
     Returns
     -------
     dist: array of int
-    
+
     Notes:
     ------
     The solution is borrowed from https://stackoverflow.com/questions/18196811/cumsum-reset-at-nan
-    
+
     '''
     if side not in ['left', 'right', 'min', 'max']:
         raise ValueError('side can be `left`, `right`, `min` or `max`')
@@ -123,16 +124,16 @@ def dist_to_mask(mask, side='min'):
         return np.minimum(dist_to_mask(mask, side='left'), dist_to_mask(mask, side='right'))
     if side == 'max':
         return np.maximum(dist_to_mask(mask, side='left'), dist_to_mask(mask, side='right'))
-    
+
     mask = np.asarray(mask)
     if side == 'right':
         mask = mask[::-1]
-    
+
     d = np.diff(np.r_[0., np.cumsum(~mask)[mask]])
     v = mask.astype(int).copy()
     v[mask] = d
     dist = (~mask).cumsum() - np.cumsum(v)
-    
+
     return dist[::-1] if side == 'right' else dist
 
 
@@ -191,6 +192,85 @@ def fill_nainf(arr, value=0, copy=True):
         arr = arr.copy()
     arr[~np.isfinite(arr)] = value
     return arr
+
+
+def interp_nan(a_init, pad_zeros=True, method='linear', verbose=False):
+    '''Linearly interpolate to fill NaN rows and columns in a matrix.
+    Also interpolates NaNs in 1D arrays.
+
+    Parameters
+    ----------
+    a_init : np.array
+
+    pad_zeros : bool, optional
+        If True, pads the matrix with zeros to fill NaNs at the edges.
+        By default, True.
+
+    method : str, optional
+        For 2D: "linear", "nearest", or "splinef2d"
+        For 1D: "linear", "nearest", "zero", "slinear", "quadratic", "cubic"
+
+    Returns
+    -------
+    array with NaNs linearly interpolated
+
+    Notes
+    -----
+    1D case adapted from: https://stackoverflow.com/a/39592604
+    2D case assumes that entire rows or columns are masked & edges to be
+    NaN-free, but is much faster than griddata implementation.
+
+    '''
+    shape = np.shape(a_init)
+    if pad_zeros:
+        a = np.zeros(tuple(s + 2 for s in shape))
+        a[tuple(slice(1, -1) for _ in shape)] = a_init
+    else:
+        a = np.array(a_init)
+    if len(shape) == 2 and (shape[0] == 1 or shape[1] == 1):
+        a = a.ravel()
+
+    isnan = np.isnan(a)
+    if np.sum(isnan) == 0:
+        if verbose: print('no nans to interpolate')
+        return a
+
+    if a.ndim == 2:
+        if verbose: print('interpolating 2D matrix')
+        if (np.any(isnan[:, 0] | isnan[:, -1]) or
+            np.any(isnan[0, :] | isnan[-1, :])):
+            raise ValueError('Edges must not have NaNs')
+        # Rows/cols to be considered fully null may have non-NaN diagonals
+        # so we'll take the maximum NaN count to identify them
+        n_nans_by_row = np.sum(isnan, axis=1)
+        n_nans_by_col = np.sum(isnan, axis=0)
+        i_inds = np.where(n_nans_by_row < np.max(n_nans_by_row))[0]
+        j_inds = np.where(n_nans_by_col < np.max(n_nans_by_col))[0]
+        if np.sum(isnan[np.ix_(i_inds, j_inds)]) > 0:
+            raise AssertionError('Found additional NaNs')
+        interpolator = partial(
+            scipy.interpolate.interpn,
+            (i_inds, j_inds),
+            a[np.ix_(i_inds, j_inds)],
+            method=method,
+            bounds_error=False)
+    else:
+        if verbose: print('interpolating 1D vector')
+        inds = np.arange(len(a))
+        interpolator = scipy.interpolate.interp1d(
+            inds[~isnan],
+            a[~isnan],
+            kind=method,
+            bounds_error=False)
+
+    loc = np.where(isnan)
+    a[loc] = interpolator(loc)
+
+    if pad_zeros:
+        a = a[tuple(slice(1, -1) for _ in shape)]
+
+    return a
+
 
 
 def slice_sorted(arr, lo, hi):
@@ -492,7 +572,7 @@ def observed_over_expected(
             mask2d = mask.reshape((1,-1)) * mask.reshape((-1,1))
     elif mask.ndim == 2:
         # Numba expects mask to be a 1d array, so we need to hint
-        # that it is not a 2d array
+        # that it is now a 2d array
         mask2d = mask.reshape((int(np.sqrt(mask.size)),int(np.sqrt(mask.size))))
     else:
         raise ValueError('The mask must be either 1D or 2D.')
@@ -667,8 +747,8 @@ def iterative_correction_asymmetric(
     corr = totalBias[~mask].mean()  #mean correction factor
     corr2 = totalBias2[~mask2].mean()  #mean correction factor
     _x = _x * corr * corr2 #renormalizing everything
-    totalBias /= corr    
-    totalBias2 /= corr2    
+    totalBias /= corr
+    totalBias2 /= corr2
     report = {'converged':converged, 'iternum':iternum}
 
     return _x, totalBias, totalBias2, report
@@ -927,7 +1007,7 @@ def interpolate_bad_singletons(mat, mask=None,
     mat = mat.copy()
     if mask is None:
         mask = infer_mask2D(mat)
-    antimask = mask==0
+    antimask = ( ~mask)
     badBins = (np.sum(mask, axis=0)==0)
     singletons =( ( badBins * smooth(badBins==0,3) )   > 1/3    )
     bb_minus_singletons = (badBins.astype('int8')-singletons.astype('int8')).astype('bool')
@@ -938,7 +1018,7 @@ def interpolate_bad_singletons(mat, mask=None,
     locs[bb_minus_singletons,:]=0; locs[:,bb_minus_singletons] = 0
     locs = np.nonzero(locs)#np.isnan(mat))
     interpvals = np.zeros(np.shape(mat))
-    if verbose==True: print('initial pass to interpolate:', len(locs[0]))
+    if verbose: print('initial pass to interpolate:', len(locs[0]))
     for loc in      zip(  locs[0],  locs[1]   ):
         i,j = loc
         if loc[0] > loc[1]:
@@ -959,7 +1039,7 @@ def interpolate_bad_singletons(mat, mask=None,
     if secondPass == True:
         locs = np.nonzero(np.isnan(interpvals))#np.isnan(mat))
         interpvals2 = np.zeros(np.shape(mat))
-        if verbose==True: print('still remaining: ', len(locs[0]))
+        if verbose: print('still remaining: ', len(locs[0]))
         for loc in      zip(  locs[0],  locs[1]   ):
             i,j = loc
             if loc[0] > loc[1]:
