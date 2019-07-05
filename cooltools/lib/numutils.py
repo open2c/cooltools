@@ -232,7 +232,7 @@ def interp_nan(a_init, pad_zeros=True, method='linear', verbose=False):
     if np.sum(isnan) == 0:
         if verbose:
             print('no nans to interpolate')
-        return a
+        return a_init
 
     if a.ndim == 2:
         if verbose:
