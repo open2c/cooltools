@@ -1147,7 +1147,7 @@ def zoom_array(in_array, final_shape, same_sum=False,
     return rescaled
 
 
-def adaptive_coarsegrain(ar, countar,  cutoff=3, max_levels=8):
+def adaptive_coarsegrain(ar, countar, cutoff, max_levels=8, min_shape=8):
     """
     Adaptively coarsegrain a Hi-C matrix based on local neighborhood pooling
     of counts.
@@ -1173,6 +1173,8 @@ def adaptive_coarsegrain(ar, countar,  cutoff=3, max_levels=8):
         How many levels of coarsening to perform. It is safe to keep this
         number large as very coarsened map will have large counts and no
         substitutions would be made at coarser levels.
+    min_shape : int
+        Stop coarsegraining when coarsegrained array shape is less than that. 
 
     Returns
     -------
@@ -1215,41 +1217,29 @@ def adaptive_coarsegrain(ar, countar,  cutoff=3, max_levels=8):
 
     """
 
-    def _coarsen(ar):
+    def _coarsen(ar, operation=np.sum):
         """Coarsegrains an array by a factor of 2"""
         M = ar.shape[0] // 2
         newar = np.reshape(ar, (M, 2, M, 2))
-        cg = np.sum(newar, axis=1)
-        cg = np.sum(cg, axis=2)
+        cg = operation(newar, axis=1)
+        cg = operation(cg, axis=2)
         return cg
 
-    def _nancoarsen(ar):
-        """Coarsegrains an array by a factor of 2, properly managing NaNs
-        (all-NaN sum is NaN), but NaN + non-NaN is a number """
-        mask = np.isfinite(ar)
-        arzero = ar.copy()
-        arzero[~mask] = 0
-        count = _coarsen(mask)
-        vals = _coarsen(arzero)
-        vals[count == 0] = np.nan
-        return vals, count
-
-    def _expand(ar, counts):
+    def _expand(ar, counts = None):
         """
         Performs an inverse of nancoarsen
         """
         N = ar.shape[0] * 2
         newar = np.zeros((N, N))
-        newar[ ::2,  ::2] = ar / counts
-        newar[1::2,  ::2] = ar / counts
-        newar[ ::2, 1::2] = ar / counts
-        newar[1::2, 1::2] = ar / counts
+        newar[ ::2,  ::2] = ar 
+        newar[1::2,  ::2] = ar 
+        newar[ ::2, 1::2] = ar 
+        newar[1::2, 1::2] = ar 
         return newar
 
+    # defining arrays, making sure they are floats 
     ar = np.asarray(ar, float)
     countar = np.asarray(countar, float)
-    assert np.isfinite(countar).all()
-    assert countar.shape == ar.shape
 
     # TODO: change this to the nearest shape correctly counting the smallest
     # shape the algorithm will reach
@@ -1265,35 +1255,68 @@ def adaptive_coarsegrain(ar, countar,  cutoff=3, max_levels=8):
         ar = newar
         countar = newcountar
 
-    # make sure two arrays are in sync (masked elements in balanced array are
-    # zero-counts)
-    countar[~np.isfinite(ar)] = 0
-    ar_cg, counts = _nancoarsen(ar) # coarsegrain the array and the counts
-    countar_cg = _coarsen(countar)
-    newcountar = countar * 1. # take an array of counts.
+    armask = np.isfinite(ar)  # mask of "valid" elements
+    countar[~armask] = 0 
+    ar[~armask] = 0 
 
-    # Mask is with NaNs (because it doesnt' have them the way cooler raw
-    # matrix is returned, and balancing masks more rows)
-    mask = np.isfinite(ar)
-    newcountar[~mask] = np.nan
-    M = newcountar.shape[0] // 2
-    newcountar_reshaped = np.reshape(newcountar, (M, 2,M, 2))
+    assert np.isfinite(countar).all()
+    assert countar.shape == ar.shape
+    
+    # We will be working with three arrays. 
+    ar_cg = [ar]   # actual Hi-C data
+    countar_cg = [countar]   # counts contributing to Hi-C data (raw Hi-C reads)
+    armask_cg = [armask]     #mask of "valid" pixels of the heatmap 
 
-    # Then find minimum of each 2x2 square  ignoring NaNs
-    newcountar_min = np.nanmin(np.nanmin(newcountar_reshaped, axis=1), axis=2)
-    newcountar_min_exp = _expand(newcountar_min, _coarsen(mask))
+    # forward pass: coarsegraining all 3 arrays 
+    for i in range(max_levels): 
+        if countar_cg[-1].shape[0] > min_shape:
+            countar_cg.append(_coarsen(countar_cg[-1]))
+            armask_cg.append(_coarsen(armask_cg[-1]))
+            ar_cg.append(_coarsen(ar_cg[-1]))
 
-    # calling itself recursively here - as opposed to creating a set of arrays
-    # and then collapsing them
-    if (max_levels > 0) and (ar_cg.shape[0] > 3):
-        ar_cg = adaptive_coarsegrain(ar_cg, countar_cg, cutoff, max_levels - 1)
+    # now we get the most coarsegrained array 
+    ar_cur = ar_cg.pop()
+    countar_cur = countar_cg.pop()
+    armask_cur = armask_cg.pop()
+    
+    # reverse pass: replacing values starting with most coarsegrained array  
+    for i in range(len(countar_cg)):
+        ar_next = ar_cg.pop()
+        countar_next = countar_cg.pop()
+        armask_next = armask_cg.pop()
 
-    # we expand the coarsegrained array here, and replace the values that
-    # have min_counts less than cutoff
-    exp = _expand(ar_cg, counts)
-    replaced = ar.copy()
-    mask = newcountar_min_exp < cutoff
-    replaced[mask] = exp[mask]
-    replaced[~np.isfinite(ar)] = np.nan
+        val_cur = ar_cur / armask_cur # obtain current "average" value by dividung sum by the # of valid pixels 
+        val_exp = _expand(val_cur)    # expand it so that it is the same shape as the previous level 
+        addar_exp = val_exp * armask_next   # create array of substitutions: multiply average value by counts 
+        """What is happening here... 
+        We have 4 pixels that were coarsegrained to one pixels 
+        Let V be the array of values (ar), and C be the array of counts of valid pixels
+        Then the coarsegrained values and valid pixel counts are: 
+        V_{cg} = V_{0,0} + V_{0,1} + V_{1,0} + V_{1,1}
+        C_{cg} = C_{0,0} + C_{0,1} + C_{1,0} + C_{1,1}
+        
+        The average value at the coarsegrained level is V_{cg} / C_{cg}
+        The average value at the non-coarsegrained level is V_{0,0} / C_{0,0}, etc. 
+        
+        If we decide to replace the current 2x2 square with coarsegrained values, we need to make it produce the same average value
+        To this end, we would replace V_{0,0} with V_{cg} * C_{0,0} / C_{cg} and so on """
+                
+        countar_next_mask = np.array(countar_next)  #make a copy of the raw Hi-C array at current level 
+        countar_next_mask[armask_next==0] = np.nan  # fill nans 
+        countar_exp = _expand(_coarsen(countar_next, operation=np.nanmin)) 
+        """What is happening here... 
+        We would replace 4 values with the average if counts for either of the 4 values are less than cutoff 
+        TO this end, we perform nanmin of raw Hi-C counts in each 4 pixels
+        Because if counts are 0 due to this pixel being invalid - it's fine. But If they are 0 in a valid pixel - we are replacing this pixel"""
 
-    return replaced[:Norig, :Norig]
+        curmask = countar_exp < cutoff # replacement mask 
+
+        ar_next[curmask] = addar_exp[curmask]  # procedure of replacement 
+        ar_next[armask_next==0] = 0     # now setting zeros at invalid pixels 
+        ar_cur = ar_next                 # and preparing for the next level 
+        countar_cur = countar_next
+        armask_cur = armask_next 
+
+    ar_next[armask_next==0] = np.nan
+    ar_next = ar_next[:Norig, :Norig]
+    return ar_next 
