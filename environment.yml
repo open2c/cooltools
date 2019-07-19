@@ -4,14 +4,8 @@ channels:
   - bioconda
 dependencies:
   - numpy
-  - scipy
   - cython
   - matplotlib
-  - pandas
-  - h5py
-  - numba
-  - dask
-  - scikit-learn
-  - cooler
-  - click
-  - pytest
+  - pip
+  - pip:
+    - -r requirements-dev.txt
