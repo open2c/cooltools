@@ -106,13 +106,13 @@ def gridspec_inches(
     fig = plt.figure(
         figsize=(fig_width_inches,fig_height_inches),
         subplotpars=mpl.figure.SubplotParams(
-        left=0,
-        right=1,
-        bottom=0,
-        top=1,
-        wspace =0,
-        hspace = 0.0),
-        frameon=False,
+            left=0,
+            right=1,
+            bottom=0,
+            top=1,
+            wspace =0,
+            hspace = 0.0),
+        #frameon=False,
         **fig_kwargs)
     fig.set_size_inches(fig_width_inches,fig_height_inches,forward=True)
 
@@ -130,3 +130,4 @@ def gridspec_inches(
         )
 
     return fig, gs
+
