@@ -241,8 +241,8 @@ def pair_sites(sites, separation, slop):
     # with left hands (right anchor site)
     with tsv(right_hand) as R, tsv(left_hand) as L:
         out = bedtools.intersect(a=R.name, b=L.name, wa=True, wb=True)
-        out.columns = ([c+'2' for c in right_hand.columns] +
-                       [c+'1' for c in left_hand.columns])
+        out.columns = ([c+'_r' for c in right_hand.columns] +
+                       [c+'_l' for c in left_hand.columns])
     return out
 
 
