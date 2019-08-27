@@ -314,6 +314,21 @@ class ObsExpSnipper:
     def __init__(self, clr, expected, cooler_opts=None):
         self.clr = clr
         self.expected = expected
+        
+        # Detecting the columns for the detection of regions
+        columns = expected.columns
+        assert len(columns)>0
+        if 'chrom' in columns and 'start' in columns and 'end' in columns:
+            self.regions_columns = ['chrom', 'start', 'end'] # Chromosome arms encoded by multiple columns
+        elif 'chrom' in columns:
+            self.regions_columns = ['chrom'] # Chromosomes or regions encoded in string mode: "chr3:XXXXXXX-YYYYYYYY"
+        elif 'region' in columns:
+            self.regions_columns = ['region'] # Regions encoded in string mode: "chr3:XXXXXXX-YYYYYYYY"
+        elif len(columns)>0:
+            self.regions_columns = columns[0] # The first columns is treated as chromosome/region annotation
+        else:
+            raise ValueError('Expected dataframe has no columns.')
+            
         self.binsize = self.clr.binsize
         self.offsets = {}
         self.pad = True
@@ -331,10 +346,10 @@ class ObsExpSnipper:
         if self.cooler_opts['sparse']:
             matrix = matrix.tocsr()
         self._isnan1 = np.isnan(self.clr.bins()['weight'].fetch(region1).values)
-        self._isnan2 = np.isnan(self.clr.bins()['weight'].fetch(region2).values)        
+        self._isnan2 = np.isnan(self.clr.bins()['weight'].fetch(region2).values)
         self._expected = LazyToeplitz(self.expected
-                .groupby(['chrom', 'start', 'end'])
-                .get_group(region1)
+                .groupby(self.regions_columns)
+                .get_group(region1[0] if len(self.regions_columns)>0 else region1)
                 ['balanced.avg']
                 .values)
         return matrix
@@ -387,6 +402,21 @@ class ExpectedSnipper:
     def __init__(self, clr, expected):
         self.clr = clr
         self.expected = expected
+        
+        # Detecting the columns for the detection of regions
+        columns = expected.columns
+        assert len(columns)>0
+        if 'chrom' in columns and 'start' in columns and 'end' in columns:
+            self.regions_columns = ['chrom', 'start', 'end'] # Chromosome arms encoded by multiple columns
+        elif 'chrom' in columns:
+            self.regions_columns = ['chrom'] # Chromosomes or regions encoded in string mode: "chr3:XXXXXXX-YYYYYYYY"
+        elif 'region' in columns:
+            self.regions_columns = ['region'] # Regions encoded in string mode: "chr3:XXXXXXX-YYYYYYYY"
+        elif len(columns)>0:
+            self.regions_columns = columns[0] # The first columns is treated as chromosome/region annotation
+        else:
+            raise ValueError('Expected dataframe has no columns.')
+            
         self.binsize = self.clr.binsize
         self.offsets = {}
 
@@ -399,8 +429,8 @@ class ExpectedSnipper:
         self.m = np.diff(self.clr.extent(region1))
         self.n = np.diff(self.clr.extent(region2))
         self._expected = LazyToeplitz(self.expected
-                .groupby(['chrom', 'start', 'end'])
-                .get_group(region1)
+                .groupby(self.regions_columns)
+                .get_group(region1[0] if len(self.regions_columns)>0 else region1)
                 ['balanced.avg']
                 .values)
         return self._expected
