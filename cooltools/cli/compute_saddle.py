@@ -37,6 +37,19 @@ from . import cli
     default='cis',
     show_default=True)
 @click.option(
+    "--min-dist",
+    help="Minimal distance between bins to consider, bp. If negative, removes"
+         "the first two diagonals of the data.",
+    type=int,
+    default=-1,
+    show_default=True)
+@click.option(
+    "--max-dist",
+    help="Maximal distance between bins to consider, bp. Ignored, if negative.",
+    type=int,
+    default=-1,
+    show_default=True)
+@click.option(
     "--n-bins", "-n",
     help="Number of bins for digitizing track values.",
     type=int,
@@ -115,9 +128,10 @@ from . import cli
     help="Enable verbose output",
     is_flag=True,
     default=False)
-def compute_saddle(cool_path, track_path, expected_path, contact_type, n_bins,
-                   quantiles, range_, qrange, strength, out_prefix, fig, scale,
-                   cmap, vmin, vmax, hist_color, verbose):
+def compute_saddle(cool_path, track_path, expected_path, contact_type,
+                   min_dist, max_dist, n_bins, quantiles, range_, qrange,
+                   strength, out_prefix, fig, scale, cmap, vmin, vmax,
+                   hist_color, verbose):
     """
     Calculate saddle statistics and generate saddle plots for an arbitrary
     signal track on the genomic bins of a contact matrix.
@@ -191,6 +205,17 @@ def compute_saddle(cool_path, track_path, expected_path, contact_type, n_bins,
         raise ValueError(
             "Incorrect contact_type: {}, ".format(contact_type),
             "Should have been caught by click.")
+
+    if min_dist < 0:
+        min_diag = 3
+    else:
+        min_diag = int(np.ceil(min_dist/c.binsize))
+
+    if max_dist >= 0:
+        max_diag = int(np.floor(max_dist/c.binsize))
+    else:
+        max_diag = -1
+
     # use 'usecols' as a rudimentary form of validation,
     # and dtype. Keep 'comment' and 'verbose' - explicit,
     # as we may use them later:
@@ -298,7 +323,9 @@ def compute_saddle(cool_path, track_path, expected_path, contact_type, n_bins,
         getmatrix,
         binedges,
         (digitized, track_name + '.d'),
-        contact_type=contact_type)
+        contact_type=contact_type,
+        min_diag=min_diag,
+        max_diag=max_diag)
 
     saddledata = S / C
     if scale in ('log2', 'log10'):
