@@ -181,13 +181,19 @@ def make_trans_obsexp_fetcher(clr, expected):
         raise ValueError("Unknown type of expected")
 
 
-def _accumulate(S, C, getmatrix, digitized, reg1, reg2, verbose):
+def _accumulate(S, C, getmatrix, digitized, reg1, reg2, min_diag, max_diag,
+                verbose):
     n_bins = S.shape[0]
     matrix = getmatrix(reg1, reg2)
 
+
     if reg1[0] == reg2[0]:
-        for d in [-2, -1, 0, 1, 2]:
+        for d in np.arange(-min_diag+1, min_diag):
             numutils.set_diag(matrix, np.nan, d)
+        if max_diag >= 0:
+            for d in np.append(np.arange(-matrix.shape[0], -max_diag),
+                               np.arange(max_diag+1, matrix.shape[0])):
+                numutils.set_diag(matrix, np.nan, d)
 
     if verbose:
         print('regions {} vs {}'.format(reg1, reg2))
@@ -203,7 +209,7 @@ def _accumulate(S, C, getmatrix, digitized, reg1, reg2, verbose):
 
 
 def make_saddle(getmatrix, binedges, digitized, contact_type, regions=None,
-                trim_outliers=False, verbose=False):
+                min_diag=3, max_diag=-1, trim_outliers=False, verbose=False):
     """
     Make a matrix of average interaction probabilities between genomic bin
     pairs as a function of a specified genomic track. The provided genomic
@@ -226,6 +232,12 @@ def make_saddle(getmatrix, binedges, digitized, contact_type, regions=None,
     regions : sequence of str or tuple, optional
         A list of genomic regions to use. Each can be a chromosome, a
         UCSC-style genomic region string or a tuple.
+    min_diag : int
+        Smallest diagonal to include in computation. Ignored with
+        contact_type=trans.
+    max_diag : int
+        Biggest diagonal to include in computation. Ignored with
+        contact_type=trans.
     trim_outliers : bool, optional
         Remove first and last row and column from the output matrix.
     verbose : bool, optional
@@ -270,7 +282,7 @@ def make_saddle(getmatrix, binedges, digitized, contact_type, regions=None,
 
     for reg1, reg2 in supports:
         _accumulate(interaction_sum, interaction_count, getmatrix,
-                    digitized_tracks, reg1, reg2, verbose)
+                    digitized_tracks, reg1, reg2, min_diag, max_diag, verbose)
 
     interaction_sum += interaction_sum.T
     interaction_count += interaction_count.T
