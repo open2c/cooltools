@@ -233,9 +233,11 @@ def make_saddle(getmatrix, binedges, digitized, contact_type, regions=None,
         A list of genomic regions to use. Each can be a chromosome, a
         UCSC-style genomic region string or a tuple.
     min_diag : int
-        Smallest diagonal to include in computation
+        Smallest diagonal to include in computation. Ignored with
+        contact_type=trans.
     max_diag : int
-        Biggest diagonal to include in computation
+        Biggest diagonal to include in computation. Ignored with
+        contact_type=trans.
     trim_outliers : bool, optional
         Remove first and last row and column from the output matrix.
     verbose : bool, optional
