@@ -190,7 +190,7 @@ def _accumulate(S, C, getmatrix, digitized, reg1, reg2, min_diag, max_diag,
     if reg1[0] == reg2[0]:
         for d in np.arange(-min_diag+1, min_diag):
             numutils.set_diag(matrix, np.nan, d)
-        if max_diag < np.inf:
+        if max_diag >= 0:
             for d in np.append(np.arange(-matrix.shape[0], -max_diag),
                                np.arange(max_diag+1, matrix.shape[0])):
                 numutils.set_diag(matrix, np.nan, d)
@@ -209,7 +209,7 @@ def _accumulate(S, C, getmatrix, digitized, reg1, reg2, min_diag, max_diag,
 
 
 def make_saddle(getmatrix, binedges, digitized, contact_type, regions=None,
-                min_diag=3, max_diag=np.inf, trim_outliers=False, verbose=False):
+                min_diag=3, max_diag=-1, trim_outliers=False, verbose=False):
     """
     Make a matrix of average interaction probabilities between genomic bin
     pairs as a function of a specified genomic track. The provided genomic
