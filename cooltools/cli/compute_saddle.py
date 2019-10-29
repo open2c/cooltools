@@ -39,13 +39,14 @@ from . import cli
 @click.option(
     "--min-dist",
     help="Minimal distance between bins to consider, bp. If negative, removes"
-         "the first two diagonals of the data.",
+         "the first two diagonals of the data. Ignored with --contact-type trans.",
     type=int,
     default=-1,
     show_default=True)
 @click.option(
     "--max-dist",
-    help="Maximal distance between bins to consider, bp. Ignored, if negative.",
+    help="Maximal distance between bins to consider, bp. Ignored, if negative."
+         " Ignored with --contact-type trans.",
     type=int,
     default=-1,
     show_default=True)
