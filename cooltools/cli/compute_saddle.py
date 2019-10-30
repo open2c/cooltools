@@ -292,6 +292,8 @@ def compute_saddle(cool_path, track_path, expected_path, contact_type,
     # CROSS-VALIDATION IS COMPLETE.
     #############################################
 
+    track = saddle.mask_bad_bins((track, track_name), (c.bins()[:], 'weight'))
+
     if contact_type == "cis":
         getmatrix = saddle.make_cis_obsexp_fetcher(c, (expected, expected_name))
     elif contact_type == "trans":
