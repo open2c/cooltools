@@ -49,15 +49,15 @@ def mask_bad_bins(track, bintable):
         New bedGraph-like dataframe with bad bins masked in the value column
     """
     track, name = track
+
     bintable, weight_name = bintable
 
-    track = pd.merge(track, bintable, on=['chrom', 'start', 'end'])
+    track = pd.merge(track[['chrom', 'start', 'end', name]], bintable,
+                     on=['chrom', 'start', 'end'])
     track.loc[~np.isfinite(track[weight_name]), name] = np.nan
     track = track[['chrom', 'start', 'end', name]]
 
     return track
-
-
 
 def digitize_track(binedges, track, regions=None):
     """
