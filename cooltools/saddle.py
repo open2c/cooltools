@@ -117,7 +117,7 @@ def digitize_track(binedges, track, regions=None):
     return digitized, hist
 
 
-def make_cis_obsexp_fetcher(clr, expected):
+def make_cis_obsexp_fetcher(clr, expected, weight_name='weight'):
     """
     Construct a function that returns intra-chromosomal OBS/EXP.
 
@@ -125,10 +125,11 @@ def make_cis_obsexp_fetcher(clr, expected):
     ----------
     clr : cooler.Cooler
         Observed matrix.
-    expected : DataFrame
-        Diagonal summary statistics for each chromosome.
-    name : str
-        Name of data column in ``expected`` to use.
+    expected : tuple of (DataFrame, str)
+        Diagonal summary statistics for each chromosome, and name of the column
+        to use
+    weight_name : str
+        Name of the column in the clr.bins to use as balancing weights
 
     Returns
     -------
@@ -139,14 +140,14 @@ def make_cis_obsexp_fetcher(clr, expected):
     expected = {k: x.values for k, x in expected.groupby('chrom')[name]}
 
     def _fetch_cis_oe(reg1, reg2):
-        obs_mat = clr.matrix().fetch(reg1)
+        obs_mat = clr.matrix(balance=weight_name).fetch(reg1)
         exp_mat = toeplitz(expected[reg1[0]][:obs_mat.shape[0]])
         return obs_mat/exp_mat
 
     return _fetch_cis_oe
 
 
-def make_trans_obsexp_fetcher(clr, expected):
+def make_trans_obsexp_fetcher(clr, expected, weight_name='weight'):
     """
     Construct a function that returns OBS/EXP for any pair of chromosomes.
 
@@ -159,6 +160,8 @@ def make_trans_obsexp_fetcher(clr, expected):
         expected value. If a tuple of (dataframe, name), the dataframe must
         have a MultiIndex with 'chrom1' and 'chrom2' and must also have a column
         labeled ``name``.
+    weight_name : str
+        Name of the column in the clr.bins to use as balancing weights
 
     Returns
     -----
@@ -168,7 +171,7 @@ def make_trans_obsexp_fetcher(clr, expected):
 
     if np.isscalar(expected):
         return lambda reg1, reg2: (
-            clr.matrix().fetch(reg1, reg2) / expected)
+            clr.matrix(balance=weight_name).fetch(reg1, reg2) / expected)
 
     elif isinstance(expected, (tuple, list)):
         expected, name = expected
@@ -197,7 +200,7 @@ def make_trans_obsexp_fetcher(clr, expected):
             reg2 = bioframe.parse_region(reg2)
 
             return (
-                clr.matrix().fetch(reg1, reg2) /
+                clr.matrix(balance=weight_name).fetch(reg1, reg2) /
                 _fetch_trans_exp(reg1[0], reg2[0])
             )
 

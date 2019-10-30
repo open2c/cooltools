@@ -82,6 +82,12 @@ from . import cli
     default=(0.0, 1.0),
     show_default=True)
 @click.option(
+    '--weight-name',
+    help="Use balancing weight with this name.",
+    type=str,
+    default='weight',
+    show_default=True)
+@click.option(
     "--strength/--no-strength",
     help="Compute and save compartment 'saddle strength' profile",
     is_flag=True,
@@ -131,8 +137,8 @@ from . import cli
     default=False)
 def compute_saddle(cool_path, track_path, expected_path, contact_type,
                    min_dist, max_dist, n_bins, quantiles, range_, qrange,
-                   strength, out_prefix, fig, scale, cmap, vmin, vmax,
-                   hist_color, verbose):
+                   weight_name, strength, out_prefix, fig, scale, cmap,
+                   vmin, vmax, hist_color, verbose):
     """
     Calculate saddle statistics and generate saddle plots for an arbitrary
     signal track on the genomic bins of a contact matrix.
@@ -292,12 +298,14 @@ def compute_saddle(cool_path, track_path, expected_path, contact_type,
     # CROSS-VALIDATION IS COMPLETE.
     #############################################
 
-    track = saddle.mask_bad_bins((track, track_name), (c.bins()[:], 'weight'))
+    track = saddle.mask_bad_bins((track, track_name), (c.bins()[:], weight_name))
 
     if contact_type == "cis":
-        getmatrix = saddle.make_cis_obsexp_fetcher(c, (expected, expected_name))
+        getmatrix = saddle.make_cis_obsexp_fetcher(c, (expected, expected_name),
+                                                   weight_name=weight_name)
     elif contact_type == "trans":
-        getmatrix = saddle.make_trans_obsexp_fetcher(c, (expected, expected_name))
+        getmatrix = saddle.make_trans_obsexp_fetcher(c, (expected, expected_name),
+                                                     weight_name=weight_name)
 
     if quantiles:
         if len(range_):
