@@ -32,6 +32,32 @@ def quantile(x, q, **kwargs):
     p = np.asarray(q) * 100
     return np.nanpercentile(x, p, **kwargs)
 
+def mask_bad_bins(track, bintable):
+    """
+    Mask (set to NaN) values in track where bin is masked in bintable.
+
+    Parameters
+    ----------
+    track : tuple of (DataFrame, str)
+        bedGraph-like dataframe along with the name of the value column.
+    bintable : tuple of (DataFrame, str)
+        bedGraph-like dataframe along with the name of the weight column.
+
+    Returns
+    -------
+    track : DataFrame
+        New bedGraph-like dataframe with bad bins masked in the value column
+    """
+    track, name = track
+    bintable, weight_name = bintable
+
+    track = pd.merge(track, bintable, on=['chrom', 'start', 'end'])
+    track.loc[~np.isfinite(track[weight_name]), name] = np.nan
+    track = track[['chrom', 'start', 'end', name]]
+
+    return track
+
+
 
 def digitize_track(binedges, track, regions=None):
     """
