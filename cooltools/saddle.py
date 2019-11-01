@@ -435,8 +435,6 @@ def saddleplot(binedges, counts, saddledata, cmap='coolwarm', scale='log',
         heatmap_kws_default,
         heatmap_kws if heatmap_kws is not None else {})
     img = ax.pcolormesh(X, Y, C, norm=norm, **heatmap_kws)
-#    vmin = heatmap_kws['vmin']
-#    vmax = heatmap_kws['vmax']
     plt.gca().yaxis.set_visible(False)
 
     # Margins

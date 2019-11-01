@@ -339,8 +339,6 @@ def compute_saddle(cool_path, track_path, expected_path, contact_type,
         max_diag=max_diag)
 
     saddledata = S / C
-#    if scale in ('log2', 'log10'):
-#        saddledata = getattr(np, scale)(saddledata)
 
     to_save = dict(
         saddledata=saddledata,
@@ -375,7 +373,6 @@ def compute_saddle(cool_path, track_path, expected_path, contact_type,
             color = (0.41568627450980394, 0.8, 0.39215686274509803) #sns.color_palette('muted')[2]
         else:
             color = mpl.colors.colorConverter.to_rgb(hist_color)
-#        heatmap_kws = dict(vmin=vmin, vmax=vmax)
         title = op.basename(cool_path) + ' ({})'.format(contact_type)
         if quantiles:
             edges = q_edges
@@ -384,8 +381,6 @@ def compute_saddle(cool_path, track_path, expected_path, contact_type,
             edges = binedges
             track_label = track_name
         clabel = '(contact frequency / expected)'
-#        if scale in ('log2', 'log10'):
-#            clabel = scale + ' ' + clabel
 
         saddle.saddleplot(
             edges,
