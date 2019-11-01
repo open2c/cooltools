@@ -322,7 +322,6 @@ def make_saddle(getmatrix, binedges, digitized, contact_type, regions=None,
 
     return interaction_sum, interaction_count
 
-
 def saddleplot(binedges, counts, saddledata, cmap='coolwarm', scale='log',
                vmin=0.5, vmax=2, color=None, title=None, xlabel=None,
                ylabel=None, clabel=None, fig=None, fig_kws=None,
@@ -372,8 +371,17 @@ def saddleplot(binedges, counts, saddledata, cmap='coolwarm', scale='log',
     """
     from matplotlib.gridspec import GridSpec, GridSpecFromSubplotSpec
     from matplotlib.colors import Normalize, LogNorm
+    from matplotlib import ticker
     import matplotlib.pyplot as plt
-    from cytoolz import merge
+
+    class MinOneMaxFormatter(ticker.LogFormatter):
+        def set_locs(self, locs=None):
+            self._sublabels = set([vmin%10*10, vmax%10, 1])
+        def __call__(self, x, pos=None):
+            if x not in [vmin, 1, vmax]:
+                return ""
+            else:
+                return "{x:g}".format(x=x)
 
     n_edges = len(binedges)
     n_bins = n_edges - 1
@@ -475,14 +483,18 @@ def saddleplot(binedges, counts, saddledata, cmap='coolwarm', scale='log',
     cbar_kws = merge(
         cbar_kws_default,
         cbar_kws if cbar_kws is not None else {})
-    grid['cbar'] = cb = plt.colorbar(img, **cbar_kws)
-    if vmin is not None and vmax is not None:
+    if scale=='linear' and vmin is not None and vmax is not None:
+        grid['cbar'] = cb = plt.colorbar(img, **cbar_kws)
         # cb.set_ticks(np.arange(vmin, vmax + 0.001, 0.5))
         # # do linspace between vmin and vmax of 5 segments and trunc to 1 decimal:
         decimal = 10
         nsegments = 5
         cd_ticks = np.trunc(np.linspace(vmin, vmax, nsegments)*decimal)/decimal
         cb.set_ticks(cd_ticks)
+    else:
+        grid['cbar'] = cb = plt.colorbar(img, format=MinOneMaxFormatter(),
+            **cbar_kws)
+        cb.ax.yaxis.set_minor_formatter(MinOneMaxFormatter())
 
     # extra settings
     grid['ax_heatmap'].set_xlim(lo, hi)
