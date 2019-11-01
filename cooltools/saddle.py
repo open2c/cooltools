@@ -323,10 +323,11 @@ def make_saddle(getmatrix, binedges, digitized, contact_type, regions=None,
     return interaction_sum, interaction_count
 
 
-def saddleplot(binedges, counts, saddledata, cmap='coolwarm', vmin=-1, vmax=1,
-               color=None, title=None, xlabel=None, ylabel=None, clabel=None,
-               fig=None, fig_kws=None, heatmap_kws=None, margin_kws=None,
-               cbar_kws=None, subplot_spec=None):
+def saddleplot(binedges, counts, saddledata, cmap='coolwarm', scale='log',
+               vmin=0.5, vmax=2, color=None, title=None, xlabel=None,
+               ylabel=None, clabel=None, fig=None, fig_kws=None,
+               heatmap_kws=None, margin_kws=None, cbar_kws=None,
+               subplot_spec=None):
     """
     Generate a saddle plot.
 
@@ -344,6 +345,8 @@ def saddleplot(binedges, counts, saddledata, cmap='coolwarm', vmin=-1, vmax=1,
         `(n+2, n+2)`.
     cmap : str or matplotlib colormap
         Colormap to use for plotting the saddle heatmap
+    scale : str
+        Color scaling to use for plotting the saddle heatmap: log or linear
     vmin, vmax : float
         Value limits for coloring the saddle heatmap
     color : matplotlib color value
@@ -368,6 +371,7 @@ def saddleplot(binedges, counts, saddledata, cmap='coolwarm', vmin=-1, vmax=1,
 
     """
     from matplotlib.gridspec import GridSpec, GridSpecFromSubplotSpec
+    from matplotlib.colors import Normalize, LogNorm
     import matplotlib.pyplot as plt
     from cytoolz import merge
 
@@ -408,18 +412,23 @@ def saddleplot(binedges, counts, saddledata, cmap='coolwarm', vmin=-1, vmax=1,
         fig = plt.figure(**fig_kws)
 
     # Heatmap
+    if scale == 'log':
+        norm = LogNorm(vmin=vmin, vmax=vmax)
+    elif scale == 'linear':
+        norm = Normalize(vmin=vmin, vmax=vmax)
+    else:
+        raise ValueError('Only linear and log color scaling is supported')
+
     grid['ax_heatmap'] = ax = plt.subplot(gs[4])
     heatmap_kws_default = dict(
         cmap='coolwarm',
-        rasterized=True,
-        vmin=vmin,
-        vmax=vmax)
+        rasterized=True)
     heatmap_kws = merge(
         heatmap_kws_default,
         heatmap_kws if heatmap_kws is not None else {})
-    img = ax.pcolormesh(X, Y, C, **heatmap_kws)
-    vmin = heatmap_kws['vmin']
-    vmax = heatmap_kws['vmax']
+    img = ax.pcolormesh(X, Y, C, norm=norm, **heatmap_kws)
+#    vmin = heatmap_kws['vmin']
+#    vmax = heatmap_kws['vmax']
     plt.gca().yaxis.set_visible(False)
 
     # Margins
