@@ -109,8 +109,8 @@ from . import cli
 @click.option(
     '--scale',
     help="Value scale for the heatmap",
-    type=click.Choice(['linear', 'log2', 'log10']),
-    default='log10',
+    type=click.Choice(['linear', 'log']),
+    default='log',
     show_default=True)
 @click.option(
     '--cmap',
@@ -121,12 +121,12 @@ from . import cli
     '--vmin',
     help="Low value of the saddleplot colorbar",
     type=float,
-    default=-1)
+    default=0.5)
 @click.option(
     '--vmax',
     help="High value of the saddleplot colorbar",
     type=float,
-    default=1)
+    default=2)
 @click.option(
     '--hist-color',
     help="Face color of histogram bar chart")
@@ -339,8 +339,6 @@ def compute_saddle(cool_path, track_path, expected_path, contact_type,
         max_diag=max_diag)
 
     saddledata = S / C
-    if scale in ('log2', 'log10'):
-        saddledata = getattr(np, scale)(saddledata)
 
     to_save = dict(
         saddledata=saddledata,
@@ -367,16 +365,14 @@ def compute_saddle(cool_path, track_path, expected_path, contact_type,
             import matplotlib as mpl
             mpl.use('Agg')  # savefig only for now:
             import matplotlib.pyplot as plt
-            import seaborn as sns
         except ImportError:
-            print("Install matplotlib and seaborn to use ", file=sys.stderr)
+            print("Install matplotlib to use ", file=sys.stderr)
             sys.exit(1)
 
         if hist_color is None:
-            color = sns.color_palette('muted')[2]
+            color = (0.41568627450980394, 0.8, 0.39215686274509803) #sns.color_palette('muted')[2]
         else:
             color = mpl.colors.colorConverter.to_rgb(hist_color)
-        heatmap_kws = dict(vmin=vmin, vmax=vmax)
         title = op.basename(cool_path) + ' ({})'.format(contact_type)
         if quantiles:
             edges = q_edges
@@ -385,19 +381,19 @@ def compute_saddle(cool_path, track_path, expected_path, contact_type,
             edges = binedges
             track_label = track_name
         clabel = '(contact frequency / expected)'
-        if scale in ('log2', 'log10'):
-            clabel = scale + ' ' + clabel
 
         saddle.saddleplot(
             edges,
             hist,
             saddledata,
+            scale=scale,
+            vmin=vmin,
+            vmax=vmax,
             color=color,
             title=title,
             xlabel=track_label,
             ylabel=track_label,
-            clabel=clabel,
-            heatmap_kws=heatmap_kws)
+            clabel=clabel)
 
         for ext in fig:
             plt.savefig(out_prefix + '.' + ext, bbox_inches='tight')

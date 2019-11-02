@@ -1,7 +1,7 @@
 # Release notes
 
 ## [Unreleased](https://github.com/mirnylab/cooltools/compare/v0.2.0...HEAD)
-
+* `compute-saddle` now saves saddledata without transformation, and the `scale` argument (with options `log` or `linear`) now only determines how the saddle is plotted. Consequently, `saddleplot` function now expects untransformed `saddledata`, and plots it directly or with log-scaling of the colormap. (https://github.com/mirnylab/cooltools/pull/105)
 
 ## [v0.2.0](https://github.com/mirnylab/cooltools/compare/v0.1.0...v0.2.0)
 
