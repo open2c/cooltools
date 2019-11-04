@@ -56,7 +56,7 @@ def test_saddle_cli(request, tmpdir):
     try:
         result = subprocess.check_output(
             f'python -m cooltools compute-saddle -o {out_saddle_prefix} --range -0.5 0.5 '
-            +f'--n-bins 30 --scale log2 {in_cool} {out_eig_prefix}.cis.vecs.tsv {out_expected}',
+            +f'--n-bins 30 --scale log {in_cool} {out_eig_prefix}.cis.vecs.tsv {out_expected}',
             shell=True
         ).decode('ascii')
     except subprocess.CalledProcessError as e:
@@ -64,7 +64,7 @@ def test_saddle_cli(request, tmpdir):
         print(sys.exc_info())
         raise e
 
-    log2_sad = np.load(out_saddle_prefix + '.saddledump.npz')['saddledata']
+    log2_sad = np.log2(np.load(out_saddle_prefix + '.saddledump.npz')['saddledata'])
     bins = np.load(out_saddle_prefix + '.saddledump.npz')['binedges']
     binmids = (bins[:-1] + bins[1:]) / 2
     log2_theor_sad = np.log2(1 + binmids[None,:] * binmids[:,None])
