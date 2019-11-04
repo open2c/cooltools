@@ -2,8 +2,8 @@ sudo: false
 language: python
 python:
   # We don't actually use the Travis Python, but this keeps it organized.
-  - "3.5"
-  - "3.6"
+  - "3.7"
+  - "3.8"
 before_install:
   # http://conda.pydata.org/docs/travis.html
   #- sudo apt-get update  # drop sudo to get a faster booting container environment
@@ -13,13 +13,12 @@ before_install:
   - hash -r
   - conda config --set always_yes yes --set changeps1 no
   - conda update -q conda
-install:
   # Useful for debugging any issues with conda
   - conda info -a
+install:
   # Create test environment and install deps
   - conda env create -n test-environment python=$TRAVIS_PYTHON_VERSION -f environment.yml
   - source activate test-environment
-  # Install
   - python setup.py install build_ext --inplace
 script:
   - pytest

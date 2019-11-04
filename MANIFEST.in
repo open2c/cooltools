@@ -1,8 +1,17 @@
-include CHANGES.md
+include CHANGELOG.md
 include README.md
 include LICENSE
+include requirements.txt
+include requirements-dev.txt
+include environment.yml
 
-include cooltools/io/fastsavetxt.*
+include cooltools/io/fastsavetxt.pyx
+include cooltools/lib/_numutils.pyx
+graft tests
+graft docs
+prune docs/_build
+prune docs/_static
+prune docs/_templates
 
 global-exclude __pycache__/*
 global-exclude *.so
