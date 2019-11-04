@@ -8,8 +8,11 @@ Date: 2019-11-04
 
 * New tools: `cooltools sample` for random downsampling, `cooltools coverage` for marginalization.
 
-* `compute-saddle` now saves saddledata without transformation, and the `scale` argument (with options `log` or `linear`) now only determines how the saddle is plotted. Consequently, `saddleplot` function now expects untransformed `saddledata`, and plots it directly or with log-scaling of the colormap. (https://github.com/mirnylab/cooltools/pull/105)
+Improvements to saddle functions:
 
+* `compute-saddle` now saves saddledata without transformation, and the `scale` argument (with options `log` or `linear`) now only determines how the saddle is plotted. Consequently, `saddleplot` function now expects untransformed `saddledata`, and plots it directly or with log-scaling of the colormap. (https://github.com/mirnylab/cooltools/pull/105)
+* Added `saddle.mask_bad_bins` method to filter bins in a track based on Hi-C bin-level filtering - improves saddle and histograms when using ChIP-seq and similar tracks. It is automatically applied in the CLI interface. Shouldn't affect the results when using eigenvectors calculated from the same data.
+* `make_saddle` Python function and `compute-saddle` CLI now allow setting min and max distance to use for calculating saddles.
 
 ## [v0.2.0](https://github.com/mirnylab/cooltools/compare/v0.1.0...v0.2.0)
 
