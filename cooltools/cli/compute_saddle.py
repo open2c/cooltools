@@ -119,8 +119,8 @@ from . import cli
     show_default=True)
 @click.option(
     '--vmin',
-    help="Low value of the saddleplot colorbar."
-         "Note: value in original units irrespective of used scale,"
+    help="Low value of the saddleplot colorbar. "
+         "Note: value in original units irrespective of used scale, "
          "and therefore should be positive for both vmin and vmax.",
     type=float,
     default=0.5)
