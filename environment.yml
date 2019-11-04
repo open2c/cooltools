@@ -1,11 +1,14 @@
 channels:
-  - conda-forge
   - defaults
   - bioconda
 dependencies:
+  - h5py
   - numpy
   - cython
   - matplotlib
+  - numba
   - pip
+  - scikit-learn
+  - pytables
   - pip:
     - -r requirements-dev.txt
