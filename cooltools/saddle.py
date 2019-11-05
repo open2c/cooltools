@@ -32,6 +32,32 @@ def quantile(x, q, **kwargs):
     p = np.asarray(q) * 100
     return np.nanpercentile(x, p, **kwargs)
 
+def mask_bad_bins(track, bintable):
+    """
+    Mask (set to NaN) values in track where bin is masked in bintable.
+
+    Parameters
+    ----------
+    track : tuple of (DataFrame, str)
+        bedGraph-like dataframe along with the name of the value column.
+    bintable : tuple of (DataFrame, str)
+        bedGraph-like dataframe along with the name of the weight column.
+
+    Returns
+    -------
+    track : DataFrame
+        New bedGraph-like dataframe with bad bins masked in the value column
+    """
+    track, name = track
+
+    bintable, weight_name = bintable
+
+    track = pd.merge(track[['chrom', 'start', 'end', name]], bintable,
+                     on=['chrom', 'start', 'end'])
+    track.loc[~np.isfinite(track[weight_name]), name] = np.nan
+    track = track[['chrom', 'start', 'end', name]]
+
+    return track
 
 def digitize_track(binedges, track, regions=None):
     """
@@ -91,7 +117,7 @@ def digitize_track(binedges, track, regions=None):
     return digitized, hist
 
 
-def make_cis_obsexp_fetcher(clr, expected):
+def make_cis_obsexp_fetcher(clr, expected, weight_name='weight'):
     """
     Construct a function that returns intra-chromosomal OBS/EXP.
 
@@ -99,10 +125,11 @@ def make_cis_obsexp_fetcher(clr, expected):
     ----------
     clr : cooler.Cooler
         Observed matrix.
-    expected : DataFrame
-        Diagonal summary statistics for each chromosome.
-    name : str
-        Name of data column in ``expected`` to use.
+    expected : tuple of (DataFrame, str)
+        Diagonal summary statistics for each chromosome, and name of the column
+        to use
+    weight_name : str
+        Name of the column in the clr.bins to use as balancing weights
 
     Returns
     -------
@@ -113,14 +140,14 @@ def make_cis_obsexp_fetcher(clr, expected):
     expected = {k: x.values for k, x in expected.groupby('chrom')[name]}
 
     def _fetch_cis_oe(reg1, reg2):
-        obs_mat = clr.matrix().fetch(reg1)
+        obs_mat = clr.matrix(balance=weight_name).fetch(reg1)
         exp_mat = toeplitz(expected[reg1[0]][:obs_mat.shape[0]])
         return obs_mat/exp_mat
 
     return _fetch_cis_oe
 
 
-def make_trans_obsexp_fetcher(clr, expected):
+def make_trans_obsexp_fetcher(clr, expected, weight_name='weight'):
     """
     Construct a function that returns OBS/EXP for any pair of chromosomes.
 
@@ -133,6 +160,8 @@ def make_trans_obsexp_fetcher(clr, expected):
         expected value. If a tuple of (dataframe, name), the dataframe must
         have a MultiIndex with 'chrom1' and 'chrom2' and must also have a column
         labeled ``name``.
+    weight_name : str
+        Name of the column in the clr.bins to use as balancing weights
 
     Returns
     -----
@@ -142,7 +171,7 @@ def make_trans_obsexp_fetcher(clr, expected):
 
     if np.isscalar(expected):
         return lambda reg1, reg2: (
-            clr.matrix().fetch(reg1, reg2) / expected)
+            clr.matrix(balance=weight_name).fetch(reg1, reg2) / expected)
 
     elif isinstance(expected, (tuple, list)):
         expected, name = expected
@@ -171,7 +200,7 @@ def make_trans_obsexp_fetcher(clr, expected):
             reg2 = bioframe.parse_region(reg2)
 
             return (
-                clr.matrix().fetch(reg1, reg2) /
+                clr.matrix(balance=weight_name).fetch(reg1, reg2) /
                 _fetch_trans_exp(reg1[0], reg2[0])
             )
 
@@ -181,13 +210,19 @@ def make_trans_obsexp_fetcher(clr, expected):
         raise ValueError("Unknown type of expected")
 
 
-def _accumulate(S, C, getmatrix, digitized, reg1, reg2, verbose):
+def _accumulate(S, C, getmatrix, digitized, reg1, reg2, min_diag, max_diag,
+                verbose):
     n_bins = S.shape[0]
     matrix = getmatrix(reg1, reg2)
 
+
     if reg1[0] == reg2[0]:
-        for d in [-2, -1, 0, 1, 2]:
+        for d in np.arange(-min_diag+1, min_diag):
             numutils.set_diag(matrix, np.nan, d)
+        if max_diag >= 0:
+            for d in np.append(np.arange(-matrix.shape[0], -max_diag),
+                               np.arange(max_diag+1, matrix.shape[0])):
+                numutils.set_diag(matrix, np.nan, d)
 
     if verbose:
         print('regions {} vs {}'.format(reg1, reg2))
@@ -203,7 +238,7 @@ def _accumulate(S, C, getmatrix, digitized, reg1, reg2, verbose):
 
 
 def make_saddle(getmatrix, binedges, digitized, contact_type, regions=None,
-                trim_outliers=False, verbose=False):
+                min_diag=3, max_diag=-1, trim_outliers=False, verbose=False):
     """
     Make a matrix of average interaction probabilities between genomic bin
     pairs as a function of a specified genomic track. The provided genomic
@@ -226,6 +261,12 @@ def make_saddle(getmatrix, binedges, digitized, contact_type, regions=None,
     regions : sequence of str or tuple, optional
         A list of genomic regions to use. Each can be a chromosome, a
         UCSC-style genomic region string or a tuple.
+    min_diag : int
+        Smallest diagonal to include in computation. Ignored with
+        contact_type=trans.
+    max_diag : int
+        Biggest diagonal to include in computation. Ignored with
+        contact_type=trans.
     trim_outliers : bool, optional
         Remove first and last row and column from the output matrix.
     verbose : bool, optional
@@ -270,7 +311,7 @@ def make_saddle(getmatrix, binedges, digitized, contact_type, regions=None,
 
     for reg1, reg2 in supports:
         _accumulate(interaction_sum, interaction_count, getmatrix,
-                    digitized_tracks, reg1, reg2, verbose)
+                    digitized_tracks, reg1, reg2, min_diag, max_diag, verbose)
 
     interaction_sum += interaction_sum.T
     interaction_count += interaction_count.T
@@ -281,11 +322,11 @@ def make_saddle(getmatrix, binedges, digitized, contact_type, regions=None,
 
     return interaction_sum, interaction_count
 
-
-def saddleplot(binedges, counts, saddledata, cmap='coolwarm', vmin=-1, vmax=1,
-               color=None, title=None, xlabel=None, ylabel=None, clabel=None,
-               fig=None, fig_kws=None, heatmap_kws=None, margin_kws=None,
-               cbar_kws=None, subplot_spec=None):
+def saddleplot(binedges, counts, saddledata, cmap='coolwarm', scale='log',
+               vmin=0.5, vmax=2, color=None, title=None, xlabel=None,
+               ylabel=None, clabel=None, fig=None, fig_kws=None,
+               heatmap_kws=None, margin_kws=None, cbar_kws=None,
+               subplot_spec=None):
     """
     Generate a saddle plot.
 
@@ -303,6 +344,8 @@ def saddleplot(binedges, counts, saddledata, cmap='coolwarm', vmin=-1, vmax=1,
         `(n+2, n+2)`.
     cmap : str or matplotlib colormap
         Colormap to use for plotting the saddle heatmap
+    scale : str
+        Color scaling to use for plotting the saddle heatmap: log or linear
     vmin, vmax : float
         Value limits for coloring the saddle heatmap
     color : matplotlib color value
@@ -327,8 +370,18 @@ def saddleplot(binedges, counts, saddledata, cmap='coolwarm', vmin=-1, vmax=1,
 
     """
     from matplotlib.gridspec import GridSpec, GridSpecFromSubplotSpec
+    from matplotlib.colors import Normalize, LogNorm
+    from matplotlib import ticker
     import matplotlib.pyplot as plt
-    from cytoolz import merge
+
+    class MinOneMaxFormatter(ticker.LogFormatter):
+        def set_locs(self, locs=None):
+            self._sublabels = set([vmin%10*10, vmax%10, 1])
+        def __call__(self, x, pos=None):
+            if x not in [vmin, 1, vmax]:
+                return ""
+            else:
+                return "{x:g}".format(x=x)
 
     n_edges = len(binedges)
     n_bins = n_edges - 1
@@ -367,18 +420,21 @@ def saddleplot(binedges, counts, saddledata, cmap='coolwarm', vmin=-1, vmax=1,
         fig = plt.figure(**fig_kws)
 
     # Heatmap
+    if scale == 'log':
+        norm = LogNorm(vmin=vmin, vmax=vmax)
+    elif scale == 'linear':
+        norm = Normalize(vmin=vmin, vmax=vmax)
+    else:
+        raise ValueError('Only linear and log color scaling is supported')
+
     grid['ax_heatmap'] = ax = plt.subplot(gs[4])
     heatmap_kws_default = dict(
         cmap='coolwarm',
-        rasterized=True,
-        vmin=vmin,
-        vmax=vmax)
+        rasterized=True)
     heatmap_kws = merge(
         heatmap_kws_default,
         heatmap_kws if heatmap_kws is not None else {})
-    img = ax.pcolormesh(X, Y, C, **heatmap_kws)
-    vmin = heatmap_kws['vmin']
-    vmax = heatmap_kws['vmax']
+    img = ax.pcolormesh(X, Y, C, norm=norm, **heatmap_kws)
     plt.gca().yaxis.set_visible(False)
 
     # Margins
@@ -425,14 +481,18 @@ def saddleplot(binedges, counts, saddledata, cmap='coolwarm', vmin=-1, vmax=1,
     cbar_kws = merge(
         cbar_kws_default,
         cbar_kws if cbar_kws is not None else {})
-    grid['cbar'] = cb = plt.colorbar(img, **cbar_kws)
-    if vmin is not None and vmax is not None:
+    if scale=='linear' and vmin is not None and vmax is not None:
+        grid['cbar'] = cb = plt.colorbar(img, **cbar_kws)
         # cb.set_ticks(np.arange(vmin, vmax + 0.001, 0.5))
         # # do linspace between vmin and vmax of 5 segments and trunc to 1 decimal:
         decimal = 10
         nsegments = 5
         cd_ticks = np.trunc(np.linspace(vmin, vmax, nsegments)*decimal)/decimal
         cb.set_ticks(cd_ticks)
+    else:
+        grid['cbar'] = cb = plt.colorbar(img, format=MinOneMaxFormatter(),
+            **cbar_kws)
+        cb.ax.yaxis.set_minor_formatter(MinOneMaxFormatter())
 
     # extra settings
     grid['ax_heatmap'].set_xlim(lo, hi)
