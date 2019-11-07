@@ -172,6 +172,10 @@ def compute_saddle(cool_path, track_path, expected_path, contact_type,
     expected_path, expected_name = expected_path
     track_path, track_name = track_path
 
+    if vmin<=0 or vmax<=0:
+        raise ValueError("vmin and vmax values are in original units irrespective "
+                         "of used scale, and therefore should be positive")
+
     # read expected and make preparations for validation,
     # it's contact_type dependent:
     if contact_type == "cis":
