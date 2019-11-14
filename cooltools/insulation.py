@@ -13,7 +13,7 @@ logging.basicConfig(level=logging.INFO)
 def get_n_pixels(bad_bin_mask, window=10, ignore_diags=2):
     """
     Calculate the number of "good" pixels in a diamond at each bin.
-    
+
     """
     N = len(bad_bin_mask)
     n_pixels = np.zeros(N)
@@ -38,7 +38,7 @@ def get_n_pixels(bad_bin_mask, window=10, ignore_diags=2):
     return n_pixels
 
 
-def insul_diamond(pixel_query, bins, window=10, ignore_diags=2, 
+def insul_diamond(pixel_query, bins, window=10, ignore_diags=2,
                   norm_by_median=True):
     """
     Calculates the insulation score of a Hi-C interaction matrix.
@@ -66,21 +66,20 @@ def insul_diamond(pixel_query, bins, window=10, ignore_diags=2,
     N = hi_bin_id - lo_bin_id
     sum_counts = np.zeros(N)
     sum_balanced = np.zeros(N)
-    
-    n_pixels = get_n_pixels(bins.weight.isnull().values, 
-                            window=window, 
+
+    n_pixels = get_n_pixels(bins.weight.isnull().values,
+                            window=window,
                             ignore_diags=ignore_diags)
-    
-    
+
     for chunk_dict in pixel_query.read_chunked():
         chunk = pd.DataFrame(chunk_dict, columns=[
                              'bin1_id', 'bin2_id', 'count'])
         diag_pixels = chunk[chunk.bin2_id - chunk.bin1_id <= (window - 1) * 2]
-        
+
         diag_pixels = cooler.annotate(diag_pixels, bins[['weight']])
         diag_pixels['balanced'] = (
-            diag_pixels['count'] 
-            * diag_pixels['weight1'] 
+            diag_pixels['count']
+            * diag_pixels['weight1']
             * diag_pixels['weight2']
         )
         valid_pixel_mask = ~diag_pixels['balanced'].isnull().values
@@ -92,18 +91,18 @@ def insul_diamond(pixel_query, bins, window=10, ignore_diags=2,
             for j_shift in range(0, window):
                 if i_shift+j_shift < ignore_diags:
                     continue
-                    
+
                 mask = ((i + i_shift == j - j_shift) &
                         (i + i_shift < N) & (j - j_shift >= 0))
 
                 sum_counts += np.bincount(
                     i[mask] + i_shift,
-                    diag_pixels['count'].values[mask], 
+                    diag_pixels['count'].values[mask],
                     minlength=N)
-                
+
                 sum_balanced += np.bincount(
-                    i[mask & valid_pixel_mask] + i_shift, 
-                    diag_pixels['balanced'].values[mask & valid_pixel_mask], 
+                    i[mask & valid_pixel_mask] + i_shift,
+                    diag_pixels['balanced'].values[mask & valid_pixel_mask],
                     minlength=N)
 
     with warnings.catch_warnings():
@@ -123,6 +122,7 @@ def calculate_insulation_score(
     ignore_diags=None,
     chromosomes=None,
     append_raw_scores=False,
+    chunksize=20000000,
     verbose=False,
 ):
     '''Calculate the diamond insulation scores and call insulating boundaries.
@@ -142,7 +142,7 @@ def calculate_insulation_score(
         to the output table.
     verbose : bool
         If True, report real-time progress.
-        
+
     Returns
     -------
     ins_table : pandas.DataFrame
@@ -174,13 +174,13 @@ def calculate_insulation_score(
         clr.open('r'),
         shape=(nbins, nbins),
         field='count',
-        chunksize=10000000)
+        chunksize=chunksize)
 
     ins_chrom_tables = []
     for chrom in chromosomes:
         if verbose:
             logging.info('Processing {}'.format(chrom))
-            
+
         chrom_bins = clr.bins().fetch(chrom)
         ins_chrom = chrom_bins[['chrom', 'start', 'end']].copy()
         ins_chrom['is_bad_bin'] = chrom_bins['weight'].isnull()
@@ -204,7 +204,7 @@ def calculate_insulation_score(
 
             ins_chrom['log2_insulation_score_{}'.format(window_bp[j])] = ins_track
             ins_chrom['n_valid_pixels_{}'.format(window_bp[j])] = n_pixels
-            
+
             if append_raw_scores:
                 ins_chrom['sum_counts_{}'.format(window_bp[j])] = sum_counts
                 ins_chrom['sum_balanced_{}'.format(window_bp[j])] = sum_balanced
@@ -219,44 +219,44 @@ def find_boundaries(
     ins_table,
     min_frac_valid_pixels=0.66,
     min_dist_bad_bin=0,
-    log2_ins_key = 'log2_insulation_score_{WINDOW}',
-    n_valid_pixels_key = 'n_valid_pixels_{WINDOW}',
-    is_bad_bin_key = 'is_bad_bin'
-    
+    log2_ins_key='log2_insulation_score_{WINDOW}',
+    n_valid_pixels_key='n_valid_pixels_{WINDOW}',
+    is_bad_bin_key='is_bad_bin'
+
 ):
     '''Call insulating boundaries.
-    Find all local minima of the log2(insulation score) and calculate their 
+    Find all local minima of the log2(insulation score) and calculate their
     chromosome-wide topographic prominence.
-    
+
     Parameters
     ----------
     ins_table : pandas.DataFrame
         A bin table with columns containing log2(insulation score),
-        the number of valid pixels per diamond and (optionally) the mask 
+        the number of valid pixels per diamond and (optionally) the mask
         of bad bins.
     min_frac_valid_pixels : float
-        The minimal fraction of valid pixels in a diamond to be used in 
+        The minimal fraction of valid pixels in a diamond to be used in
         boundary picking and prominence calculation.
     min_dist_bad_bin : int
-        The minimal allowed distance to a bad bin. 
+        The minimal allowed distance to a bad bin.
         Ignore bins that have a bad bin closer than this distance.
     log2_ins_key, n_valid_pixels_key : str
         The names of the columns containing log2_insulation_score and
         the number of valid pixels per diamond. When a template
-        containing `{WINDOW}` is provided, the calculation is repeated 
+        containing `{WINDOW}` is provided, the calculation is repeated
         for all pairs of columns matching the template.
-        
+
     Returns
     -------
     ins_table : pandas.DataFrame
         A bin table with appended columns with boundary prominences.
     '''
-    
+
     if min_dist_bad_bin:
         ins_table = pd.concat([
             df.assign(dist_bad_bin = numutils.dist_to_mask(df.is_bad_bin))
             for chrom,df in ins_table.groupby('chrom')])
-        
+
     if '{WINDOW}' in log2_ins_key:
         windows = set()
         for col in ins_table.columns:
@@ -265,33 +265,33 @@ def find_boundaries(
                 windows.add(int(m.groups()[0]))
     else:
         windows = set([None])
-        
+
     min_valid_pixels = {
         win:ins_table[n_valid_pixels_key.format(WINDOW=win)].max()*min_frac_valid_pixels
         for win in windows}
-    
+
     dfs = []
     for chrom, df in ins_table.groupby('chrom'):
         df = df.reset_index(drop=True)
         for win in windows:
             mask = (df[n_valid_pixels_key.format(WINDOW=win)].values >= min_valid_pixels[win])
-            
+
             if min_dist_bad_bin:
                 mask &= (df.dist_bad_bin.values >= min_dist_bad_bin)
-            
+
             ins_track = df[log2_ins_key.format(WINDOW=win)].values[mask]
             poss, proms = peaks.find_peak_prominence(-ins_track)
             ins_prom_track = np.zeros_like(ins_track) * np.nan
             ins_prom_track[poss] = proms
-            
+
             if win is not None:
-                bs_key = 'boundary_strength_{win}'.format(win=win) 
+                bs_key = 'boundary_strength_{win}'.format(win=win)
             else:
                 bs_key = 'boundary_strength'
-                
+
             df[bs_key] = np.nan
             df.loc[mask, bs_key] = ins_prom_track
-            
+
         dfs.append(df)
     return pd.concat(dfs)
 
