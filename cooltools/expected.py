@@ -4,7 +4,6 @@ from functools import partial
 
 import numpy as np
 import pandas as pd
-from scipy.linalg import toeplitz
 from scipy.signal import fftconvolve
 
 from cooler.tools import split, partition
@@ -281,231 +280,6 @@ def make_diag_table(bad_mask, span1, span2):
     return diags.astype(int)
 
 
-def _sum_diagonals(df, field):
-    reduced = df.groupby('diag')[field].sum()
-    reduced.name = field + '.sum'
-    return reduced
-
-
-def cis_expected(clr, regions, field='balanced', chunksize=1000000,
-                 use_dask=True, ignore_diags=2):
-    """
-    Compute the mean signal along diagonals of one or more regional blocks of
-    intra-chromosomal contact matrices. Typically used as a background model
-    for contact frequencies on the same polymer chain.
-
-    Parameters
-    ----------
-    clr : cooler.Cooler
-        Input Cooler
-    regions : iterable of genomic regions or pairs of regions
-        Iterable of genomic region strings or 3-tuples, or 5-tuples for pairs
-        of regions
-    field : str, optional
-        Which values of the contact matrix to aggregate. This is currently a
-        no-op. *FIXME*
-    chunksize : int, optional
-        Size of dask chunks.
-
-    Returns
-    -------
-    Dataframe of diagonal statistics, indexed by region and diagonal number
-
-    """
-    import dask.dataframe as dd
-    from cooler.sandbox.dask import read_table
-
-    if use_dask:
-        pixels = read_table(clr.uri + '/pixels', chunksize=chunksize)
-    else:
-        pixels = clr.pixels()[:]
-    pixels = cooler.annotate(pixels, clr.bins(), replace=False)
-    pixels = pixels[pixels.chrom1 == pixels.chrom2]
-
-    named_regions = False
-    if isinstance(regions, pd.DataFrame):
-        named_regions = True
-        chroms = regions['chrom'].values
-        names = regions['name'].values
-        regions = regions[['chrom', 'start', 'end']].to_records(index=False)
-    else:
-        chroms = [region[0] for region in regions]
-        names = chroms
-    cis_maps = {chrom: pixels[pixels.chrom1 == chrom] for chrom in chroms}
-
-    diag_tables = []
-    data_sums = []
-
-    for region in regions:
-        if len(region) == 1:
-            chrom, = region
-            start1, end1 = 0, clr.chromsizes[chrom]
-            start2, end2 = start1, end1
-        elif len(region) == 3:
-            chrom, start1, end1 = region
-            start2, end2 = start1, end1
-        elif len(region) == 5:
-            chrom, start1, end1, start2, end2 = region
-        else:
-            raise ValueError("Regions must be sequences of length 1, 3 or 5")
-
-        bins = clr.bins().fetch(chrom).reset_index(drop=True)
-        bad_mask = np.array(bins['weight'].isnull())
-        lo1, hi1 = clr.extent((chrom, start1, end1))
-        lo2, hi2 = clr.extent((chrom, start2, end2))
-        co = clr.offset(chrom)
-        lo1 -= co
-        lo2 -= co
-        hi1 -= co
-        hi2 -= co
-
-        dt = make_diag_table(bad_mask, [lo1, hi1], [lo2, hi2])
-        sel = bg2slice_frame(
-            cis_maps[chrom],
-            (chrom, start1, end1),
-            (chrom, start2, end2)
-        ).copy()
-        sel['diag'] = sel['bin2_id'] - sel['bin1_id']
-        sel['balanced'] = sel['count'] * sel['weight1'] * sel['weight2']
-        agg = _sum_diagonals(sel, field)
-        diag_tables.append(dt)
-        data_sums.append(agg)
-
-    # run dask scheduler
-    if len(data_sums) and isinstance(data_sums[0], dd.Series):
-        data_sums = dd.compute(*data_sums)
-
-    # append to tables
-    for dt, agg in zip(diag_tables, data_sums):
-        dt[agg.name] = 0
-        dt[agg.name] = dt[agg.name].add(agg, fill_value=0)
-        dt.iloc[:ignore_diags, dt.columns.get_loc(agg.name)] = np.nan
-
-    # merge and return
-    if named_regions:
-        dtable = pd.concat(
-            diag_tables,
-            keys=zip(names, chroms),
-            names=['name', 'chrom'])
-    else:
-        dtable = pd.concat(
-            diag_tables,
-            keys=list(chroms),
-            names=['chrom'])
-
-    # the actual expected is balanced.sum/n_valid:
-    dtable['balanced.avg'] = dtable['balanced.sum'] / dtable['n_valid']
-    return dtable
-
-
-def trans_expected(clr, chromosomes, chunksize=1000000, use_dask=False):
-    """
-    Aggregate the signal in intrachromosomal blocks.
-    Can be used as abackground for contact frequencies between chromosomes.
-
-    Parameters
-    ----------
-    clr : cooler.Cooler
-        Cooler object
-    chromosomes : list of str
-        List of chromosome names
-    chunksize : int, optional
-        Size of dask chunks
-    use_dask : bool, optional
-        option to use dask
-
-    Returns
-    -------
-    pandas.DataFrame that stores total number of
-    interactions between a pair of chromosomes: 'balanced.sum',
-    corresponding number of bins involved
-    in the inter-chromosomal interactions: 'n_valid',
-    and a ratio 'balanced.avg = balanced.sum/n_valid', that is
-    the actual value of expected for every interchromosomal pair.
-
-    """
-    def n_total_trans_elements(clr, chromosomes):
-        n = len(chromosomes)
-        x = [clr.extent(chrom)[1] - clr.extent(chrom)[0]
-             for chrom in chromosomes]
-        pairblock_list = []
-        for i in range(n):
-            for j in range(i + 1, n):
-                # appending to the list of tuples
-                pairblock_list.append((chromosomes[i],
-                                       chromosomes[j],
-                                       x[i] * x[j]))
-        return pd.DataFrame(pairblock_list,
-                            columns=['chrom1', 'chrom2', 'n_total'])
-
-    def n_bad_trans_elements(clr, chromosomes):
-        n = 0
-        # bad bins are ones with
-        # the weight vector being NaN:
-        x = [np.sum(clr.bins()['weight']
-                       .fetch(chrom)
-                       .isnull()
-                       .astype(int)
-                       .values)
-             for chrom in chromosomes]
-        pairblock_list = []
-        for i in range(len(x)):
-            for j in range(i + 1, len(x)):
-                # appending to the list of tuples
-                pairblock_list.append((chromosomes[i],
-                                       chromosomes[j],
-                                       x[i] * x[j]))
-        return pd.DataFrame(pairblock_list,
-                            columns=['chrom1', 'chrom2', 'n_bad'])
-
-    if use_dask:
-        # pixels = daskify(clr.filename, clr.root + '/pixels', chunksize=chunksize)
-        raise NotImplementedError(
-            "To be implemented once dask supports MultiIndex")
-    else:
-        pixels = clr.pixels()[:]
-    # getting pixels that belong to trans-area,
-    # defined by the list of chromosomes:
-    pixels = cooler.annotate(pixels, clr.bins(), replace=False)
-    pixels = pixels[
-        (pixels.chrom1.isin(chromosomes)) &
-        (pixels.chrom2.isin(chromosomes)) &
-        (pixels.chrom1 != pixels.chrom2)
-    ]
-    pixels['balanced'] = pixels['count'] * \
-        pixels['weight1'] * pixels['weight2']
-    ntot = n_total_trans_elements(clr, chromosomes).groupby(
-        ('chrom1', 'chrom2'))['n_total'].sum()
-    nbad = n_bad_trans_elements(clr, chromosomes).groupby(
-        ('chrom1', 'chrom2'))['n_bad'].sum()
-    trans_area = ntot - nbad
-    trans_area.name = 'n_valid'
-    # processing with use_dask=True is different:
-    if use_dask:
-        # trans_sum = pixels.groupby(['chrom1', 'chrom2'])['balanced'].sum().compute()
-        pass
-    else:
-        trans_sum = pixels.groupby(['chrom1', 'chrom2'])['balanced'].sum()
-    # for consistency with the cis_expected function:
-    trans_sum.name = trans_sum.name + '.sum'
-
-    # returning a DataFrame with MultiIndex, that stores
-    # pairs of 'balanced.sum' and 'n_valid' values for each
-    # pair of chromosomes.
-    dtable = pd.merge(
-        trans_sum.to_frame(),
-        trans_area.to_frame(),
-        left_index=True,
-        right_index=True)
-
-    # the actual expected is balanced.sum/n_valid:
-    dtable['balanced.avg'] = dtable['balanced.sum'] / dtable['n_valid']
-    return dtable
-
-
-###################
-
-
 def make_diag_tables(clr, supports):
 
     bins = clr.bins()[:]
@@ -518,7 +292,6 @@ def make_diag_tables(clr, supports):
         bad_bin_dict = {chrom: np.zeros(sizes[chrom], dtype=bool)
                         for chrom in sizes.keys()}
 
-    where = np.flatnonzero
     diag_tables = {}
     for region in supports:
         if isinstance(region, str):
@@ -573,7 +346,8 @@ def _diagsum_symm(clr, fields, transforms, supports, span):
     }
 
 
-def _diagsum_asymm(clr, fields, transforms, contact_type, supports1, supports2, span):
+def _diagsum_asymm(clr, fields, transforms, contact_type, supports1, supports2,
+                   span):
     lo, hi = span
     bins = clr.bins()[:]
     pixels = clr.pixels()[lo:hi]
@@ -673,7 +447,8 @@ def diagsum(clr, supports, transforms=None, chunksize=10000000, ignore_diags=2,
 
 
 def diagsum_asymm(clr, supports1, supports2, contact_type='cis',
-                  transforms=None, chunksize=10000000, ignore_diags=2, map=map):
+                  transforms=None, chunksize=10000000, ignore_diags=2,
+                  map=map):
     """
 
     Intra-chromosomal diagonal summary statistics.
@@ -733,7 +508,8 @@ def diagsum_asymm(clr, supports1, supports2, contact_type='cis',
     return dtables
 
 
-def blocksum_pairwise(clr, supports, transforms=None, chunksize=1000000, map=map):
+def blocksum_pairwise(clr, supports, transforms=None, chunksize=1000000,
+                      map=map):
     """
     Summary statistics on inter-chromosomal rectangular blocks.
 
