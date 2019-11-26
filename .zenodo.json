@@ -1,0 +1,75 @@
+{
+    "description": "CoolTools: the tools for your .cools", 
+    "license": "MIT", 
+    "title": "mirnylab/cooltools: v0.3.1", 
+    "version": "v0.3.1", 
+    "upload_type": "software", 
+    "publication_date": "2019-11-26", 
+    "creators": [
+        {
+            "name": "Sergey Venev",
+            "affiliation": "University of Massachusetts Medical School"
+        }, 
+        {
+            "name": "Nezar Abdennur",
+            "affiliation": "MIT"
+        }, 
+        {
+            "name": "Anton Goloborodko",
+            "affiliation": "IMBA"
+        }, 
+        {
+            "name": "Ilya Flyamer",
+            "affiliation": "University of Edinburgh"
+        }, 
+        {
+            "name": "Geoffrey Fudenberg",
+            "affiliation": "UCSF"
+        }, 
+        {
+            "name": "Johannes Nuebler",
+            "affiliation": "MIT"
+        }, 
+        {
+            "name": "Aleksandra Galitsyna",
+            "affiliation": "Skolkovo Institute of Science and Technology"
+        }, 
+        {
+            "name": "Betul Akgol",
+            "affiliation": "University of Massachusetts Medical School"
+        }, 
+        {
+            "name": "Sameer Abraham",
+            "affiliation": "MIT"
+        }, 
+        {
+            "name": "Peter Kerpedjiev",
+            "affiliation": "Harvard Medical School"
+        }, 
+        {
+            "name": "Maksim Imakaev",
+            "affiliation": "MIT"
+        }
+    ], 
+    "access_right": "open", 
+    "related_identifiers": [
+        {
+            "scheme": "url", 
+            "identifier": "https://github.com/mirnylab/cooltools/tree/v0.3.1", 
+            "relation": "isSupplementTo"
+        }, 
+        {
+            "scheme": "doi", 
+            "identifier": "10.5281/zenodo.3553139", 
+            "relation": "isVersionOf"
+        }
+    ],
+    "keywords": [
+        "genomics",
+        "bioinformatics",
+        "Hi-C",
+        "data",
+        "analysis",
+        "cooler"
+    ]
+}
