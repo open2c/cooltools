@@ -1,16 +1,18 @@
-.PHONY: init install clean-pyc clean-dist clean build test publish docs-init docs
+.PHONY: build install test docs clean clean-pyc clean-dist build-dist publish-test publish
 
-init:
-	conda install --file requirements.txt
 
 build:
 	python setup.py build_ext --inplace
 
+install:
+	pip install -e .
+
 test:
 	pytest
 
-install:
-	pip install -e .
+docs:
+	cd docs && make html
+
 
 clean-pyc:
 	find . -name '*.pyc' -exec rm --force {} +
@@ -23,15 +25,13 @@ clean-dist:
 
 clean: clean-pyc clean-dist
 
-dist-build: clean-dist
+
+build-dist: clean-dist
 	python setup.py sdist
-	python setup.py bdist_wheel
+	# python setup.py bdist_wheel
 
-publish: build
+publish-test: build-dist
+	twine upload --repository-url https://test.pypi.org/legacy/ dist/*
+
+publish: build-dist
 	twine upload dist/*
-
-# docs-init:
-# 	conda install --file docs/requirements.txt
-
-# docs:
-# 	cd docs && make html

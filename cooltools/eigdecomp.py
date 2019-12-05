@@ -63,6 +63,7 @@ def cis_eig(A, n_eigs=3, phasing_track=None, ignore_diags=2, clip_percentile=0,
             sort_metric=None):
     """
     Compute compartment eigenvector on a dense cis matrix
+    Note that the amplitude of compartment eigenvectors is weighted by their corresponding eigenvalue
 
     Parameters
     ----------
@@ -309,7 +310,7 @@ def cooler_cis_eig(
         )
 
     ignore_diags = (
-        clr._load_attrs('bins/weight')['ignore_diags']
+        clr._load_attrs('bins/weight').get('ignore_diags', 2)
         if ignore_diags is None
         else ignore_diags)
 

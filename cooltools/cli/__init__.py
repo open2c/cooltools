@@ -55,4 +55,5 @@ from . import (
     call_dots,
     call_compartments,
     genome,
+    random_sample
 )

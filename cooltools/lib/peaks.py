@@ -3,6 +3,7 @@
 import warnings
 import numpy as np
 
+
 def find_peak_prominence(arr, max_dist = None):
     '''Find the local maxima of an array and their prominence.
     The prominence of a peak is defined as the maximal difference between the

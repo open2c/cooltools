@@ -260,6 +260,8 @@ class CoolerSnipper:
             region1) - self.clr.offset(region1[0])
         self.offsets[region2] = self.clr.offset(
             region2) - self.clr.offset(region2[0])
+        self._isnan1 = np.isnan(self.clr.bins()['weight'].fetch(region1).values)
+        self._isnan2 = np.isnan(self.clr.bins()['weight'].fetch(region2).values)
         matrix = (self.clr.matrix(**self.cooler_opts)
                           .fetch(region1, region2))
         if self.cooler_opts['sparse']:
@@ -303,7 +305,8 @@ class CoolerSnipper:
 #                     pad_left:pad_right] = matrix[i0:i1, j0:j1].toarray()
         else:
             snippet = matrix[lo1:hi1, lo2:hi2].toarray()
-
+            snippet[self._isnan1[lo1:hi1], :] = np.nan
+            snippet[:, self._isnan2[lo2:hi2]] = np.nan
         return snippet
 
 
@@ -311,6 +314,21 @@ class ObsExpSnipper:
     def __init__(self, clr, expected, cooler_opts=None):
         self.clr = clr
         self.expected = expected
+        
+        # Detecting the columns for the detection of regions
+        columns = expected.columns
+        assert len(columns)>0
+        if 'chrom' in columns and 'start' in columns and 'end' in columns:
+            self.regions_columns = ['chrom', 'start', 'end'] # Chromosome arms encoded by multiple columns
+        elif 'chrom' in columns:
+            self.regions_columns = ['chrom'] # Chromosomes or regions encoded in string mode: "chr3:XXXXXXX-YYYYYYYY"
+        elif 'region' in columns:
+            self.regions_columns = ['region'] # Regions encoded in string mode: "chr3:XXXXXXX-YYYYYYYY"
+        elif len(columns)>0:
+            self.regions_columns = columns[0] # The first columns is treated as chromosome/region annotation
+        else:
+            raise ValueError('Expected dataframe has no columns.')
+            
         self.binsize = self.clr.binsize
         self.offsets = {}
         self.pad = True
@@ -318,6 +336,7 @@ class ObsExpSnipper:
         self.cooler_opts.setdefault('sparse', True)
 
     def select(self, region1, region2):
+        assert region1==region2, "ObsExpSnipper is implemented for cis contacts only."
         self.offsets[region1] = self.clr.offset(
             region1) - self.clr.offset(region1[0])
         self.offsets[region2] = self.clr.offset(
@@ -326,10 +345,13 @@ class ObsExpSnipper:
                           .fetch(region1, region2))
         if self.cooler_opts['sparse']:
             matrix = matrix.tocsr()
-
-        self._expected = LazyToeplitz(
-            self.expected.groupby('chrom')
-                         .get_group(region1[0])['balanced.avg'].values)
+        self._isnan1 = np.isnan(self.clr.bins()['weight'].fetch(region1).values)
+        self._isnan2 = np.isnan(self.clr.bins()['weight'].fetch(region2).values)
+        self._expected = LazyToeplitz(self.expected
+                .groupby(self.regions_columns)
+                .get_group(region1[0] if len(self.regions_columns)>0 else region1)
+                ['balanced.avg']
+                .values)
         return matrix
 
     def snip(self, matrix, region1, region2, tup):
@@ -369,6 +391,8 @@ class ObsExpSnipper:
 #                     pad_left:pad_right] = matrix[i0:i1, j0:j1].toarray()
         else:
             snippet = matrix[lo1:hi1, lo2:hi2].toarray()
+            snippet[self._isnan1[lo1:hi1], :] = np.nan
+            snippet[:, self._isnan2[lo2:hi2]] = np.nan
 
         e = self._expected[lo1:hi1, lo2:hi2]
         return snippet / e
@@ -378,18 +402,38 @@ class ExpectedSnipper:
     def __init__(self, clr, expected):
         self.clr = clr
         self.expected = expected
+        
+        # Detecting the columns for the detection of regions
+        columns = expected.columns
+        assert len(columns)>0
+        if 'chrom' in columns and 'start' in columns and 'end' in columns:
+            self.regions_columns = ['chrom', 'start', 'end'] # Chromosome arms encoded by multiple columns
+        elif 'chrom' in columns:
+            self.regions_columns = ['chrom'] # Chromosomes or regions encoded in string mode: "chr3:XXXXXXX-YYYYYYYY"
+        elif 'region' in columns:
+            self.regions_columns = ['region'] # Regions encoded in string mode: "chr3:XXXXXXX-YYYYYYYY"
+        elif len(columns)>0:
+            self.regions_columns = columns[0] # The first columns is treated as chromosome/region annotation
+        else:
+            raise ValueError('Expected dataframe has no columns.')
+            
         self.binsize = self.clr.binsize
         self.offsets = {}
 
     def select(self, region1, region2):
-        self.offsets[region1] = self.clr.offset(
-            region1) - self.clr.offset(region1[0])
-        self.offsets[region2] = self.clr.offset(
-            region2) - self.clr.offset(region2[0])
-        return (self.expected.groupby('chrom')
-                             .get_group(region1[0])
-                             ['balanced.avg']
-                             .values)
+        assert region1==region2, "ExpectedSnipper is implemented for cis contacts only."
+        self.offsets[region1] = \
+            self.clr.offset(region1) - self.clr.offset(region1[0])
+        self.offsets[region2] = \
+            self.clr.offset(region2) - self.clr.offset(region2[0])
+        self.m = np.diff(self.clr.extent(region1))
+        self.n = np.diff(self.clr.extent(region2))
+        self._expected = LazyToeplitz(self.expected
+                .groupby(self.regions_columns)
+                .get_group(region1[0] if len(self.regions_columns)>0 else region1)
+                ['balanced.avg']
+                .values)
+        return self._expected
 
     def snip(self, exp, region1, region2, tup):
         s1, e1, s2, e2 = tup
@@ -401,4 +445,9 @@ class ExpectedSnipper:
         assert hi1 >= 0
         assert hi2 >= 0
         dm, dn = hi1 - lo1, hi2 - lo2
-        return toeplitz(exp[:dm], exp[:dn])
+
+        if (lo1 < 0 or lo2 < 0 or hi1 > self.m or hi2 > self.n):
+            return np.full((dm, dn), np.nan)
+
+        snippet = exp[lo1:hi1, lo2:hi2]
+        return snippet
