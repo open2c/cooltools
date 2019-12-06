@@ -58,8 +58,10 @@ band_1 = 1e6
 start, stop = 0, len(mock_M_raw)
 
 # load mock results:
-mock_res = pd.read_csv(mock_result)
-mock_res = mock_res.rename(columns={"row": "bin1_id", "col": "bin2_id"})
+mock_res = (
+    pd.read_csv(mock_result)
+    .rename(columns={"row": "bin1_id", "col": "bin2_id"})
+)
 
 
 def test_adjusted_expected_tile_some_nans_and_diag_tiling():
@@ -99,7 +101,8 @@ def test_adjusted_expected_tile_some_nans_and_diag_tiling():
 
     # drop dups (from overlaping tiles), sort and reset index:
     res_df = (
-        res_df.drop_duplicates()
+        res_df
+        .drop_duplicates()
         .sort_values(by=["bin1_id", "bin2_id"])
         .reset_index(drop=True)
     )
@@ -109,8 +112,11 @@ def test_adjusted_expected_tile_some_nans_and_diag_tiling():
     is_inside_band_1 = mock_res["bin1_id"] > (mock_res["bin2_id"] - band_1_idx)
     mock_res_1 = mock_res[is_inside_band_1].reset_index(drop=True)
     # apparently sorting is needed in this case:
-    mock_res_1 = mock_res_1.sort_values(by=["bin1_id", "bin2_id"]).reset_index(
-        drop=True
+    mock_res_1 = (
+        mock_res_1
+        .drop_duplicates()
+        .sort_values(by=["bin1_id", "bin2_id"])
+        .reset_index(drop=True)
     )
 
     # ACTUAL TESTS:
@@ -162,15 +168,19 @@ def test_adjusted_expected_tile_some_nans_and_square_tiling():
 
     # drop dups (from overlaping tiles), sort and reset index:
     res_df = (
-        res_df.drop_duplicates()
+        res_df
+        .drop_duplicates()
         .sort_values(by=["bin1_id", "bin2_id"])
         .reset_index(drop=True)
     )
 
     # prepare mock_data for comparison:
     # apparently sorting is needed in this case:
-    mock_res_sorted = mock_res.sort_values(by=["bin1_id", "bin2_id"]).reset_index(
-        drop=True
+    mock_res_sorted = (
+        mock_res
+        .drop_duplicates()
+        .sort_values(by=["bin1_id", "bin2_id"])
+        .reset_index(drop=True)
     )
 
     # ACTUAL TESTS:
@@ -249,12 +259,20 @@ def test_adjusted_expected_tile_some_nans_and_square_tiling_diag_band():
             )
 
     # sort and reset index, there shouldn't be any duplicates now:
-    res_df = res_df.sort_values(by=["bin1_id", "bin2_id"]).reset_index(drop=True)
+    res_df = (
+        res_df
+        .drop_duplicates()
+        .sort_values(by=["bin1_id", "bin2_id"])
+        .reset_index(drop=True)
+    )
 
     # prepare mock_data for comparison:
     # apparently sorting is needed in this case:
-    mock_res_sorted = mock_res.sort_values(by=["bin1_id", "bin2_id"]).reset_index(
-        drop=True
+    mock_res_sorted = (
+        mock_res
+        .drop_duplicates()
+        .sort_values(by=["bin1_id", "bin2_id"])
+        .reset_index(drop=True)
     )
 
     # ACTUAL TESTS:
