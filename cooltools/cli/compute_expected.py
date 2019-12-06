@@ -38,7 +38,7 @@ from . import cli
 @click.option(
     "--hdf",
     help="Use hdf5 format instead of tsv."
-         " Output file name must be specified.",
+         " Output file name must be specified [Not Implemented].",
     is_flag=True,
     default=False)
 @click.option(
@@ -47,8 +47,14 @@ from . import cli
     "of a Hi-C map.",
     type=click.Choice(['cis', 'trans']),
     default='cis',
-    show_default=True,
-    )
+    show_default=True)
+@click.option(
+    "--balance/--no-balance",
+    help="Apply balancing weights to data before"
+    "calculating expected",
+    is_flag=True,
+    default=True,
+    show_default=True)
 @click.option(
     '--weight-name',
     help="Use balancing weight with this name.",
@@ -56,32 +62,20 @@ from . import cli
     default='weight',
     show_default=True)
 @click.option(
-    "--drop-diags",
+    "--ignore-diags",
     help="Number of diagonals to neglect for cis contact type",
     type=int,
     default=2,
     show_default=True)
-# can we use feature switch
-# for --cis/--trans instead (?):
-# http://click.pocoo.org/options/#feature-switches
-# http://click.pocoo.org/parameters/#parameter-names
-# @click.option(
-#     '--cis',
-#     'contact_type',
-#     help="compute expected for cis or trans region"
-#     "of a Hi-C map.",
-#     flag_value='cis',
-#     required=True
-#     )
-# @click.option(
-#     '--trans',
-#     'contact_type',
-#     help="compute expected for cis or trans region"
-#     "of a Hi-C map.",
-#     flag_value='trans',
-#     required=True
-#     )
-def compute_expected(cool_path, nproc, chunksize, output, hdf, contact_type, weight_name, drop_diags):
+def compute_expected(cool_path,
+                    nproc,
+                    chunksize,
+                    output,
+                    hdf,
+                    contact_type,
+                    balance,
+                    weight_name,
+                    ignore_diags):
     """
     Calculate expected Hi-C signal either for cis or for trans regions
     of chromosomal interaction map.
@@ -91,40 +85,44 @@ def compute_expected(cool_path, nproc, chunksize, output, hdf, contact_type, wei
     """
     clr = cooler.Cooler(cool_path)
     supports = [(chrom, 0, clr.chromsizes[chrom]) for chrom in clr.chromnames]
-    weight1 = weight_name+"1"
-    weight2 = weight_name+"2"
 
+    # define transofrms - balanced and raw ('count') for now
+    if balance:
+        weight1 = weight_name+"1"
+        weight2 = weight_name+"2"
+        transforms = {
+            'balanced': lambda p: p['count'] * p[weight1] * p[weight2] }
+    else:
+        transforms = {}
+
+    # execution details
     if nproc > 1:
         pool = mp.Pool(nproc)
         map_ = pool.map
     else:
         map_ = map
 
+    # using try-clause to close mp.Pool properly
     try:
         if contact_type == 'cis':
             tables = expected.diagsum(
                 clr,
                 supports,
-                transforms={
-                    'balanced': lambda p: p['count'] * p[weight1] * p[weight2]
-                },
+                transforms=transforms,
                 chunksize=chunksize,
-                ignore_diags=drop_diags,
+                ignore_diags=ignore_diags,
                 map=map_)
             result = pd.concat(
                 [tables[support] for support in supports],
                 keys=[support[0] for support in supports],
                 names=['chrom'])
-            result['balanced.avg'] = result['balanced.sum'] / result['n_valid']
             result = result.reset_index()
 
         elif contact_type == 'trans':
             records = expected.blocksum_pairwise(
                 clr,
                 supports,
-                transforms={
-                    'balanced': lambda p: p['count'] * p[weight1] * p[weight2]
-                },
+                transforms=transforms,
                 chunksize=chunksize,
                 map=map_)
             result = pd.DataFrame(
@@ -132,10 +130,14 @@ def compute_expected(cool_path, nproc, chunksize, output, hdf, contact_type, wei
                     for (s1, s2), rec in records.items()],
                 columns=['chrom1', 'chrom2', 'n_valid',
                          'count.sum', 'balanced.sum'])
-            result['balanced.avg'] = result['balanced.sum'] / result['n_valid']
     finally:
         if nproc > 1:
             pool.close()
+
+    # calculate actual averages by dividing sum by n_valid:
+    result['count.avg'] = result['count.sum'] / result['n_valid']
+    for key in transforms.keys():
+        result[key+'.avg'] = result[key+'.sum'] / result['n_valid']
 
     # output to file if specified:
     if output:
