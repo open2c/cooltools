@@ -49,7 +49,7 @@ from . import cli
     default='cis',
     show_default=True)
 @click.option(
-    "--balanced/--no-balance",
+    "--balance/--no-balance",
     help="Apply balancing weights to data before"
     "calculating expected",
     is_flag=True,
