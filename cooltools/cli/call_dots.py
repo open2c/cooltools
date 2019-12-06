@@ -29,14 +29,14 @@ from .. import dotfinder
     show_default=True,
 )
 @click.option(
-    "--balancing-weight-name",
+    "--weight-name",
     help="Use balancing weight with this name.",
     type=str,
     default="weight",
     show_default=True,
 )
 @click.option(
-    "-n", "--nproc",
+    "-p", "--nproc",
     help="Number of processes to split the work between."
     " [default: 1, i.e. no process pool]",
     default=1,
@@ -109,7 +109,9 @@ from .. import dotfinder
 )
 @click.option(
     "-v", "--verbose",
-    help="Enable verbose output", is_flag=True, default=False
+    help="Enable verbose output",
+    is_flag=True,
+    default=False
 )
 @click.option(
     "-s", "--output-scores",
@@ -161,7 +163,7 @@ def call_dots(
     cool_path,
     expected_path,
     expected_name,
-    balancing_weight_name,
+    weight_name,
     nproc,
     max_loci_separation,
     max_nans_tolerated,
@@ -314,7 +316,7 @@ def call_dots(
         clr,
         expected,
         expected_name,
-        balancing_weight_name,
+        weight_name,
         tiles,
         kernels,
         ledges,
@@ -337,7 +339,7 @@ def call_dots(
         clr,
         expected,
         expected_name,
-        balancing_weight_name,
+        weight_name,
         tiles,
         kernels,
         ledges,

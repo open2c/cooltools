@@ -134,9 +134,11 @@ from . import cli
 )
 @click.option(
     "--vmin",
-    help="Low value of the saddleplot colorbar",
+    help="Low value of the saddleplot colorbar. "
+    "Note: value in original units irrespective of used scale, "
+    "and therefore should be positive for both vmin and vmax.",
     type=float,
-    default=0.5
+    default=0.5,
 )
 @click.option(
     "--vmax",
@@ -206,6 +208,12 @@ def compute_saddle(
     c = cooler.Cooler(cool_path)
     expected_path, expected_name = expected_path
     track_path, track_name = track_path
+
+    if vmin <= 0 or vmax <= 0:
+        raise ValueError(
+            "vmin and vmax values are in original units irrespective "
+            "of used scale, and therefore should be positive"
+        )
 
     # read expected and make preparations for validation,
     # it's contact_type dependent:

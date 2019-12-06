@@ -337,7 +337,7 @@ def cis_expected(
 
     for region in regions:
         if len(region) == 1:
-            (chrom,) = region
+            chrom, = region
             start1, end1 = 0, clr.chromsizes[chrom]
             start2, end2 = start1, end1
         elif len(region) == 3:
@@ -513,7 +513,7 @@ def make_diag_tables(clr, supports):
         if isinstance(region, str):
             region = bioframe.parse_region(region)
         if len(region) == 1:
-            (chrom,) = region
+            chrom, = region
             start1, end1 = 0, clr.chromsizes[chrom]
             start2, end2 = start1, end1
         elif len(region) == 2:
@@ -547,16 +547,17 @@ def _diagsum_symm(clr, fields, transforms, supports, span):
     pixels = clr.pixels()[lo:hi]
     pixels = cooler.annotate(pixels, bins, replace=False)
 
-    pixels = pixels[pixels["chrom1"] == pixels["chrom2"]].copy()
+    pixels["support1"] = assign_supports(pixels, supports, suffix="1")
+    pixels["support2"] = assign_supports(pixels, supports, suffix="2")
+    pixels = pixels[pixels["support1"] == pixels["support2"]].copy()
+
     pixels["diag"] = pixels["bin2_id"] - pixels["bin1_id"]
     for field, t in transforms.items():
         pixels[field] = t(pixels)
 
-    pixels["support"] = assign_supports(pixels, supports, suffix="1")
-
-    pixel_groups = dict(iter(pixels.groupby("support")))
+    pixelgroups = dict(iter(pixels.groupby("support1")))
     return {
-        int(i): group.groupby("diag")[fields].sum() for i, group in pixel_groups.items()
+        int(i): group.groupby("diag")[fields].sum() for i, group in pixelgroups.items()
     }
 
 
@@ -576,7 +577,7 @@ def _diagsum_asymm(clr, fields, transforms, contact_type, supports1, supports2, 
         pixels[field] = t(pixels)
 
     pixels["support1"] = assign_supports(pixels, supports1, suffix="1")
-    pixels["support2"] = assign_supports(pixels, supports1, suffix="2")
+    pixels["support2"] = assign_supports(pixels, supports2, suffix="2")
 
     pixel_groups = dict(iter(pixels.groupby(["support1", "support2"])))
     return {

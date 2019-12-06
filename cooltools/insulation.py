@@ -4,6 +4,7 @@ import warnings
 import numpy as np
 import pandas as pd
 import cooler
+
 from .lib._query import CSRSelector
 from .lib import peaks, numutils
 
@@ -122,6 +123,7 @@ def calculate_insulation_score(
     ignore_diags=None,
     chromosomes=None,
     append_raw_scores=False,
+    chunksize=20000000,
     verbose=False,
 ):
     """Calculate the diamond insulation scores and call insulating boundaries.
@@ -174,7 +176,7 @@ def calculate_insulation_score(
     # XXX -- Use a delayed query executor
     nbins = len(clr.bins())
     selector = CSRSelector(
-        clr.open("r"), shape=(nbins, nbins), field="count", chunksize=10000000
+        clr.open("r"), shape=(nbins, nbins), field="count", chunksize=chunksize
     )
 
     ins_chrom_tables = []
@@ -193,12 +195,8 @@ def calculate_insulation_score(
         for j, win_bin in enumerate(window_bins):
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore", RuntimeWarning)
-                (
-                    ins_track,
-                    n_pixels,
-                    sum_balanced,
-                    sum_counts,
-                ) = insul_diamond(  # XXX -- updated insul_diamond
+                # XXX -- updated insul_diamond
+                ins_track, n_pixels, sum_balanced, sum_counts = insul_diamond(
                     chrom_query, chrom_bins, window=win_bin, ignore_diags=ignore_diags
                 )
                 ins_track[ins_track == 0] = np.nan

@@ -54,6 +54,13 @@ from .. import insulation
     is_flag=True,
 )
 @click.option(
+    "--chunksize",
+    help="",
+    type=int,
+    default=20000000,
+    show_default=True
+)
+@click.option(
     "--verbose",
     help="Report real-time progress.",
     is_flag=True
@@ -66,6 +73,7 @@ def diamond_insulation(
     min_dist_bad_bin,
     window_pixels,
     append_raw_scores,
+    chunksize,
     verbose,
 ):
     """
@@ -89,6 +97,7 @@ def diamond_insulation(
         window_bp=window,
         ignore_diags=ignore_diags,
         append_raw_scores=append_raw_scores,
+        chunksize=chunksize,
         verbose=verbose,
     )
 
