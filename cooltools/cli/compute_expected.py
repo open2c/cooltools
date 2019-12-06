@@ -73,7 +73,7 @@ def compute_expected(cool_path,
                     output,
                     hdf,
                     contact_type,
-                    balanced,
+                    balance,
                     weight_name,
                     ignore_diags):
     """
@@ -87,7 +87,7 @@ def compute_expected(cool_path,
     supports = [(chrom, 0, clr.chromsizes[chrom]) for chrom in clr.chromnames]
 
     # define transofrms - balanced and raw ('count') for now
-    if balanced:
+    if balance:
         weight1 = weight_name+"1"
         weight2 = weight_name+"2"
         transforms = {
