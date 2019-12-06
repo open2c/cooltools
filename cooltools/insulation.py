@@ -13,7 +13,7 @@ logging.basicConfig(level=logging.INFO)
 def get_n_pixels(bad_bin_mask, window=10, ignore_diags=2):
     """
     Calculate the number of "good" pixels in a diamond at each bin.
-    
+
     """
     N = len(bad_bin_mask)
     n_pixels = np.zeros(N)
@@ -141,7 +141,7 @@ def calculate_insulation_score(
         to the output table.
     verbose : bool
         If True, report real-time progress.
-        
+
     Returns
     -------
     ins_table : pandas.DataFrame
@@ -228,27 +228,27 @@ def find_boundaries(
     is_bad_bin_key="is_bad_bin",
 ):
     """Call insulating boundaries.
-    Find all local minima of the log2(insulation score) and calculate their 
+    Find all local minima of the log2(insulation score) and calculate their
     chromosome-wide topographic prominence.
-    
+
     Parameters
     ----------
     ins_table : pandas.DataFrame
         A bin table with columns containing log2(insulation score),
-        the number of valid pixels per diamond and (optionally) the mask 
+        the number of valid pixels per diamond and (optionally) the mask
         of bad bins.
     min_frac_valid_pixels : float
-        The minimal fraction of valid pixels in a diamond to be used in 
+        The minimal fraction of valid pixels in a diamond to be used in
         boundary picking and prominence calculation.
     min_dist_bad_bin : int
-        The minimal allowed distance to a bad bin. 
+        The minimal allowed distance to a bad bin.
         Ignore bins that have a bad bin closer than this distance.
     log2_ins_key, n_valid_pixels_key : str
         The names of the columns containing log2_insulation_score and
         the number of valid pixels per diamond. When a template
-        containing `{WINDOW}` is provided, the calculation is repeated 
+        containing `{WINDOW}` is provided, the calculation is repeated
         for all pairs of columns matching the template.
-        
+
     Returns
     -------
     ins_table : pandas.DataFrame
@@ -266,7 +266,7 @@ def find_boundaries(
     if "{WINDOW}" in log2_ins_key:
         windows = set()
         for col in ins_table.columns:
-            m = re.match(log2_ins_key.format(WINDOW="(\d+)"), col)
+            m = re.match(log2_ins_key.format(WINDOW=r"(\d+)"), col)
             if m:
                 windows.add(int(m.groups()[0]))
     else:

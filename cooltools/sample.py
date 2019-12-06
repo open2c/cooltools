@@ -1,7 +1,8 @@
 import numpy as np
 import pandas as pd
 
-import cooler, cooler.tools
+import cooler
+import cooler.tools
 
 
 def sample_pixels_approx(pixels, frac):

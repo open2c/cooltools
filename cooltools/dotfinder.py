@@ -169,7 +169,7 @@ def annotate_pixels_with_qvalues(
     be too resource-hungry.
     """
     if inplace:
-        pixels_qvalue_df = pixel_df
+        pixels_qvalue_df = pixels_df
     else:
         # let's do it "safe" - using a copy:
         pixels_qvalue_df = pixels_df.copy()
@@ -1676,7 +1676,8 @@ def extraction_step(
             )
     finally:
         if nproc > 1:
-            pool.close()
+            # pool.close()
+            pass
     # there should be no duplicates in the "significant_pixels" DataFrame of pixels:
     significant_pixels_dups = significant_pixels.duplicated()
     assert (

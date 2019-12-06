@@ -63,8 +63,10 @@ def cis_eig(
     A, n_eigs=3, phasing_track=None, ignore_diags=2, clip_percentile=0, sort_metric=None
 ):
     """
-    Compute compartment eigenvector on a dense cis matrix
-    Note that the amplitude of compartment eigenvectors is weighted by their corresponding eigenvalue
+    Compute compartment eigenvector on a dense cis matrix.
+
+    Note that the amplitude of compartment eigenvectors is weighted by their
+    corresponding eigenvalue
 
     Parameters
     ----------
@@ -296,7 +298,6 @@ def cooler_cis_eig(
     clip_percentile=99.9,
     sort_metric=None,
 ):
-
     # Perform consitency checks.
     if regions is None:
         chroms_not_in_clr = [
