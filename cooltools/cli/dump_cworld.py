@@ -4,7 +4,12 @@ from .. import io
 
 
 @cli.command()
-@click.argument("cool_paths", metavar="COOL_PATHS", type=str, nargs=-1)
+@click.argument(
+    "cool_paths",
+    metavar="COOL_PATHS",
+    type=str,
+    nargs=-1
+)
 @click.argument(
     "out_path",
     metavar="OUT_PATH",

@@ -1,9 +1,7 @@
 import os.path as op
-from scipy.stats import poisson
 import pandas as pd
 import numpy as np
 import cooler
-import tempfile
 
 import click
 from . import cli
@@ -38,8 +36,7 @@ from .. import dotfinder
     show_default=True,
 )
 @click.option(
-    "--nproc",
-    "-n",
+    "-n", "--nproc",
     help="Number of processes to split the work between."
     " [default: 1, i.e. no process pool]",
     default=1,
@@ -111,11 +108,11 @@ from .. import dotfinder
     show_default=True,
 )
 @click.option(
-    "--verbose", "-v", help="Enable verbose output", is_flag=True, default=False
+    "-v", "--verbose",
+    help="Enable verbose output", is_flag=True, default=False
 )
 @click.option(
-    "--output-scores",
-    "-s",
+    "-s", "--output-scores",
     help="At the moment it is a redundant option that"
     " does nothing. Reserve it for a better dump"
     " of convolved scores.",
@@ -130,8 +127,7 @@ from .. import dotfinder
     required=False,
 )
 @click.option(
-    "--output-calls",
-    "-o",
+    "-o", "--output-calls",
     help="Specify output file name where to store"
     " the results of dot-calling, in a BEDPE format."
     " Pre-processed dots are stored in that file."

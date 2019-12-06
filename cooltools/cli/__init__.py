@@ -14,22 +14,30 @@ CONTEXT_SETTINGS = {
 }
 
 
-@click.version_option(version=__version__)
+@click.version_option(__version__, "-V", "--version")
 @click.group(context_settings=CONTEXT_SETTINGS)
-@click.option("--debug/--no-debug", help="Verbose logging", default=False)
 @click.option(
-    "-pm", "--post-mortem", help="Post mortem debugging", is_flag=True, default=False
+    "-v", "--verbose",
+    help="Verbose logging",
+    is_flag=True,
+    default=False
 )
-def cli(debug, post_mortem):
+@click.option(
+    "-d", "--debug",
+    help="Post mortem debugging",
+    is_flag=True,
+    default=False
+)
+def cli(verbose, debug):
     """
     Type -h or --help after any subcommand for more information.
 
     """
-    if debug:
+    if verbose:
         pass
         # logger.setLevel(logging.DEBUG)
 
-    if post_mortem:
+    if debug:
         import traceback
 
         try:

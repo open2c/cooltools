@@ -1,5 +1,4 @@
 import multiprocess as mp
-import numpy as np
 import pandas as pd
 import cooler
 from .. import expected
@@ -15,37 +14,33 @@ from . import cli
 @cli.command()
 @click.argument("cool_path", metavar="COOL_PATH", type=str, nargs=1)
 @click.option(
-    "--nproc",
-    "-p",
+    "-p", "--nproc",
     help="Number of processes to split the work between."
     "[default: 1, i.e. no process pool]",
     default=1,
     type=int,
 )
 @click.option(
-    "--chunksize",
-    "-c",
+    "-c", "--chunksize",
     help="Control the number of pixels handled by each worker process at a time.",
     type=int,
     default=int(10e6),
     show_default=True,
 )
 @click.option(
-    "--output",
-    "-o",
-    help="Specify output file name to store" " the expected in a tsv format.",
+    "-o", "--output",
+    help="Specify output file name to store the expected in a tsv format.",
     type=str,
     required=False,
 )
 @click.option(
     "--hdf",
-    help="Use hdf5 format instead of tsv." " Output file name must be specified.",
+    help="Use hdf5 format instead of tsv. Output file name must be specified.",
     is_flag=True,
     default=False,
 )
 @click.option(
-    "--contact-type",
-    "-t",
+    "-t", "--contact-type",
     help="compute expected for cis or trans region" "of a Hi-C map.",
     type=click.Choice(["cis", "trans"]),
     default="cis",

@@ -1,5 +1,4 @@
 import click
-
 import cooler
 
 from . import cli
@@ -7,8 +6,18 @@ from .. import insulation
 
 
 @cli.command()
-@click.argument("in_path", metavar="IN_PATH", type=str, nargs=1)
-@click.argument("window", nargs=-1, metavar="WINDOW", type=int)
+@click.argument(
+    "in_path",
+    metavar="IN_PATH",
+    type=str,
+    nargs=1
+)
+@click.argument(
+    "window",
+    nargs=-1,
+    metavar="WINDOW",
+    type=int
+)
 @click.option(
     "--ignore-diags",
     help="The number of diagonals to ignore. By default, equals"
@@ -44,7 +53,11 @@ from .. import insulation
     "to the output table.",
     is_flag=True,
 )
-@click.option("--verbose", help="Report real-time progress.", is_flag=True)
+@click.option(
+    "--verbose",
+    help="Report real-time progress.",
+    is_flag=True
+)
 def diamond_insulation(
     in_path,
     window,
@@ -60,7 +73,7 @@ def diamond_insulation(
 
     IN_PATH : The paths to a .cool file with a balanced Hi-C map.
 
-    WINDOW : The window size for the insulation score calculations. 
+    WINDOW : The window size for the insulation score calculations.
              Multiple space-separated values can be provided.
              By default, the window size must be provided in units of bp.
              When the flag --window-pixels is set, the window sizes must

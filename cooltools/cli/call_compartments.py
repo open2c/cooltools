@@ -1,4 +1,3 @@
-from functools import partial
 import pandas as pd
 import numpy as np
 import cooler
@@ -11,7 +10,11 @@ from . import cli
 
 
 @cli.command()
-@click.argument("cool_path", metavar="COOL_PATH", type=str)
+@click.argument(
+    "cool_path",
+    metavar="COOL_PATH",
+    type=str
+)
 @click.option(
     "--reference-track",
     help="Reference track for orienting and ranking eigenvectors",
@@ -32,11 +35,13 @@ from . import cli
     show_default=True,
 )
 @click.option(
-    "--verbose", "-v", help="Enable verbose output", is_flag=True, default=False
+    "-v", "--verbose",
+    help="Enable verbose output",
+    is_flag=True,
+    default=False
 )
 @click.option(
-    "--out-prefix",
-    "-o",
+    "-o", "--out-prefix",
     help="Save compartment track as a BED-like file.",
     required=True,
 )

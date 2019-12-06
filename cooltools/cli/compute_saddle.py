@@ -4,7 +4,6 @@
 from functools import partial
 import os.path as op
 import sys
-from scipy.linalg import toeplitz
 import pandas as pd
 import numpy as np
 import cooler
@@ -17,7 +16,9 @@ from . import cli
 
 @cli.command()
 @click.argument(
-    "cool_path", metavar="COOL_PATH", type=str
+    "cool_path",
+    metavar="COOL_PATH",
+    type=str
 )  # click.Path(exists=True, dir_okay=False),)
 @click.argument(
     "track_path",
@@ -32,8 +33,7 @@ from . import cli
     callback=partial(validate_csv, default_column="balanced.avg"),
 )
 @click.option(
-    "--contact-type",
-    "-t",
+    "-t", "--contact-type",
     help="Type of the contacts to aggregate",
     type=click.Choice(["cis", "trans"]),
     default="cis",
@@ -56,8 +56,7 @@ from . import cli
     show_default=True,
 )
 @click.option(
-    "--n-bins",
-    "-n",
+    "-n", "--n-bins",
     help="Number of bins for digitizing track values.",
     type=int,
     default=50,
@@ -105,8 +104,7 @@ from . import cli
     default=False,
 )
 @click.option(
-    "--out-prefix",
-    "-o",
+    "-o", "--out-prefix",
     help="Dump 'saddledata', 'binedges' and 'hist' arrays in a numpy-specific "
     ".npz container. Use numpy.load to load these arrays into a "
     "dict-like object. The digitized signal values are saved to a "
@@ -129,17 +127,32 @@ from . import cli
     show_default=True,
 )
 @click.option(
-    "--cmap", help="Name of matplotlib colormap", default="coolwarm", show_default=True
+    "--cmap",
+    help="Name of matplotlib colormap",
+    default="coolwarm",
+    show_default=True
 )
 @click.option(
-    "--vmin", help="Low value of the saddleplot colorbar", type=float, default=0.5
+    "--vmin",
+    help="Low value of the saddleplot colorbar",
+    type=float,
+    default=0.5
 )
 @click.option(
-    "--vmax", help="High value of the saddleplot colorbar", type=float, default=2
+    "--vmax",
+    help="High value of the saddleplot colorbar",
+    type=float,
+    default=2
 )
-@click.option("--hist-color", help="Face color of histogram bar chart")
 @click.option(
-    "--verbose", "-v", help="Enable verbose output", is_flag=True, default=False
+    "--hist-color",
+    help="Face color of histogram bar chart"
+)
+@click.option(
+    "-v", "--verbose",
+    help="Enable verbose output",
+    is_flag=True,
+    default=False
 )
 def compute_saddle(
     cool_path,
