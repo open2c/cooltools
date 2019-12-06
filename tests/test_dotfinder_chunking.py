@@ -13,173 +13,177 @@ from cooltools.lib.numutils import LazyToeplitz
 testdir = op.realpath(op.dirname(__file__))
 
 # mock input data location:
-mock_input = op.join(testdir, 'data', 'mock_inputs.npz')
-mock_result = op.join(testdir, 'data', 'mock_res.csv.gz')
+mock_input = op.join(testdir, "data", "mock_inputs.npz")
+mock_result = op.join(testdir, "data", "mock_res.csv.gz")
 
 
 # load bunch of array from a numpy npz container:
 arrays_loaded = np.load(mock_input)
-# snippets of M_raw, M_ice, E_ice and v_ice are supposed 
+# snippets of M_raw, M_ice, E_ice and v_ice are supposed
 # to be there ...
-mock_M_raw = arrays_loaded['mock_M_raw']
-mock_M_ice = arrays_loaded['mock_M_ice']
-mock_E_ice = arrays_loaded['mock_E_ice']
-mock_v_ice = arrays_loaded['mock_v_ice']
+mock_M_raw = arrays_loaded["mock_M_raw"]
+mock_M_ice = arrays_loaded["mock_M_ice"]
+mock_E_ice = arrays_loaded["mock_E_ice"]
+mock_v_ice = arrays_loaded["mock_v_ice"]
 
 # 1D expected extracted for tiling-tests:
-mock_exp = LazyToeplitz(mock_E_ice[0,:])
+mock_exp = LazyToeplitz(mock_E_ice[0, :])
 
 # we need w-edge for tiling procedures:
 w = 3
 # p = 1
 # kernel type: 'donut'
 # # just a simple donut kernel for testing:
-kernel = np.array([[1, 1, 1, 0, 1, 1, 1],
-                   [1, 1, 1, 0, 1, 1, 1],
-                   [1, 1, 0, 0, 0, 1, 1],
-                   [0, 0, 0, 0, 0, 0, 0],
-                   [1, 1, 0, 0, 0, 1, 1],
-                   [1, 1, 1, 0, 1, 1, 1],
-                   [1, 1, 1, 0, 1, 1, 1]])
+kernel = np.array(
+    [
+        [1, 1, 1, 0, 1, 1, 1],
+        [1, 1, 1, 0, 1, 1, 1],
+        [1, 1, 0, 0, 0, 1, 1],
+        [0, 0, 0, 0, 0, 0, 0],
+        [1, 1, 0, 0, 0, 1, 1],
+        [1, 1, 1, 0, 1, 1, 1],
+        [1, 1, 1, 0, 1, 1, 1],
+    ]
+)
 # bin size:
 # mock data were extracted
 # from 20kb matrix:
-b=20000
+b = 20000
 # 2MB aroud diagonal to look at:
-band=2e+6
+band = 2e6
 # 1MB aroud diagonal to look at:
-band_1=1e+6
+band_1 = 1e6
 
 # start, stop for tiling procedures:
 start, stop = 0, len(mock_M_raw)
 
 # load mock results:
 mock_res = pd.read_csv(mock_result)
-mock_res = mock_res.rename(columns={'row':'bin1_id','col':'bin2_id'})
+mock_res = mock_res.rename(columns={"row": "bin1_id", "col": "bin2_id"})
 
 
 def test_adjusted_expected_tile_some_nans_and_diag_tiling():
     print("Running tile some nans la_exp test + diag tiling")
     # first, generate that locally-adjusted expected:
     nnans = 1
-    band_1_idx = int(band_1/b)
+    band_1_idx = int(band_1 / b)
     res_df = pd.DataFrame([])
-    for tile in dotfinder.diagonal_matrix_tiling(start, stop, bandwidth=band_1_idx, edge=w):
+    for tile in dotfinder.diagonal_matrix_tiling(
+        start, stop, bandwidth=band_1_idx, edge=w
+    ):
         # let's keep i,j-part explicit here:
         tilei, tilej = tile, tile
         # define origin:
         origin = (tilei[0], tilej[0])
         # RAW observed matrix slice:
-        observed = mock_M_raw[slice(*tilei),slice(*tilej)]
+        observed = mock_M_raw[slice(*tilei), slice(*tilej)]
         # trying new expected function:
-        expected = mock_exp[slice(*tilei),slice(*tilej)]
+        expected = mock_exp[slice(*tilei), slice(*tilej)]
         # for diagonal chuynking/tiling tilei==tilej:
         ice_weight = mock_v_ice[slice(*tilei)]
         # that's the main working function from dotfinder:
-        res = dotfinder.get_adjusted_expected_tile_some_nans(origin = origin,
-                                                 observed = observed,
-                                                 expected = expected,
-                                                 bal_weights = ice_weight,
-                                                 kernels = {"donut":kernel,
-                                                         "footprint":np.ones_like(kernel)} )
-        is_inside_band = (res["bin1_id"] > (res["bin2_id"]-band_1_idx))
+        res = dotfinder.get_adjusted_expected_tile_some_nans(
+            origin=origin,
+            observed=observed,
+            expected=expected,
+            bal_weights=ice_weight,
+            kernels={"donut": kernel, "footprint": np.ones_like(kernel)},
+        )
+        is_inside_band = res["bin1_id"] > (res["bin2_id"] - band_1_idx)
         # new style, selecting good guys:
-        does_comply_nans = (res["la_exp."+"footprint"+".nnans"] < nnans)
+        does_comply_nans = res["la_exp." + "footprint" + ".nnans"] < nnans
         # so, selecting inside band and nNaNs compliant results and append:
         res_df = res_df.append(
-                            res[is_inside_band & does_comply_nans],
-                            ignore_index=True)
-
+            res[is_inside_band & does_comply_nans], ignore_index=True
+        )
 
     # drop dups (from overlaping tiles), sort and reset index:
-    res_df = res_df \
-                .drop_duplicates() \
-                .sort_values(by=['bin1_id','bin2_id']) \
-                .reset_index(drop=True)
+    res_df = (
+        res_df.drop_duplicates()
+        .sort_values(by=["bin1_id", "bin2_id"])
+        .reset_index(drop=True)
+    )
 
     # prepare mock_data for comparison:
     # get a subset of mock results (inside 1Mb band):
-    is_inside_band_1 = (mock_res["bin1_id"]>(mock_res["bin2_id"]-band_1_idx))
+    is_inside_band_1 = mock_res["bin1_id"] > (mock_res["bin2_id"] - band_1_idx)
     mock_res_1 = mock_res[is_inside_band_1].reset_index(drop=True)
     # apparently sorting is needed in this case:
-    mock_res_1 = mock_res_1.sort_values(by=['bin1_id','bin2_id']).reset_index(drop=True)
-
+    mock_res_1 = mock_res_1.sort_values(by=["bin1_id", "bin2_id"]).reset_index(
+        drop=True
+    )
 
     # ACTUAL TESTS:
     # integer part of DataFrame must equals exactly:
-    assert (
-        res_df[['bin1_id','bin2_id']].equals(
-            mock_res_1[['bin1_id','bin2_id']])
-        )
+    assert res_df[["bin1_id", "bin2_id"]].equals(mock_res_1[["bin1_id", "bin2_id"]])
     # compare floating point part separately:
-    assert (
-        np.isclose(
-            res_df["la_exp."+"donut"+".value"],
-            mock_res_1['la_expected'],
-            equal_nan=True).all()
-        )
-
-
+    assert np.isclose(
+        res_df["la_exp." + "donut" + ".value"],
+        mock_res_1["la_expected"],
+        equal_nan=True,
+    ).all()
 
 
 def test_adjusted_expected_tile_some_nans_and_square_tiling():
     print("Running tile some nans la_exp test + square tiling")
     # first, generate that locally-adjusted expected:
     nnans = 1
-    band_idx = int(band/b)
+    band_idx = int(band / b)
     res_df = pd.DataFrame([])
-    for tilei, tilej in dotfinder.square_matrix_tiling(start, stop, step=40, edge=w, square=False):
+    for tilei, tilej in dotfinder.square_matrix_tiling(
+        start, stop, step=40, edge=w, square=False
+    ):
         # define origin:
         origin = (tilei[0], tilej[0])
         # RAW observed matrix slice:
-        observed = mock_M_raw[slice(*tilei),slice(*tilej)]
+        observed = mock_M_raw[slice(*tilei), slice(*tilej)]
         # trying new expected function:
-        expected = mock_exp[slice(*tilei),slice(*tilej)]
+        expected = mock_exp[slice(*tilei), slice(*tilej)]
         # for diagonal chuynking/tiling tilei==tilej:
         ice_weight_i = mock_v_ice[slice(*tilei)]
         ice_weight_j = mock_v_ice[slice(*tilej)]
         # that's the main working function from dotfinder:
-        res = dotfinder.get_adjusted_expected_tile_some_nans(origin = origin,
-                                                 observed = observed,
-                                                 expected = expected,
-                                                 bal_weights = (ice_weight_i, ice_weight_j),
-                                                 kernels = {"donut":kernel,
-                                                         "footprint":np.ones_like(kernel)},
-                                                 # nan_threshold=1,
-                                                 verbose=False)
-        is_inside_band = (res["bin1_id"] > (res["bin2_id"]-band_idx))
+        res = dotfinder.get_adjusted_expected_tile_some_nans(
+            origin=origin,
+            observed=observed,
+            expected=expected,
+            bal_weights=(ice_weight_i, ice_weight_j),
+            kernels={"donut": kernel, "footprint": np.ones_like(kernel)},
+            # nan_threshold=1,
+            verbose=False,
+        )
+        is_inside_band = res["bin1_id"] > (res["bin2_id"] - band_idx)
         # new style, selecting good guys:
-        does_comply_nans = (res["la_exp."+"footprint"+".nnans"] < nnans)
+        does_comply_nans = res["la_exp." + "footprint" + ".nnans"] < nnans
         # so, select inside band and nNaNs compliant results and append:
         res_df = res_df.append(
-                            res[is_inside_band & does_comply_nans],
-                            ignore_index=True)
+            res[is_inside_band & does_comply_nans], ignore_index=True
+        )
 
     # drop dups (from overlaping tiles), sort and reset index:
-    res_df = res_df \
-                .drop_duplicates() \
-                .sort_values(by=['bin1_id','bin2_id']) \
-                .reset_index(drop=True)
+    res_df = (
+        res_df.drop_duplicates()
+        .sort_values(by=["bin1_id", "bin2_id"])
+        .reset_index(drop=True)
+    )
 
     # prepare mock_data for comparison:
     # apparently sorting is needed in this case:
-    mock_res_sorted = mock_res.sort_values(by=['bin1_id','bin2_id']).reset_index(drop=True)
+    mock_res_sorted = mock_res.sort_values(by=["bin1_id", "bin2_id"]).reset_index(
+        drop=True
+    )
 
     # ACTUAL TESTS:
     # integer part of DataFrame must equals exactly:
-    assert (
-        res_df[['bin1_id','bin2_id']].equals(
-            mock_res_sorted[['bin1_id','bin2_id']])
-        )
+    assert res_df[["bin1_id", "bin2_id"]].equals(
+        mock_res_sorted[["bin1_id", "bin2_id"]]
+    )
     # compare floating point part separately:
-    assert (
-        np.isclose(
-            res_df["la_exp."+"donut"+".value"],
-            mock_res_sorted['la_expected'],
-            equal_nan=True).all()
-        )
-
-
+    assert np.isclose(
+        res_df["la_exp." + "donut" + ".value"],
+        mock_res_sorted["la_expected"],
+        equal_nan=True,
+    ).all()
 
 
 def test_adjusted_expected_tile_some_nans_and_square_tiling_diag_band():
@@ -189,7 +193,7 @@ def test_adjusted_expected_tile_some_nans_and_square_tiling_diag_band():
     #     for chrom in chroms:
     #         chr_start, chr_stop = the_c.extent(chrom)
     #         for tilei, tilej in square_matrix_tiling(chr_start, chr_stop, step, w):
-    #             # check if a given tile intersects with 
+    #             # check if a given tile intersects with
     #             # with the diagonal band of interest ...
     #             diag_from = tilej[0] - tilei[1]
     #             diag_to   = tilej[1] - tilei[0]
@@ -202,73 +206,65 @@ def test_adjusted_expected_tile_some_nans_and_square_tiling_diag_band():
     #                 yield chrom, tilei, tilej
     # first, generate that locally-adjusted expected:
     nnans = 1
-    band_idx = int(band/b)
+    band_idx = int(band / b)
     res_df = pd.DataFrame([])
-    for tilei, tilej in dotfinder.square_matrix_tiling(start, stop, step=40, edge=w, square=False):
-        # check if a given tile intersects with 
+    for tilei, tilej in dotfinder.square_matrix_tiling(
+        start, stop, step=40, edge=w, square=False
+    ):
+        # check if a given tile intersects with
         # with the diagonal band of interest ...
         diag_from = tilej[0] - tilei[1]
-        diag_to   = tilej[1] - tilei[0]
+        diag_to = tilej[1] - tilei[0]
         #
         band_from = 0
-        band_to   = band_idx
+        band_to = band_idx
         # we are using this >2w trick to exclude
         # tiles from the lower triangle from calculations ...
-        if (min(band_to,diag_to) - max(band_from,diag_from)) > 2*w:
+        if (min(band_to, diag_to) - max(band_from, diag_from)) > 2 * w:
             # define origin:
             origin = (tilei[0], tilej[0])
             # RAW observed matrix slice:
-            observed = mock_M_raw[slice(*tilei),slice(*tilej)]
+            observed = mock_M_raw[slice(*tilei), slice(*tilej)]
             # trying new expected function:
-            expected = mock_exp[slice(*tilei),slice(*tilej)]
+            expected = mock_exp[slice(*tilei), slice(*tilej)]
             # for diagonal chuynking/tiling tilei==tilej:
             ice_weight_i = mock_v_ice[slice(*tilei)]
             ice_weight_j = mock_v_ice[slice(*tilej)]
             # that's the main working function from dotfinder:
-            res = dotfinder.get_adjusted_expected_tile_some_nans(origin = origin,
-                                                     observed = observed,
-                                                     expected = expected,
-                                                     bal_weights = (ice_weight_i, ice_weight_j),
-                                                     kernels = {"donut":kernel,
-                                                             "footprint":np.ones_like(kernel)},
-                                                     # nan_threshold=1,
-                                                     verbose=False)
-            is_inside_band = (res["bin1_id"] > (res["bin2_id"]-band_idx))
+            res = dotfinder.get_adjusted_expected_tile_some_nans(
+                origin=origin,
+                observed=observed,
+                expected=expected,
+                bal_weights=(ice_weight_i, ice_weight_j),
+                kernels={"donut": kernel, "footprint": np.ones_like(kernel)},
+                # nan_threshold=1,
+                verbose=False,
+            )
+            is_inside_band = res["bin1_id"] > (res["bin2_id"] - band_idx)
             # new style, selecting good guys:
-            does_comply_nans = (res["la_exp."+"footprint"+".nnans"] < nnans)
+            does_comply_nans = res["la_exp." + "footprint" + ".nnans"] < nnans
             # so, select inside band and nNaNs compliant results and append:
             res_df = res_df.append(
-                                res[is_inside_band & does_comply_nans],
-                                ignore_index=True)
+                res[is_inside_band & does_comply_nans], ignore_index=True
+            )
 
     # sort and reset index, there shouldn't be any duplicates now:
-    res_df = res_df \
-                .sort_values(by=['bin1_id','bin2_id']) \
-                .reset_index(drop=True)
+    res_df = res_df.sort_values(by=["bin1_id", "bin2_id"]).reset_index(drop=True)
 
     # prepare mock_data for comparison:
     # apparently sorting is needed in this case:
-    mock_res_sorted = mock_res.sort_values(by=['bin1_id','bin2_id']).reset_index(drop=True)
+    mock_res_sorted = mock_res.sort_values(by=["bin1_id", "bin2_id"]).reset_index(
+        drop=True
+    )
 
     # ACTUAL TESTS:
     # integer part of DataFrame must equals exactly:
-    assert (
-        res_df[['bin1_id','bin2_id']].equals(
-            mock_res_sorted[['bin1_id','bin2_id']])
-        )
+    assert res_df[["bin1_id", "bin2_id"]].equals(
+        mock_res_sorted[["bin1_id", "bin2_id"]]
+    )
     # compare floating point part separately:
-    assert (
-        np.isclose(
-            res_df["la_exp."+"donut"+".value"],
-            mock_res_sorted['la_expected'],
-            equal_nan=True).all()
-        )
-
-
-
-
-
-
-
-
-
+    assert np.isclose(
+        res_df["la_exp." + "donut" + ".value"],
+        mock_res_sorted["la_expected"],
+        equal_nan=True,
+    ).all()
