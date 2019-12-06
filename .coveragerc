@@ -1,0 +1,12 @@
+[run]
+source=
+    cooltools/
+
+omit=
+    cooltools/__main__.py
+
+[report]
+exclude_lines =
+    pragma: no cover
+    return NotImplemented
+    raise NotImplementedError
