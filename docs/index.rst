@@ -18,8 +18,13 @@ The tools for your *.cool*\ s
    :maxdepth: 2
    :caption: Tutorials
 
-   ./examples/saddle_plot_tutorial.ipynb
-   ./examples/pileups-example.ipynb
+   ./notebooks/01_scaling-curves.ipynb
+   ./notebooks/02_expected.ipynb
+   ./notebooks/03_eigendecomposition.ipynb
+   ./notebooks/04_saddle-plots.ipynb
+   ./notebooks/05_insulation-score.ipynb
+   ./notebooks/06_snipping-pileups.ipynb
+   ./notebooks/07_pileups2.ipynb
 
 
 .. toctree::
