@@ -74,7 +74,10 @@ After this, you can find an HTML version of the documentation in `docs/_build/ht
 Documentation from `master` and tagged releases is automatically built and hosted thanks to [readthedocs](https://readthedocs.org/).
 
 
+## Acknowledgement
+
+If you've contributed significantly and would like your authorship to be included in subsequent uploads to [Zenodo](https://zenodo.org), please make a separate PR to add your name and affiliation to the `.zenodo.json` file.
+
 ---
 
-This document is based off of the [guidelines from the sparse project](https://github.com/pydata/sparse/blob/master/docs/contributing.rst).
-
+This document was modified from the [guidelines from the sparse project](https://github.com/pydata/sparse/blob/master/docs/contributing.rst).
