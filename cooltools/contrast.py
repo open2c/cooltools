@@ -10,17 +10,20 @@ import cooler
 #  CONTRAST FUNCTIONS
 # ==============================================================
 
-def contrast_diags(M,
-                   modality='AnyAny_vs_Mixed',
-                   modality_params=None,
-                   I=None,
-                   ignore_diags=1,
-                   exclude_nans_from_paircounts=True,
-                   i0=None,
-                   i1=None,
-                   phasing_track=None,
-                   normalize=False,
-                   verbose=False):
+
+def contrast_diags(
+    M,
+    modality="AnyAny_vs_Mixed",
+    modality_params=None,
+    I=None,
+    ignore_diags=1,
+    exclude_nans_from_paircounts=True,
+    i0=None,
+    i1=None,
+    phasing_track=None,
+    normalize=False,
+    verbose=False,
+):
     """
     Compute the contrast in M between different sets of pixels specified by
     modality, modality_params or by I, if given.
@@ -116,33 +119,33 @@ def contrast_diags(M,
     """
     # get matrix
     if isinstance(M, np.ndarray):
-        if (len(M.shape)!=2):
+        if len(M.shape) != 2:
             raise ValueError("M was an array, but dimensionality was not 2")
     else:
         try:
             if verbose:
-                print('... loading M ...')
+                print("... loading M ...")
             M = joblib.load(M)
         except:
             raise ValueError("cmap could not be loaded")
 
     # trim M,I and phasing track
-    M = M[i0:i1,i0:i1]
+    M = M[i0:i1, i0:i1]
     if I is not None:
-        I = I[i0:i1,i0:i1]
+        I = I[i0:i1, i0:i1]
     if phasing_track is not None:
-        phasing_track=phasing_track[i0:i1]
+        phasing_track = phasing_track[i0:i1]
 
     # get indicator matirx (i.e. the two sets of pixels to be compared)
     if I is None:
         if modality_params is None:
-            if modality == 'AnyAny_vs_Mixed':
+            if modality == "AnyAny_vs_Mixed":
                 if verbose:
-                    print('... getting types from EV...')
-                bin_types = np.ones(len(M))*np.nan
+                    print("... getting types from EV...")
+                bin_types = np.ones(len(M)) * np.nan
                 EV = eigdecomp.cis_eig(M, phasing_track=phasing_track)[1][0]
                 val_inds = np.isfinite(EV)
-                get_bin_identities = lambda x: x>np.nanmean(x)
+                get_bin_identities = lambda x: x > np.nanmean(x)
                 bin_types[val_inds] = get_bin_identities(EV[val_inds])
                 modality_params = [bin_types]
             else:
@@ -150,36 +153,41 @@ def contrast_diags(M,
                     "modality_params=None only allowed with modality='AnyAny_vs_Mixed'. "
                     "For all other modalityes modality_params has to be given (a list). "
                     "See contrast.indicatormatrix() for valid modalities and "
-                    "required modality_params.")
+                    "required modality_params."
+                )
 
         if verbose:
-            print('... constructing indicator matrix ...')
+            print("... constructing indicator matrix ...")
         I = indicatormat(modality, modality_params)
 
     # get contrast
     if verbose:
-        print('... computing contrast ...')
+        print("... computing contrast ...")
     contr_diags, add_info = contrast_diags_indicatormatrix(
         M,
         I,
         ignore_diags=ignore_diags,
         exclude_nans_from_paircounts=exclude_nans_from_paircounts,
-        normalize=normalize)
+        normalize=normalize,
+    )
 
     # weighted average over diagonals
-    p = (add_info[1]*add_info[3])**.5 # weights of diagonals: (#set1_pairs(s)*#set2_pairs(s))**.5
-    contr = np.nansum(contr_diags*p)/np.nansum(p)
+    p = (
+        add_info[1] * add_info[3]
+    ) ** 0.5  # weights of diagonals: (#set1_pairs(s)*#set2_pairs(s))**.5
+    contr = np.nansum(contr_diags * p) / np.nansum(p)
 
     return contr_diags, contr, I, modality_params, add_info
 
 
 def contrast_diags_indicatormatrix(
-        M,
-        I,
-        ignore_diags=0,
-        exclude_nans_from_paircounts=True,
-        normalize=True,
-        verbose=False):
+    M,
+    I,
+    ignore_diags=0,
+    exclude_nans_from_paircounts=True,
+    normalize=True,
+    verbose=False,
+):
     """
     Computes, for all upper diagonals, the 'contrast' in M, namely the ratio
     of average intensities (values) in M in two sets of pixels.
@@ -287,21 +295,24 @@ def contrast_diags_indicatormatrix(
     # check if M is symmetric
     tol = 1e-8
     if not np.allclose(M, M.T, atol=tol, equal_nan=True):
-        warnings.warn("M is not symmetric to within {}, "
-                      "I'm using the upper half".format(tol))
+        warnings.warn(
+            "M is not symmetric to within {}, " "I'm using the upper half".format(tol)
+        )
 
     # check if I has only 0,1,nan
     Iu = np.unique(I)
     nanIu = Iu[~np.isnan(Iu)]
-    illegalvals = [i for i in nanIu if i not in [0., 1.]]
+    illegalvals = [i for i in nanIu if i not in [0.0, 1.0]]
     if np.any(illegalvals):
         raise ValueError(
             "I is not an indicator matrix: "
-            "it contains value(s) other than {0,1,np.nan}:", illegalvals)
+            "it contains value(s) other than {0,1,np.nan}:",
+            illegalvals,
+        )
 
     # check if M and I have same shape
     if not M.shape == I.shape:
-        raise ValueError('M and I must have the same shape')
+        raise ValueError("M and I must have the same shape")
 
     L = len(M)
 
@@ -313,36 +324,36 @@ def contrast_diags_indicatormatrix(
         Iuse[np.isnan(M)] = np.nan
 
     # compute valid paris, counts and contrast
-    set1_pixels = np.zeros(L)*np.nan
-    set1_intens = np.zeros(L)*np.nan
-    set2_pixels = np.zeros(L)*np.nan
-    set2_intens = np.zeros(L)*np.nan
+    set1_pixels = np.zeros(L) * np.nan
+    set1_intens = np.zeros(L) * np.nan
+    set2_pixels = np.zeros(L) * np.nan
+    set2_intens = np.zeros(L) * np.nan
 
     if verbose:
-        print('... ... starting to loop over s')
-        report_progres_points = np.linspace(0,L,11).astype(int)
-    for s in range(ignore_diags,L):
+        print("... ... starting to loop over s")
+        report_progres_points = np.linspace(0, L, 11).astype(int)
+    for s in range(ignore_diags, L):
         if verbose and s in report_progres_points:
-            print('... ... {}% done'.format(int(s/L*100)))
-        diagI = np.diag(Iuse,s) # get diagonal s of indicator matrix
-        diagM = np.diag(M,s)    # get diagonal s of data matrix
+            print("... ... {}% done".format(int(s / L * 100)))
+        diagI = np.diag(Iuse, s)  # get diagonal s of indicator matrix
+        diagM = np.diag(M, s)  # get diagonal s of data matrix
 
-        set1_pixels[s] = np.nansum(diagI)   # number of valid pixels in set 1
-        set2_pixels[s] = np.nansum(1-diagI) # number of valid pixels in set 2
+        set1_pixels[s] = np.nansum(diagI)  # number of valid pixels in set 1
+        set2_pixels[s] = np.nansum(1 - diagI)  # number of valid pixels in set 2
 
-        set1_intens[s] = np.nansum(diagM*diagI)
-        set2_intens[s] = np.nansum(diagM*(1-diagI))
+        set1_intens[s] = np.nansum(diagM * diagI)
+        set2_intens[s] = np.nansum(diagM * (1 - diagI))
 
-    with np.errstate(invalid='ignore'):
+    with np.errstate(invalid="ignore"):
         # intensity average of valid pixels in set 1 in diagonal s
-        set1_avintens = set1_intens/set1_pixels
+        set1_avintens = set1_intens / set1_pixels
         # intensity average of valid pixels in set 2 in diagonal s
-        set2_avintens = set2_intens/set2_pixels
+        set2_avintens = set2_intens / set2_pixels
 
         if normalize is True:
-            contr = (set1_avintens-set2_avintens) / (set1_avintens+set2_avintens)
+            contr = (set1_avintens - set2_avintens) / (set1_avintens + set2_avintens)
         else:
-            contr = set1_avintens/set2_avintens
+            contr = set1_avintens / set2_avintens
 
     additional_info = [set1_intens, set1_pixels, set2_intens, set2_pixels]
 
@@ -354,7 +365,7 @@ def contrast_diags_indicatormatrix(
 # ==============================================================
 
 
-def diagcounts(I, vals=[1,0]):
+def diagcounts(I, vals=[1, 0]):
     """
     count occurrances of each v in vals in all diagonals of I with offsets s=0..len(I)
 
@@ -371,10 +382,9 @@ def diagcounts(I, vals=[1,0]):
     for i in range(len(vals)):
         S = np.zeros(L)
         for s in range(L):
-            S[s] = np.nansum(np.diag(I, s)==vals[i])
+            S[s] = np.nansum(np.diag(I, s) == vals[i])
         diagcounts.append(S)
     return diagcounts
-
 
 
 def get_types(v, vals=None):
@@ -397,11 +407,11 @@ def get_types(v, vals=None):
 
     """
     v = np.asarray(v)
-    types = np.unique(v[np.isfinite(v)]) # find types (cast to floats)
+    types = np.unique(v[np.isfinite(v)])  # find types (cast to floats)
 
     if vals is not None:
         vals = np.asarray(vals)
-        vals = np.unique(vals[np.isfinite(vals)]) # cast to floats
+        vals = np.unique(vals[np.isfinite(vals)])  # cast to floats
         valid_types = np.asarray([t for t in types if t in vals and np.isfinite(t)])
     else:
         valid_types = types
@@ -409,8 +419,7 @@ def get_types(v, vals=None):
     return valid_types
 
 
-
-def discretize_track(v, get_bin_identities=lambda x: x>np.nanmean(x)):
+def discretize_track(v, get_bin_identities=lambda x: x > np.nanmean(x)):
     """
     discretizes a (quasi)continuous track (eg. an EV)
     using the supplied lambda function
@@ -418,8 +427,8 @@ def discretize_track(v, get_bin_identities=lambda x: x>np.nanmean(x)):
 
     returns: discretized track, non-finite values are left intact
     """
-    v_disc = np.ones(len(v))*np.nan
-    val_inds = np.isfinite(v) # valid indices
+    v_disc = np.ones(len(v)) * np.nan
+    val_inds = np.isfinite(v)  # valid indices
     v_disc[val_inds] = get_bin_identities(v[val_inds])
     return v_disc
 
@@ -427,18 +436,19 @@ def discretize_track(v, get_bin_identities=lambda x: x>np.nanmean(x)):
 def normalize(v):
     # normalization
     v = np.asarray(v)
-    return (v-1)/(v+1)
+    return (v - 1) / (v + 1)
 
 
 def normalize_inv(v):
     # invert normalization
     v = np.asarray(v)
-    return (1+v)/(1-v)
+    return (1 + v) / (1 - v)
 
 
 # ==============================================================
 #  GENERAL PURPOSE INDICATOR MATRIX FUNCTION
 # ==============================================================
+
 
 def indicatormat(modality=None, params=None):
     """
@@ -462,24 +472,28 @@ def indicatormat(modality=None, params=None):
 
     # NOTE: when adding/removing a specific indicator function below, also add/remove it here
     valid_modalities = {
-        'AnyAny_vs_Mixed': indicatormat_AnyAny_vs_Mixed, # params: [v]
-        'TypeType_vs_Mixed': indicatormat_TypeType_vs_Mixed, # params: [v, Type]
-        'TypeType_vs_TypeOther': indicatormat_TypeType_vs_TypeOther, # params: [v, Type]
-        'TypeType_vs_NontypeNontype': indicatormat_TypeType_vs_NontypeNontype, # params: [v, Type]
-        'TypeType_vs_Rest': indicatormat_TypeType_vs_Rest, # params: [v, Type]
-        'Segments_vs_Rest': indicatormat_Segments_vs_Rest, # params: [segments, L=None, bad_bins=[]]
+        "AnyAny_vs_Mixed": indicatormat_AnyAny_vs_Mixed,  # params: [v]
+        "TypeType_vs_Mixed": indicatormat_TypeType_vs_Mixed,  # params: [v, Type]
+        "TypeType_vs_TypeOther": indicatormat_TypeType_vs_TypeOther,  # params: [v, Type]
+        "TypeType_vs_NontypeNontype": indicatormat_TypeType_vs_NontypeNontype,  # params: [v, Type]
+        "TypeType_vs_Rest": indicatormat_TypeType_vs_Rest,  # params: [v, Type]
+        "Segments_vs_Rest": indicatormat_Segments_vs_Rest,  # params: [segments, L=None, bad_bins=[]]
     }
 
-    valid_modalities_names = ''
+    valid_modalities_names = ""
     for k in valid_modalities.keys():
-        valid_modalities_names = valid_modalities_names+k+'\n'
+        valid_modalities_names = valid_modalities_names + k + "\n"
 
     if modality is None:
-        print('valid modalities are:\n=====================\n' + valid_modalities_names)
+        print("valid modalities are:\n=====================\n" + valid_modalities_names)
         return
 
     if modality not in valid_modalities.keys():
-        raise ValueError(modality+' is not a valid modality. Valid modalities are: \n'+valid_modalities_names)
+        raise ValueError(
+            modality
+            + " is not a valid modality. Valid modalities are: \n"
+            + valid_modalities_names
+        )
 
     I = valid_modalities[modality](*params)
 
@@ -493,6 +507,7 @@ def indicatormat(modality=None, params=None):
 
 # NOTE: when adding/removing a specific indicator function,
 #       also add/remove it to 'valid_modalities' in 'indicatormat()'
+
 
 def indicatormat_AnyAny_vs_Mixed(v):
     """
@@ -517,16 +532,20 @@ def indicatormat_AnyAny_vs_Mixed(v):
     types = get_types(v)
 
     # put nans in rows and cols with type==nan, zero elsewhere
-    v_aux = np.zeros(L)*np.nan
+    v_aux = np.zeros(L) * np.nan
     v_aux[~np.isnan(v)] = 0
-    I = np.outer(v_aux, v_aux)   # => I[i,j]=nan if v[i]==nan or v[j]==nan
+    I = np.outer(v_aux, v_aux)  # => I[i,j]=nan if v[i]==nan or v[j]==nan
 
     # put 1 in I[i,j] if type[v[i]]==type[v[j]]
     for thistype in types:
-        v_aux = np.zeros(L)*np.nan
-        v_aux[v==thistype] = 1
-        I_thistype = np.outer(v_aux,v_aux)   #=> I_thistype: 1 for (i,j) both of this type, nan elsewhere
-        I[I_thistype==1] = 1                 #=> I_anytype: zero for across types, one for withing any type, nan elsewhere
+        v_aux = np.zeros(L) * np.nan
+        v_aux[v == thistype] = 1
+        I_thistype = np.outer(
+            v_aux, v_aux
+        )  # => I_thistype: 1 for (i,j) both of this type, nan elsewhere
+        I[
+            I_thistype == 1
+        ] = 1  # => I_anytype: zero for across types, one for withing any type, nan elsewhere
 
     return I
 
@@ -553,15 +572,17 @@ def indicatormat_TypeType_vs_Mixed(v, Type):
     v = np.asarray(v)
     L = v.size
 
-    if not np.any(v==Type):
+    if not np.any(v == Type):
         warnings.warn("Type not found in v")
 
-    I_AnyAny_vs_Mixed = indicatormat_AnyAny_vs_Mixed(v) # get auxiliury matrix AnyAny_vs_AnyOther
+    I_AnyAny_vs_Mixed = indicatormat_AnyAny_vs_Mixed(
+        v
+    )  # get auxiliury matrix AnyAny_vs_AnyOther
 
-    v_aux = np.zeros(L)*np.nan
-    v_aux[v==Type] = 1
-    I = np.outer(v_aux,v_aux)     # 1 for (i,j) both of this type, nan elsewhere
-    I[I_AnyAny_vs_Mixed==0] = 0   # 0 for (i,j) of different types
+    v_aux = np.zeros(L) * np.nan
+    v_aux[v == Type] = 1
+    I = np.outer(v_aux, v_aux)  # 1 for (i,j) both of this type, nan elsewhere
+    I[I_AnyAny_vs_Mixed == 0] = 0  # 0 for (i,j) of different types
 
     return I
 
@@ -588,39 +609,43 @@ def indicatormat_TypeType_vs_TypeOther(v, Type):
     v = np.asarray(v)
     L = v.size
 
-    if not np.any(v==Type):
+    if not np.any(v == Type):
         warnings.warn("Type not found in v")
 
     if 0:
         # get auxiliury matrix AnyAny_vs_AnyOther
         I_AnyAny_vs_Mixed = indicatormat_AnyAny_vs_Mixed(v)[0]
 
-        v_aux = np.zeros(L)*np.nan
-        v_aux[v==Type] = 1
-        I = np.outer(v_aux,v_aux)     # 1 for (i,j) both of this type, nan elsewhere
-        for i,j in np.ndindex((L,L)):
-            if ( (v[i]==Type) != (v[j]==Type) ) and np.isfinite(v[i]) and np.isfinite(v[j]):
-                I[i,j] = 0
+        v_aux = np.zeros(L) * np.nan
+        v_aux[v == Type] = 1
+        I = np.outer(v_aux, v_aux)  # 1 for (i,j) both of this type, nan elsewhere
+        for i, j in np.ndindex((L, L)):
+            if (
+                ((v[i] == Type) != (v[j] == Type))
+                and np.isfinite(v[i])
+                and np.isfinite(v[j])
+            ):
+                I[i, j] = 0
 
     if 1:
         # put nans in rows and cols with type==nan, zero elsewhere
-        v_aux = np.zeros(L)*np.nan
+        v_aux = np.zeros(L) * np.nan
         v_aux[~np.isnan(v)] = 0
-        I_invalid = np.outer(v_aux, v_aux)   # => I[i,j]=nan if v[i]==nan or v[j]==nan
+        I_invalid = np.outer(v_aux, v_aux)  # => I[i,j]=nan if v[i]==nan or v[j]==nan
 
         # put zeros in stripes that contain Type
         v_aux = np.ones(L)
-        v_aux[v==Type] = 0
-        I_striped = np.outer(v_aux, v_aux) # 0 if v[i]==Type or v[j]==Type, 1 elsewhere
+        v_aux[v == Type] = 0
+        I_striped = np.outer(v_aux, v_aux)  # 0 if v[i]==Type or v[j]==Type, 1 elsewhere
 
         # put ones in rectangles that are both Type
-        v_aux = np.zeros(L)*np.nan
-        v_aux[v==Type]=1
-        I_TypeType = np.outer(v_aux, v_aux) # 1 if v[i]==v[j]==Type, nan elsewhere
+        v_aux = np.zeros(L) * np.nan
+        v_aux[v == Type] = 1
+        I_TypeType = np.outer(v_aux, v_aux)  # 1 if v[i]==v[j]==Type, nan elsewhere
 
-        I = np.zeros((L,L))*np.nan
-        I[I_striped==0] = 0
-        I[I_TypeType==1] = 1
+        I = np.zeros((L, L)) * np.nan
+        I[I_striped == 0] = 0
+        I[I_TypeType == 1] = 1
         I[np.isnan(I_invalid)] = np.nan
 
     return I
@@ -648,20 +673,20 @@ def indicatormat_TypeType_vs_NontypeNontype(v, Type):
     v = np.asarray(v)
     L = v.size
 
-    if not np.any(v==Type):
+    if not np.any(v == Type):
         warnings.warn("Type not found in v")
 
     # get auxiliury matrix AnyAny_vs_AnyOther
     I_AnyAny_vs_Mixed = indicatormat_AnyAny_vs_Mixed(v)[0]
 
-    v_aux = np.zeros(L)*np.nan
-    v_aux[v==Type] = 1
-    I = np.outer(v_aux,v_aux)     # 1 for (i,j) both of this type, nan elsewhere
+    v_aux = np.zeros(L) * np.nan
+    v_aux[v == Type] = 1
+    I = np.outer(v_aux, v_aux)  # 1 for (i,j) both of this type, nan elsewhere
 
-    v_aux = np.zeros(L)*np.nan
-    v_aux[(v!=Type)*np.isfinite(v)] = 1
-    I_aux = np.outer(v_aux,v_aux)
-    I[I_aux==1] = 0
+    v_aux = np.zeros(L) * np.nan
+    v_aux[(v != Type) * np.isfinite(v)] = 1
+    I_aux = np.outer(v_aux, v_aux)
+    I[I_aux == 1] = 0
 
     return I
 
@@ -689,17 +714,17 @@ def indicatormat_TypeType_vs_Rest(v, Type):
     v = np.asarray(v)
     L = v.size
 
-    if not np.any(v==Type):
+    if not np.any(v == Type):
         warnings.warn("Type not found in v")
 
     # get auxiliury matrix AnyAny_vs_AnyOther
     I_AnyAny_vs_Mixed = indicatormat_AnyAny_vs_Mixed(v)[0]
 
     # construc indicator matrices
-    v_aux = np.zeros(L)*np.nan
+    v_aux = np.zeros(L) * np.nan
     v_aux[np.isfinite(v)] = 0
-    v_aux[v==Type] = 1
-    I = np.outer(v_aux,v_aux)     # 1 for (i,j) both of this type, nan elsewhere
+    v_aux[v == Type] = 1
+    I = np.outer(v_aux, v_aux)  # 1 for (i,j) both of this type, nan elsewhere
 
     return I
 
@@ -735,13 +760,13 @@ def indicatormat_Segments_vs_Rest(segments, L=None, bad_bins=[]):
     v_aux = np.zeros(L)
     if bad_bins != []:
         v_aux[np.asarray(bad_bins)] = np.nan
-    I = np.outer(v_aux,v_aux)
+    I = np.outer(v_aux, v_aux)
 
     segments_trimmed = []
-    for s,e in segments:
-        e = min(e,L)
-        segments_trimmed.append((s,e))
-        I[s:e,s:e] = I[s:e,s:e]+1
-    I[I>1] = 1
+    for s, e in segments:
+        e = min(e, L)
+        segments_trimmed.append((s, e))
+        I[s:e, s:e] = I[s:e, s:e] + 1
+    I[I > 1] = 1
 
     return I

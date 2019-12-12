@@ -2,13 +2,13 @@ channels:
   - defaults
   - bioconda
 dependencies:
-  - h5py
-  - numpy
   - cython
+  - h5py
   - matplotlib
   - numba
+  - numpy
   - pip
-  - scikit-learn
   - pytables
+  - scikit-learn
   - pip:
     - -r requirements-dev.txt

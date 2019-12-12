@@ -9,7 +9,7 @@ from .lib import numutils
 import bioframe
 
 
-def ecdf(x, v, side='left'):
+def ecdf(x, v, side="left"):
     """
     Return array `x`'s empirical CDF value(s) at the points in `v`.
     This is based on the :func:`statsmodels.distributions.ECDF` step function.
@@ -18,7 +18,7 @@ def ecdf(x, v, side='left'):
     """
     x = np.asarray(x)
     ind = np.searchsorted(np.sort(x), v, side=side) - 1
-    y = np.linspace(1./len(x), 1., len(x))
+    y = np.linspace(1.0 / len(x), 1.0, len(x))
     return y[ind]
 
 
@@ -31,6 +31,7 @@ def quantile(x, q, **kwargs):
     x = np.asarray(x)
     p = np.asarray(q) * 100
     return np.nanpercentile(x, p, **kwargs)
+
 
 def mask_bad_bins(track, bintable):
     """
@@ -52,12 +53,14 @@ def mask_bad_bins(track, bintable):
 
     bintable, weight_name = bintable
 
-    track = pd.merge(track[['chrom', 'start', 'end', name]], bintable,
-                     on=['chrom', 'start', 'end'])
+    track = pd.merge(
+        track[["chrom", "start", "end", name]], bintable, on=["chrom", "start", "end"]
+    )
     track.loc[~np.isfinite(track[weight_name]), name] = np.nan
-    track = track[['chrom', 'start', 'end', name]]
+    track = track[["chrom", "start", "end", name]]
 
     return track
+
 
 def digitize_track(binedges, track, regions=None):
     """
@@ -94,30 +97,29 @@ def digitize_track(binedges, track, regions=None):
 
     """
     if not isinstance(track, tuple):
-        raise ValueError(
-            "``track`` should be a tuple of (dataframe, column_name)")
+        raise ValueError("``track`` should be a tuple of (dataframe, column_name)")
     track, name = track
 
     # subset and re-order chromosome groups
     if regions is not None:
         regions = [bioframe.parse_region(reg) for reg in regions]
-        grouped = track.groupby('chrom')
-        track = pd.concat(bioframe.bedslice(grouped, chrom, st, end)
-                          for (chrom, st, end) in regions)
+        grouped = track.groupby("chrom")
+        track = pd.concat(
+            bioframe.bedslice(grouped, chrom, st, end) for (chrom, st, end) in regions
+        )
 
     # histogram the signal
     digitized = track.copy()
-    digitized[name + '.d'] = np.digitize(track[name].values, binedges,
-                                         right=False)
+    digitized[name + ".d"] = np.digitize(track[name].values, binedges, right=False)
     mask = track[name].isnull()
-    digitized.loc[mask, name+'.d'] = -1
-    x = digitized[name + '.d'].values.copy()
+    digitized.loc[mask, name + ".d"] = -1
+    x = digitized[name + ".d"].values.copy()
     x = x[(x > 0) & (x < len(binedges) + 1)]
     hist = np.bincount(x, minlength=len(binedges) + 1)
     return digitized, hist
 
 
-def make_cis_obsexp_fetcher(clr, expected, weight_name='weight'):
+def make_cis_obsexp_fetcher(clr, expected, weight_name="weight"):
     """
     Construct a function that returns intra-chromosomal OBS/EXP.
 
@@ -137,17 +139,17 @@ def make_cis_obsexp_fetcher(clr, expected, weight_name='weight'):
 
     """
     expected, name = expected
-    expected = {k: x.values for k, x in expected.groupby('chrom')[name]}
+    expected = {k: x.values for k, x in expected.groupby("chrom")[name]}
 
     def _fetch_cis_oe(reg1, reg2):
         obs_mat = clr.matrix(balance=weight_name).fetch(reg1)
-        exp_mat = toeplitz(expected[reg1[0]][:obs_mat.shape[0]])
-        return obs_mat/exp_mat
+        exp_mat = toeplitz(expected[reg1[0]][: obs_mat.shape[0]])
+        return obs_mat / exp_mat
 
     return _fetch_cis_oe
 
 
-def make_trans_obsexp_fetcher(clr, expected, weight_name='weight'):
+def make_trans_obsexp_fetcher(clr, expected, weight_name="weight"):
     """
     Construct a function that returns OBS/EXP for any pair of chromosomes.
 
@@ -171,7 +173,8 @@ def make_trans_obsexp_fetcher(clr, expected, weight_name='weight'):
 
     if np.isscalar(expected):
         return lambda reg1, reg2: (
-            clr.matrix(balance=weight_name).fetch(reg1, reg2) / expected)
+            clr.matrix(balance=weight_name).fetch(reg1, reg2) / expected
+        )
 
     elif isinstance(expected, (tuple, list)):
         expected, name = expected
@@ -179,8 +182,9 @@ def make_trans_obsexp_fetcher(clr, expected, weight_name='weight'):
         if not name:
             raise ValueError("Name of data column not provided.")
 
-        expected = {k: x.values for k, x in
-                    expected.groupby(['chrom1', 'chrom2'])[name]}
+        expected = {
+            k: x.values for k, x in expected.groupby(["chrom1", "chrom2"])[name]
+        }
 
         def _fetch_trans_exp(chrom1, chrom2):
             # Handle chrom flipping
@@ -193,15 +197,15 @@ def make_trans_obsexp_fetcher(clr, expected, weight_name='weight'):
             else:
                 raise KeyError(
                     "trans-exp index is missing a pair of chromosomes: "
-                    "{}, {}".format(chrom1, chrom2))
+                    "{}, {}".format(chrom1, chrom2)
+                )
 
         def _fetch_trans_oe(reg1, reg2):
             reg1 = bioframe.parse_region(reg1)
             reg2 = bioframe.parse_region(reg2)
 
-            return (
-                clr.matrix(balance=weight_name).fetch(reg1, reg2) /
-                _fetch_trans_exp(reg1[0], reg2[0])
+            return clr.matrix(balance=weight_name).fetch(reg1, reg2) / _fetch_trans_exp(
+                reg1[0], reg2[0]
             )
 
         return _fetch_trans_oe
@@ -210,35 +214,44 @@ def make_trans_obsexp_fetcher(clr, expected, weight_name='weight'):
         raise ValueError("Unknown type of expected")
 
 
-def _accumulate(S, C, getmatrix, digitized, reg1, reg2, min_diag, max_diag,
-                verbose):
+def _accumulate(S, C, getmatrix, digitized, reg1, reg2, min_diag, max_diag, verbose):
     n_bins = S.shape[0]
     matrix = getmatrix(reg1, reg2)
 
-
     if reg1[0] == reg2[0]:
-        for d in np.arange(-min_diag+1, min_diag):
+        for d in np.arange(-min_diag + 1, min_diag):
             numutils.set_diag(matrix, np.nan, d)
         if max_diag >= 0:
-            for d in np.append(np.arange(-matrix.shape[0], -max_diag),
-                               np.arange(max_diag+1, matrix.shape[0])):
+            for d in np.append(
+                np.arange(-matrix.shape[0], -max_diag),
+                np.arange(max_diag + 1, matrix.shape[0]),
+            ):
                 numutils.set_diag(matrix, np.nan, d)
 
     if verbose:
-        print('regions {} vs {}'.format(reg1, reg2))
+        print("regions {} vs {}".format(reg1, reg2))
 
     for i in range(n_bins):
-        row_mask = (digitized[reg1] == i)
+        row_mask = digitized[reg1] == i
         for j in range(n_bins):
-            col_mask = (digitized[reg2] == j)
+            col_mask = digitized[reg2] == j
             data = matrix[row_mask, :][:, col_mask]
             data = data[np.isfinite(data)]
             S[i, j] += np.sum(data)
             C[i, j] += float(len(data))
 
 
-def make_saddle(getmatrix, binedges, digitized, contact_type, regions=None,
-                min_diag=3, max_diag=-1, trim_outliers=False, verbose=False):
+def make_saddle(
+    getmatrix,
+    binedges,
+    digitized,
+    contact_type,
+    regions=None,
+    min_diag=3,
+    max_diag=-1,
+    trim_outliers=False,
+    verbose=False,
+):
     """
     Make a matrix of average interaction probabilities between genomic bin
     pairs as a function of a specified genomic track. The provided genomic
@@ -285,23 +298,28 @@ def make_saddle(getmatrix, binedges, digitized, contact_type, regions=None,
     digitized_df, name = digitized
 
     if regions is None:
-        regions = [(chrom, df.start.min(), df.end.max())
-                   for chrom, df in digitized_df.groupby('chrom')]
+        regions = [
+            (chrom, df.start.min(), df.end.max())
+            for chrom, df in digitized_df.groupby("chrom")
+        ]
     else:
         regions = [bioframe.parse_region(reg) for reg in regions]
 
     digitized_tracks = {
-        reg: bioframe.bedslice(
-            digitized_df.groupby('chrom'), reg[0], reg[1], reg[2])[name]
-        for reg in regions}
+        reg: bioframe.bedslice(digitized_df.groupby("chrom"), reg[0], reg[1], reg[2])[
+            name
+        ]
+        for reg in regions
+    }
 
-    if contact_type == 'cis':
+    if contact_type == "cis":
         supports = list(zip(regions, regions))
-    elif contact_type == 'trans':
+    elif contact_type == "trans":
         supports = list(combinations(regions, 2))
     else:
-        raise ValueError("The allowed values for the contact_type "
-                         "argument are 'cis' or 'trans'.")
+        raise ValueError(
+            "The allowed values for the contact_type " "argument are 'cis' or 'trans'."
+        )
 
     # n_bins here includes 2 open bins
     # for values <lo and >hi.
@@ -310,8 +328,17 @@ def make_saddle(getmatrix, binedges, digitized, contact_type, regions=None,
     interaction_count = np.zeros((n_bins, n_bins))
 
     for reg1, reg2 in supports:
-        _accumulate(interaction_sum, interaction_count, getmatrix,
-                    digitized_tracks, reg1, reg2, min_diag, max_diag, verbose)
+        _accumulate(
+            interaction_sum,
+            interaction_count,
+            getmatrix,
+            digitized_tracks,
+            reg1,
+            reg2,
+            min_diag,
+            max_diag,
+            verbose,
+        )
 
     interaction_sum += interaction_sum.T
     interaction_count += interaction_count.T
@@ -322,11 +349,27 @@ def make_saddle(getmatrix, binedges, digitized, contact_type, regions=None,
 
     return interaction_sum, interaction_count
 
-def saddleplot(binedges, counts, saddledata, cmap='coolwarm', scale='log',
-               vmin=0.5, vmax=2, color=None, title=None, xlabel=None,
-               ylabel=None, clabel=None, fig=None, fig_kws=None,
-               heatmap_kws=None, margin_kws=None, cbar_kws=None,
-               subplot_spec=None):
+
+def saddleplot(
+    binedges,
+    counts,
+    saddledata,
+    cmap="coolwarm",
+    scale="log",
+    vmin=0.5,
+    vmax=2,
+    color=None,
+    title=None,
+    xlabel=None,
+    ylabel=None,
+    clabel=None,
+    fig=None,
+    fig_kws=None,
+    heatmap_kws=None,
+    margin_kws=None,
+    cbar_kws=None,
+    subplot_spec=None,
+):
     """
     Generate a saddle plot.
 
@@ -376,7 +419,8 @@ def saddleplot(binedges, counts, saddledata, cmap='coolwarm', scale='log',
 
     class MinOneMaxFormatter(ticker.LogFormatter):
         def set_locs(self, locs=None):
-            self._sublabels = set([vmin%10*10, vmax%10, 1])
+            self._sublabels = set([vmin % 10 * 10, vmax % 10, 1])
+
         def __call__(self, x, pos=None):
             if x not in [vmin, 1, vmax]:
                 return ""
@@ -412,99 +456,79 @@ def saddleplot(binedges, counts, saddledata, cmap='coolwarm', scale='log',
     # Figure
     if fig is None:
         fig_kws_default = dict(figsize=(5, 5))
-        fig_kws = merge(
-            fig_kws_default,
-            fig_kws if fig_kws is not None else {}
-
-        )
+        fig_kws = merge(fig_kws_default, fig_kws if fig_kws is not None else {})
         fig = plt.figure(**fig_kws)
 
     # Heatmap
-    if scale == 'log':
+    if scale == "log":
         norm = LogNorm(vmin=vmin, vmax=vmax)
-    elif scale == 'linear':
+    elif scale == "linear":
         norm = Normalize(vmin=vmin, vmax=vmax)
     else:
-        raise ValueError('Only linear and log color scaling is supported')
+        raise ValueError("Only linear and log color scaling is supported")
 
-    grid['ax_heatmap'] = ax = plt.subplot(gs[4])
-    heatmap_kws_default = dict(
-        cmap='coolwarm',
-        rasterized=True)
+    grid["ax_heatmap"] = ax = plt.subplot(gs[4])
+    heatmap_kws_default = dict(cmap="coolwarm", rasterized=True)
     heatmap_kws = merge(
-        heatmap_kws_default,
-        heatmap_kws if heatmap_kws is not None else {})
+        heatmap_kws_default, heatmap_kws if heatmap_kws is not None else {}
+    )
     img = ax.pcolormesh(X, Y, C, norm=norm, **heatmap_kws)
     plt.gca().yaxis.set_visible(False)
 
     # Margins
-    margin_kws_default = dict(
-        edgecolor='k',
-        facecolor=color,
-        linewidth=1)
-    margin_kws = merge(
-        margin_kws_default,
-        margin_kws if margin_kws is not None else {})
+    margin_kws_default = dict(edgecolor="k", facecolor=color, linewidth=1)
+    margin_kws = merge(margin_kws_default, margin_kws if margin_kws is not None else {})
     # left margin hist
-    grid['ax_margin_y'] = plt.subplot(gs[3], sharey=grid['ax_heatmap'])
-    plt.barh(binedges[:-1],
-             height=np.diff(binedges),
-             width=hist,
-             align='edge',
-             **margin_kws)
+    grid["ax_margin_y"] = plt.subplot(gs[3], sharey=grid["ax_heatmap"])
+    plt.barh(
+        binedges[:-1], height=np.diff(binedges), width=hist, align="edge", **margin_kws
+    )
     plt.xlim(plt.xlim()[1], plt.xlim()[0])  # fliplr
     plt.ylim(hi, lo)
-    plt.gca().spines['top'].set_visible(False)
-    plt.gca().spines['bottom'].set_visible(False)
-    plt.gca().spines['left'].set_visible(False)
+    plt.gca().spines["top"].set_visible(False)
+    plt.gca().spines["bottom"].set_visible(False)
+    plt.gca().spines["left"].set_visible(False)
     plt.gca().xaxis.set_visible(False)
     # top margin hist
-    grid['ax_margin_x'] = plt.subplot(gs[1], sharex=grid['ax_heatmap'])
-    plt.bar(binedges[:-1],
-            width=np.diff(binedges),
-            height=hist,
-            align='edge',
-            **margin_kws)
+    grid["ax_margin_x"] = plt.subplot(gs[1], sharex=grid["ax_heatmap"])
+    plt.bar(
+        binedges[:-1], width=np.diff(binedges), height=hist, align="edge", **margin_kws
+    )
     plt.xlim(lo, hi)
     # plt.ylim(plt.ylim())  # correct
-    plt.gca().spines['top'].set_visible(False)
-    plt.gca().spines['right'].set_visible(False)
-    plt.gca().spines['left'].set_visible(False)
+    plt.gca().spines["top"].set_visible(False)
+    plt.gca().spines["right"].set_visible(False)
+    plt.gca().spines["left"].set_visible(False)
     plt.gca().xaxis.set_visible(False)
     plt.gca().yaxis.set_visible(False)
 
     # Colorbar
-    grid['ax_cbar'] = plt.subplot(gs[5])
-    cbar_kws_default = dict(
-        fraction=0.8,
-        label=clabel or '')
-    cbar_kws = merge(
-        cbar_kws_default,
-        cbar_kws if cbar_kws is not None else {})
-    if scale=='linear' and vmin is not None and vmax is not None:
-        grid['cbar'] = cb = plt.colorbar(img, **cbar_kws)
+    grid["ax_cbar"] = plt.subplot(gs[5])
+    cbar_kws_default = dict(fraction=0.8, label=clabel or "")
+    cbar_kws = merge(cbar_kws_default, cbar_kws if cbar_kws is not None else {})
+    if scale == "linear" and vmin is not None and vmax is not None:
+        grid["cbar"] = cb = plt.colorbar(img, **cbar_kws)
         # cb.set_ticks(np.arange(vmin, vmax + 0.001, 0.5))
         # # do linspace between vmin and vmax of 5 segments and trunc to 1 decimal:
         decimal = 10
         nsegments = 5
-        cd_ticks = np.trunc(np.linspace(vmin, vmax, nsegments)*decimal)/decimal
+        cd_ticks = np.trunc(np.linspace(vmin, vmax, nsegments) * decimal) / decimal
         cb.set_ticks(cd_ticks)
     else:
-        grid['cbar'] = cb = plt.colorbar(img, format=MinOneMaxFormatter(),
-            **cbar_kws)
+        grid["cbar"] = cb = plt.colorbar(img, format=MinOneMaxFormatter(), **cbar_kws)
         cb.ax.yaxis.set_minor_formatter(MinOneMaxFormatter())
 
     # extra settings
-    grid['ax_heatmap'].set_xlim(lo, hi)
-    grid['ax_heatmap'].set_ylim(hi, lo)
+    grid["ax_heatmap"].set_xlim(lo, hi)
+    grid["ax_heatmap"].set_ylim(hi, lo)
     plt.grid(False)
-    plt.axis('off')
+    plt.axis("off")
     if title is not None:
-        grid['ax_margin_x'].set_title(title)
+        grid["ax_margin_x"].set_title(title)
     if xlabel is not None:
-        grid['ax_heatmap'].set_xlabel(xlabel)
+        grid["ax_heatmap"].set_xlabel(xlabel)
     if ylabel is not None:
-        grid['ax_margin_y'].set_ylabel(ylabel)
+        grid["ax_margin_y"].set_ylabel(ylabel)
 
     return grid
 
@@ -529,12 +553,12 @@ def saddle_strength(S, C):
 
     ratios = np.zeros(n)
     for k in range(1, n):
-        intra_sum = S[0:k, 0:k].sum() + S[n-k:n, n-k:n].sum()
-        intra_count = C[0:k, 0:k].sum() + C[n-k:n, n-k:n].sum()
+        intra_sum = S[0:k, 0:k].sum() + S[n - k : n, n - k : n].sum()
+        intra_count = C[0:k, 0:k].sum() + C[n - k : n, n - k : n].sum()
         intra = intra_sum / intra_count
 
-        inter_sum = S[0:k, n-k:n].sum() + S[n-k:n, 0:k].sum()
-        inter_count = C[0:k, n-k:n].sum() + C[n-k:n, 0:k].sum()
+        inter_sum = S[0:k, n - k : n].sum() + S[n - k : n, 0:k].sum()
+        inter_count = C[0:k, n - k : n].sum() + C[n - k : n, 0:k].sum()
         inter = inter_sum / inter_count
 
         ratios[k] = intra / inter
