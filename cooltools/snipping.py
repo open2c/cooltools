@@ -436,6 +436,13 @@ class ExpectedSnipper:
         else:
             raise ValueError("Expected dataframe has no columns.")
 
+        try:
+            for region, group in self.expected.groupby(self.regions_columns):
+                assert group.shape[0]==np.diff(self.clr.extent(region))[0]
+        except AssertionError:
+            raise ValueError("Region shape mismatch between expected and cooler. "
+                             "Are they using the same resolution?")
+
         self.binsize = self.clr.binsize
         self.offsets = {}
 
