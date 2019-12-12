@@ -59,7 +59,7 @@ def bnewt(matvec, mask, tol=1e-6, x0=None, delta=0.1, Delta=3, fl=0):
     eta = etamax
     stop_tol = tol * 0.5
     x = x0
-    rt = tol**2
+    rt = tol ** 2
     v = x * matvec(x, mask)
 
     rk = 1 - v
@@ -68,17 +68,17 @@ def bnewt(matvec, mask, tol=1e-6, x0=None, delta=0.1, Delta=3, fl=0):
     rold = rout
 
     MVP = 0  # We’ll count matrix vector products.
-    i = 0    # Outer iteration count.
+    i = 0  # Outer iteration count.
 
     if fl == 1:
-        print('it in. it res', flush=True)
+        print("it in. it res", flush=True)
 
     # Outer iteration
     while rout > rt:
         i += 1
         k = 0
         y = e.copy()
-        innertol = max((eta**2)*rout, rt)
+        innertol = max((eta ** 2) * rout, rt)
 
         # Inner iteration by Conjugate Gradient
         while rho_km1 > innertol:
@@ -90,13 +90,13 @@ def bnewt(matvec, mask, tol=1e-6, x0=None, delta=0.1, Delta=3, fl=0):
                 rho_km1 = np.dot(rk, Z)
             else:
                 beta = rho_km1 / rho_km2
-                p = Z + beta*p
+                p = Z + beta * p
 
             # Update search direction efficiently.
-            w = x * matvec(x*p, mask) + v*p
+            w = x * matvec(x * p, mask) + v * p
 
             alpha = rho_km1 / np.dot(p, w)
-            ap = alpha*p
+            ap = alpha * p
 
             # Test distance to boundary of cone.
             ynew = y + ap
@@ -105,17 +105,17 @@ def bnewt(matvec, mask, tol=1e-6, x0=None, delta=0.1, Delta=3, fl=0):
                     break
                 idx = ap < 0
                 gamma = np.min((delta - y[idx]) / ap[idx])
-                y = y + gamma*ap
+                y = y + gamma * ap
                 break
 
             if max(ynew) >= Delta:
                 idx = ynew > Delta
-                gamma = np.min((Delta-y[idx]) / ap[idx])
-                y = y + gamma*ap
+                gamma = np.min((Delta - y[idx]) / ap[idx])
+                y = y + gamma * ap
                 break
 
             y = ynew.copy()
-            rk = rk - alpha*w
+            rk = rk - alpha * w
             rho_km2 = rho_km1
             Z = rk / v
             rho_km1 = np.dot(rk, Z)
@@ -129,20 +129,20 @@ def bnewt(matvec, mask, tol=1e-6, x0=None, delta=0.1, Delta=3, fl=0):
         MVP += k + 1
 
         # Update inner iteration stopping criterion.
-        rat = rout/rold
+        rat = rout / rold
         rold = rout
         res_norm = np.sqrt(rout)
         eta_o = eta
         eta = g * rat
-        if g*(eta_o**2) > 0.1:
-            eta = max(eta, g*(eta_o**2))
+        if g * (eta_o ** 2) > 0.1:
+            eta = max(eta, g * (eta_o ** 2))
 
-        eta = max(min(eta, etamax), stop_tol/res_norm)
+        eta = max(min(eta, etamax), stop_tol / res_norm)
         if fl == 1:
-            print('%3d\t%6d\t%.3e' % (i, k, res_norm), flush=True)
+            print("%3d\t%6d\t%.3e" % (i, k, res_norm), flush=True)
         res.append(res_norm)
 
-        print('Matrix-vector products = %6d' % (MVP,), flush=True)
+        print("Matrix-vector products = %6d" % (MVP,), flush=True)
 
     x_full = np.zeros(len(mask))
     x_full[mask] = x

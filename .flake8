@@ -1,0 +1,18 @@
+[flake8]
+exclude =
+    __init__.py
+    __main__.py
+
+max-line-length = 80
+ignore =
+    E203  # whitespace before ':'
+    E266  # too many leading '#' for block comment
+    E501  # line too long
+    W503  # line break before binary operator
+select =
+    C  # mccabe complexity
+    E  # pycodestyle
+    F  # pyflakes error
+    W  # pyflakes warning
+    B  # bugbear
+    B950  # line exceeds max-line-length + 10%

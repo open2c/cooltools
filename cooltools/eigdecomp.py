@@ -30,20 +30,20 @@ def _phase_eigs(eigvals, eigvecs, phasing_track, sort_metric=None):
     corrs = []
     for eigvec in eigvecs:
         mask = np.isfinite(eigvec) & np.isfinite(phasing_track)
-        if sort_metric is None or sort_metric == 'spearmanr':
+        if sort_metric is None or sort_metric == "spearmanr":
             corr = scipy.stats.spearmanr(phasing_track[mask], eigvec[mask])[0]
-        elif sort_metric == 'pearsonr':
+        elif sort_metric == "pearsonr":
             corr = scipy.stats.pearsonr(phasing_track[mask], eigvec[mask])[0]
-        elif sort_metric == 'var_explained':
+        elif sort_metric == "var_explained":
             corr = scipy.stats.pearsonr(phasing_track[mask], eigvec[mask])[0]
             # multiply by the sign to keep the phasing information
             corr = np.sign(corr) * corr * corr * np.var(eigvec[mask])
-        elif sort_metric == 'MAD_explained':
-            corr = (
-                numutils.COMED(phasing_track[mask], eigvec[mask])
-                * numutils.MAD(eigvec[mask]))
+        elif sort_metric == "MAD_explained":
+            corr = numutils.COMED(phasing_track[mask], eigvec[mask]) * numutils.MAD(
+                eigvec[mask]
+            )
         else:
-            raise ValueError('Unknown sorting metric: {}'.format(sort_by))
+            raise ValueError("Unknown sorting metric: {}".format(sort_by))
 
         corrs.append(corr)
 
@@ -59,11 +59,14 @@ def _phase_eigs(eigvals, eigvecs, phasing_track, sort_metric=None):
     return eigvals, eigvecs
 
 
-def cis_eig(A, n_eigs=3, phasing_track=None, ignore_diags=2, clip_percentile=0,
-            sort_metric=None):
+def cis_eig(
+    A, n_eigs=3, phasing_track=None, ignore_diags=2, clip_percentile=0, sort_metric=None
+):
     """
-    Compute compartment eigenvector on a dense cis matrix
-    Note that the amplitude of compartment eigenvectors is weighted by their corresponding eigenvalue
+    Compute compartment eigenvector on a dense cis matrix.
+
+    Note that the amplitude of compartment eigenvectors is weighted by their
+    corresponding eigenvalue
 
     Parameters
     ----------
@@ -111,7 +114,7 @@ def cis_eig(A, n_eigs=3, phasing_track=None, ignore_diags=2, clip_percentile=0,
 
     mask = A.sum(axis=0) > 0
 
-    if A.shape[0] <= ignore_diags + 3 or mask.sum() <= ignore_diags+3:
+    if A.shape[0] <= ignore_diags + 3 or mask.sum() <= ignore_diags + 3:
         return (
             np.array([np.nan for i in range(n_eigs)]),
             np.array([np.ones(A.shape[0]) * np.nan for i in range(n_eigs)]),
@@ -124,8 +127,7 @@ def cis_eig(A, n_eigs=3, phasing_track=None, ignore_diags=2, clip_percentile=0,
     OE, _, _, _ = numutils.observed_over_expected(A, mask)
 
     if clip_percentile and clip_percentile < 100:
-        OE = np.clip(OE, 0, np.percentile(
-            OE[mask, :][:, mask], clip_percentile))
+        OE = np.clip(OE, 0, np.percentile(OE[mask, :][:, mask], clip_percentile))
 
     # subtract 1.0
     OE -= 1.0
@@ -135,13 +137,12 @@ def cis_eig(A, n_eigs=3, phasing_track=None, ignore_diags=2, clip_percentile=0,
     OE[:, ~mask] = 0
 
     eigvecs, eigvals = numutils.get_eig(OE, n_eigs, mask_zero_rows=True)
-    eigvecs /= np.sqrt(np.nansum(eigvecs**2, axis=1))[:, None]
+    eigvecs /= np.sqrt(np.nansum(eigvecs ** 2, axis=1))[:, None]
     eigvecs *= np.sqrt(np.abs(eigvals))[:, None]
 
     # Orient and reorder
     if phasing_track is not None:
-        eigvals, eigvecs = _phase_eigs(
-            eigvals, eigvecs, phasing_track, sort_metric)
+        eigvals, eigvecs = _phase_eigs(eigvals, eigvecs, phasing_track, sort_metric)
 
     return eigvals, eigvecs
 
@@ -172,8 +173,15 @@ def _fake_cis(A, cismask):
     return A
 
 
-def trans_eig(A, partition, n_eigs=3, perc_top=99.95, perc_bottom=1,
-              phasing_track=None, sort_metric=False):
+def trans_eig(
+    A,
+    partition,
+    n_eigs=3,
+    perc_top=99.95,
+    perc_bottom=1,
+    phasing_track=None,
+    sort_metric=False,
+):
     """
     Compute compartmentalization eigenvectors on trans contact data
 
@@ -226,11 +234,13 @@ def trans_eig(A, partition, n_eigs=3, perc_top=99.95, perc_bottom=1,
         raise ValueError("A is not symmetric")
 
     n_bins = A.shape[0]
-    if not (partition[0] == 0 and
-            partition[-1] == n_bins and
-            np.all(np.diff(partition) > 0)):
-        raise ValueError("Not a valid partition. Must be a monotonic sequence "
-                         "from 0 to {}.".format(n_bins))
+    if not (
+        partition[0] == 0 and partition[-1] == n_bins and np.all(np.diff(partition) > 0)
+    ):
+        raise ValueError(
+            "Not a valid partition. Must be a monotonic sequence "
+            "from 0 to {}.".format(n_bins)
+        )
 
     # Delete cis data and create trans mask
     extents = zip(partition[:-1], partition[1:])
@@ -239,7 +249,7 @@ def trans_eig(A, partition, n_eigs=3, perc_top=99.95, perc_bottom=1,
         A[i0:i1, i0:i1] = 0
         part_ids.extend([n] * (i1 - i0))
     part_ids = np.array(part_ids)
-    is_trans = (part_ids[:, None] != part_ids[None, :])
+    is_trans = part_ids[:, None] != part_ids[None, :]
 
     # Filter heatmap
     is_bad_bin = np.nansum(A, axis=0) == 0
@@ -269,63 +279,65 @@ def trans_eig(A, partition, n_eigs=3, perc_top=99.95, perc_bottom=1,
     O[:, is_bad_bin] = 0
     eigvecs, eigvals = numutils.get_eig(O, n_eigs, mask_zero_rows=True)
 
-    eigvecs /= np.sqrt(np.nansum(eigvecs**2, axis=1))[:, None]
+    eigvecs /= np.sqrt(np.nansum(eigvecs ** 2, axis=1))[:, None]
     eigvecs *= np.sqrt(np.abs(eigvals))[:, None]
     if phasing_track is not None:
-        eigvals, eigvecs = _phase_eigs(
-            eigvals, eigvecs, phasing_track, sort_metric)
+        eigvals, eigvecs = _phase_eigs(eigvals, eigvecs, phasing_track, sort_metric)
 
     return eigvals, eigvecs
 
 
 def cooler_cis_eig(
-        clr,
-        bins,
-        regions=None,
-        n_eigs=3,
-        phasing_track_col='GC',
-        balance='weight',
-        ignore_diags=None,
-        clip_percentile=99.9,
-        sort_metric=None):
-
+    clr,
+    bins,
+    regions=None,
+    n_eigs=3,
+    phasing_track_col="GC",
+    balance="weight",
+    ignore_diags=None,
+    clip_percentile=99.9,
+    sort_metric=None,
+):
     # Perform consitency checks.
     if regions is None:
         chroms_not_in_clr = [
-            chrom for chrom in bins['chrom'].unique()
-            if chrom not in clr.chromsizes]
+            chrom for chrom in bins["chrom"].unique() if chrom not in clr.chromsizes
+        ]
 
         if len(chroms_not_in_clr) > 0:
             raise ValueError(
-                'The following chromosomes are found in the bin table, but not '
-                'in the cooler: '+str(chroms_not_in_clr)
+                "The following chromosomes are found in the bin table, but not "
+                "in the cooler: " + str(chroms_not_in_clr)
             )
 
     if regions is None:
         regions = (
-            [(chrom, 0, clr.chromsizes[chrom])
-             for chrom in bins['chrom'].unique()]
+            [(chrom, 0, clr.chromsizes[chrom]) for chrom in bins["chrom"].unique()]
             if regions is None
             else [bioframe.parse_region(r) for r in regions]
         )
 
     ignore_diags = (
-        clr._load_attrs('bins/weight').get('ignore_diags', 2)
+        clr._load_attrs("bins/weight").get("ignore_diags", 2)
         if ignore_diags is None
-        else ignore_diags)
+        else ignore_diags
+    )
 
     eigvec_table = bins.copy()
     for i in range(n_eigs):
-        eigvec_table['E'+str(i+1)] = np.nan
+        eigvec_table["E" + str(i + 1)] = np.nan
 
     def _each(region):
         A = clr.matrix(balance=balance).fetch(region)
         if phasing_track_col and (phasing_track_col not in bins):
-            raise ValueError('No column "{}" in the bin table'.format(
-                phasing_track_col))
+            raise ValueError(
+                'No column "{}" in the bin table'.format(phasing_track_col)
+            )
         phasing_track = (
             bioframe.slice_bedframe(bins, region)[phasing_track_col].values
-            if phasing_track_col else None)
+            if phasing_track_col
+            else None
+        )
 
         eigvals, eigvecs = cis_eig(
             A,
@@ -333,7 +345,8 @@ def cooler_cis_eig(
             ignore_diags=ignore_diags,
             phasing_track=phasing_track,
             clip_percentile=clip_percentile,
-            sort_metric=sort_metric)
+            sort_metric=sort_metric,
+        )
 
         return eigvals, eigvecs
 
@@ -343,40 +356,44 @@ def cooler_cis_eig(
         lo, hi = bioframe.bisect_bedframe(bins, region)
         for i, eigvec in enumerate(eigvecs):
             eigvec_table.iloc[
-                lo:hi,
-                eigvec_table.columns.get_loc('E'+str(i+1))] = eigvec
+                lo:hi, eigvec_table.columns.get_loc("E" + str(i + 1))
+            ] = eigvec
 
     region_strs = [
-        (chrom
-         if (start == 0 and end == clr.chromsizes[chrom])
-         else '{}:{}-{}'.format(chrom, start, end)
-         )
+        (
+            chrom
+            if (start == 0 and end == clr.chromsizes[chrom])
+            else "{}:{}-{}".format(chrom, start, end)
+        )
         for chrom, start, end in regions
     ]
 
     eigvals = pd.DataFrame(
         index=region_strs,
         data=np.vstack(eigvals_per_reg),
-        columns=['eigval'+str(i+1) for i in range(n_eigs)],
+        columns=["eigval" + str(i + 1) for i in range(n_eigs)],
     )
 
-    eigvals.index.name = 'region'
+    eigvals.index.name = "region"
 
     return eigvals, eigvec_table
 
 
 def cooler_trans_eig(
-        clr, bins,
-        n_eigs=3,
-        partition=None,
-        phasing_track_col='GC',
-        balance='weight',
-        sort_metric=None,
-        **kwargs):
+    clr,
+    bins,
+    n_eigs=3,
+    partition=None,
+    phasing_track_col="GC",
+    balance="weight",
+    sort_metric=None,
+    **kwargs
+):
 
     if partition is None:
         partition = np.r_[
-            [clr.offset(chrom) for chrom in clr.chromnames], len(clr.bins())]
+            [clr.offset(chrom) for chrom in clr.chromnames], len(clr.bins())
+        ]
 
     lo = partition[0]
     hi = partition[-1]
@@ -387,7 +404,8 @@ def cooler_trans_eig(
     if phasing_track_col:
         if phasing_track_col not in bins:
             raise ValueError(
-                'No column "{}" in the bin table'.format(phasing_track_col))
+                'No column "{}" in the bin table'.format(phasing_track_col)
+            )
         phasing_track = bins[phasing_track_col].values[lo:hi]
 
     eigvals, eigvecs = trans_eig(
@@ -396,14 +414,15 @@ def cooler_trans_eig(
         n_eigs=n_eigs,
         phasing_track=phasing_track,
         sort_metric=sort_metric,
-        **kwargs)
+        **kwargs
+    )
 
     eigvec_table = bins.copy()
     for i, eigvec in enumerate(eigvecs):
-        eigvec_table['E{}'.format(i+1)] = eigvec
+        eigvec_table["E{}".format(i + 1)] = eigvec
 
     eigvals = pd.DataFrame(
         data=np.atleast_2d(eigvals),
-        columns=['eigval'+str(i+1) for i in range(n_eigs)],
+        columns=["eigval" + str(i + 1) for i in range(n_eigs)],
     )
     return eigvals, eigvec_table

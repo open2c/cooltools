@@ -1,3 +1,4 @@
+ipython
 Sphinx
 sphinx-rtd-theme
 recommonmark
