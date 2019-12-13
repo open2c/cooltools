@@ -71,6 +71,79 @@ def compute_scaling(df, region1, region2=None, dmin=int(1e1), dmax=int(1e7), n_b
     return distbins, obs, areas
 
 
+def _n_total_block_elements(clr, supports):
+    """
+    Calculate total number of pixels per rectangular block of a contact map
+    defined as a paired-combination of genomic "support" regions.
+
+    Parameters
+    ----------
+    clr : cooler.Cooler
+        Input cooler
+    supports : list
+        list of genomic support regions
+
+    Returns
+    -------
+    blocks : dict
+        dictionary with total number of pixels per pair of support regions
+    """
+    n = len(supports)
+    x = [clr.extent(region)[1] - clr.extent(region)[0]
+         for region in supports]
+    blocks = {}
+    for i in range(n):
+        for j in range(i + 1, n):
+            blocks[supports[i], supports[j]] = x[i] * x[j]
+    return blocks
+
+def _n_bad_block_elements(clr, supports, weight_name="weight"):
+    """
+    Calculate total number of pixels per rectangular block of a contact map
+    defined as a paired-combination of genomic "support" regions.
+
+    Parameters
+    ----------
+    clr : cooler.Cooler
+        Input cooler
+    supports : list
+        a list of genomic support regions
+    weight_name : str
+        name of the weight vector in the "bins" table,
+        if weight_name is None returns 0 for each block
+        [ to be implemented ] array-like to infer "bad"
+        bins from, instead of clr.bins()[weight_name]
+
+    Returns
+    -------
+    blocks : dict
+        dictionary with the number of "bad" pixels per pair of support regions
+    """
+    n = len(supports)
+    if weight_name is None:
+        # ignore bad bins
+        # useful for unbalanced data
+        x = [0 for region in supports]
+    elif isinstance(weight_name, str):
+        # bad bins are ones with
+        # the weight vector being NaN:
+        x = [np.sum(clr.bins()[weight_name]
+                       .fetch(region)
+                       .isnull()
+                       .astype(int)
+                       .values)
+             for region in supports]
+    else:
+        raise NotImplementedError("'weight_name' should be \
+                None or str, array-like implementation will \
+                be supported later.")
+    blocks = {}
+    for i in range(n):
+        for j in range(i + 1, n):
+            blocks[supports[i], supports[j]] = x[i] * x[j]
+    return blocks
+
+
 def bg2slice_frame(bg2, region1, region2):
     """
     Slice a dataframe with columns ['chrom1', 'start1', 'end1', 'chrom2',
@@ -761,36 +834,13 @@ def blocksum_pairwise(clr, supports, transforms=None, chunksize=1000000, map=map
 
     """
 
-    def n_total_block_elements(clr, supports):
-        n = len(supports)
-        x = [clr.extent(region)[1] - clr.extent(region)[0] for region in supports]
-        blocks = {}
-        for i in range(n):
-            for j in range(i + 1, n):
-                blocks[supports[i], supports[j]] = x[i] * x[j]
-        return blocks
-
-    def n_bad_block_elements(clr, supports):
-        n = 0
-        # bad bins are ones with
-        # the weight vector being NaN:
-        x = [
-            np.sum(clr.bins()["weight"].fetch(region).isnull().astype(int).values)
-            for region in supports
-        ]
-        blocks = {}
-        for i in range(len(x)):
-            for j in range(i + 1, len(x)):
-                blocks[supports[i], supports[j]] = x[i] * x[j]
-        return blocks
-
     blocks = list(combinations(supports, 2))
     supports1, supports2 = list(zip(*blocks))
     spans = partition(0, len(clr.pixels()), chunksize)
     fields = ["count"] + list(transforms.keys())
 
-    n_tot = n_total_block_elements(clr, supports)
-    n_bad = n_bad_block_elements(clr, supports)
+    n_tot = _n_total_block_elements(clr, supports)
+    n_bad = _n_bad_block_elements(clr, supports)
     records = {(c1, c2): defaultdict(int) for (c1, c2) in blocks}
     for c1, c2 in blocks:
         records[c1, c2]["n_valid"] = n_tot[c1, c2] - n_bad[c1, c2]
