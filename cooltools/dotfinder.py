@@ -1773,7 +1773,7 @@ def clustering_step(
 
     # report only centroids with highest Observed:
     chrom_clust_group = df.groupby(["chrom1", "chrom2", "c_label"])
-    centroids = df.loc[chrom_clust_group[obs_raw_name].idxmax()]
+    centroids = df.loc[df.index.intersection(chrom_clust_group[obs_raw_name].idxmax())]
     return centroids
 
 
