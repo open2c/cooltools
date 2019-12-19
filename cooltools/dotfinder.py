@@ -1770,10 +1770,12 @@ def clustering_step(
     df = pd.merge(
         scores_df, pixel_clust_df, how="left", left_index=True, right_index=True
     )
-
+    #prevents scores_df categorical values (all chroms, including chrM)
+    df['chrom1'] = df['chrom1'].astype(str)
+    df['chrom2'] = df['chrom2'].astype(str)
     # report only centroids with highest Observed:
     chrom_clust_group = df.groupby(["chrom1", "chrom2", "c_label"])
-    centroids = df.loc[df.index.intersection(chrom_clust_group[obs_raw_name].idxmax())]
+    centroids = df.loc[chrom_clust_group[obs_raw_name].idxmax()]
     return centroids
 
 
