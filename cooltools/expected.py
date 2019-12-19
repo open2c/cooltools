@@ -2,6 +2,8 @@ from itertools import chain, combinations
 from collections import defaultdict
 from functools import partial
 
+import warnings
+
 import numpy as np
 import pandas as pd
 from scipy.linalg import toeplitz
@@ -384,6 +386,13 @@ def cis_expected(
     Dataframe of diagonal statistics, indexed by region and diagonal number
 
     """
+    warnings.warn(
+        "`cooltools.expected.cis_expected()` is deprecated in 0.3.2, will be removed subsequently. "
+        "Use `cooltools.expected.diagsum()` instead.",
+        category=FutureWarning,
+        stacklevel=2,
+    )
+
     import dask.dataframe as dd
     from cooler.sandbox.dask import read_table
 
@@ -490,77 +499,48 @@ def trans_expected(clr, chromosomes, chunksize=1000000, use_dask=False):
     the actual value of expected for every interchromosomal pair.
 
     """
-
-    def n_total_trans_elements(clr, chromosomes):
-        n = len(chromosomes)
-        x = [clr.extent(chrom)[1] - clr.extent(chrom)[0] for chrom in chromosomes]
-        pairblock_list = []
-        for i in range(n):
-            for j in range(i + 1, n):
-                # appending to the list of tuples
-                pairblock_list.append((chromosomes[i], chromosomes[j], x[i] * x[j]))
-        return pd.DataFrame(pairblock_list, columns=["chrom1", "chrom2", "n_total"])
-
-    def n_bad_trans_elements(clr, chromosomes):
-        n = 0
-        # bad bins are ones with
-        # the weight vector being NaN:
-        x = [
-            np.sum(clr.bins()["weight"].fetch(chrom).isnull().astype(int).values)
-            for chrom in chromosomes
-        ]
-        pairblock_list = []
-        for i in range(len(x)):
-            for j in range(i + 1, len(x)):
-                # appending to the list of tuples
-                pairblock_list.append((chromosomes[i], chromosomes[j], x[i] * x[j]))
-        return pd.DataFrame(pairblock_list, columns=["chrom1", "chrom2", "n_bad"])
+    warnings.warn(
+        "`cooltools.expected.trans_expected()` is deprecated in 0.3.2, will be removed subsequently. "
+        "Use `cooltools.expected.blocksum_pairwise()` instead.",
+        category=FutureWarning,
+        stacklevel=2,
+    )
 
     if use_dask:
         # pixels = daskify(clr.filename, clr.root + '/pixels', chunksize=chunksize)
         raise NotImplementedError("To be implemented once dask supports MultiIndex")
-    else:
-        pixels = clr.pixels()[:]
-    # getting pixels that belong to trans-area,
-    # defined by the list of chromosomes:
-    pixels = cooler.annotate(pixels, clr.bins(), replace=False)
-    pixels = pixels[
-        (pixels.chrom1.isin(chromosomes))
-        & (pixels.chrom2.isin(chromosomes))
-        & (pixels.chrom1 != pixels.chrom2)
-    ]
-    pixels["balanced"] = pixels["count"] * pixels["weight1"] * pixels["weight2"]
-    ntot = (
-        n_total_trans_elements(clr, chromosomes)
-        .groupby(("chrom1", "chrom2"))["n_total"]
-        .sum()
-    )
-    nbad = (
-        n_bad_trans_elements(clr, chromosomes)
-        .groupby(("chrom1", "chrom2"))["n_bad"]
-        .sum()
-    )
-    trans_area = ntot - nbad
-    trans_area.name = "n_valid"
-    # processing with use_dask=True is different:
-    if use_dask:
-        # trans_sum = pixels.groupby(['chrom1', 'chrom2'])['balanced'].sum().compute()
-        pass
-    else:
-        trans_sum = pixels.groupby(["chrom1", "chrom2"])["balanced"].sum()
-    # for consistency with the cis_expected function:
-    trans_sum.name = trans_sum.name + ".sum"
 
-    # returning a DataFrame with MultiIndex, that stores
-    # pairs of 'balanced.sum' and 'n_valid' values for each
-    # pair of chromosomes.
-    dtable = pd.merge(
-        trans_sum.to_frame(), trans_area.to_frame(), left_index=True, right_index=True
-    )
+    # turn chromosomes into supports:
+    chrom_supports = [ (chrom, 0, None) for chrom in chromosomes ]
+    # use balaned transformation only:
+    balanced_transform = {
+            "balanced": \
+                lambda pixels: pixels["count"] * pixels["weight1"] * pixels["weight2"]
+            }
+
+    # trans_expected is simply a wrapper around new blocksum_pairwise
+    # but it preserved the interface of the original trans_expected
+    trans_records = blocksum_pairwise(clr,
+                            supports=chrom_supports,
+                            transforms=balanced_transform,
+                            chunksize=chunksize)
+
+    # trans_records are inter-chromosomal only,
+    # changing trans_records keys to reflect that:
+    # region[0] for a region = (chrom, start, stop)
+    trans_records = {
+        ( region1[0], region2[0] ): val for ( region1, region2 ), val in trans_records.items()
+        }
+
+    # turn trans_records into a DataFrame with
+    # MultiIndex, that stores values of 'balanced.sum'
+    # and 'n_valid' values for each pair of chromosomes:
+    trans_df = pd.Dataframe.from_dict( trans_records, orient="index" )
+    trans_df.index.rename( ["chrom1","chrom2"], inplace=True )
 
     # the actual expected is balanced.sum/n_valid:
-    dtable["balanced.avg"] = dtable["balanced.sum"] / dtable["n_valid"]
-    return dtable
+    trans_df["balanced.avg"] = trans_df["balanced.sum"] / trans_df["n_valid"]
+    return trans_df
 
 
 ###################
@@ -808,7 +788,7 @@ def diagsum_asymm(
     return dtables
 
 
-def blocksum_pairwise(clr, supports, transforms=None, chunksize=1000000, map=map):
+def blocksum_pairwise(clr, supports, transforms=None, weight_name="weight", chunksize=1000000, map=map):
     """
     Summary statistics on inter-chromosomal rectangular blocks.
 
@@ -823,6 +803,12 @@ def blocksum_pairwise(clr, supports, transforms=None, chunksize=1000000, map=map
         Transformations to apply to pixels. The result will be assigned to
         a temporary column with the name given by the key. Callables take
         one argument: the current chunk of the (annotated) pixel dataframe.
+    weight_name : str
+        name of the weight vector in the "bins" table,
+        used to count "bad"(masked) pixels per block.
+        When None "bad" pixels are ignored.
+        [ to be implemented ] array-like to infer masked
+        bins from, instead of clr.bins()[weight_name]
     chunksize : int, optional
         Size of pixel table chunks to process
     map : callable, optional
@@ -840,7 +826,7 @@ def blocksum_pairwise(clr, supports, transforms=None, chunksize=1000000, map=map
     fields = ["count"] + list(transforms.keys())
 
     n_tot = _n_total_block_elements(clr, supports)
-    n_bad = _n_bad_block_elements(clr, supports)
+    n_bad = _n_bad_block_elements(clr, supports, weight_name=weight_name)
     records = {(c1, c2): defaultdict(int) for (c1, c2) in blocks}
     for c1, c2 in blocks:
         records[c1, c2]["n_valid"] = n_tot[c1, c2] - n_bad[c1, c2]
