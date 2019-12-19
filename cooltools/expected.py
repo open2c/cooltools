@@ -535,7 +535,7 @@ def trans_expected(clr, chromosomes, chunksize=1000000, use_dask=False):
     # turn trans_records into a DataFrame with
     # MultiIndex, that stores values of 'balanced.sum'
     # and 'n_valid' values for each pair of chromosomes:
-    trans_df = pd.Dataframe.from_dict( trans_records, orient="index" )
+    trans_df = pd.DataFrame.from_dict( trans_records, orient="index" )
     trans_df.index.rename( ["chrom1","chrom2"], inplace=True )
 
     # the actual expected is balanced.sum/n_valid:
