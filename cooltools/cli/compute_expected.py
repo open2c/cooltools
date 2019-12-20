@@ -133,7 +133,7 @@ def compute_expected(
 
         elif contact_type == "trans":
             records = expected.blocksum_pairwise(
-                clr, supports, transforms=transforms, chunksize=chunksize, map=map_
+                clr, supports, transforms=transforms, weight_name=weight_name, chunksize=chunksize, map=map_
             )
             result = pd.DataFrame(
                 [

@@ -537,6 +537,14 @@ def trans_expected(clr, chromosomes, chunksize=1000000, use_dask=False):
     # and 'n_valid' values for each pair of chromosomes:
     trans_df = pd.DataFrame.from_dict( trans_records, orient="index" )
     trans_df.index.rename( ["chrom1","chrom2"], inplace=True )
+    # an alternative way to get from records to DataFrame, as in CLI expected:
+    # result = pd.DataFrame(
+    #     [
+    #         {"chrom1": s1[0], "chrom2": s2[0], **rec}
+    #         for (s1, s2), rec in trans_records.items()
+    #     ],
+    #     columns=["chrom1", "chrom2", "n_valid", "count.sum", "balanced.sum"],
+    # )
 
     # the actual expected is balanced.sum/n_valid:
     trans_df["balanced.avg"] = trans_df["balanced.sum"] / trans_df["n_valid"]
