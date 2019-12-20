@@ -104,6 +104,7 @@ def compute_expected(
         weight2 = weight_name + "2"
         transforms = {"balanced": lambda p: p["count"] * p[weight1] * p[weight2]}
     else:
+        weight_name = None
         transforms = {}
 
     # execution details
