@@ -361,7 +361,7 @@ def _sum_diagonals(df, field):
 
 
 def cis_expected(
-    clr, regions, field="balanced", chunksize=1000000, use_dask=True, ignore_diags=2
+    clr, regions, field="balanced", chunksize=1000000, use_dask=False, ignore_diags=2
 ):
     """
     Compute the mean signal along diagonals of one or more regional blocks of
@@ -380,6 +380,10 @@ def cis_expected(
         no-op. *FIXME*
     chunksize : int, optional
         Size of dask chunks.
+    use_dask : boolean
+        Not implemented
+    ignore_diags : int
+        Number of initial diagonals to exclude from statistics
 
     Returns
     -------
@@ -393,16 +397,19 @@ def cis_expected(
         stacklevel=2,
     )
 
-    import dask.dataframe as dd
-    from cooler.sandbox.dask import read_table
 
     if use_dask:
-        pixels = read_table(clr.uri + "/pixels", chunksize=chunksize)
-    else:
-        pixels = clr.pixels()[:]
-    pixels = cooler.annotate(pixels, clr.bins(), replace=False)
-    pixels = pixels[pixels.chrom1 == pixels.chrom2]
+        # pixels = read_table(clr.uri + "/pixels", chunksize=chunksize)
+        raise NotImplementedError("Not implemented due to `cis_expected` deprecation")
 
+    # use balaned transformation only:
+    balanced_transform = {
+            "balanced": \
+                lambda pixels: pixels["count"] * pixels["weight1"] * pixels["weight2"]
+            }
+
+
+    # regions will be turned into supports: "(chrom, start, end)"
     named_regions = False
     if isinstance(regions, pd.DataFrame):
         named_regions = True
@@ -410,66 +417,86 @@ def cis_expected(
         names = regions["name"].values
         regions = regions[["chrom", "start", "end"]].to_records(index=False)
     else:
+        # if an individual region is a string, this is meaningless already
         chroms = [region[0] for region in regions]
         names = chroms
-    cis_maps = {chrom: pixels[pixels.chrom1 == chrom] for chrom in chroms}
 
-    diag_tables = []
-    data_sums = []
-
+    diag_records = []
+    # we'll calculate diag_tables for different combinations
+    # of regions "on the fly" - because diagonal and asymmetric
+    # could alternate in theory in `regions`:
     for region in regions:
-        if len(region) == 1:
+        if isinstance(region, str):
+            raise ValueError("Regions cannot be strings, must be sequences")
+        elif len(region) == 1: # whole chromosome case
             chrom, = region
-            start1, end1 = 0, clr.chromsizes[chrom]
-            start2, end2 = start1, end1
-        elif len(region) == 3:
-            chrom, start1, end1 = region
-            start2, end2 = start1, end1
-        elif len(region) == 5:
+            drec = diagsum(
+                        clr,
+                        supports = [ (chrom, 0, clr.chromsizes[chrom]), ],
+                        transforms = balanced_transform,
+                        chunksize = chunksize,
+                        ignore_diags = ignore_diags,
+                        map=map
+                    )
+            diag_records.append(drec) # collect diag records
+        elif len(region) == 3: # sub-chromosomal, but diagonal (e.g. arm)
+            chrom, start, end = region
+            drec = diagsum(
+                        clr,
+                        supports = [ (chrom, start, end), ],
+                        transforms = balanced_transform,
+                        chunksize = chunksize,
+                        ignore_diags = ignore_diags,
+                        map=map
+                    )
+            diag_records.append(drec) # collect diag records
+        elif len(region) == 5: # sub-chromosomal, assymetric (e.g. inter-arm)
             chrom, start1, end1, start2, end2 = region
+            drec = diagsum_asymm(
+                        clr,
+                        supports1 = [ (chrom, start1, end1), ],
+                        supports2 = [ (chrom, start2, end2), ],
+                        contact_type = "cis",
+                        transforms = balanced_transform,
+                        chunksize = chunksize,
+                        ignore_diags = ignore_diags,
+                        map=map
+                    )
+            diag_records.append(drec) # collect diag records
         else:
             raise ValueError("Regions must be sequences of length 1, 3 or 5")
 
-        bins = clr.bins().fetch(chrom).reset_index(drop=True)
-        bad_mask = np.array(bins["weight"].isnull())
-        lo1, hi1 = clr.extent((chrom, start1, end1))
-        lo2, hi2 = clr.extent((chrom, start2, end2))
-        co = clr.offset(chrom)
-        lo1 -= co
-        lo2 -= co
-        hi1 -= co
-        hi2 -= co
 
-        dt = make_diag_table(bad_mask, [lo1, hi1], [lo2, hi2])
-        sel = bg2slice_frame(
-            cis_maps[chrom], (chrom, start1, end1), (chrom, start2, end2)
-        ).copy()
-        sel["diag"] = sel["bin2_id"] - sel["bin1_id"]
-        sel["balanced"] = sel["count"] * sel["weight1"] * sel["weight2"]
-        agg = _sum_diagonals(sel, field)
-        diag_tables.append(dt)
-        data_sums.append(agg)
+    # # now `drec` should be turned into `dtable`:
+    # result = pd.concat(
+    #     [tables[support] for support in supports],
+    #     keys=[support[0] for support in supports],
+    #     names=["chrom"],
+    # )
+    # result = result.reset_index()
 
-    # run dask scheduler
-    if len(data_sums) and isinstance(data_sums[0], dd.Series):
-        data_sums = dd.compute(*data_sums)
+    # # calculate actual averages by dividing sum by n_valid:
+    # result["count.avg"] = result["count.sum"] / result["n_valid"]
+    # for key in transforms.keys():
+    #     result[key + ".avg"] = result[key + ".sum"] / result["n_valid"]
 
-    # append to tables
-    for dt, agg in zip(diag_tables, data_sums):
-        dt[agg.name] = 0
-        dt[agg.name] = dt[agg.name].add(agg, fill_value=0)
-        dt.iloc[:ignore_diags, dt.columns.get_loc(agg.name)] = np.nan
 
-    # merge and return
-    if named_regions:
-        dtable = pd.concat(
-            diag_tables, keys=zip(names, chroms), names=["name", "chrom"]
-        )
-    else:
-        dtable = pd.concat(diag_tables, keys=list(chroms), names=["chrom"])
+    # # append to tables
+    # for dt, agg in zip(diag_tables, data_sums):
+    #     dt[agg.name] = 0
+    #     dt[agg.name] = dt[agg.name].add(agg, fill_value=0)
+    #     dt.iloc[:ignore_diags, dt.columns.get_loc(agg.name)] = np.nan
 
-    # the actual expected is balanced.sum/n_valid:
-    dtable["balanced.avg"] = dtable["balanced.sum"] / dtable["n_valid"]
+    # # merge and return
+    # if named_regions:
+    #     dtable = pd.concat(
+    #         diag_tables, keys=zip(names, chroms), names=["name", "chrom"]
+    #     )
+    # else:
+    #     dtable = pd.concat(diag_tables, keys=list(chroms), names=["chrom"])
+
+    # # the actual expected is balanced.sum/n_valid:
+    # dtable["balanced.avg"] = dtable["balanced.sum"] / dtable["n_valid"]
     return dtable
 
 
