@@ -621,7 +621,7 @@ def make_diag_tables(clr, supports, weight_name="weight", bad_bins=None):
         }
     elif isinstance(weight_name, str):
         # using balacning weight to infer bad bins
-        if weight_name not in clr.bins().columns.:
+        if weight_name not in clr.bins().columns:
             raise KeyError("Balancing weight {weight_name} not found!")
         groups = dict(iter(bins.groupby("chrom")[weight_name]))
         bad_bin_dict = {
@@ -945,7 +945,7 @@ def blocksum_pairwise(
         for (i, j), agg in result.items():
             for field in fields:
                 agg_name = "{}.sum".format(field)
-                s = np.asscalar(agg[field])
+                s = agg[field].item()
                 if not np.isnan(s):
                     records[supports1[i], supports2[j]][agg_name] += s
 
