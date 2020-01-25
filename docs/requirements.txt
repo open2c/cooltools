@@ -4,3 +4,4 @@ sphinx-rtd-theme
 recommonmark
 nbsphinx
 numpy
+pip!=20.0
