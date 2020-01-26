@@ -95,8 +95,7 @@ def lattice_pdist_frequencies(n, points):
     Notes
     -----
     This is done using a convolution via FFT. Thanks to Peter de Rivaz; see
-    <http://stackoverflow.com/questions/42423823/distribution-of-pairwise-
-    distances-between-many-integers>.
+    `<http://stackoverflow.com/questions/42423823/distribution-of-pairwise-distances-between-many-integers>`_.
 
     """
     if len(np.unique(points)) != len(points):
@@ -118,30 +117,31 @@ def count_bad_pixels_per_diag(n, bad_bins):
     and the contribution of the intersection points of bad rows with bad
     columns that get double counted.
 
-    o : bad bin
-    * : bad pixel
-    x : intersection bad pixel
-    $ : out of bounds bad pixel
+    ::
 
-         $    $     $
-     *--------------------------+
-      *  *    *     *           |
-       * *    *     *           |
-        **    *     *           |
-         o****x*****x***********|$
-          *   *     *           |
-           *  *     *           |
-            * *     *           |
-             o******x***********|$
-              *     *           |
-               *    *           |
-                *   *           |
-                 *  *           |
-                  * *           |
-                   **           |
-                    o***********|$
-                     *          |
-                      *         |
+        o : bad bin
+        * : bad pixel
+        x : intersection bad pixel
+        $ : out of bounds bad pixel
+             $    $     $
+         *--------------------------+
+          *  *    *     *           |
+           * *    *     *           |
+            **    *     *           |
+             o****x*****x***********|$
+              *   *     *           |
+               *  *     *           |
+                * *     *           |
+                 o******x***********|$
+                  *     *           |
+                   *    *           |
+                    *   *           |
+                     *  *           |
+                      * *           |
+                       **           |
+                        o***********|$
+                         *          |
+                          *         |
 
     Parameters
     ----------
