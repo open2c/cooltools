@@ -4,5 +4,11 @@ sphinx-rtd-theme
 sphinx-click
 recommonmark
 nbsphinx
+click
 numpy
+cython
+cooler
+numba
+bioframe
+sklearn
 pip!=20.0
