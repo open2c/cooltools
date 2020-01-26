@@ -22,6 +22,7 @@ MOCK_MODULES = [
     'cooler.core',
     'cooler.tools',
     'cython',
+    'cytoolz',
     'dask',
     'h5py',
     'matplotlib',
