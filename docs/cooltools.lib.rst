@@ -1,54 +1,34 @@
 cooltools.lib package
 =====================
 
-Submodules
-----------
-
-cooltools.lib.common module
----------------------------
-
-.. automodule:: cooltools.lib.common
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
-cooltools.lib.numutils module
------------------------------
+numutils
+--------
 
 .. automodule:: cooltools.lib.numutils
    :members:
    :undoc-members:
    :show-inheritance:
 
-cooltools.lib.peaks module
---------------------------
+peaks
+-----
 
 .. automodule:: cooltools.lib.peaks
    :members:
    :undoc-members:
    :show-inheritance:
 
-cooltools.lib.plotting module
------------------------------
+plotting
+--------
 
 .. automodule:: cooltools.lib.plotting
    :members:
    :undoc-members:
    :show-inheritance:
 
-cooltools.lib.runlength module
-------------------------------
+runlength
+---------
 
 .. automodule:: cooltools.lib.runlength
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
-
-Module contents
----------------
-
-.. automodule:: cooltools.lib
    :members:
    :undoc-members:
    :show-inheritance:

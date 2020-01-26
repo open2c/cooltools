@@ -1,5 +1,5 @@
-Command-line Reference
-======================
+CLI Reference
+=============
 
 .. click:: cooltools.cli:cli
    :prog: cooltools
