@@ -14,6 +14,38 @@ import os
 import sys
 sys.path.insert(0, os.path.abspath('..'))
 
+from unittest.mock import Mock
+MOCK_MODULES = [
+    'cooltools.io.fastsavetxt',
+    'cooltools.lib._numutils',
+    'cooler',
+    'cooler.core',
+    'cooler.tools',
+    'cython',
+    'cytoolz',
+    'dask',
+    'h5py',
+    'matplotlib',
+    'matplotlib.cm',
+    'matplotlib.pyplot',
+    'numba',
+    # 'numpy',
+    'pandas',
+    'scipy',
+    'scipy.interpolate',
+    'scipy.linalg',
+    'scipy.sparse',
+    'scipy.sparse.linalg',
+    'scipy.ndimage',
+    'scipy.ndimage.interpolation',
+    'scipy.signal',
+    'scipy.stats',
+    'sklearn',
+    'sklearn.cluster',
+]
+for mod_name in MOCK_MODULES:
+    sys.modules[mod_name] = Mock()
+
 
 # -- Project information -----------------------------------------------------
 
@@ -49,22 +81,6 @@ extensions = [
     'sphinx_click.ext',
     'recommonmark',
     'nbsphinx',
-]
-
-autodoc_mock_imports = [
-    'cooltools.io.fastsavetxt',
-    'cooltools.lib._numutils',
-    # 'numpy',
-    'scipy',
-    'cython',
-    'matplotlib',
-    'pandas',
-    'h5py',
-    'numba',
-    'dask',
-    'sklearn',
-    'cooler',
-    'click',
 ]
 
 # Extension configuration
