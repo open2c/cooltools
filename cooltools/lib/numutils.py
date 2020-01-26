@@ -548,6 +548,7 @@ def observed_over_expected(
     The diagonals of the matrix, corresponding to contacts between loci pairs
     with a fixed distance, are grouped into exponentially growing bins of
     distances; the diagonals from each bin are normalized by their average value.
+
     Parameters
     ----------
     matrix : np.ndarray
@@ -558,6 +559,7 @@ def observed_over_expected(
         If 2D, it is interpreted as a mask of "good" pixels.
     dist_bin_edge_ratio : float
         The ratio of the largest and the shortest distance in each distance bin.
+
     Returns
     -------
     OE : np.ndarray
@@ -569,8 +571,8 @@ def observed_over_expected(
         The sum of contact frequencies in each distance bin.
     n_pixels : np.ndarray
         The total number of valid pixels in each distance bin.
-    """
 
+    """
     N = matrix.shape[0]
 
     mask2d = np.empty(shape=(0, 0), dtype=np.bool_)
@@ -990,19 +992,22 @@ def remove_good_singletons(mat, mask=None, returnMask=False):
 def interpolate_bad_singletons(
     mat, mask=None, fillDiagonal=True, returnMask=False, secondPass=True, verbose=False
 ):
-    """ interpolate singleton missing bins for visualization
+    """Interpolate singleton missing bins for visualization
 
     Examples
     --------
-    ax = plt.subplot(121)
-    maxval =  np.log(np.nanmean(np.diag(mat,3))*2 )
-    plt.matshow(np.log(mat)), vmax=maxval, fignum=False)
-    plt.set_cmap('fall');
-    plt.subplot(122,sharex=ax, sharey=ax)
-    plt.matshow(np.log(
-            interpolate_bad_singletons(remove_good_singletons(mat))), vmax=maxval, fignum=False)
-    plt.set_cmap('fall');
-    plt.show()
+    >>> ax = plt.subplot(121)
+    >>> maxval =  np.log(np.nanmean(np.diag(mat,3))*2 )
+    >>> plt.matshow(np.log(mat)), vmax=maxval, fignum=False)
+    >>> plt.set_cmap('fall');
+    >>> plt.subplot(122, sharex=ax, sharey=ax)
+    >>> plt.matshow(
+            np.log(interpolate_bad_singletons(remove_good_singletons(mat))),
+            vmax=maxval,
+            fignum=False
+        )
+    >>> plt.set_cmap('fall');
+    >>> plt.show()
     """
     mat = mat.copy()
     if mask is None:

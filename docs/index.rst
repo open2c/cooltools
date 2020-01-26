@@ -15,7 +15,7 @@ The tools for your *.cool*\ s
 
    installation
    cli
-   modules
+   cooltools
 
 
 .. toctree::
