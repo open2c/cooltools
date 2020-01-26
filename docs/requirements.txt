@@ -1,6 +1,7 @@
 ipython
 Sphinx
 sphinx-rtd-theme
+sphinx-click
 recommonmark
 nbsphinx
 numpy

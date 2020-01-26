@@ -18,7 +18,7 @@ sys.path.insert(0, os.path.abspath('..'))
 # -- Project information -----------------------------------------------------
 
 project = 'cooltools'
-copyright = '2019, cooltoolers'
+copyright = '2020, cooltoolers'
 author = 'cooltoolers'
 
 
@@ -46,6 +46,7 @@ extensions = [
     'sphinx.ext.autosummary',
     'sphinx.ext.napoleon',
     'sphinx.ext.mathjax',
+    'sphinx_click.ext',
     'recommonmark',
     'nbsphinx',
 ]
