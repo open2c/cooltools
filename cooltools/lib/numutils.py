@@ -78,7 +78,6 @@ def fill_na(arr, value=0, copy=True):
 
     Parameters
     ----------
-
     arr : np.array
 
     value : float
@@ -114,8 +113,8 @@ def dist_to_mask(mask, side="min"):
     -------
     dist: array of int
 
-    Notes:
-    ------
+    Notes
+    -----
     The solution is borrowed from https://stackoverflow.com/questions/18196811/cumsum-reset-at-nan
 
     """
@@ -150,12 +149,11 @@ def get_finite(arr):
 
 
 def fill_inf(arr, pos_value=0, neg_value=0, copy=True):
-    """Replaces positive and negative infinity entries in an array
-       with the provided values.
+    """Replaces positive and negative infinity entries in an array with the
+    provided values.
 
     Parameters
     ----------
-
     arr : np.array
 
     pos_value : float
@@ -181,7 +179,6 @@ def fill_nainf(arr, value=0, copy=True):
 
     Parameters
     ----------
-
     arr : np.array
 
     value : float
@@ -190,7 +187,9 @@ def fill_nainf(arr, value=0, copy=True):
         If True, creates a copy of x, otherwise replaces values in-place.
         By default, True.
 
-    .. note:: differs from np.nan_to_num in that it replaces np.inf with the same
+    Notes
+    -----
+    Differs from np.nan_to_num in that it replaces np.inf with the same
     number as np.nan.
     """
     if copy:
@@ -311,17 +310,21 @@ def COMED(xs, ys, has_nans=False):
     """Calculate the comedian - the robust median-based counterpart of
     Pearson's r.
 
-    comedian = med((xs-median(xs))*(ys-median(ys))) / MAD(xs) / MAD(ys)
+    ::
+
+        comedian = median((xs-median(xs))*(ys-median(ys))) / MAD(xs) / MAD(ys)
 
     Parameters
     ----------
-
     has_nans : bool
         if True, mask (x,y) pairs with at least one NaN
 
-    .. note:: Citations: "On MAD and comedians" by Michael Falk (1997),
+    Notes
+    -----
+    Citations: "On MAD and comedians" by Michael Falk (1997),
     "Robust Estimation of the Correlation Coefficient: An Attempt of Survey"
     by Georgy Shevlyakov and Pavel Smirnov (2011)
+
     """
 
     if has_nans:
@@ -337,8 +340,8 @@ def COMED(xs, ys, has_nans=False):
 
 
 def normalize_score(arr, norm="z", axis=None, has_nans=True):
-    """Normalize an array by subtracting the first moment and
-    dividing the residual by the second.
+    """Normalize an array by subtracting the first moment and dividing the
+    residual by the second.
 
     Parameters
     ----------
@@ -429,7 +432,6 @@ def get_eig(mat, n=3, mask_zero_rows=False, subtract_mean=False, divide_by_mean=
 
     Parameters
     ----------
-
     mat : np.ndarray
         A square matrix, must not contain nans, infs or zero rows.
 
@@ -448,7 +450,6 @@ def get_eig(mat, n=3, mask_zero_rows=False, subtract_mean=False, divide_by_mean=
 
     Returns
     -------
-
     eigvecs : np.ndarray
         An array of eigenvectors (in rows), sorted by a decreasing absolute
         eigenvalue.
@@ -510,6 +511,7 @@ def get_eig(mat, n=3, mask_zero_rows=False, subtract_mean=False, divide_by_mean=
 @numba.njit
 def _logbins_numba(lo, hi, ratio=0, N=0, prepend_zero=False):
     """Make bins with edges evenly spaced in log-space.
+
     Parameters
     ----------
     lo, hi : int
@@ -520,6 +522,7 @@ def _logbins_numba(lo, hi, ratio=0, N=0, prepend_zero=False):
     N : int
         The target number of bins. The resulting number of bins is not guaranteed.
         Either ratio or N must be specified.
+
     """
     lo = int(lo)
     hi = int(hi)
@@ -698,7 +701,7 @@ def iterative_correction_symmetric(
 
 @numba.jit  # (nopython=True)
 def iterative_correction_asymmetric(x, max_iter=1000, tol=1e-5, verbose=False):
-    """ adapted from iterative_correction_symmetric
+    """Adapted from iterative_correction_symmetric
 
     Parameters
     ----------
@@ -1002,10 +1005,10 @@ def interpolate_bad_singletons(
     >>> plt.set_cmap('fall');
     >>> plt.subplot(122, sharex=ax, sharey=ax)
     >>> plt.matshow(
-            np.log(interpolate_bad_singletons(remove_good_singletons(mat))),
-            vmax=maxval,
-            fignum=False
-        )
+    ...     np.log(interpolate_bad_singletons(remove_good_singletons(mat))),
+    ...     vmax=maxval,
+    ...     fignum=False
+    ... )
     >>> plt.set_cmap('fall');
     >>> plt.show()
     """
