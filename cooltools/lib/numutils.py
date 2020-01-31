@@ -3,6 +3,7 @@ from scipy.linalg import toeplitz
 import scipy.sparse.linalg
 import scipy.interpolate
 from scipy.ndimage.interpolation import zoom
+import scipy.ndimage.filters
 import numpy as np
 import numba
 import cooler
@@ -1361,3 +1362,110 @@ def adaptive_coarsegrain(ar, countar, cutoff=5, max_levels=8, min_shape=8):
     ar_next = ar_next[:Norig, :Norig]
 
     return ar_next
+
+
+def robust_gauss_filter(ar, 
+                        sigma=2, 
+                        functon=scipy.ndimage.filters.gaussian_filter1d,
+                        kwargs = None):
+    """
+    Implements an edge-handling mode for gaussian filter that basically ignores the edge, and also handles NANs.
+    
+    Available edge-handling modes in ndimage.filters attempt to somehow "extrapolate" the edge value and then 
+    apply the filter (see https://docs.scipy.org/doc/scipy/reference/generated/scipy.ndimage.convolve.html). 
+    That's likely because convolve uses fast fourier transform, which requires the kernel to be constant. 
+    Here we design a better edge-handling for the gaussian smoothing. 
+    
+    In a gaussian-filtered array, a pixel away from the edge is a mean of nearby pixels with gaussian weights. 
+    With this mode, pixels near start/end are also a mean of nearby pixels with gaussian weights. That's it. 
+    If we encounter NANs, we also simply ignore them, following the same definition: mean of nearby valid pixels. 
+    Yes, it rases the weights for the first/last pixels, because now only a part of the whole gaussian is being used 
+    (up to 1/2 for the first/last pixel and large sigma). But it preserves the "mean of nearby pixels" definition. 
+    It is different from padding with zeros (it would drag the first pixel down to be more like zero). 
+    It is also different from "nearest" - that gives too much weight to the first/last pixel. 
+
+    
+    To achieve this smoothing, we preform regular gaussian smoothing using mode="constant" 
+    (pad with zeros). Then we takes an array of valid pixels and smooth it the same way. 
+    This calculates how many "average valid pixels" contributed to each point of a smoothed array. 
+    Dividing one by the other achieves the desired result. 
+
+    Parameters
+    ----------
+    ar: array-like 
+        Input array
+    sigma: float
+        sigma to be passed to the filter 
+    function: callable
+        Filter to use. Default is gauusian_filter1d
+    kwargs: dict
+        Additional args to pass to the filter. Default:None
+    
+    """
+    if kwargs == None:
+        kwargs = {}        
+    ar = np.asarray(ar, dtype=float)
+    mask = np.isfinite(ar)
+    ar[~mask] = 0 
+    a = functon(ar, sigma=sigma, mode="constant", **kwargs)
+    b = functon(1. * mask, sigma=sigma, mode="constant", **kwargs)
+    return a/b
+    
+    
+def weighted_groupby_mean(df, group_by, weigh_by, mode="mean"):
+    """
+    Weighted mean, std, and std in log space for a dataframe.groupby 
+    
+    Parameters
+    ----------
+    df : dataframe 
+        Dataframe to groupby
+    group_by : str or list
+        Columns to group by 
+    weight_by : str
+        Column to use as weights 
+    mode : "mean", "std" or "logstd"
+        Do the weighted mean, the weighted standard deviaton, 
+        or the weighted std in log-space from the mean-log value 
+        (useful for P(s) etc.)
+    
+    
+    """
+    if type(group_by) == str:
+        group_by = [group_by]
+    gr = df.groupby(group_by)
+    if mode == "mean": 
+        def wstd(x):
+            return np.average(x, weights=df.loc[x.index, weigh_by])
+        wm = wstd
+    elif mode == "std":
+        def wstd(x):
+            wm = np.average(x, weights=df.loc[x.index, weigh_by])
+            dev = x - wm 
+            res = np.sqrt(np.average(dev**2, weights=df.loc[x.index, weigh_by]))
+            return res
+        wm = wstd
+    elif mode == "logstd":
+        def wstd(x):
+            x = np.log(x)
+            wm = np.average(x, weights=df.loc[x.index, weigh_by])
+            dev = x - wm 
+            res = np.sqrt(np.average(dev**2, weights=df.loc[x.index, weigh_by]))            
+            return np.exp(res)
+        wm = wstd
+    else:
+        raise NotImplementedError
+        
+            
+    f = {}
+    for i in df.columns:
+        if i in group_by:
+            continue
+        elif i == weigh_by:
+            f[i] = ['sum']
+        else:
+            f[i] = [wm]
+    agg =  gr.agg(f)
+    agg.columns = [i[0] for i in agg.columns]
+    return agg 
+     

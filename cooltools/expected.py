@@ -950,3 +950,245 @@ def blocksum_pairwise(
                     records[supports1[i], supports2[j]][agg_name] += s
 
     return records
+
+
+def logbin_expected(exp, ratio=1.2, 
+                    spread_funcs="logstd",
+                    spread_funcs_slope =  "std",
+                    minmax_drop_bins=2,
+                    der_smooth_function_by_reg = lambda x:numutils.robust_gauss_filter(x,2),
+                    der_smooth_function_combined = lambda x:numutils.robust_gauss_filter(x,1.3),
+                    mid_nvalid = 200,
+                    min_count = 50, 
+                    ):
+    """
+    Logarithmically bins expected as produced by diagsum method
+    See description below 
+
+    Parameters
+    ----------
+
+    exp: dict 
+        {region:expected_df} produced by diagsum 
+        
+    ratio: float >1 (optional) 
+        ratio of neighboring bins for binning expected 
+        
+    spread_funcs: "minmax", "std", "logstd" or a function (see below)
+        A way to estimate the spread of the P(s) curves between regions.
+        * "minmax" - use the minimum/maximum of by-region P(s)
+        * "std" - use weighted standard deviation of P(s) curves (may produce negative results)
+        * "logstd" (recommended) weighted standard deviation in logspace (as seen on the plot) 
+        
+    spread_funcs_slope: "minmax", "std" or a funciton
+        Similar to spread_func, but for slopes rather than P(s)
+    
+    der_smooth_function_by_reg: callable
+        A smoothing function to be applied to log(P(s)) and log(x) 
+        before calculating P(s) slopes for by-region data
+    
+    der_smooth_function_combined: callable
+        A smoothing function for calculating slopes on combined data
+    
+    min_nvalid: int
+        For each region, throw out bins (log-spaced) that have less than min_nvalid valid pixels
+        This will ensure that each entree in Pc_by_region has at least n_valid valid pixels
+        Don't set it to zero, or it will introduce bugs. Setting it to 1 is OK, but not recommended. 
+    
+    min_count: int
+        If counts are found in the data, then for each region, throw out bins (log-spaced) 
+        that have more than min_counts of counts.sum (raw Hi-C counts).
+        This will ensure that each entree in Pc_by_region has at least min_count raw Hi-C reads
+
+
+    Returns 
+    -------
+
+    dict with dataframes with the following keys
+    * "Pc": dataframe of contact probabilities and spread across regions
+    * "slope": slope of Pc(s) on a log-log plot and spread across regions
+    * "Pc_by_region": a dataframe of Pc(s) for each region. 
+    * "slope_by_region": a dataframe of slopes for each region
+    
+    
+    Description
+    -----------
+        
+    For main Pc and slope, the algorithm is the following
+
+    1. concatenate all the expected for all regions into a large dataframe. 
+    2. find the furthest diagonal with n_valid>0 
+    3. create logarithmically-spaced buckets of diagonals that end at the furthest diagonal
+    4. pool together n_valid and balanced.sum for diagonals in each bin 
+    5. calculate the average diagonal for each bucket, weighted by n_valid 
+    6. divide balanced.sum by n_valid after summing for each bucket (not before)
+    7. calculate the slope in log space.
+    
+    NOTE:  that it creates x values that are not necessarily centered at the center of the bin
+    This is especially true for the last few bins 
+
+    step #5 is important for three reasons. 
+    First, we would not count diagonals that have n_valid=0 because those have weight of 0 
+    Second, we would correctly account for the fact that some regions end in the center of the bin 
+    Third, we would account for the fact that the very last diagonals are very short and have very few 
+    values (hence weighing diagonals with a weight of n_valid)
+
+    steps #4 and #6 are important because the ratio of sums does not equal to the sum of ratios, and 
+    the former is more correct (the latter is more susceptible to noise). 
+    It is generally better to divide at the very end, rather than dividing things for each diagonal.    
+
+
+    For errorbars / spread, it does the following 
+    
+    1. Take all by-region P(s) 
+    2. Remove the last var_drop_last_bins bins for each region 
+       (by default two. They are most noisy and would inflate the 
+       spread for the last points)
+    3. Groupby P(s) by region 
+    4. Apply spread_funcs to the pd.GroupBy object
+       Options are:  minimum and maximum ("minmax"), standard deviation ("std"), 
+       standard deviation in logspace ("logstd", default)  or two custom functions
+    5. Append them to the P(s) for the same bin.
+    
+    NOTE as a result, by default, we do not estimate spread for the last two bins
+    This is because there are often very few chromosomal arms there, and different arm
+    measurements are noisy
+
+
+
+    example
+    -------
+
+    c = cooler.Cooler(file+"::resolutions/1000")
+    with multiprocess.Pool(20) as pool:
+        exp = cooltools.expected.diagsum(
+            c, 
+            list(arms.itertuples(index=False,name=None)), 
+            transforms={'balanced': lambda p: p['count'] * p['weight1'] * p['weight2']},
+            map=pool.map)
+
+    scal_dict = logbin_expected(exp, ratio=1.2, spread_funcs="logstd")
+    scal = scal_dict["Pc"]
+    der = scal_dict["slope"]
+    plt.figure(figsize=(5, 5))
+    plt.subplot(211)
+
+    for dummy,ind in scal_dict["Pc_by_region"].groupby("region"):
+        plt.plot(ind["x"], ind["Pc"], color="gray", linewidth=0.5, alpha=0.5)
+
+    plt.plot(scal["x"], scal["Pc"], color="blue")
+    plt.fill_between(scal["x"], scal["low_err"],
+                     scal["high_err"], color="blue", alpha=0.3)
+
+
+
+    plt.ylabel("Pc, contact probability")
+    plt.xscale("log")
+    plt.yscale("log")
+    plt.subplot(212)
+
+    for dummy,ind in scal_dict["slope_by_region"].groupby("region"):
+        plt.plot(ind["x"], ind["slope"], color="gray", linewidth=0.5, alpha=0.5)
+
+    plt.plot(der["x"], der["slope"])
+    plt.fill_between(der["x"], der["low_err"],
+                     der["high_err"], color="blue", alpha=0.3)
+
+    plt.ylabel("Pc slope")
+    plt.xlabel("Genomic separation (kb)")
+    plt.xscale("log")
+    plt.tight_layout()
+
+
+    """
+
+    from cooltools.lib.numutils import logbins
+
+    exp = pd.concat([i.reset_index() for i in exp.values()], keys=map(repr, exp.keys()),
+                    names=["region"]).reset_index(level=0).reset_index(drop=True)
+    exp = exp[~pd.isna(exp["balanced.sum"])]
+    exp["x"] = exp.pop("diag")
+    diagmax = exp["x"].max()
+    bins = logbins(1, diagmax+1, 1.2)
+
+    exp["bin_id"] = np.searchsorted(bins, exp["x"])
+
+    # constructing expected grouped by region
+    byReg = exp.copy()
+    byReg["x"] *= byReg["n_valid"]
+    byRegExp = byReg.groupby(["region", "bin_id"]).sum()
+    byRegExp["x"] /= byRegExp["n_valid"]
+    byRegExp = byRegExp.reset_index()
+    byRegExp = byRegExp[byRegExp["n_valid"] > mid_nvalid]
+    byRegExp["Pc"] = byRegExp["balanced.sum"] / byRegExp["n_valid"]
+    byRegExp = byRegExp[byRegExp["Pc"] > 0]
+    if min_count: 
+        if "count.sum" in byRegExp:
+            byRegExp = byRegExp[byRegExp["count.sum"] > min_count]
+        else:
+            warnings.warn(RuntimeWarning("counts not found"))
+    
+    
+    byRegDer = []
+    for reg,subdf in byRegExp.groupby("region"):
+        subdf = subdf.sort_values("bin_id")
+        valid = np.minimum(subdf.n_valid.values[:-1], subdf.n_valid.values[1:])
+        mids = np.sqrt(subdf.x.values[:-1] * subdf.x.values[1:])
+        f = der_smooth_function_by_reg
+        slope = np.diff(f(np.log(subdf.Pc.values))) / np.diff(f(np.log(subdf.x.values)))
+        newdf = pd.DataFrame({"x":mids, "slope":slope, "n_valid":valid, "bin_id":subdf.bin_id.values[:-1]})
+        
+        newdf["region"] = reg
+        byRegDer.append(newdf)
+    byRegDer = pd.concat(byRegDer).reset_index(drop=True)
+                 
+
+    
+    scal = numutils.weighted_groupby_mean(byRegExp[["x", "Pc", "bin_id","n_valid"]], "bin_id", "n_valid", mode="mean")
+
+    if spread_funcs == "minmax": 
+        byRegVar = byRegExp.copy()
+        byRegVar = byRegVar.loc[byRegVar.index.difference(byRegVar.groupby('region')
+                                                          ['n_valid'].tail(minmax_drop_bins).index)]
+        low_err =  byRegVar.groupby("bin_id")["Pc"].min()
+        high_err = byRegVar.groupby("bin_id")["Pc"].max()
+    elif spread_funcs == "std":
+        var = numutils.weighted_groupby_mean(byRegExp[["Pc", "bin_id","n_valid"]], "bin_id", "n_valid", mode="std")["Pc"]
+        low_err = scal["Pc"] - var
+        high_err = scal["Pc"] + var
+    elif spread_funcs == "logstd":
+        var = numutils.weighted_groupby_mean(byRegExp[["Pc", "bin_id","n_valid"]], "bin_id", "n_valid", mode="logstd")["Pc"]
+        low_err = scal["Pc"] / var
+        high_err = scal["Pc"] * var        
+        
+    else:
+        low_err, high_err = spread_func(byRegExp, scal)
+        
+    scal["low_err"] = low_err
+    scal["high_err"] = high_err
+    
+    mids = np.sqrt(scal.x.values[:-1] * scal.x.values[1:])
+    f = der_smooth_function_combined
+
+    slope = np.diff(f(np.log(scal.Pc.values))) / np.diff(f(np.log(scal.x.values)))
+    slope_df = pd.DataFrame({"x": mids, "slope": slope})
+          
+    if spread_funcs_slope == "minmax": 
+        byRegDer = byRegDer.copy()
+        byRegDer = byRegDer.loc[byRegDer.index.difference(byRegDer.groupby('region')
+                                                          ['n_valid'].tail(minmax_drop_bins).index)]
+        low_err =  byRegDer.groupby("bin_id")["slope"].min()
+        high_err = byRegDer.groupby("bin_id")["slope"].max()
+    elif spread_funcs_slope == "std":
+        var = numutils.weighted_groupby_mean(byRegDer[["slope", "bin_id","n_valid"]], "bin_id", "n_valid", mode="std")["slope"]
+        low_err = slope_df["slope"] - var
+        high_err = slope_df["slope"] + var
+
+    else:
+        low_err, high_err = spread_func(byRegExp, scal)
+        
+    slope_df["low_err"] = low_err
+    slope_df["high_err"] = high_err
+    
+    return {"Pc": scal,   "Pc_by_region": byRegExp, 
+           "slope_by_region":byRegDer, "slope":slope_df}
