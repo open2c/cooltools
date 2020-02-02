@@ -25,8 +25,7 @@ def get_diag(arr, i=0):
     """
     return arr.ravel()[
         max(i, -arr.shape[1] * i) : max(0, (arr.shape[1] - i))
-        * arr.shape[1] : arr.shape[1]
-        + 1
+        * arr.shape[1] : arr.shape[1] + 1
     ]
 
 
@@ -656,7 +655,6 @@ def iterative_correction_symmetric(
     _x = x.copy()
     if ignore_diags > 0:
         for d in range(0, ignore_diags):
-            #            set_diag(_x, 0, d) # explicit cycles are easier to jit
             for j in range(0, N - d):
                 _x[j, j + d] = 0
                 _x[j + d, j] = 0
@@ -678,8 +676,6 @@ def iterative_correction_symmetric(
         s += 1
         totalBias *= s
 
-        # _x = _x / s[:, None]  / s[None,:]
-        # an explicit cycle is 2x faster here
         for i in range(N):
             for j in range(N):
                 _x[i, j] /= s[i] * s[j]
@@ -1468,4 +1464,65 @@ def weighted_groupby_mean(df, group_by, weigh_by, mode="mean"):
     agg =  gr.agg(f)
     agg.columns = [i[0] for i in agg.columns]
     return agg 
-     
+
+
+def persistent_log_bins(end=10, bins_per_order_magnitude=10):
+    """
+    Creates most nicely looking log-spaced integer bins starting at 1, 
+    with the defined number of bins per order of magnitude. This is not a replacement for logbins, 
+    and it has a different purpose (see note below). 
+    
+    Parameters
+    ----------
+    
+    end : number (int recommended)
+        log10 of the last value. It is safe to put a large value here and select your range of bins later.           
+    
+    bins_per_order_magnitude : int >0
+        how many bins per order of magnitude
+    
+    
+    Difference between this and logbins
+    -----------------------------------
+    
+    Logbins creates bins from lo to hi, spaced logarithmically with an appriximate ratio. Logbins 
+    makes sure that the last bin is large  (i.e. hi/ratio ... hi), and will not allow the last 
+    bin to be much less than ratio. It would slightly adjust the ratio to achieve that. 
+    As a result, by construciton, logbins bins are different for different lo or hi. 
+    
+    This function is designed to create exactly the same bins that only depend on one parameter, 
+    bins_per_order_magnitude. The goal is to make things calculated for different datasets/organisms/etc.
+    comparable. For example, if these bins are used, it would allow us to divide P(s) for two different organisms
+    by each other because it was calculated for the same bins. 
+    
+    The price you pay for such versatility is that the last bin can be much less than others in real application. 
+    For example, if you have 10 bins per order of magnitude (ratio of 1.25), but your data ends at 10500, then 
+    the only points in the last bin would be 10000..10500, 1/5 of what could be. This may make the last point noisy. 
+    
+    The main part is done using np.logspace and rounding to the nearest integer, followed by unique. 
+    The gaps are then re-sorted to ensure that gaps are strictly increasing. The re-sorting of 
+    gaps was essential, and produced better results than manual adjustment. 
+    
+    Alternatives that produce irregular bins
+    ----------------------------------------
+    
+    Using np.unique(np.logspace(a,b,N,dtype=int)) can be sub-optimal 
+    For example, np.unique(np.logspace(0,1,11,dtype=int)) = [ 1,  2,  3,  5,  6,  7, 10]
+    Note the gaps jump from 1 to 2 back to 1 
+
+    Similarly using np.unique(np.rint(np.logspace..)) can be suboptimal
+    np.unique(np.array(np.rint(np.logspace(0,1,9)),dtype=int))  = [ 1,  2,  3,  4,  6,  7, 10]        
+
+    for bins_per_order_of_magnitude=16, 10 is not in bins. Other than that, 10, 100, 1000, etc. are always included. 
+    
+        
+    """
+    
+    if end > 50:
+        raise ValueError("End is a log10(max_value), not the max_value itself")
+    
+    bin_float = np.logspace(0, end, end * bins_per_order_magnitude + 1)
+    bin_int = np.array(np.rint(bin_float), dtype=int)  # rounding to the nearest int
+    bins = np.unique(bin_int)   # unique bins 
+    bins = np.cumsum(np.sort(np.r_[1,np.diff(bins)]))   #re-ordering gaps (important step)
+    return bins

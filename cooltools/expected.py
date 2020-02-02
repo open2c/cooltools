@@ -1079,7 +1079,7 @@ def logbin_expected(exp, bins_per_order_magnitude=10,
     diagmax = exp["x"].max()
     
     if bin_layout == "fixed":
-        bins = np.unique(np.logspace(0,10,10 * bins_per_order_magnitude+1,dtype=int))
+        bins = numutils.persistent_log_bins(10,bins_per_order_magnitude=bins_per_order_magnitude)
     elif bin_layout == "longest_region":
         bins = logbins(1,diagmax+1, ratio=10**(1/bins_per_order_magnitude))
     else:
