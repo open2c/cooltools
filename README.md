@@ -6,6 +6,8 @@
 
 The tools for your .cool's
 
+Documentation can be found here https://cooltools.readthedocs.io/en/latest/
+
 ## Calling compartments
 
 To call compartments, use `cooltools` to calculate the first three eigenvectors
