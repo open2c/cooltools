@@ -8,21 +8,18 @@ The tools for your .cool's
 
 Documentation can be found here https://cooltools.readthedocs.io/en/latest/
 
-## Calling compartments
+Our contributing guide can be found [here](https://github.com/mirnylab/cooltools/blob/master/CONTRIBUTING.md).
 
-To call compartments, use `cooltools` to calculate the first three eigenvectors
-across the matrix. 
+## Requirements
 
-```
-    cooltools call-compartments ${fullfile}::/resolutions/100000 --out-prefix $filename;
-```
+The following are required before installing cooltools:
 
-Sample output:
+* Python 3.4+
+* `numpy`
+* `cython`
 
-```
-chrom   start   end     E1      E2      E3
-1       0       100000
-...
-1       3000000 3100000 3.009943538549052       2.762190276669322       0.13578728460826148
-...
+## Installation
+
+```sh
+pip install cooltools
 ```
