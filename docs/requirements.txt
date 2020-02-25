@@ -1,6 +1,10 @@
+bioframe
+click>=7.0
 ipython
+nbsphinx
+multiprocess
+numpy
+recommonmark
 Sphinx
 sphinx-rtd-theme
-recommonmark
-nbsphinx
-numpy
+sphinx-click

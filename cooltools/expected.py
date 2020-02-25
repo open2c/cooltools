@@ -2,6 +2,8 @@ from itertools import chain, combinations
 from collections import defaultdict
 from functools import partial
 
+import warnings
+
 import numpy as np
 import pandas as pd
 from scipy.linalg import toeplitz
@@ -71,28 +73,6 @@ def compute_scaling(df, region1, region2=None, dmin=int(1e1), dmax=int(1e7), n_b
     return distbins, obs, areas
 
 
-def bg2slice_frame(bg2, region1, region2):
-    """
-    Slice a dataframe with columns ['chrom1', 'start1', 'end1', 'chrom2',
-    'start2', 'end2']. Assumes no proper nesting of intervals.
-
-    """
-    chrom1, start1, end1 = region1
-    chrom2, start2, end2 = region2
-    if end1 is None:
-        end1 = np.inf
-    if end2 is None:
-        end2 = np.inf
-    out = bg2[
-        (bg2["chrom1"] == chrom1)
-        & (bg2["start1"] >= start1)
-        & (bg2["end1"] < end1)
-        & (bg2["chrom2"] == chrom2)
-        & (bg2["start2"] >= start2)
-        & (bg2["end2"] < end2)
-    ]
-    return out
-
 
 def lattice_pdist_frequencies(n, points):
     """
@@ -115,8 +95,7 @@ def lattice_pdist_frequencies(n, points):
     Notes
     -----
     This is done using a convolution via FFT. Thanks to Peter de Rivaz; see
-    <http://stackoverflow.com/questions/42423823/distribution-of-pairwise-
-    distances-between-many-integers>.
+    `<http://stackoverflow.com/questions/42423823/distribution-of-pairwise-distances-between-many-integers>`_.
 
     """
     if len(np.unique(points)) != len(points):
@@ -138,30 +117,31 @@ def count_bad_pixels_per_diag(n, bad_bins):
     and the contribution of the intersection points of bad rows with bad
     columns that get double counted.
 
-    o : bad bin
-    * : bad pixel
-    x : intersection bad pixel
-    $ : out of bounds bad pixel
+    ::
 
-         $    $     $
-     *--------------------------+
-      *  *    *     *           |
-       * *    *     *           |
-        **    *     *           |
-         o****x*****x***********|$
-          *   *     *           |
-           *  *     *           |
-            * *     *           |
-             o******x***********|$
-              *     *           |
-               *    *           |
-                *   *           |
-                 *  *           |
-                  * *           |
-                   **           |
-                    o***********|$
-                     *          |
-                      *         |
+        o : bad bin
+        * : bad pixel
+        x : intersection bad pixel
+        $ : out of bounds bad pixel
+             $    $     $
+         *--------------------------+
+          *  *    *     *           |
+           * *    *     *           |
+            **    *     *           |
+             o****x*****x***********|$
+              *   *     *           |
+               *  *     *           |
+                * *     *           |
+                 o******x***********|$
+                  *     *           |
+                   *    *           |
+                    *   *           |
+                     *  *           |
+                      * *           |
+                       **           |
+                        o***********|$
+                         *          |
+                          *         |
 
     Parameters
     ----------
@@ -219,6 +199,97 @@ def count_all_pixels_per_diag(n):
 
     """
     return np.arange(n, 0, -1)
+
+
+def count_all_pixels_per_block(clr, supports):
+    """
+    Calculate total number of pixels per rectangular block of a contact map
+    defined as a paired-combination of genomic "support" regions.
+
+    Parameters
+    ----------
+    clr : cooler.Cooler
+        Input cooler
+    supports : list
+        list of genomic support regions
+
+    Returns
+    -------
+    blocks : dict
+        dictionary with total number of pixels per pair of support regions
+    """
+    n = len(supports)
+    x = [clr.extent(region)[1] - clr.extent(region)[0]
+         for region in supports]
+    blocks = {}
+    for i in range(n):
+        for j in range(i + 1, n):
+            blocks[supports[i], supports[j]] = x[i] * x[j]
+    return blocks
+
+
+
+def count_bad_pixels_per_block(clr, supports, weight_name="weight", bad_bins=None):
+    """
+    Calculate number of "bad" pixels per rectangular block of a contact map
+    defined as a paired-combination of genomic "support" regions.
+
+    "Bad" pixels are inferred from the balancing weight column `weight_name` or
+    provided directly in the form of an array `bad_bins`.
+
+    Setting `weight_name` and `bad_bins` to `None` yields 0 bad pixels per
+    combination of support regions.
+
+    Parameters
+    ----------
+    clr : cooler.Cooler
+        Input cooler
+    supports : list
+        a list of genomic support regions
+    weight_name : str
+        name of the weight vector in the "bins" table,
+        if weight_name is None returns 0 for each block.
+        Balancing weight are used to infer bad bins.
+    bad_bins : array-like
+        a list of bins to ignore per support region.
+        Overwrites inference of bad bins from balacning
+        weight [to be implemented].
+
+    Returns
+    -------
+    blocks : dict
+        dictionary with the number of "bad" pixels per pair of support regions
+    """
+    n = len(supports)
+
+    if bad_bins is not None:
+        raise NotImplementedError("providing external list \
+            of bad bins is not implemented.")
+
+    if weight_name is None:
+        # ignore bad bins
+        # useful for unbalanced data
+        x = [0 for region in supports]
+    elif isinstance(weight_name, str):
+        if weight_name not in clr.bins().columns:
+            raise KeyError("Balancing weight {weight_name} not found!")
+        # bad bins are ones with
+        # the weight vector being NaN:
+        x = [np.sum(clr.bins()[weight_name]
+                       .fetch(region)
+                       .isnull()
+                       .astype(int)
+                       .values)
+             for region in supports]
+    else:
+        raise ValueError("`weight_name` can be `str` or `None`")
+
+    blocks = {}
+    for i in range(n):
+        for j in range(i + 1, n):
+            blocks[supports[i], supports[j]] = x[i] * x[j]
+    return blocks
+
 
 
 def make_diag_table(bad_mask, span1, span2):
@@ -311,6 +382,37 @@ def cis_expected(
     Dataframe of diagonal statistics, indexed by region and diagonal number
 
     """
+    warnings.warn(
+        "`cooltools.expected.cis_expected()` is deprecated in 0.3.2, will be removed subsequently. "
+        "Use `cooltools.expected.diagsum()` and `cooltools.expected.diagsum_asymm()` instead.",
+        category=FutureWarning,
+        stacklevel=2,
+    )
+
+    def _bg2slice_frame(bg2, region1, region2):
+        """
+        Slice a dataframe with columns ['chrom1', 'start1', 'end1', 'chrom2',
+        'start2', 'end2']. Assumes no proper nesting of intervals.
+
+        [Warning] this function does not follow the same logic as
+        cooler.matrix.fetch when start/end are at the edges of the bins.
+        """
+        chrom1, start1, end1 = region1
+        chrom2, start2, end2 = region2
+        if end1 is None:
+            end1 = np.inf
+        if end2 is None:
+            end2 = np.inf
+        out = bg2[
+            (bg2["chrom1"] == chrom1)
+            & (bg2["start1"] >= start1)
+            & (bg2["end1"] < end1)
+            & (bg2["chrom2"] == chrom2)
+            & (bg2["start2"] >= start2)
+            & (bg2["end2"] < end2)
+        ]
+        return out
+
     import dask.dataframe as dd
     from cooler.sandbox.dask import read_table
 
@@ -359,7 +461,7 @@ def cis_expected(
         hi2 -= co
 
         dt = make_diag_table(bad_mask, [lo1, hi1], [lo2, hi2])
-        sel = bg2slice_frame(
+        sel = _bg2slice_frame(
             cis_maps[chrom], (chrom, start1, end1), (chrom, start2, end2)
         ).copy()
         sel["diag"] = sel["bin2_id"] - sel["bin1_id"]
@@ -417,101 +519,124 @@ def trans_expected(clr, chromosomes, chunksize=1000000, use_dask=False):
     the actual value of expected for every interchromosomal pair.
 
     """
-
-    def n_total_trans_elements(clr, chromosomes):
-        n = len(chromosomes)
-        x = [clr.extent(chrom)[1] - clr.extent(chrom)[0] for chrom in chromosomes]
-        pairblock_list = []
-        for i in range(n):
-            for j in range(i + 1, n):
-                # appending to the list of tuples
-                pairblock_list.append((chromosomes[i], chromosomes[j], x[i] * x[j]))
-        return pd.DataFrame(pairblock_list, columns=["chrom1", "chrom2", "n_total"])
-
-    def n_bad_trans_elements(clr, chromosomes):
-        n = 0
-        # bad bins are ones with
-        # the weight vector being NaN:
-        x = [
-            np.sum(clr.bins()["weight"].fetch(chrom).isnull().astype(int).values)
-            for chrom in chromosomes
-        ]
-        pairblock_list = []
-        for i in range(len(x)):
-            for j in range(i + 1, len(x)):
-                # appending to the list of tuples
-                pairblock_list.append((chromosomes[i], chromosomes[j], x[i] * x[j]))
-        return pd.DataFrame(pairblock_list, columns=["chrom1", "chrom2", "n_bad"])
+    warnings.warn(
+        "`cooltools.expected.trans_expected()` is deprecated in 0.3.2, will be removed subsequently. "
+        "Use `cooltools.expected.blocksum_pairwise()` instead.",
+        category=FutureWarning,
+        stacklevel=2,
+    )
 
     if use_dask:
         # pixels = daskify(clr.filename, clr.root + '/pixels', chunksize=chunksize)
         raise NotImplementedError("To be implemented once dask supports MultiIndex")
-    else:
-        pixels = clr.pixels()[:]
-    # getting pixels that belong to trans-area,
-    # defined by the list of chromosomes:
-    pixels = cooler.annotate(pixels, clr.bins(), replace=False)
-    pixels = pixels[
-        (pixels.chrom1.isin(chromosomes))
-        & (pixels.chrom2.isin(chromosomes))
-        & (pixels.chrom1 != pixels.chrom2)
-    ]
-    pixels["balanced"] = pixels["count"] * pixels["weight1"] * pixels["weight2"]
-    ntot = (
-        n_total_trans_elements(clr, chromosomes)
-        .groupby(("chrom1", "chrom2"))["n_total"]
-        .sum()
-    )
-    nbad = (
-        n_bad_trans_elements(clr, chromosomes)
-        .groupby(("chrom1", "chrom2"))["n_bad"]
-        .sum()
-    )
-    trans_area = ntot - nbad
-    trans_area.name = "n_valid"
-    # processing with use_dask=True is different:
-    if use_dask:
-        # trans_sum = pixels.groupby(['chrom1', 'chrom2'])['balanced'].sum().compute()
-        pass
-    else:
-        trans_sum = pixels.groupby(["chrom1", "chrom2"])["balanced"].sum()
-    # for consistency with the cis_expected function:
-    trans_sum.name = trans_sum.name + ".sum"
 
-    # returning a DataFrame with MultiIndex, that stores
-    # pairs of 'balanced.sum' and 'n_valid' values for each
-    # pair of chromosomes.
-    dtable = pd.merge(
-        trans_sum.to_frame(), trans_area.to_frame(), left_index=True, right_index=True
-    )
+    # turn chromosomes into supports:
+    chrom_supports = [ (chrom, 0, None) for chrom in chromosomes ]
+    # use balaned transformation only:
+    balanced_transform = {
+            "balanced": \
+                lambda pixels: pixels["count"] * pixels["weight1"] * pixels["weight2"]
+            }
+
+    # trans_expected is simply a wrapper around new blocksum_pairwise
+    # but it preserved the interface of the original trans_expected
+    trans_records = blocksum_pairwise(clr,
+                            supports=chrom_supports,
+                            transforms=balanced_transform,
+                            chunksize=chunksize)
+
+    # trans_records are inter-chromosomal only,
+    # changing trans_records keys to reflect that:
+    # region[0] for a region = (chrom, start, stop)
+    trans_records = {
+        ( region1[0], region2[0] ): val for ( region1, region2 ), val in trans_records.items()
+        }
+
+    # turn trans_records into a DataFrame with
+    # MultiIndex, that stores values of 'balanced.sum'
+    # and 'n_valid' values for each pair of chromosomes:
+    trans_df = pd.DataFrame.from_dict( trans_records, orient="index" )
+    trans_df.index.rename( ["chrom1","chrom2"], inplace=True )
+    # an alternative way to get from records to DataFrame, as in CLI expected:
+    # result = pd.DataFrame(
+    #     [
+    #         {"chrom1": s1[0], "chrom2": s2[0], **rec}
+    #         for (s1, s2), rec in trans_records.items()
+    #     ],
+    #     columns=["chrom1", "chrom2", "n_valid", "count.sum", "balanced.sum"],
+    # )
 
     # the actual expected is balanced.sum/n_valid:
-    dtable["balanced.avg"] = dtable["balanced.sum"] / dtable["n_valid"]
-    return dtable
+    trans_df["balanced.avg"] = trans_df["balanced.sum"] / trans_df["n_valid"]
+    return trans_df
 
 
 ###################
 
 
-def make_diag_tables(clr, supports):
+def make_diag_tables(clr, supports, weight_name="weight", bad_bins=None):
+    """
+    For every support region infer diagonals that intersect this region
+    and calculate the size of these intersections in pixels, both "total" and
+    "n_valid", where "n_valid" does not include "bad" bins into counting.
+
+    "Bad" pixels are inferred from the balancing weight column `weight_name` or
+    provided directly in the form of an array `bad_bins`.
+
+    Setting `weight_name` and `bad_bins` to `None` yields 0 "bad" pixels per
+    diagonal per support region.
+
+    Parameters
+    ----------
+    clr : cooler.Cooler
+        Input cooler
+    supports : list
+        a list of genomic support regions
+    weight_name : str
+        name of the weight vector in the "bins" table,
+        if weight_name is None returns 0 for each block.
+        Balancing weight are used to infer bad bins.
+    bad_bins : array-like
+        a list of bins to ignore per support region.
+        Overwrites inference of bad bins from balacning
+        weight [to be implemented].
+
+    Returns
+    -------
+    diag_tables : dict
+        dictionary with DataFrames of relevant diagonals for every support.
+    """
+
+    if bad_bins is not None:
+        raise NotImplementedError("providing external list \
+            of bad bins is not implemented.")
+
 
     bins = clr.bins()[:]
-    if "weight" in clr.bins().columns:
-        groups = dict(iter(bins.groupby("chrom")["weight"]))
-        bad_bin_dict = {
-            chrom: np.array(groups[chrom].isnull()) for chrom in groups.keys()
-        }
-    else:
+    if weight_name is None:
+        # ignore bad bins
         sizes = dict(bins.groupby("chrom").size())
         bad_bin_dict = {
             chrom: np.zeros(sizes[chrom], dtype=bool) for chrom in sizes.keys()
         }
+    elif isinstance(weight_name, str):
+        # using balacning weight to infer bad bins
+        if weight_name not in clr.bins().columns:
+            raise KeyError("Balancing weight {weight_name} not found!")
+        groups = dict(iter(bins.groupby("chrom")[weight_name]))
+        bad_bin_dict = {
+            chrom: np.array(groups[chrom].isnull()) for chrom in groups.keys()
+        }
+    else:
+        raise ValueError("`weight_name` can be `str` or `None`")
 
     where = np.flatnonzero
     diag_tables = {}
     for region in supports:
+        # parse region if str
         if isinstance(region, str):
             region = bioframe.parse_region(region)
+        # unpack region(s) into chroms,starts,ends
         if len(region) == 1:
             chrom, = region
             start1, end1 = 0, clr.chromsizes[chrom]
@@ -527,6 +652,7 @@ def make_diag_tables(clr, supports):
         else:
             raise ValueError("Regions must be sequences of length 1, 3 or 5")
 
+        # translate regions into relative bin id-s:
         lo1, hi1 = clr.extent((chrom, start1, end1))
         lo2, hi2 = clr.extent((chrom, start2, end2))
         co = clr.offset(chrom)
@@ -607,7 +733,14 @@ def _blocksum_asymm(clr, fields, transforms, supports1, supports2, span):
 
 
 def diagsum(
-    clr, supports, transforms=None, chunksize=10000000, ignore_diags=2, map=map
+    clr,
+    supports,
+    transforms=None,
+    weight_name="weight",
+    bad_bins=None,
+    chunksize=10000000,
+    ignore_diags=2,
+    map=map
 ):
     """
 
@@ -623,6 +756,14 @@ def diagsum(
         Transformations to apply to pixels. The result will be assigned to
         a temporary column with the name given by the key. Callables take
         one argument: the current chunk of the (annotated) pixel dataframe.
+    weight_name : str
+        name of the balancing weight vector used to count
+        "bad"(masked) pixels per diagonal.
+        Use `None` to avoid masking "bad" pixels.
+    bad_bins : array-like
+        a list of bins to ignore per support region.
+        Overwrites inference of bad bins from balacning
+        weight [to be implemented].
     chunksize : int, optional
         Size of pixel table chunks to process
     ignore_diags : int, optional
@@ -637,7 +778,7 @@ def diagsum(
     """
     spans = partition(0, len(clr.pixels()), chunksize)
     fields = ["count"] + list(transforms.keys())
-    dtables = make_diag_tables(clr, supports)
+    dtables = make_diag_tables(clr, supports, weight_name=weight_name, bad_bins=bad_bins)
 
     for dt in dtables.values():
         for field in fields:
@@ -671,9 +812,11 @@ def diagsum_asymm(
     supports2,
     contact_type="cis",
     transforms=None,
+    weight_name="weight",
+    bad_bins=None,
     chunksize=10000000,
     ignore_diags=2,
-    map=map,
+    map=map
 ):
     """
 
@@ -689,6 +832,14 @@ def diagsum_asymm(
         Transformations to apply to pixels. The result will be assigned to
         a temporary column with the name given by the key. Callables take
         one argument: the current chunk of the (annotated) pixel dataframe.
+    weight_name : str
+        name of the balancing weight vector used to count
+        "bad"(masked) pixels per diagonal.
+        Use `None` to avoid masking "bad" pixels.
+    bad_bins : array-like
+        a list of bins to ignore per support region.
+        Overwrites inference of bad bins from balacning
+        weight [to be implemented].
     chunksize : int, optional
         Size of pixel table chunks to process
     ignore_diags : int, optional
@@ -704,7 +855,7 @@ def diagsum_asymm(
     spans = partition(0, len(clr.pixels()), chunksize)
     fields = ["count"] + list(transforms.keys())
     areas = list(zip(supports1, supports2))
-    dtables = make_diag_tables(clr, areas)
+    dtables = make_diag_tables(clr, areas, weight_name=weight_name, bad_bins=bad_bins)
 
     for dt in dtables.values():
         for field in fields:
@@ -735,7 +886,15 @@ def diagsum_asymm(
     return dtables
 
 
-def blocksum_pairwise(clr, supports, transforms=None, chunksize=1000000, map=map):
+def blocksum_pairwise(
+    clr,
+    supports,
+    transforms=None,
+    weight_name="weight",
+    bad_bins=None,
+    chunksize=1000000,
+    map=map
+):
     """
     Summary statistics on inter-chromosomal rectangular blocks.
 
@@ -750,6 +909,14 @@ def blocksum_pairwise(clr, supports, transforms=None, chunksize=1000000, map=map
         Transformations to apply to pixels. The result will be assigned to
         a temporary column with the name given by the key. Callables take
         one argument: the current chunk of the (annotated) pixel dataframe.
+    weight_name : str
+        name of the balancing weight vector used to count
+        "bad"(masked) pixels per block.
+        Use `None` to avoid masking "bad" pixels.
+    bad_bins : array-like
+        a list of bins to ignore per support region.
+        Overwrites inference of bad bins from balacning
+        weight [to be implemented].
     chunksize : int, optional
         Size of pixel table chunks to process
     map : callable, optional
@@ -761,36 +928,13 @@ def blocksum_pairwise(clr, supports, transforms=None, chunksize=1000000, map=map
 
     """
 
-    def n_total_block_elements(clr, supports):
-        n = len(supports)
-        x = [clr.extent(region)[1] - clr.extent(region)[0] for region in supports]
-        blocks = {}
-        for i in range(n):
-            for j in range(i + 1, n):
-                blocks[supports[i], supports[j]] = x[i] * x[j]
-        return blocks
-
-    def n_bad_block_elements(clr, supports):
-        n = 0
-        # bad bins are ones with
-        # the weight vector being NaN:
-        x = [
-            np.sum(clr.bins()["weight"].fetch(region).isnull().astype(int).values)
-            for region in supports
-        ]
-        blocks = {}
-        for i in range(len(x)):
-            for j in range(i + 1, len(x)):
-                blocks[supports[i], supports[j]] = x[i] * x[j]
-        return blocks
-
     blocks = list(combinations(supports, 2))
     supports1, supports2 = list(zip(*blocks))
     spans = partition(0, len(clr.pixels()), chunksize)
     fields = ["count"] + list(transforms.keys())
 
-    n_tot = n_total_block_elements(clr, supports)
-    n_bad = n_bad_block_elements(clr, supports)
+    n_tot = count_all_pixels_per_block(clr, supports)
+    n_bad = count_bad_pixels_per_block(clr, supports, weight_name=weight_name, bad_bins=bad_bins)
     records = {(c1, c2): defaultdict(int) for (c1, c2) in blocks}
     for c1, c2 in blocks:
         records[c1, c2]["n_valid"] = n_tot[c1, c2] - n_bad[c1, c2]
@@ -801,7 +945,7 @@ def blocksum_pairwise(clr, supports, transforms=None, chunksize=1000000, map=map
         for (i, j), agg in result.items():
             for field in fields:
                 agg_name = "{}.sum".format(field)
-                s = np.asscalar(agg[field])
+                s = agg[field].item()
                 if not np.isnan(s):
                     records[supports1[i], supports2[j]][agg_name] += s
 

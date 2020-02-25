@@ -51,14 +51,23 @@ from . import cli
 @click.option(
     "--contact-type",
     "-t",
-    help="compute expected for cis or trans region of a Hi-C map.",
+    help="compute expected for cis or trans region of a Hi-C map."
+         "Ignored when genomic-regions are provided",
     type=click.Choice(["cis", "trans"]),
     default="cis",
     show_default=True,
 )
 @click.option(
+    "--genomic-regions",
+    help="Path to a BED or BEDPE file containing genomic regions "
+         "for which expected will be calculated. [Not Implemented]",
+    type=click.Path(exists=True),
+    required=False,
+)
+@click.option(
     "--balance/--no-balance",
-    help="Apply balancing weights to data before calculating expected",
+    help="Apply balancing weights to data before calculating expected."
+         "Bins masked in the balancing weights are ignored from calcualtions.",
     is_flag=True,
     default=True,
     show_default=True,
@@ -69,6 +78,14 @@ from . import cli
     type=str,
     default="weight",
     show_default=True,
+)
+@click.option(
+    "--blacklist",
+    help="Path to a 3-column BED file containing genomic regions to mask "
+         "out during calculation of expected. Overwrites inference of "
+         "'bad' regions from balancing weights. [Not Implemented]",
+    type=click.Path(exists=True),
+    required=False,
 )
 @click.option(
     "--ignore-diags",
@@ -84,17 +101,39 @@ def compute_expected(
     output,
     hdf,
     contact_type,
+    genomic_regions,
     balance,
     weight_name,
+    blacklist,
     ignore_diags,
 ):
     """
     Calculate expected Hi-C signal either for cis or for trans regions
     of chromosomal interaction map.
 
+    When balancing weights are not applied to the data, there is no
+    masking of bad bins performed.
+
     COOL_PATH : The paths to a .cool file with a balanced Hi-C map.
 
     """
+
+    if genomic_regions is not None:
+        raise NotImplementedError(
+            "Custom genomic regions for calculation of expected are not implemented in CLI,"
+            "use `cooltools.expected.blocksum/diagsum` functions."
+            )
+
+    if blacklist is not None:
+        raise NotImplementedError(
+            "Custom genomic regions for masking from calculation of expected"
+            "are not implemented."
+            )
+        # use blacklist-ing from cooler balance module
+        # https://github.com/mirnylab/cooler/blob/843dadca5ef58e3b794dbaf23430082c9a634532/cooler/cli/balance.py#L175
+
+
+
     clr = cooler.Cooler(cool_path)
     supports = [(chrom, 0, clr.chromsizes[chrom]) for chrom in clr.chromnames]
 
@@ -104,6 +143,8 @@ def compute_expected(
         weight2 = weight_name + "2"
         transforms = {"balanced": lambda p: p["count"] * p[weight1] * p[weight2]}
     else:
+        # no masking bad bins of any kind, when balancing is not applied
+        weight_name = None
         transforms = {}
 
     # execution details
@@ -120,9 +161,11 @@ def compute_expected(
                 clr,
                 supports,
                 transforms=transforms,
+                weight_name=weight_name,
+                bad_bins=None,
                 chunksize=chunksize,
                 ignore_diags=ignore_diags,
-                map=map_,
+                map=map_
             )
             result = pd.concat(
                 [tables[support] for support in supports],
@@ -133,14 +176,21 @@ def compute_expected(
 
         elif contact_type == "trans":
             records = expected.blocksum_pairwise(
-                clr, supports, transforms=transforms, chunksize=chunksize, map=map_
+                clr,
+                supports,
+                transforms=transforms,
+                weight_name=weight_name,
+                bad_bins=None,
+                chunksize=chunksize,
+                map=map_
             )
             result = pd.DataFrame(
                 [
                     {"chrom1": s1[0], "chrom2": s2[0], **rec}
                     for (s1, s2), rec in records.items()
                 ],
-                columns=["chrom1", "chrom2", "n_valid", "count.sum", "balanced.sum"],
+                columns=["chrom1", "chrom2", "n_valid", "count.sum"] + \
+                        [ k+".sum" for k in transforms.keys() ]
             )
     finally:
         if nproc > 1:

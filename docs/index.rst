@@ -10,8 +10,12 @@ The tools for your *.cool*\ s
 
 
 .. toctree::
-   :maxdepth: 2
+   :maxdepth: 3
    :caption: Contents
+
+   installation
+   cli
+   cooltools
 
 
 .. toctree::
@@ -25,6 +29,7 @@ The tools for your *.cool*\ s
    ./notebooks/05_insulation-score.ipynb
    ./notebooks/06_snipping-pileups.ipynb
    ./notebooks/07_pileups2.ipynb
+   ./notebooks/08_dot-calling-internals.ipynb
 
 
 .. toctree::
@@ -32,6 +37,7 @@ The tools for your *.cool*\ s
    :caption: News
    
    releases
+
 
 
 Indices and tables

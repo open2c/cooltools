@@ -30,16 +30,16 @@ def assign_supports(features, supports, labels=False, suffix=""):
     for i, region in enumerate(supports):
         # single-region support
         if len(region) == 3:
-            sel = (features[c] == region[0]) & (features[e] >= region[1])
+            sel = (features[c] == region[0]) & (features[e] > region[1])
             if region[2] is not None:
                 sel &= features[s] < region[2]
         # paired-region support
         elif len(region) == 2:
             region1, region2 = region
-            sel1 = (features[c] == region1[0]) & (features[e] >= region1[1])
+            sel1 = (features[c] == region1[0]) & (features[e] > region1[1])
             if region1[2] is not None:
                 sel1 &= features[s] < region1[2]
-            sel2 = (features[c] == region2[0]) & (features[e] >= region2[1])
+            sel2 = (features[c] == region2[0]) & (features[e] > region2[1])
             if region2[2] is not None:
                 sel2 &= features[s] < region2[2]
             sel = sel1 | sel2

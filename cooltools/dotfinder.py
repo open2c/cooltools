@@ -591,20 +591,18 @@ def _convolve_and_count_nans(O_bal, E_bal, E_raw, N_bal, kernel):
 # this should be a MAIN function to get locally adjusted expected
 # Die Hauptfunktion
 ########################################################################
+# ! use parameterized column names
+# # observed_count_name = "count"
+# # expected_count_name = "exp.raw"
+# # adjusted_exp_name = lambda kernel_name: "la_exp."+kernel_name+".value"
+# # nans_inkernel_name = lambda kernel_name: "la_exp."+kernel_name+".nnans"
+# # bin1_id_name='bin1_id'
+# # bin2_id_name='bin2_id'
 def get_adjusted_expected_tile_some_nans(
     origin, observed, expected, bal_weights, kernels, balance_factor=None, verbose=False
 ):
-    # ! use parameterized column names
-    # # observed_count_name = "count"
-    # # expected_count_name = "exp.raw"
-    # # adjusted_exp_name = lambda kernel_name: "la_exp."+kernel_name+".value"
-    # # nans_inkernel_name = lambda kernel_name: "la_exp."+kernel_name+".nnans"
-    # # bin1_id_name='bin1_id'
-    # # bin2_id_name='bin2_id'
-
     """
-    'get_adjusted_expected_tile_some_nans', get locally adjusted
-    expected for a collection of local-filters (kernels).
+    Get locally adjusted expected for a collection of local-filters (kernels).
 
     Such locally adjusted expected, 'Ek' for a given kernel,
     can serve as a baseline for deciding whether a given
@@ -615,9 +613,13 @@ def get_adjusted_expected_tile_some_nans(
     expected is a product of a global expected in that
     pixel E_bal[i,j] and an enrichment of local environ-
     ment of the pixel, described with a given kernel:
-                              KERNEL[i,j](O_bal)
-    Ek_bal[i,j] = E_bal[i,j]* ------------------
-                              KERNEL[i,j](E_bal)
+
+    ::
+
+                                  KERNEL[i,j](O_bal)
+        Ek_bal[i,j] = E_bal[i,j]* ------------------
+                                  KERNEL[i,j](E_bal)
+
     where KERNEL[i,j](X) is a result of convolution
     between the kernel and a slice of matrix X centered
     around (i,j). See link below for details:
@@ -629,13 +631,20 @@ def get_adjusted_expected_tile_some_nans(
     Poisson test to decide is a given pixel is enriched.
     (comparison between balanced values using Poisson-
     test is intractable):
-                              KERNEL[i,j](O_bal)
-    Ek_raw[i,j] = E_raw[i,j]* ------------------ ,
-                              KERNEL[i,j](E_bal)
+
+    ::
+
+                                  KERNEL[i,j](O_bal)
+        Ek_raw[i,j] = E_raw[i,j]* ------------------ ,
+                                  KERNEL[i,j](E_bal)
+
     where E_raw[i,j] is:
-          1               1
-    -------------- * -------------- * E_bal[i,j]
-    bal_weights[i]   bal_weights[j]
+
+    ::
+
+              1               1
+        -------------- * -------------- * E_bal[i,j]
+        bal_weights[i]   bal_weights[j]
 
 
     Parameters
@@ -1770,7 +1779,9 @@ def clustering_step(
     df = pd.merge(
         scores_df, pixel_clust_df, how="left", left_index=True, right_index=True
     )
-
+    #prevents scores_df categorical values (all chroms, including chrM)
+    df['chrom1'] = df['chrom1'].astype(str)
+    df['chrom2'] = df['chrom2'].astype(str)
     # report only centroids with highest Observed:
     chrom_clust_group = df.groupby(["chrom1", "chrom2", "c_label"])
     centroids = df.loc[chrom_clust_group[obs_raw_name].idxmax()]
@@ -2165,15 +2176,15 @@ def get_qvals(pvals):
     Notes
     -----
     - BH-FDR reminder: given an array of N p-values, sort it in ascending order
-    p[1]<p[2]<p[3]<...<p[N], and find a threshold p-value, p[j] for which
-    p[j] < FDR*j/N, and p[j+1] is already p[j+1] >= FDR*(j+1)/N. Peaks
-    corresponding to p-values p[1]<p[2]<...p[j] are considered significant.
+      p[1]<p[2]<p[3]<...<p[N], and find a threshold p-value, p[j] for which
+      p[j] < FDR*j/N, and p[j+1] is already p[j+1] >= FDR*(j+1)/N. Peaks
+      corresponding to p-values p[1]<p[2]<...p[j] are considered significant.
 
     - Mostly follows the statsmodels implementation:
-    http://www.statsmodels.org/dev/_modules/statsmodels/stats/multitest.html
+      http://www.statsmodels.org/dev/_modules/statsmodels/stats/multitest.html
 
     - Using alpha=0.02 it is possible to achieve called dots similar to
-    pre-update status alpha is meant to be a q-value threshold: "qvals <= alpha"
+      pre-update status alpha is meant to be a q-value threshold: "qvals <= alpha"
 
     """
     # NOTE: This is tested and is capable of reproducing

@@ -43,6 +43,7 @@ def get_n_pixels(bad_bin_mask, window=10, ignore_diags=2):
 def insul_diamond(pixel_query, bins, window=10, ignore_diags=2, norm_by_median=True):
     """
     Calculates the insulation score of a Hi-C interaction matrix.
+
     Parameters
     ----------
     pixel_query : RangeQuery object <TODO:update description>
@@ -127,6 +128,7 @@ def calculate_insulation_score(
     verbose=False,
 ):
     """Calculate the diamond insulation scores and call insulating boundaries.
+
     Parameters
     ----------
     clr : cooler.Cooler
@@ -226,6 +228,7 @@ def find_boundaries(
     is_bad_bin_key="is_bad_bin",
 ):
     """Call insulating boundaries.
+
     Find all local minima of the log2(insulation score) and calculate their
     chromosome-wide topographic prominence.
 
