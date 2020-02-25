@@ -553,12 +553,12 @@ def saddle_strength(S, C):
 
     ratios = np.zeros(n)
     for k in range(1, n):
-        intra_sum = S[0:k, 0:k].sum() + S[n - k : n, n - k : n].sum()
-        intra_count = C[0:k, 0:k].sum() + C[n - k : n, n - k : n].sum()
+        intra_sum = np.nansum(S[0:k, 0:k]) + np.nansum(S[n - k : n, n - k : n])
+        intra_count = np.nansum(C[0:k, 0:k]) + np.nansum(C[n - k : n, n - k : n])
         intra = intra_sum / intra_count
 
-        inter_sum = S[0:k, n - k : n].sum() + S[n - k : n, 0:k].sum()
-        inter_count = C[0:k, n - k : n].sum() + C[n - k : n, 0:k].sum()
+        inter_sum = np.nansum(S[0:k, n - k : n]) + np.nansum(S[n - k : n, 0:k])
+        inter_count = np.nansum(C[0:k, n - k : n]) + np.nansum(C[n - k : n, 0:k])
         inter = inter_sum / inter_count
 
         ratios[k] = intra / inter
