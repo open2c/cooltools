@@ -267,7 +267,7 @@ def count_bad_pixels_per_block(clr, supports, weight_name="weight", bad_bins=Non
             of bad bins is not implemented.")
 
     # Get the total number of bins per region
-    n_tot = [np.diff(clr.extent(region)) for region in regions]
+    n_tot = [np.diff(clr.extent(region)).item() for region in supports]
 
     # Get the number of bad bins per region
     if weight_name is None:
