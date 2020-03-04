@@ -281,14 +281,7 @@ def count_bad_pixels_per_block(clr, supports, weight_name="weight", bad_bins=Non
             raise KeyError("Balancing weight {weight_name} not found!")
         # bad bins are ones with the weight vector being NaN
         n_bad = [
-            np.sum(
-                clr
-                .bins()[weight_name]
-                .fetch(region)
-                .isnull()
-                .astype(int)
-                .values
-            )
+            np.sum(clr.bins()[weight_name].fetch(region).isnull().astype(int).values)
             for region in supports
         ]
     else:
@@ -299,9 +292,7 @@ def count_bad_pixels_per_block(clr, supports, weight_name="weight", bad_bins=Non
     for i in range(n):
         for j in range(i + 1, n):
             blocks[supports[i], supports[j]] = (
-                n_tot[i] * n_bad[j] +
-                n_tot[j] * n_bad[i] -
-                n_bad[i] * n_bad[j]
+                n_tot[i] * n_bad[j] + n_tot[j] * n_bad[i] - n_bad[i] * n_bad[j]
             )
     return blocks
 
