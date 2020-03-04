@@ -73,7 +73,6 @@ def compute_scaling(df, region1, region2=None, dmin=int(1e1), dmax=int(1e7), n_b
     return distbins, obs, areas
 
 
-
 def lattice_pdist_frequencies(n, points):
     """
     Distribution of pairwise 1D distances among a collection of distinct
@@ -219,14 +218,12 @@ def count_all_pixels_per_block(clr, supports):
         dictionary with total number of pixels per pair of support regions
     """
     n = len(supports)
-    x = [clr.extent(region)[1] - clr.extent(region)[0]
-         for region in supports]
+    x = [clr.extent(region)[1] - clr.extent(region)[0] for region in supports]
     blocks = {}
     for i in range(n):
         for j in range(i + 1, n):
             blocks[supports[i], supports[j]] = x[i] * x[j]
     return blocks
-
 
 
 def count_bad_pixels_per_block(clr, supports, weight_name="weight", bad_bins=None):
@@ -263,8 +260,10 @@ def count_bad_pixels_per_block(clr, supports, weight_name="weight", bad_bins=Non
     n = len(supports)
 
     if bad_bins is not None:
-        raise NotImplementedError("providing external list \
-            of bad bins is not implemented.")
+        raise NotImplementedError(
+            "providing external list \
+            of bad bins is not implemented."
+        )
 
     if weight_name is None:
         # ignore bad bins
@@ -275,12 +274,10 @@ def count_bad_pixels_per_block(clr, supports, weight_name="weight", bad_bins=Non
             raise KeyError("Balancing weight {weight_name} not found!")
         # bad bins are ones with
         # the weight vector being NaN:
-        x = [np.sum(clr.bins()[weight_name]
-                       .fetch(region)
-                       .isnull()
-                       .astype(int)
-                       .values)
-             for region in supports]
+        x = [
+            np.sum(clr.bins()[weight_name].fetch(region).isnull().astype(int).values)
+            for region in supports
+        ]
     else:
         raise ValueError("`weight_name` can be `str` or `None`")
 
@@ -289,7 +286,6 @@ def count_bad_pixels_per_block(clr, supports, weight_name="weight", bad_bins=Non
         for j in range(i + 1, n):
             blocks[supports[i], supports[j]] = x[i] * x[j]
     return blocks
-
 
 
 def make_diag_table(bad_mask, span1, span2):
@@ -439,7 +435,7 @@ def cis_expected(
 
     for region in regions:
         if len(region) == 1:
-            chrom, = region
+            (chrom,) = region
             start1, end1 = 0, clr.chromsizes[chrom]
             start2, end2 = start1, end1
         elif len(region) == 3:
@@ -531,32 +527,33 @@ def trans_expected(clr, chromosomes, chunksize=1000000, use_dask=False):
         raise NotImplementedError("To be implemented once dask supports MultiIndex")
 
     # turn chromosomes into supports:
-    chrom_supports = [ (chrom, 0, None) for chrom in chromosomes ]
+    chrom_supports = [(chrom, 0, None) for chrom in chromosomes]
     # use balaned transformation only:
     balanced_transform = {
-            "balanced": \
-                lambda pixels: pixels["count"] * pixels["weight1"] * pixels["weight2"]
-            }
+        "balanced": lambda pixels: pixels["count"]
+        * pixels["weight1"]
+        * pixels["weight2"]
+    }
 
     # trans_expected is simply a wrapper around new blocksum_pairwise
     # but it preserved the interface of the original trans_expected
-    trans_records = blocksum_pairwise(clr,
-                            supports=chrom_supports,
-                            transforms=balanced_transform,
-                            chunksize=chunksize)
+    trans_records = blocksum_pairwise(
+        clr, supports=chrom_supports, transforms=balanced_transform, chunksize=chunksize
+    )
 
     # trans_records are inter-chromosomal only,
     # changing trans_records keys to reflect that:
     # region[0] for a region = (chrom, start, stop)
     trans_records = {
-        ( region1[0], region2[0] ): val for ( region1, region2 ), val in trans_records.items()
-        }
+        (region1[0], region2[0]): val
+        for (region1, region2), val in trans_records.items()
+    }
 
     # turn trans_records into a DataFrame with
     # MultiIndex, that stores values of 'balanced.sum'
     # and 'n_valid' values for each pair of chromosomes:
-    trans_df = pd.DataFrame.from_dict( trans_records, orient="index" )
-    trans_df.index.rename( ["chrom1","chrom2"], inplace=True )
+    trans_df = pd.DataFrame.from_dict(trans_records, orient="index")
+    trans_df.index.rename(["chrom1", "chrom2"], inplace=True)
     # an alternative way to get from records to DataFrame, as in CLI expected:
     # result = pd.DataFrame(
     #     [
@@ -608,9 +605,10 @@ def make_diag_tables(clr, supports, weight_name="weight", bad_bins=None):
     """
 
     if bad_bins is not None:
-        raise NotImplementedError("providing external list \
-            of bad bins is not implemented.")
-
+        raise NotImplementedError(
+            "providing external list \
+            of bad bins is not implemented."
+        )
 
     bins = clr.bins()[:]
     if weight_name is None:
@@ -638,7 +636,7 @@ def make_diag_tables(clr, supports, weight_name="weight", bad_bins=None):
             region = bioframe.parse_region(region)
         # unpack region(s) into chroms,starts,ends
         if len(region) == 1:
-            chrom, = region
+            (chrom,) = region
             start1, end1 = 0, clr.chromsizes[chrom]
             start2, end2 = start1, end1
         elif len(region) == 2:
@@ -740,7 +738,7 @@ def diagsum(
     bad_bins=None,
     chunksize=10000000,
     ignore_diags=2,
-    map=map
+    map=map,
 ):
     """
 
@@ -778,7 +776,9 @@ def diagsum(
     """
     spans = partition(0, len(clr.pixels()), chunksize)
     fields = ["count"] + list(transforms.keys())
-    dtables = make_diag_tables(clr, supports, weight_name=weight_name, bad_bins=bad_bins)
+    dtables = make_diag_tables(
+        clr, supports, weight_name=weight_name, bad_bins=bad_bins
+    )
 
     for dt in dtables.values():
         for field in fields:
@@ -816,7 +816,7 @@ def diagsum_asymm(
     bad_bins=None,
     chunksize=10000000,
     ignore_diags=2,
-    map=map
+    map=map,
 ):
     """
 
@@ -893,7 +893,7 @@ def blocksum_pairwise(
     weight_name="weight",
     bad_bins=None,
     chunksize=1000000,
-    map=map
+    map=map,
 ):
     """
     Summary statistics on inter-chromosomal rectangular blocks.
@@ -934,7 +934,9 @@ def blocksum_pairwise(
     fields = ["count"] + list(transforms.keys())
 
     n_tot = count_all_pixels_per_block(clr, supports)
-    n_bad = count_bad_pixels_per_block(clr, supports, weight_name=weight_name, bad_bins=bad_bins)
+    n_bad = count_bad_pixels_per_block(
+        clr, supports, weight_name=weight_name, bad_bins=bad_bins
+    )
     records = {(c1, c2): defaultdict(int) for (c1, c2) in blocks}
     for c1, c2 in blocks:
         records[c1, c2]["n_valid"] = n_tot[c1, c2] - n_bad[c1, c2]
@@ -952,12 +954,14 @@ def blocksum_pairwise(
     return records
 
 
-def logbin_expected(exp, bins_per_order_magnitude=10, 
-                    bin_layout = "fixed",
-                    der_smooth_function_by_reg = lambda x:numutils.robust_gauss_filter(x,2),
-                    min_nvalid = 200,
-                    min_count = 50, 
-                    ):
+def logbin_expected(
+    exp,
+    bins_per_order_magnitude=10,
+    bin_layout="fixed",
+    der_smooth_function_by_reg=lambda x: numutils.robust_gauss_filter(x, 2),
+    min_nvalid=200,
+    min_count=50,
+):
     """
     Logarithmically bins expected as produced by diagsum method
     See description below 
@@ -976,7 +980,7 @@ def logbin_expected(exp, bins_per_order_magnitude=10,
         and only depend on bins_per_order_magnitude
         
         "longest_region" means that the last bin will end at size of the longest region. 
-        GOOD:  the last bin will have as much data as possible. But makes 
+        GOOD:  the last bin will have as much data as possible.
         BAD: bin edges will end up different for different datasets, you can't divide them by each other 
         
         array: provide your own bin edges. Can be of any size, and end at any value: bins exceeding the size
@@ -1002,12 +1006,11 @@ def logbin_expected(exp, bins_per_order_magnitude=10,
 
     Returns 
     -------
-
-    dict with dataframes with the following keys
-    * "Pc": dataframe of contact probabilities and spread across regions
-    * "slope": slope of Pc(s) on a log-log plot and spread across regions
-    * "Pc_by_region": a dataframe of Pc(s) for each region. 
-    * "slope_by_region": a dataframe of slopes for each region
+    (Pc, slope, bins)
+    
+    * Pc: dataframe of contact probabilities and spread across regions
+    * slope: slope of Pc(s) on a log-log plot and spread across regions
+    * bins: an array of bin edges used for calculating P(s)
     
     
     Description
@@ -1044,7 +1047,8 @@ def logbin_expected(exp, bins_per_order_magnitude=10,
     
     In presence of missing bins, this all becomes more complex, but this kind of averaging should take care of everything. 
     It follows a general principle: when averaging the y values with some weights, one needs to average the x values with 
-    the same weights. The y values here are being added together, so they are effectively averaged with the weight of n_valid. 
+    the same weights. The y values here are being added together, so per-diag means are 
+    effectively averaged with the weight of n_valid. 
     Therefore, the x values (diag) should be averaged with the same weights. 
         
     Other considerations
@@ -1055,7 +1059,8 @@ def logbin_expected(exp, bins_per_order_magnitude=10,
     It is generally better to divide at the very end, rather than dividing things for each diagonal.    
     
     Here we divide at the end twice: first we divide balanced.sum by n_valid for each region, 
-    then we divide it for each bin when combining different regions (see next function). 
+    then we effectively multiply it back up and divide it for each bin when combining 
+    different regions (see weighted average in the next function). 
     
     Smoothing P(s) for the slope
     ----------------------------
@@ -1067,82 +1072,102 @@ def logbin_expected(exp, bins_per_order_magnitude=10,
     Examples
     --------
     
-    For example, see this gist: TODO put a gist here
+    For example, see this gist: https://gist.github.com/mimakaev/e9117a7fcc318e7904702eba5b47d9e6
     """
 
     from cooltools.lib.numutils import logbins
 
-    exp = pd.concat([i.reset_index() for i in exp.values()], keys=map(repr, exp.keys()),
-                    names=["region"]).reset_index(level=0).reset_index(drop=True)
+    exp = (
+        pd.concat(
+            [i.reset_index() for i in exp.values()],
+            keys=map(repr, exp.keys()),
+            names=["region"],
+        )
+        .reset_index(level=0)
+        .reset_index(drop=True)
+    )
     exp = exp[~pd.isna(exp["balanced.sum"])]
-    exp["x"] = exp.pop("diag")    
+    exp["x"] = exp.pop("diag")
     diagmax = exp["x"].max()
-    
+
     if bin_layout == "fixed":
-        bins = numutils.persistent_log_bins(10,bins_per_order_magnitude=bins_per_order_magnitude)
+        bins = numutils.persistent_log_bins(
+            10, bins_per_order_magnitude=bins_per_order_magnitude
+        )
     elif bin_layout == "longest_region":
-        bins = logbins(1,diagmax+1, ratio=10**(1/bins_per_order_magnitude))
+        bins = logbins(1, diagmax + 1, ratio=10 ** (1 / bins_per_order_magnitude))
     else:
-        bins = bin_layout 
-    
+        bins = bin_layout
+
     if bins[-1] < diagmax:
         raise ValueError("Bins end is less than the size of the largest region")
-    
-    exp["bin_id"] = np.searchsorted(bins, exp["x"], side='right') - 1 
+
+    exp["bin_id"] = np.searchsorted(bins, exp["x"], side="right") - 1
     exp = exp[exp["bin_id"] >= 0]
-    
 
     # constructing expected grouped by region
     byReg = exp.copy()
-     
-    #this averages x with the weight equal to n_valid, and sums everything else 
+
+    # this averages x with the weight equal to n_valid, and sums everything else
     byReg["x"] *= byReg["n_valid"]
     byRegExp = byReg.groupby(["region", "bin_id"]).sum()
-    byRegExp["x"] /= byRegExp["n_valid"]    
-    
+    byRegExp["x"] /= byRegExp["n_valid"]
+
     byRegExp = byRegExp.reset_index()
     byRegExp = byRegExp[byRegExp["n_valid"] > min_nvalid]  # filtering by n_valid
     byRegExp["Pc"] = byRegExp["balanced.sum"] / byRegExp["n_valid"]
-    byRegExp = byRegExp[byRegExp["Pc"] > 0]     #drop bins with 0 counts
-    if min_count: 
+    byRegExp = byRegExp[byRegExp["Pc"] > 0]  # drop bins with 0 counts
+    if min_count:
         if "count.sum" in byRegExp:
             byRegExp = byRegExp[byRegExp["count.sum"] > min_count]
         else:
             warnings.warn(RuntimeWarning("counts not found"))
-                    
+
     byRegExp["bin_start"] = bins[byRegExp["bin_id"].values]
-    byRegExp["bin_end"] = bins[byRegExp["bin_id"].values+1] - 1
-        
+    byRegExp["bin_end"] = bins[byRegExp["bin_id"].values + 1] - 1
+
     byRegDer = []
-    for reg,subdf in byRegExp.groupby("region"):
+    for reg, subdf in byRegExp.groupby("region"):
         subdf = subdf.sort_values("bin_id")
         valid = np.minimum(subdf.n_valid.values[:-1], subdf.n_valid.values[1:])
         mids = np.sqrt(subdf.x.values[:-1] * subdf.x.values[1:])
         f = der_smooth_function_by_reg
         slope = np.diff(f(np.log(subdf.Pc.values))) / np.diff(f(np.log(subdf.x.values)))
-        newdf = pd.DataFrame({"x":mids, "slope":slope, "n_valid":valid, "bin_id":subdf.bin_id.values[:-1]})
-        
+        newdf = pd.DataFrame(
+            {
+                "x": mids,
+                "slope": slope,
+                "n_valid": valid,
+                "bin_id": subdf.bin_id.values[:-1],
+            }
+        )
+
         newdf["region"] = reg
         byRegDer.append(newdf)
     byRegDer = pd.concat(byRegDer).reset_index(drop=True)
-    return byRegExp, byRegDer, bins[:byRegExp.bin_id.max()+2]
-                 
-def combine_binned_expected(binned_exp,
-                                       binned_exp_slope=None,
-                                       der_smooth_function_combined = lambda x:numutils.robust_gauss_filter(x,1.3),
-                                        spread_funcs="logstd",
-                                        spread_funcs_slope =  "std",
-                                        minmax_drop_bins=2,
-                                       concat_original=False,
-                                       ):    
+    return byRegExp, byRegDer, bins[: byRegExp.bin_id.max() + 2]
+
+
+def combine_binned_expected(
+    binned_exp,
+    binned_exp_slope=None,
+    der_smooth_function_combined=lambda x: numutils.robust_gauss_filter(x, 1.3),
+    spread_funcs="logstd",
+    spread_funcs_slope="std",
+    minmax_drop_bins=2,
+    concat_original=False,
+):
     """
+    Combines by-region log-binned expected and slopes into 
+    
     Parameters
     ----------
     binned_exp: dataframe
         binned expected as outputed by logbin_expected
         
     binned_exp_slope : dataframe or None
-        If provided, estimates spread of slopes as well 
+        If provided, estimates spread of slopes. 
+        Is necessary if concat_original is True
         
     spread_funcs: "minmax", "std", "logstd" or a function (see below)
         A way to estimate the spread of the P(s) curves between regions.
@@ -1181,47 +1206,65 @@ def combine_binned_expected(binned_exp,
         
 
     """
-    scal = numutils.weighted_groupby_mean(binned_exp.select_dtypes(np.number), "bin_id", "n_valid", mode="mean")
+    scal = numutils.weighted_groupby_mean(
+        binned_exp.select_dtypes(np.number), "bin_id", "n_valid", mode="mean"
+    )
 
-    if spread_funcs == "minmax": 
+    if spread_funcs == "minmax":
         byRegVar = binned_exp.copy()
-        byRegVar = byRegVar.loc[byRegVar.index.difference(byRegVar.groupby('region')
-                                                          ['n_valid'].tail(minmax_drop_bins).index)]
-        low_err =  byRegVar.groupby("bin_id")["Pc"].min()
+        byRegVar = byRegVar.loc[
+            byRegVar.index.difference(
+                byRegVar.groupby("region")["n_valid"].tail(minmax_drop_bins).index
+            )
+        ]
+        low_err = byRegVar.groupby("bin_id")["Pc"].min()
         high_err = byRegVar.groupby("bin_id")["Pc"].max()
     elif spread_funcs == "std":
-        var = numutils.weighted_groupby_mean(binned_exp[["Pc", "bin_id","n_valid"]], "bin_id", "n_valid", mode="std")["Pc"]
+        var = numutils.weighted_groupby_mean(
+            binned_exp[["Pc", "bin_id", "n_valid"]], "bin_id", "n_valid", mode="std"
+        )["Pc"]
         low_err = scal["Pc"] - var
         high_err = scal["Pc"] + var
     elif spread_funcs == "logstd":
-        var = numutils.weighted_groupby_mean(binned_exp[["Pc", "bin_id","n_valid"]], "bin_id", "n_valid", mode="logstd")["Pc"]
+        var = numutils.weighted_groupby_mean(
+            binned_exp[["Pc", "bin_id", "n_valid"]], "bin_id", "n_valid", mode="logstd"
+        )["Pc"]
         low_err = scal["Pc"] / var
-        high_err = scal["Pc"] * var        
-        
+        high_err = scal["Pc"] * var
+
     else:
         low_err, high_err = spread_func(binned_exp, scal)
-        
+
     scal["low_err"] = low_err
     scal["high_err"] = high_err
-    
+
     f = der_smooth_function_combined
 
     slope = np.diff(f(np.log(scal.Pc.values))) / np.diff(f(np.log(scal.x.values)))
     valid = np.minimum(scal.n_valid.values[:-1], scal.n_valid.values[1:])
     mids = np.sqrt(scal.x.values[:-1] * scal.x.values[1:])
-    slope_df = pd.DataFrame({"x":mids, "slope":slope, "n_valid":valid, "bin_id":scal.index.values[:-1]})
+    slope_df = pd.DataFrame(
+        {"x": mids, "slope": slope, "n_valid": valid, "bin_id": scal.index.values[:-1]}
+    )
     slope_df = slope_df.set_index("bin_id")
 
-
     if binned_exp_slope is not None:
-        if spread_funcs_slope == "minmax": 
+        if spread_funcs_slope == "minmax":
             byRegDer = binned_exp_slope.copy()
-            byRegDer = byRegDer.loc[byRegDer.index.difference(byRegDer.groupby('region')
-                                                              ['n_valid'].tail(minmax_drop_bins).index)]
-            low_err =  byRegDer.groupby("bin_id")["slope"].min()
+            byRegDer = byRegDer.loc[
+                byRegDer.index.difference(
+                    byRegDer.groupby("region")["n_valid"].tail(minmax_drop_bins).index
+                )
+            ]
+            low_err = byRegDer.groupby("bin_id")["slope"].min()
             high_err = byRegDer.groupby("bin_id")["slope"].max()
         elif spread_funcs_slope == "std":
-            var = numutils.weighted_groupby_mean(binned_exp_slope[["slope", "bin_id","n_valid"]], "bin_id", "n_valid", mode="std")["slope"]
+            var = numutils.weighted_groupby_mean(
+                binned_exp_slope[["slope", "bin_id", "n_valid"]],
+                "bin_id",
+                "n_valid",
+                mode="std",
+            )["slope"]
             low_err = slope_df["slope"] - var
             high_err = slope_df["slope"] + var
 
@@ -1229,14 +1272,16 @@ def combine_binned_expected(binned_exp,
             low_err, high_err = spread_funcs_slope(binned_exp_slope, scal)
         slope_df["low_err"] = low_err
         slope_df["high_err"] = high_err
-    
-    slope_df= slope_df.reset_index()
+
+    slope_df = slope_df.reset_index()
     scal = scal.reset_index()
-    
+
     if concat_original:
         scal["region"] = "combined"
         slope_df["region"] = "combined"
         scal = pd.concat([scal, binned_exp], sort=False).reset_index(drop=True)
-        slope_df = pd.concat([slope_df, binned_exp_slope], sort=False).reset_index(drop=True)
-    
+        slope_df = pd.concat([slope_df, binned_exp_slope], sort=False).reset_index(
+            drop=True
+        )
+
     return scal, slope_df
