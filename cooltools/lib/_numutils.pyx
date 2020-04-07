@@ -37,7 +37,7 @@ def logbins(lo, hi, ratio=0, N=0):
     if ratio != 0:
         if N != 0:
             raise ValueError("Please specify N or ratio")
-        N = np.log(hi / lo) / np.log(ratio)
+        N = int(np.log(hi / lo) / np.log(ratio))
     elif N == 0:
         raise ValueError("Please specify N or ratio")
     data10 = np.logspace(np.log10(lo), np.log10(hi), N)
