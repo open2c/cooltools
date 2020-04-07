@@ -1,16 +1,13 @@
-cooltools package
-=================
+API Reference
+=============
 
-Subpackages
+subpackages
 -----------
 
 .. toctree::
 
-   cooltools.io
    cooltools.lib
-
-Submodules
-----------
+   cooltools.io
 
 cooltools.balance module
 ------------------------
@@ -20,13 +17,13 @@ cooltools.balance module
    :undoc-members:
    :show-inheritance:
 
-cooltools.contrast module
--------------------------
+.. cooltools.contrast module
+.. -------------------------
 
-.. automodule:: cooltools.contrast
-   :members:
-   :undoc-members:
-   :show-inheritance:
+.. .. automodule:: cooltools.contrast
+..    :members:
+..    :undoc-members:
+..    :show-inheritance:
 
 cooltools.coverage module
 -------------------------
@@ -96,15 +93,6 @@ cooltools.snipping module
 -------------------------
 
 .. automodule:: cooltools.snipping
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
-
-Module contents
----------------
-
-.. automodule:: cooltools
    :members:
    :undoc-members:
    :show-inheritance:

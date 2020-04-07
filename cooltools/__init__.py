@@ -11,7 +11,8 @@ The tools for your .cool's.
 
 """
 import logging
-__version__ = '0.3.0'
+
+__version__ = "0.3.0"
 
 from . import io
 from . import lib

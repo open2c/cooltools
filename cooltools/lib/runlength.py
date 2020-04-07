@@ -155,7 +155,7 @@ def simplify(starts, lengths, values, minlength=None):
     of the same value.
 
     """
-    starts, lengths, values = fill_gaps(starts, lengths, values, minlength)
+    starts, lengths, values = fillgaps(starts, lengths, values, minlength)
     n = starts[-1] + lengths[-1]
 
     is_nontrivial = lengths > 0

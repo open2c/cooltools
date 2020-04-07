@@ -18,12 +18,15 @@ from ._numutils import (
 
 
 def get_diag(arr, i=0):
-    '''Get the i-th diagonal of a matrix.
+    """Get the i-th diagonal of a matrix.
     This solution was borrowed from
     http://stackoverflow.com/questions/9958577/changing-the-values-of-the-diagonal-of-a-matrix-in-numpy
-    '''
+    """
     return arr.ravel()[
-        max(i, -arr.shape[1]*i):max(0, (arr.shape[1]-i))*arr.shape[1]:arr.shape[1]+1]
+        max(i, -arr.shape[1] * i) : max(0, (arr.shape[1] - i))
+        * arr.shape[1] : arr.shape[1]
+        + 1
+    ]
 
 
 def set_diag(arr, x, i=0, copy=False):
@@ -66,16 +69,15 @@ def set_diag(arr, x, i=0, copy=False):
 
 
 def fill_diag(arr, x, i=0, copy=True):
-    '''Identical to set_diag, but returns a copy by default'''
+    """Identical to set_diag, but returns a copy by default"""
     return set_diag(arr, x, i, copy)
 
 
 def fill_na(arr, value=0, copy=True):
-    '''Replaces np.nan entries in an array with the provided value.
+    """Replaces np.nan entries in an array with the provided value.
 
     Parameters
     ----------
-
     arr : np.array
 
     value : float
@@ -84,15 +86,15 @@ def fill_na(arr, value=0, copy=True):
         If True, creates a copy of x, otherwise replaces values in-place.
         By default, True.
 
-    '''
+    """
     if copy:
         arr = arr.copy()
     arr[np.isnan(arr)] = value
     return arr
 
 
-def dist_to_mask(mask, side='min'):
-    '''
+def dist_to_mask(mask, side="min"):
+    """
     Calculate the distance to the nearest True element of an array.
 
     Parameters
@@ -111,44 +113,47 @@ def dist_to_mask(mask, side='min'):
     -------
     dist: array of int
 
-    Notes:
-    ------
+    Notes
+    -----
     The solution is borrowed from https://stackoverflow.com/questions/18196811/cumsum-reset-at-nan
 
-    '''
-    if side not in ['left', 'right', 'min', 'max']:
-        raise ValueError('side can be `left`, `right`, `min` or `max`')
-    if side == 'min':
-        return np.minimum(dist_to_mask(mask, side='left'), dist_to_mask(mask, side='right'))
-    if side == 'max':
-        return np.maximum(dist_to_mask(mask, side='left'), dist_to_mask(mask, side='right'))
+    """
+    if side not in ["left", "right", "min", "max"]:
+        raise ValueError("side can be `left`, `right`, `min` or `max`")
+    if side == "min":
+        return np.minimum(
+            dist_to_mask(mask, side="left"), dist_to_mask(mask, side="right")
+        )
+    if side == "max":
+        return np.maximum(
+            dist_to_mask(mask, side="left"), dist_to_mask(mask, side="right")
+        )
 
     mask = np.asarray(mask)
-    if side == 'right':
+    if side == "right":
         mask = mask[::-1]
 
-    d = np.diff(np.r_[0., np.cumsum(~mask)[mask]])
+    d = np.diff(np.r_[0.0, np.cumsum(~mask)[mask]])
     v = mask.astype(int).copy()
     v[mask] = d
     dist = (~mask).cumsum() - np.cumsum(v)
 
-    return dist[::-1] if side == 'right' else dist
+    return dist[::-1] if side == "right" else dist
 
 
 def get_finite(arr):
-    '''
+    """
     Select only finite elements of an array.
-    '''
+    """
     return arr[np.isfinite(arr)]
 
 
 def fill_inf(arr, pos_value=0, neg_value=0, copy=True):
-    '''Replaces positive and negative infinity entries in an array
-       with the provided values.
+    """Replaces positive and negative infinity entries in an array with the
+    provided values.
 
     Parameters
     ----------
-
     arr : np.array
 
     pos_value : float
@@ -161,7 +166,7 @@ def fill_inf(arr, pos_value=0, neg_value=0, copy=True):
         If True, creates a copy of x, otherwise replaces values in-place.
         By default, True.
 
-    '''
+    """
     if copy:
         arr = arr.copy()
     arr[np.isposinf(arr)] = pos_value
@@ -170,11 +175,10 @@ def fill_inf(arr, pos_value=0, neg_value=0, copy=True):
 
 
 def fill_nainf(arr, value=0, copy=True):
-    '''Replaces np.nan and np.inf entries in an array with the provided value.
+    """Replaces np.nan and np.inf entries in an array with the provided value.
 
     Parameters
     ----------
-
     arr : np.array
 
     value : float
@@ -183,17 +187,19 @@ def fill_nainf(arr, value=0, copy=True):
         If True, creates a copy of x, otherwise replaces values in-place.
         By default, True.
 
-    .. note:: differs from np.nan_to_num in that it replaces np.inf with the same
+    Notes
+    -----
+    Differs from np.nan_to_num in that it replaces np.inf with the same
     number as np.nan.
-    '''
+    """
     if copy:
         arr = arr.copy()
     arr[~np.isfinite(arr)] = value
     return arr
 
 
-def interp_nan(a_init, pad_zeros=True, method='linear', verbose=False):
-    '''Linearly interpolate to fill NaN rows and columns in a matrix.
+def interp_nan(a_init, pad_zeros=True, method="linear", verbose=False):
+    """Linearly interpolate to fill NaN rows and columns in a matrix.
     Also interpolates NaNs in 1D arrays.
 
     Parameters
@@ -218,7 +224,7 @@ def interp_nan(a_init, pad_zeros=True, method='linear', verbose=False):
     2D case assumes that entire rows or columns are masked & edges to be
     NaN-free, but is much faster than griddata implementation.
 
-    '''
+    """
     shape = np.shape(a_init)
     if pad_zeros:
         a = np.zeros(tuple(s + 2 for s in shape))
@@ -231,15 +237,14 @@ def interp_nan(a_init, pad_zeros=True, method='linear', verbose=False):
     isnan = np.isnan(a)
     if np.sum(isnan) == 0:
         if verbose:
-            print('no nans to interpolate')
+            print("no nans to interpolate")
         return a_init
 
     if a.ndim == 2:
         if verbose:
-            print('interpolating 2D matrix')
-        if (np.any(isnan[:, 0] | isnan[:, -1]) or
-                np.any(isnan[0, :] | isnan[-1, :])):
-            raise ValueError('Edges must not have NaNs')
+            print("interpolating 2D matrix")
+        if np.any(isnan[:, 0] | isnan[:, -1]) or np.any(isnan[0, :] | isnan[-1, :]):
+            raise ValueError("Edges must not have NaNs")
         # Rows/cols to be considered fully null may have non-NaN diagonals
         # so we'll take the maximum NaN count to identify them
         n_nans_by_row = np.sum(isnan, axis=1)
@@ -247,22 +252,21 @@ def interp_nan(a_init, pad_zeros=True, method='linear', verbose=False):
         i_inds = np.where(n_nans_by_row < np.max(n_nans_by_row))[0]
         j_inds = np.where(n_nans_by_col < np.max(n_nans_by_col))[0]
         if np.sum(isnan[np.ix_(i_inds, j_inds)]) > 0:
-            raise AssertionError('Found additional NaNs')
+            raise AssertionError("Found additional NaNs")
         interpolator = partial(
             scipy.interpolate.interpn,
             (i_inds, j_inds),
             a[np.ix_(i_inds, j_inds)],
             method=method,
-            bounds_error=False)
+            bounds_error=False,
+        )
     else:
         if verbose:
-            print('interpolating 1D vector')
+            print("interpolating 1D vector")
         inds = np.arange(len(a))
         interpolator = scipy.interpolate.interp1d(
-            inds[~isnan],
-            a[~isnan],
-            kind=method,
-            bounds_error=False)
+            inds[~isnan], a[~isnan], kind=method, bounds_error=False
+        )
 
     loc = np.where(isnan)
     a[loc] = interpolator(loc)
@@ -274,14 +278,14 @@ def interp_nan(a_init, pad_zeros=True, method='linear', verbose=False):
 
 
 def slice_sorted(arr, lo, hi):
-    '''Get the subset of a sorted array with values >=lo and <hi.
+    """Get the subset of a sorted array with values >=lo and <hi.
     A faster version of arr[(arr>=lo) & (arr<hi)]
-    '''
-    return arr[np.searchsorted(arr, lo):np.searchsorted(arr, hi)]
+    """
+    return arr[np.searchsorted(arr, lo) : np.searchsorted(arr, hi)]
 
 
 def MAD(arr, axis=None, has_nans=False):
-    '''Calculate the Median Absolute Deviation from the median.
+    """Calculate the Median Absolute Deviation from the median.
 
     Parameters
     ----------
@@ -294,7 +298,7 @@ def MAD(arr, axis=None, has_nans=False):
 
     has_nans : bool
         If True, use the slower NaN-aware method to calculate medians.
-    '''
+    """
 
     if has_nans:
         return np.nanmedian(np.abs(arr - np.nanmedian(arr, axis)), axis)
@@ -303,21 +307,25 @@ def MAD(arr, axis=None, has_nans=False):
 
 
 def COMED(xs, ys, has_nans=False):
-    '''Calculate the comedian - the robust median-based counterpart of
+    """Calculate the comedian - the robust median-based counterpart of
     Pearson's r.
 
-    comedian = med((xs-median(xs))*(ys-median(ys))) / MAD(xs) / MAD(ys)
+    ::
+
+        comedian = median((xs-median(xs))*(ys-median(ys))) / MAD(xs) / MAD(ys)
 
     Parameters
     ----------
-
     has_nans : bool
         if True, mask (x,y) pairs with at least one NaN
 
-    .. note:: Citations: "On MAD and comedians" by Michael Falk (1997),
+    Notes
+    -----
+    Citations: "On MAD and comedians" by Michael Falk (1997),
     "Robust Estimation of the Correlation Coefficient: An Attempt of Survey"
     by Georgy Shevlyakov and Pavel Smirnov (2011)
-    '''
+
+    """
 
     if has_nans:
         mask = np.isfinite(xs) & np.isfinite(ys)
@@ -326,14 +334,14 @@ def COMED(xs, ys, has_nans=False):
 
     med_x = np.median(xs)
     med_y = np.median(ys)
-    comedian = np.median((xs-med_x) * (ys-med_y)) / MAD(xs) / MAD(ys)
+    comedian = np.median((xs - med_x) * (ys - med_y)) / MAD(xs) / MAD(ys)
 
     return comedian
 
 
-def normalize_score(arr, norm='z', axis=None, has_nans=True):
-    '''Normalize an array by subtracting the first moment and
-    dividing the residual by the second.
+def normalize_score(arr, norm="z", axis=None, has_nans=True):
+    """Normalize an array by subtracting the first moment and dividing the
+    residual by the second.
 
     Parameters
     ----------
@@ -361,12 +369,12 @@ def normalize_score(arr, norm='z', axis=None, has_nans=True):
         If True, use slower NaN-aware methods to calculate the
         normalization parameters.
 
-    '''
+    """
 
     norm_arr = np.copy(arr)
     norm = norm.lower()
 
-    if norm == 'z':
+    if norm == "z":
         if has_nans:
             norm_arr -= np.nanmean(norm_arr, axis=axis)
             norm_arr /= np.nanstd(norm_arr, axis=axis)
@@ -374,22 +382,22 @@ def normalize_score(arr, norm='z', axis=None, has_nans=True):
             norm_arr -= np.mean(norm_arr, axis=axis)
             norm_arr /= np.std(norm_arr, axis=axis)
 
-    elif norm == 'mad' or norm == 'madz':
+    elif norm == "mad" or norm == "madz":
         if has_nans:
             norm_arr -= np.nanmedian(norm_arr, axis=axis)
         else:
             norm_arr -= np.median(norm_arr, axis=axis)
         norm_arr /= MAD(norm_arr, axis=axis, has_nans=has_nans)
-        if norm == 'madz':
+        if norm == "madz":
             norm_arr *= 0.67449
     else:
-        raise ValueError('Unknown norm type: {}'.format(norm))
+        raise ValueError("Unknown norm type: {}".format(norm))
 
     return norm_arr
 
 
 def stochastic_sd(arr, n=10000, seed=0):
-    '''Estimate the standard deviation of an array by considering only the
+    """Estimate the standard deviation of an array by considering only the
     subset of its elements.
 
     Parameters
@@ -400,13 +408,14 @@ def stochastic_sd(arr, n=10000, seed=0):
 
     seed : int
         The seed for the random number generator.
-    '''
+    """
     arr = np.asarray(arr)
     if arr.size < n:
         return np.sqrt(arr.var())
     else:
         return np.sqrt(
-            np.random.RandomState(seed).choice(arr.flat, n, replace=True).var())
+            np.random.RandomState(seed).choice(arr.flat, n, replace=True).var()
+        )
 
 
 def is_symmetric(mat):
@@ -423,7 +432,6 @@ def get_eig(mat, n=3, mask_zero_rows=False, subtract_mean=False, divide_by_mean=
 
     Parameters
     ----------
-
     mat : np.ndarray
         A square matrix, must not contain nans, infs or zero rows.
 
@@ -442,7 +450,6 @@ def get_eig(mat, n=3, mask_zero_rows=False, subtract_mean=False, divide_by_mean=
 
     Returns
     -------
-
     eigvecs : np.ndarray
         An array of eigenvectors (in rows), sorted by a decreasing absolute
         eigenvalue.
@@ -452,17 +459,19 @@ def get_eig(mat, n=3, mask_zero_rows=False, subtract_mean=False, divide_by_mean=
 
     """
     symmetric = is_symmetric(mat)
-    if (symmetric
+    if (
+        symmetric
         and np.sum(np.sum(np.abs(mat), axis=0) == 0) > 0
         and not mask_zero_rows
-        ):
+    ):
         warnings.warn(
             "The matrix contains empty rows/columns and is symmetric. "
-            "Mask the empty rows with remove_zeros=True")
+            "Mask the empty rows with remove_zeros=True"
+        )
 
     if mask_zero_rows:
         if not is_symmetric(mat):
-            raise ValueError('The input matrix must be symmetric!')
+            raise ValueError("The input matrix must be symmetric!")
 
         mask = np.sum(np.abs(mat), axis=0) != 0
         mat_collapsed = mat[mask, :][:, mask]
@@ -471,7 +480,8 @@ def get_eig(mat, n=3, mask_zero_rows=False, subtract_mean=False, divide_by_mean=
             n=n,
             mask_zero_rows=False,
             subtract_mean=subtract_mean,
-            divide_by_mean=divide_by_mean)
+            divide_by_mean=divide_by_mean,
+        )
         n_rows = mat.shape[0]
         eigvecs = np.full((n, n_rows), np.nan)
         for i in range(n):
@@ -501,6 +511,7 @@ def get_eig(mat, n=3, mask_zero_rows=False, subtract_mean=False, divide_by_mean=
 @numba.njit
 def _logbins_numba(lo, hi, ratio=0, N=0, prepend_zero=False):
     """Make bins with edges evenly spaced in log-space.
+
     Parameters
     ----------
     lo, hi : int
@@ -511,6 +522,7 @@ def _logbins_numba(lo, hi, ratio=0, N=0, prepend_zero=False):
     N : int
         The target number of bins. The resulting number of bins is not guaranteed.
         Either ratio or N must be specified.
+
     """
     lo = int(lo)
     hi = int(hi)
@@ -520,7 +532,7 @@ def _logbins_numba(lo, hi, ratio=0, N=0, prepend_zero=False):
         N = np.log(hi / lo) / np.log(ratio)
     elif N == 0:
         raise ValueError("Please specify N or ratio")
-    data10 = 10**np.linspace(np.log10(lo), np.log10(hi), int(N))
+    data10 = 10 ** np.linspace(np.log10(lo), np.log10(hi), int(N))
     data10 = np.rint(data10)
     data10_int = np.sort(np.unique(data10)).astype(np.int_)
     assert data10_int[0] == lo
@@ -532,14 +544,14 @@ def _logbins_numba(lo, hi, ratio=0, N=0, prepend_zero=False):
 
 @numba.njit
 def observed_over_expected(
-        matrix,
-        mask=np.empty(shape=(0), dtype=np.bool_),
-        dist_bin_edge_ratio=1.03):
-    '''
+    matrix, mask=np.empty(shape=(0), dtype=np.bool_), dist_bin_edge_ratio=1.03
+):
+    """
     Normalize the contact matrix for distance-dependent contact decay.
     The diagonals of the matrix, corresponding to contacts between loci pairs
     with a fixed distance, are grouped into exponentially growing bins of
     distances; the diagonals from each bin are normalized by their average value.
+
     Parameters
     ----------
     matrix : np.ndarray
@@ -550,6 +562,7 @@ def observed_over_expected(
         If 2D, it is interpreted as a mask of "good" pixels.
     dist_bin_edge_ratio : float
         The ratio of the largest and the shortest distance in each distance bin.
+
     Returns
     -------
     OE : np.ndarray
@@ -561,8 +574,8 @@ def observed_over_expected(
         The sum of contact frequencies in each distance bin.
     n_pixels : np.ndarray
         The total number of valid pixels in each distance bin.
-    '''
 
+    """
     N = matrix.shape[0]
 
     mask2d = np.empty(shape=(0, 0), dtype=np.bool_)
@@ -572,10 +585,9 @@ def observed_over_expected(
     elif mask.ndim == 2:
         # Numba expects mask to be a 1d array, so we need to hint
         # that it is now a 2d array
-        mask2d = mask.reshape(
-            (int(np.sqrt(mask.size)), int(np.sqrt(mask.size))))
+        mask2d = mask.reshape((int(np.sqrt(mask.size)), int(np.sqrt(mask.size))))
     else:
-        raise ValueError('The mask must be either 1D or 2D.')
+        raise ValueError("The mask must be either 1D or 2D.")
 
     data = np.copy(matrix).astype(np.float64)
 
@@ -587,15 +599,15 @@ def observed_over_expected(
 
     bin_idx, n_pixels, sum_pixels = 0, 0, 0
 
-    for bin_idx, lo, hi in zip(range(len(dist_bins)-1),
-                               dist_bins[:-1],
-                               dist_bins[1:]):
+    for bin_idx, lo, hi in zip(
+        range(len(dist_bins) - 1), dist_bins[:-1], dist_bins[1:]
+    ):
         sum_pixels = 0
         n_pixels = 0
         for offset in range(lo, hi):
-            for j in range(0, N-offset):
-                if not has_mask or mask2d[offset+j, j]:
-                    sum_pixels += data[offset+j, j]
+            for j in range(0, N - offset):
+                if not has_mask or mask2d[offset + j, j]:
+                    sum_pixels += data[offset + j, j]
                     n_pixels += 1
 
         n_pixels_arr[bin_idx] = n_pixels
@@ -608,19 +620,20 @@ def observed_over_expected(
             continue
 
         for offset in range(lo, hi):
-            for j in range(0, N-offset):
-                if not has_mask or mask2d[offset+j, j]:
+            for j in range(0, N - offset):
+                if not has_mask or mask2d[offset + j, j]:
 
                     data[offset + j, j] /= mean_pixel
                     if offset > 0:
-                        data[j, offset+j] /= mean_pixel
+                        data[j, offset + j] /= mean_pixel
 
     return data, dist_bins, sum_pixels_arr, n_pixels_arr
 
 
 @numba.jit  # (nopython=True)
 def iterative_correction_symmetric(
-        x, max_iter=1000, ignore_diags=0, tol=1e-5, verbose=False):
+    x, max_iter=1000, ignore_diags=0, tol=1e-5, verbose=False
+):
     """The main method for correcting DS and SS read data.
     By default does iterative correction, but can perform an M-time correction
 
@@ -643,9 +656,9 @@ def iterative_correction_symmetric(
     if ignore_diags > 0:
         for d in range(0, ignore_diags):
             #            set_diag(_x, 0, d) # explicit cycles are easier to jit
-            for j in range(0, N-d):
-                _x[j, j+d] = 0
-                _x[j+d, j] = 0
+            for j in range(0, N - d):
+                _x[j, j + d] = 0
+                _x[j + d, j] = 0
     totalBias = np.ones(N, np.double)
 
     converged = False
@@ -655,7 +668,7 @@ def iterative_correction_symmetric(
     for iternum in range(max_iter):
         s = np.sum(_x, axis=1)
 
-        mask = (s == 0)
+        mask = s == 0
 
         s = s / np.mean(s[~mask])
         s[mask] = 1
@@ -664,7 +677,7 @@ def iterative_correction_symmetric(
         s += 1
         totalBias *= s
 
-        #_x = _x / s[:, None]  / s[None,:]
+        # _x = _x / s[:, None]  / s[None,:]
         # an explicit cycle is 2x faster here
         for i in range(N):
             for j in range(N):
@@ -681,15 +694,14 @@ def iterative_correction_symmetric(
     corr = totalBias[~mask].mean()  # mean correction factor
     _x = _x * corr * corr  # renormalizing everything
     totalBias /= corr
-    report = {'converged': converged, 'iternum': iternum}
+    report = {"converged": converged, "iternum": iternum}
 
     return _x, totalBias, report
 
 
 @numba.jit  # (nopython=True)
-def iterative_correction_asymmetric(
-        x, max_iter=1000,  tol=1e-5, verbose=False):
-    """ adapted from iterative_correction_symmetric
+def iterative_correction_asymmetric(x, max_iter=1000, tol=1e-5, verbose=False):
+    """Adapted from iterative_correction_symmetric
 
     Parameters
     ----------
@@ -712,24 +724,24 @@ def iterative_correction_asymmetric(
 
     for iternum in range(max_iter):
         s = np.sum(_x, axis=0)
-        mask = (s == 0)
+        mask = s == 0
         s = s / np.mean(s[~mask])
-        s[mask] = 1.
-        s -= 1.
+        s[mask] = 1.0
+        s -= 1.0
         s *= 0.8
-        s += 1.
+        s += 1.0
         totalBias *= s
 
         s2 = np.sum(_x, axis=1)
-        mask2 = (s2 == 0)
+        mask2 = s2 == 0
         s2 = s2 / np.mean(s2[~mask2])
-        s2[mask2] = 1.
-        s2 -= 1.
+        s2[mask2] = 1.0
+        s2 -= 1.0
         s2 *= 0.8
-        s2 += 1.
+        s2 += 1.0
         totalBias2 *= s2
 
-        #_x = _x / s[:, None]  / s[None,:]
+        # _x = _x / s[:, None]  / s[None,:]
         # an explicit cycle is 2x faster here
         for i in range(N2):
             for j in range(N):
@@ -749,7 +761,7 @@ def iterative_correction_asymmetric(
     _x = _x * corr * corr2  # renormalizing everything
     totalBias /= corr
     totalBias2 /= corr2
-    report = {'converged': converged, 'iternum': iternum}
+    report = {"converged": converged, "iternum": iternum}
 
     return _x, totalBias, totalBias2, report
 
@@ -766,7 +778,7 @@ class LazyToeplitz(cooler.core._IndexingMixin):
         if r is None:
             r = c
         elif c[0] != r[0]:
-            raise ValueError('First element of `c` and `r` should match')
+            raise ValueError("First element of `c` and `r` should match")
         self._c = c
         self._r = r
 
@@ -782,8 +794,8 @@ class LazyToeplitz(cooler.core._IndexingMixin):
 
         # symmetric query
         if (i0 == j0) and (i1 == j1):
-            c = C[0:(i1-i0)]
-            r = R[0:(j1-j0)]
+            c = C[0 : (i1 - i0)]
+            r = R[0 : (j1 - j0)]
 
         # asymmetric query
         else:
@@ -796,11 +808,8 @@ class LazyToeplitz(cooler.core._IndexingMixin):
                 C, R = R, C
                 transpose = True
 
-            c = np.r_[
-                R[(j0-i0): max(0, j0-i1): -1],
-                C[0: max(0, i1-j0)]
-            ]
-            r = R[(j0-i0):(j1-i0)]
+            c = np.r_[R[(j0 - i0) : max(0, j0 - i1) : -1], C[0 : max(0, i1 - j0)]]
+            r = R[(j0 - i0) : (j1 - i0)]
 
             if transpose:
                 c, r = r, c
@@ -829,64 +838,58 @@ def get_kernel(w, p, ktype):
         kernel type.
 
     """
-    width = 2*w+1
+    width = 2 * w + 1
     kernel = np.ones((width, width), dtype=np.int)
     # mesh grid:
-    y, x = np.ogrid[-w:w+1, -w:w+1]
+    y, x = np.ogrid[-w : w + 1, -w : w + 1]
 
-    if ktype == 'donut':
+    if ktype == "donut":
         # mask inner pXp square:
-        mask = ((((-p) <= x) & (x <= p)) &
-                (((-p) <= y) & (y <= p)))
+        mask = (((-p) <= x) & (x <= p)) & (((-p) <= y) & (y <= p))
         # mask vertical and horizontal
         # lines of width 1 pixel:
         mask += (x == 0) | (y == 0)
         # they are all 0:
         kernel[mask] = 0
-    elif ktype == 'vertical':
+    elif ktype == "vertical":
         # mask outside of vertical line
         # of width 3:
-        mask = (((-1 > x) | (x > 1)) & ((y >= -w)))
+        mask = ((-1 > x) | (x > 1)) & ((y >= -w))
         # mask inner pXp square:
-        mask += (((-p <= x) & (x <= p)) &
-                 ((-p <= y) & (y <= p)))
+        mask += ((-p <= x) & (x <= p)) & ((-p <= y) & (y <= p))
         # kernel masked:
         kernel[mask] = 0
-    elif ktype == 'horizontal':
+    elif ktype == "horizontal":
         # mask outside of horizontal line
         # of width 3:
-        mask = (((-1 > y) | (y > 1)) & ((x >= -w)))
+        mask = ((-1 > y) | (y > 1)) & ((x >= -w))
         # mask inner pXp square:
-        mask += (((-p <= x) & (x <= p)) &
-                 ((-p <= y) & (y <= p)))
+        mask += ((-p <= x) & (x <= p)) & ((-p <= y) & (y <= p))
         # kernel masked:
         kernel[mask] = 0
     # ACHTUNG!!! UPRIGHT AND LOWLEFT ARE SWITCHED ...
     # IT SEEMS FOR UNKNOWN REASON THAT IT SHOULD
     # BE THAT WAY ...
     # OR IT'S A MISTAKE IN hIccups AS WELL ...
-    elif ktype == 'upright':
+    elif ktype == "upright":
         # mask inner pXp square:
-        mask = (((x >= -p)) &
-                ((y <= p)))
-        mask += (x >= 0)
-        mask += (y <= 0)
+        mask = ((x >= -p)) & ((y <= p))
+        mask += x >= 0
+        mask += y <= 0
         # kernel masked:
         kernel[mask] = 0
-    elif ktype == 'lowleft':
+    elif ktype == "lowleft":
         # mask inner pXp square:
-        mask = (((x >= -p)) &
-                ((y <= p)))
-        mask += (x >= 0)
-        mask += (y <= 0)
+        mask = ((x >= -p)) & ((y <= p))
+        mask += x >= 0
+        mask += y <= 0
         # reflect that mask to
         # make it upper-right:
         mask = mask[::-1, ::-1]
         # kernel masked:
         kernel[mask] = 0
     else:
-        raise ValueError(
-            "Kernel-type {} has not been implemented yet".format(ktype))
+        raise ValueError("Kernel-type {} has not been implemented yet".format(ktype))
     return kernel
 
 
@@ -939,9 +942,10 @@ def coarsen(reduction, x, axes, trim_excess=False):
             axes[i] = 1
 
     if trim_excess:
-        ind = tuple(slice(0, -(d % axes[i]))
-                    if d % axes[i] else slice(None, None)
-                    for i, d in enumerate(x.shape))
+        ind = tuple(
+            slice(0, -(d % axes[i])) if d % axes[i] else slice(None, None)
+            for i, d in enumerate(x.shape)
+        )
         x = x[ind]
 
     # (10, 10) -> (5, 2, 5, 2)
@@ -955,17 +959,16 @@ def smooth(y, box_pts):
     try:
         from astropy.convolution import convolve
     except ImportError:
-        raise ImportError(
-            "The astropy module is required to use this function")
-    box = np.ones(box_pts)/box_pts
+        raise ImportError("The astropy module is required to use this function")
+    box = np.ones(box_pts) / box_pts
     # also: None, fill, wrap, extend
-    y_smooth = convolve(y, box, boundary='extend')
+    y_smooth = convolve(y, box, boundary="extend")
     return y_smooth
 
 
 def infer_mask2D(mat):
     if mat.shape[0] != mat.shape[1]:
-        raise ValueError('matix must be symmetric!')
+        raise ValueError("matix must be symmetric!")
     fill_na(mat, value=0, copy=False)
     sum0 = np.sum(mat, axis=0) > 0
     mask = sum0[:, None] * sum0[None, :]
@@ -974,46 +977,50 @@ def infer_mask2D(mat):
 
 def remove_good_singletons(mat, mask=None, returnMask=False):
     mat = mat.copy()
-    if mask == None:
+    if mask is None:
         mask = infer_mask2D(mat)
-    badBins = (np.sum(mask, axis=0) == 0)
+    badBins = np.sum(mask, axis=0) == 0
     goodBins = badBins == 0
-    good_singletons = ((goodBins * smooth(goodBins, 3)) == 1/3)
+    good_singletons = (goodBins * smooth(goodBins, 3)) == 1 / 3
     mat[good_singletons, :] = np.nan
     mat[:, good_singletons] = np.nan
     mask[good_singletons, :] = 0
     mask[:, good_singletons] = 0
-    if returnMask == True:
+    if returnMask:
         return mat, mask
     else:
         return mat
 
 
-def interpolate_bad_singletons(mat, mask=None,
-                               fillDiagonal=True, returnMask=False,
-                               secondPass=True, verbose=False):
-    ''' interpolate singleton missing bins for visualization
+def interpolate_bad_singletons(
+    mat, mask=None, fillDiagonal=True, returnMask=False, secondPass=True, verbose=False
+):
+    """Interpolate singleton missing bins for visualization
 
     Examples
     --------
-    ax = plt.subplot(121)
-    maxval =  np.log(np.nanmean(np.diag(mat,3))*2 )
-    plt.matshow(np.log(mat)), vmax=maxval, fignum=False)
-    plt.set_cmap('fall');
-    plt.subplot(122,sharex=ax, sharey=ax)
-    plt.matshow(np.log(
-            interpolate_bad_singletons(remove_good_singletons(mat))), vmax=maxval, fignum=False)
-    plt.set_cmap('fall');
-    plt.show()
-    '''
+    >>> ax = plt.subplot(121)
+    >>> maxval =  np.log(np.nanmean(np.diag(mat,3))*2 )
+    >>> plt.matshow(np.log(mat)), vmax=maxval, fignum=False)
+    >>> plt.set_cmap('fall');
+    >>> plt.subplot(122, sharex=ax, sharey=ax)
+    >>> plt.matshow(
+    ...     np.log(interpolate_bad_singletons(remove_good_singletons(mat))),
+    ...     vmax=maxval,
+    ...     fignum=False
+    ... )
+    >>> plt.set_cmap('fall');
+    >>> plt.show()
+    """
     mat = mat.copy()
     if mask is None:
         mask = infer_mask2D(mat)
-    antimask = (~mask)
-    badBins = (np.sum(mask, axis=0) == 0)
-    singletons = ((badBins * smooth(badBins == 0, 3)) > 1/3)
-    bb_minus_singletons = (badBins.astype(
-        'int8')-singletons.astype('int8')).astype('bool')
+    antimask = ~mask
+    badBins = np.sum(mask, axis=0) == 0
+    singletons = (badBins * smooth(badBins == 0, 3)) > 1 / 3
+    bb_minus_singletons = (badBins.astype("int8") - singletons.astype("int8")).astype(
+        "bool"
+    )
 
     mat[antimask] = np.nan
     locs = np.zeros(np.shape(mat))
@@ -1024,61 +1031,77 @@ def interpolate_bad_singletons(mat, mask=None,
     locs = np.nonzero(locs)  # np.isnan(mat))
     interpvals = np.zeros(np.shape(mat))
     if verbose:
-        print('initial pass to interpolate:', len(locs[0]))
-    for loc in zip(locs[0],  locs[1]):
+        print("initial pass to interpolate:", len(locs[0]))
+    for loc in zip(locs[0], locs[1]):
         i, j = loc
         if loc[0] > loc[1]:
-            if (loc[0] > 0) and (loc[1] > 0) and (loc[0] < len(mat)-1) and (loc[1] < len(mat)-1):
-                interpvals[i, j] = np.nanmean([mat[i-1, j-1], mat[i+1, j+1]])
+            if (
+                (loc[0] > 0)
+                and (loc[1] > 0)
+                and (loc[0] < len(mat) - 1)
+                and (loc[1] < len(mat) - 1)
+            ):
+                interpvals[i, j] = np.nanmean([mat[i - 1, j - 1], mat[i + 1, j + 1]])
             elif loc[0] == 0:
-                interpvals[i, j] = np.nanmean([mat[i, j-1], mat[i, j+1]])
+                interpvals[i, j] = np.nanmean([mat[i, j - 1], mat[i, j + 1]])
             elif loc[1] == 0:
-                interpvals[i, j] = np.nanmean([mat[i-1, j], mat[i+1, j]])
-            elif loc[0] == (len(mat)-1):
-                interpvals[i, j] = np.nanmean([mat[i, j-1], mat[i, j+1]])
-            elif loc[1] == (len(mat)-1):
-                interpvals[i, j] = np.nanmean([mat[i-1, j], mat[i+1, j]])
-    interpvals = interpvals+interpvals.T
+                interpvals[i, j] = np.nanmean([mat[i - 1, j], mat[i + 1, j]])
+            elif loc[0] == (len(mat) - 1):
+                interpvals[i, j] = np.nanmean([mat[i, j - 1], mat[i, j + 1]])
+            elif loc[1] == (len(mat) - 1):
+                interpvals[i, j] = np.nanmean([mat[i - 1, j], mat[i + 1, j]])
+    interpvals = interpvals + interpvals.T
     mat[locs] = interpvals[locs]
     mask[locs] = 1
 
-    if secondPass == True:
+    if secondPass:
         locs = np.nonzero(np.isnan(interpvals))  # np.isnan(mat))
         interpvals2 = np.zeros(np.shape(mat))
         if verbose:
-            print('still remaining: ', len(locs[0]))
-        for loc in zip(locs[0],  locs[1]):
+            print("still remaining: ", len(locs[0]))
+        for loc in zip(locs[0], locs[1]):
             i, j = loc
             if loc[0] > loc[1]:
-                if (loc[0] > 0) and (loc[1] > 0) and (loc[0] < len(mat)-1) and (loc[1] < len(mat)-1):
+                if (
+                    (loc[0] > 0)
+                    and (loc[1] > 0)
+                    and (loc[0] < len(mat) - 1)
+                    and (loc[1] < len(mat) - 1)
+                ):
                     interpvals2[i, j] = np.nanmean(
-                        [mat[i-1, j-1], mat[i+1, j+1]])
+                        [mat[i - 1, j - 1], mat[i + 1, j + 1]]
+                    )
                 elif loc[0] == 0:
-                    interpvals2[i, j] = np.nanmean([mat[i, j-1], mat[i, j+1]])
+                    interpvals2[i, j] = np.nanmean([mat[i, j - 1], mat[i, j + 1]])
                 elif loc[1] == 0:
-                    interpvals2[i, j] = np.nanmean([mat[i-1, j], mat[i+1, j]])
-                elif loc[0] == (len(mat)-1):
-                    interpvals2[i, j] = np.nanmean([mat[i, j-1], mat[i, j+1]])
-                elif loc[1] == (len(mat)-1):
-                    interpvals2[i, j] = np.nanmean([mat[i-1, j], mat[i+1, j]])
-        interpvals2 = interpvals2+interpvals2.T
+                    interpvals2[i, j] = np.nanmean([mat[i - 1, j], mat[i + 1, j]])
+                elif loc[0] == (len(mat) - 1):
+                    interpvals2[i, j] = np.nanmean([mat[i, j - 1], mat[i, j + 1]])
+                elif loc[1] == (len(mat) - 1):
+                    interpvals2[i, j] = np.nanmean([mat[i - 1, j], mat[i + 1, j]])
+        interpvals2 = interpvals2 + interpvals2.T
         mat[locs] = interpvals2[locs]
         mask[locs] = 1
 
-    if fillDiagonal == True:
+    if fillDiagonal:
         for i in range(-1, 2):
             set_diag(mat, np.nan, i=i, copy=False)
         for i in range(-1, 2):
             set_diag(mask, 0, i=i, copy=False)
 
-    if returnMask == True:
+    if returnMask:
         return mat, mask
     else:
         return mat
 
 
-def zoom_array(in_array, final_shape, same_sum=False,
-               zoom_function=partial(zoom, order=3), **zoom_kwargs):
+def zoom_array(
+    in_array,
+    final_shape,
+    same_sum=False,
+    zoom_function=partial(zoom, order=3),
+    **zoom_kwargs
+):
     """Rescale an array or image.
 
     Normally, one can use scipy.ndimage.zoom to do array/image rescaling.
@@ -1146,7 +1169,7 @@ def zoom_array(in_array, final_shape, same_sum=False,
         if mult != 1:
             sh = list(rescaled.shape)
             assert sh[ind] % mult == 0
-            newshape = sh[:ind] + [sh[ind] // mult, mult] + sh[ind + 1:]
+            newshape = sh[:ind] + [sh[ind] // mult, mult] + sh[ind + 1 :]
             rescaled.shape = newshape
             rescaled = np.mean(rescaled, axis=ind + 1)
     assert rescaled.shape == final_shape
@@ -1256,7 +1279,7 @@ def adaptive_coarsegrain(ar, countar, cutoff=5, max_levels=8, min_shape=8):
     Norig = ar.shape[0]
     Nlog = np.log2(Norig)
     if not np.allclose(Nlog, np.rint(Nlog)):
-        newN = np.int(2**np.ceil(Nlog))   # next power-of-two sized matrix
+        newN = np.int(2 ** np.ceil(Nlog))  # next power-of-two sized matrix
         newar = np.empty((newN, newN), dtype=float)  # fitting things in there
         newar[:] = np.nan
         newcountar = np.zeros((newN, newN), dtype=float)
@@ -1273,7 +1296,7 @@ def adaptive_coarsegrain(ar, countar, cutoff=5, max_levels=8, min_shape=8):
     assert countar.shape == ar.shape
 
     # We will be working with three arrays.
-    ar_cg = [ar]   # actual Hi-C data
+    ar_cg = [ar]  # actual Hi-C data
     countar_cg = [countar]  # counts contributing to Hi-C data (raw Hi-C reads)
     armask_cg = [armask]  # mask of "valid" pixels of the heatmap
 
