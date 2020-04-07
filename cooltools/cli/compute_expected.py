@@ -131,6 +131,7 @@ def compute_expected(
     clr = cooler.Cooler(cool_path)
     if regions is None:
         regions = [(chrom, 0, clr.chromsizes[chrom]) for chrom in clr.chromnames]
+        region_names = [chrom for chrom in clr.chromnames]
     else:
         regions_buf, names = util.sniff_for_header(regions)
         if names is not None:
