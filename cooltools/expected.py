@@ -689,11 +689,11 @@ def _diagsum_symm(clr, fields, transforms, regions, span):
     pixels = clr.pixels()[lo:hi]
     pixels = cooler.annotate(pixels, bins, replace=False)
 
-    pixels["region1"] = assign_supports(pixels, regions, suffix="1")
-    pixels["regiont2"] = assign_supports(pixels, regions, suffix="2")
+    pixels["region1"] = assign_supports(pixels['bin1_id'], regions)
+    pixels["region2"] = assign_supports(pixels['bin2_id'], regions)
     pixels = pixels[pixels["region1"] == pixels["region2"]].copy()
 
-    pixels["diag"] = pixels["bin2_id"] - pixels["bin1_id"]
+    pixels["dist"] = pixels["bin2_id"] - pixels["bin1_id"]
     for field, t in transforms.items():
         pixels[field] = t(pixels)
 
@@ -714,16 +714,16 @@ def _diagsum_asymm(clr, fields, transforms, contact_type, regions1, regions2, sp
     elif contact_type == "trans":
         pixels = pixels[pixels["chrom1"] != pixels["chrom2"]].copy()
 
-    pixels["diag"] = pixels["bin2_id"] - pixels["bin1_id"]
+    pixels["dist"] = pixels["bin2_id"] - pixels["bin1_id"]
     for field, t in transforms.items():
         pixels[field] = t(pixels)
 
-    pixels["region1"] = assign_supports(pixels, regions1, suffix="1")
-    pixels["region2"] = assign_supports(pixels, regions2, suffix="2")
+    pixels["region1"] = assign_supports(pixels['bin1_id'], regions1)
+    pixels["region2"] = assign_supports(pixels['bin2_id'], regions2)
 
     pixel_groups = dict(iter(pixels.groupby(["region1", "region2"])))
     return {
-        (int(i), int(j)): group.groupby("diag")[fields].sum()
+        (int(i), int(j)): group.groupby("dist")[fields].sum()
         for (i, j), group in pixel_groups.items()
     }
 
