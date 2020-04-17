@@ -353,7 +353,7 @@ def cooler_cis_eig(
     eigvals_per_reg, eigvecs_per_reg = zip(*map(_each, regions))
 
     for region, eigvecs in zip(regions, eigvecs_per_reg):
-        lo, hi = bioframe.bisect_bedframe(bins, region)
+        lo, hi = bioframe.bedbisect(bins, region)
         for i, eigvec in enumerate(eigvecs):
             eigvec_table.iloc[
                 lo:hi, eigvec_table.columns.get_loc("E" + str(i + 1))
