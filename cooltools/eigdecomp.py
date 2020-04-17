@@ -334,7 +334,7 @@ def cooler_cis_eig(
                 'No column "{}" in the bin table'.format(phasing_track_col)
             )
         phasing_track = (
-            bioframe.slice_bedframe(bins, region)[phasing_track_col].values
+            bioframe.bedslice(bins, region)[phasing_track_col].values
             if phasing_track_col
             else None
         )
