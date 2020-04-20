@@ -1096,7 +1096,7 @@ def zoom_array(
     in_array,
     final_shape,
     same_sum=False,
-    zoom_function=partial(zoom, order=3),
+    zoom_function=partial(zoom, order=1),
     **zoom_kwargs
 ):
     """Rescale an array or image.
