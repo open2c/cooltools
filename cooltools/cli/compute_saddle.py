@@ -363,7 +363,7 @@ def compute_saddle(
             qlo, qhi = qrange
         else:
             qlo, qhi = 0.0, 1.0
-        q_edges = np.linspace(qlo, qhi, n_bins)
+        q_edges = np.linspace(qlo, qhi, n_bins+1)
         binedges = saddle.quantile(track[track_name], q_edges)
     else:
         if len(range_):
@@ -372,7 +372,7 @@ def compute_saddle(
             lo, hi = saddle.quantile(track[track_name], qrange)
         else:
             lo, hi = track[track_name].min(), track[track_name].max()
-        binedges = np.linspace(lo, hi, n_bins)
+        binedges = np.linspace(lo, hi, n_bins+1)
 
     digitized, hist = saddle.digitize_track(
         binedges, track=(track, track_name), regions=track_chroms

@@ -103,9 +103,8 @@ def digitize_track(binedges, track, regions=None):
     # subset and re-order chromosome groups
     if regions is not None:
         regions = [bioframe.parse_region(reg) for reg in regions]
-        grouped = track.groupby("chrom")
         track = pd.concat(
-            bioframe.bedslice(grouped, chrom, st, end) for (chrom, st, end) in regions
+            bioframe.bedslice(track, region) for region in regions
         )
 
     # histogram the signal
@@ -249,7 +248,7 @@ def make_saddle(
     regions=None,
     min_diag=3,
     max_diag=-1,
-    trim_outliers=False,
+    trim_outliers=True,
     verbose=False,
 ):
     """
@@ -306,11 +305,9 @@ def make_saddle(
         regions = [bioframe.parse_region(reg) for reg in regions]
 
     digitized_tracks = {
-        reg: bioframe.bedslice(digitized_df.groupby("chrom"), reg[0], reg[1], reg[2])[
-            name
-        ]
-        for reg in regions
-    }
+                        region: bioframe.bedslice(digitized_df, region)[name]
+                        for region in regions
+                       }
 
     if contact_type == "cis":
         supports = list(zip(regions, regions))
