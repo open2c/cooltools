@@ -266,28 +266,44 @@ def count_bad_pixels_per_block(clr, supports, weight_name="weight", bad_bins=Non
         raise NotImplementedError("providing external list \
             of bad bins is not implemented.")
 
+    # Get the total number of bins per region
+    n_tot = []
+    for region in supports:
+        lo, hi = clr.extent(region)
+        n_tot.append(hi - lo)
+
+    # Get the number of bad bins per region
     if weight_name is None:
         # ignore bad bins
         # useful for unbalanced data
-        x = [0 for region in supports]
+        n_bad = [0 for region in supports]
     elif isinstance(weight_name, str):
         if weight_name not in clr.bins().columns:
             raise KeyError("Balancing weight {weight_name} not found!")
-        # bad bins are ones with
-        # the weight vector being NaN:
-        x = [np.sum(clr.bins()[weight_name]
-                       .fetch(region)
-                       .isnull()
-                       .astype(int)
-                       .values)
-             for region in supports]
+        # bad bins are ones with the weight vector being NaN
+        n_bad = [
+            np.sum(
+                clr
+                .bins()[weight_name]
+                .fetch(region)
+                .isnull()
+                .astype(int)
+                .values
+            )
+            for region in supports
+        ]
     else:
         raise ValueError("`weight_name` can be `str` or `None`")
 
+    # Calculate the resulting bad pixels in trans
     blocks = {}
     for i in range(n):
         for j in range(i + 1, n):
-            blocks[supports[i], supports[j]] = x[i] * x[j]
+            blocks[supports[i], supports[j]] = (
+                n_tot[i] * n_bad[j] +
+                n_tot[j] * n_bad[i] -
+                n_bad[i] * n_bad[j]
+            )
     return blocks
 
 
