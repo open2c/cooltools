@@ -32,15 +32,16 @@ HiCCUPS_W2_MAX_INDX = 10000
 # this is to mitigate and parameterize the obs.raw vs count controversy:
 observed_count_name = "count"
 expected_count_name = "exp.raw"
-adjusted_exp_name = lambda kernel_name: "la_exp."+kernel_name+".value"
-nans_inkernel_name = lambda kernel_name: "la_exp."+kernel_name+".nnans"
-bin1_id_name='bin1_id'
-bin2_id_name='bin2_id'
+adjusted_exp_name = lambda kernel_name: "la_exp." + kernel_name + ".value"
+nans_inkernel_name = lambda kernel_name: "la_exp." + kernel_name + ".nnans"
+bin1_id_name = "bin1_id"
+bin2_id_name = "bin2_id"
 
 
 ##################################
 # generic service functions:
 ##################################
+
 
 def buffer_df_chunks(chunks, size=25000000):
     """
@@ -60,7 +61,11 @@ def buffer_df_chunks(chunks, size=25000000):
         n += len(chunk)
         buf.append(chunk)
         if n > size:
-            print("large chunk of size {} is ready, made up of {} chunks".format(n,len(buf)))
+            print(
+                "large chunk of size {} is ready, made up of {} chunks".format(
+                    n, len(buf)
+                )
+            )
             yield pd.concat(buf, axis=0)
             print("cleaning buffers ...")
             # reset buffer and counter:
@@ -68,13 +73,17 @@ def buffer_df_chunks(chunks, size=25000000):
             n = 0
     #  yield the remainder of the buffer:
     if len(buf):
-        print("LAST chunk of size {} is ready, made up of {} chunks".format(n,len(buf)))
+        print(
+            "LAST chunk of size {} is ready, made up of {} chunks".format(n, len(buf))
+        )
         yield pd.concat(buf, axis=0)
         print("last guy shipped ...")
+
 
 ##################################
 # dotfinder-specific service functions:
 ##################################
+
 
 def recommend_kernel_params(binsize):
     """
@@ -98,7 +107,8 @@ def recommend_kernel_params(binsize):
         # > 30 kb - is probably too much ...
         raise ValueError(
             "Provided cooler has resolution {} bases, "
-            "which is too coarse for analysis.".format(binsize))
+            "which is too coarse for analysis.".format(binsize)
+        )
     elif binsize >= 18000:
         # ~ 20-25 kb:
         w, p = 3, 1
@@ -112,11 +122,15 @@ def recommend_kernel_params(binsize):
         # < 5 kb - is probably too fine ...
         raise ValueError(
             "Provided cooler has resolution {} bases, "
-            "which is too fine for analysis.".format(binsize))
+            "which is too fine for analysis.".format(binsize)
+        )
     # return the results:
-    return w,p
+    return w, p
 
-def annotate_pixels_with_qvalues(pixels_df, qvalues, kernels, inplace=False, obs_raw_name = observed_count_name):
+
+def annotate_pixels_with_qvalues(
+    pixels_df, qvalues, kernels, inplace=False, obs_raw_name=observed_count_name
+):
     """
     Add columns with the qvalues to a DataFrame of pixels
     ... detailed but unedited notes ...
@@ -155,7 +169,7 @@ def annotate_pixels_with_qvalues(pixels_df, qvalues, kernels, inplace=False, obs
     be too resource-hungry.
     """
     if inplace:
-        pixels_qvalue_df = pixel_df
+        pixels_qvalue_df = pixels_df
     else:
         # let's do it "safe" - using a copy:
         pixels_qvalue_df = pixels_df.copy()
@@ -164,23 +178,29 @@ def annotate_pixels_with_qvalues(pixels_df, qvalues, kernels, inplace=False, obs
     # iteration over pairs of obs, la_exp and extracting needed qvals
     # one after another ...
     for k in kernels:
-        pixels_qvalue_df["la_exp."+k+".qval"] = \
-                [ qvalues[k].loc[o,e] for o,e \
-                     in pixels_df[[obs_raw_name,"la_exp."+k+".value"]].itertuples(index=False) ]
+        pixels_qvalue_df["la_exp." + k + ".qval"] = [
+            qvalues[k].loc[o, e]
+            for o, e in pixels_df[[obs_raw_name, "la_exp." + k + ".value"]].itertuples(
+                index=False
+            )
+        ]
     # qvalues : dict
     #   A dictionary with keys being kernel names and values pandas.DataFrame-s
     #   storing q-values: each column corresponds to a lambda-chunk,
     #   while rows correspond to observed pixels values.
     return pixels_qvalue_df
 
-def clust_2D_pixels(pixels_df,
-                    threshold_cluster=2,
-                    bin1_id_name='bin1_id',
-                    bin2_id_name='bin2_id',
-                    clust_label_name='c_label',
-                    clust_size_name='c_size',
-                    verbose=True):
-    '''
+
+def clust_2D_pixels(
+    pixels_df,
+    threshold_cluster=2,
+    bin1_id_name="bin1_id",
+    bin2_id_name="bin2_id",
+    clust_label_name="c_label",
+    clust_size_name="c_size",
+    verbose=True,
+):
+    """
     Group significant pixels by proximity using Birch clustering. We use
     "n_clusters=None", which implies no AgglomerativeClustering, and thus
     simply reporting "blobs" of pixels of radii <="threshold_cluster" along
@@ -216,10 +236,10 @@ def clust_2D_pixels(pixels_df,
         row/col (bin1/bin2) are coordinates of centroids,
         label and sizes are unique pixel-cluster
         labels and their corresponding sizes.
-    '''
+    """
 
     # col (bin2) must precede row (bin1):
-    pixels     = pixels_df[[bin1_id_name, bin2_id_name]].values.astype(np.float)
+    pixels = pixels_df[[bin1_id_name, bin2_id_name]].values.astype(np.float)
     # added astype(float) to avoid further issues with clustering, as it
     # turned out start1/start2 genome coordinates could be int32 or int64
     # and int32 is not enough for some operations, i.e., integer overflow.
@@ -229,10 +249,12 @@ def clust_2D_pixels(pixels_df,
     # "n_clusters=None" implies using BIRCH without AgglomerativeClustering,
     # thus simply reporting "blobs" of pixels of radius "threshold_cluster"
     # along with blob-centroids as well:
-    brc = Birch(n_clusters=None,
-                threshold=threshold_cluster,
-                # branching_factor=50, (it's default)
-                compute_labels=True)
+    brc = Birch(
+        n_clusters=None,
+        threshold=threshold_cluster,
+        # branching_factor=50, (it's default)
+        compute_labels=True,
+    )
     brc.fit(pixels)
     # # following is redundant,
     # # as it's done here:
@@ -243,45 +265,47 @@ def clust_2D_pixels(pixels_df,
     # BEWARE: labels might not be continuous, i.e.,
     # "np.unique(clustered_labels)" isn't same as "brc.subcluster_labels_", because:
     # https://github.com/scikit-learn/scikit-learn/blob/a24c8b464d094d2c468a16ea9f8bf8d42d949f84/sklearn/cluster/birch.py#L576
-    clustered_labels    = brc.labels_
+    clustered_labels = brc.labels_
     # centroid coordinates ( <= len(clustered_labels)):
     clustered_centroids = brc.subcluster_centers_
     # count unique labels and get their continuous indices
     uniq_labels, inverse_idx, uniq_counts = np.unique(
-                                                clustered_labels,
-                                                return_inverse=True,
-                                                return_counts=True)
+        clustered_labels, return_inverse=True, return_counts=True
+    )
     # cluster sizes taken to match labels:
-    cluster_sizes       = uniq_counts[inverse_idx]
+    cluster_sizes = uniq_counts[inverse_idx]
     # take centroids corresponding to labels (as many as needed):
-    centroids_per_pixel = np.take(clustered_centroids,
-                                  clustered_labels,
-                                  axis=0)
+    centroids_per_pixel = np.take(clustered_centroids, clustered_labels, axis=0)
 
     if verbose:
         # prepare clustering summary report:
-        msg = "Clustering is completed:\n" + \
-              "{} clusters detected\n".format(uniq_counts.size) + \
-              "{:.2f}+/-{:.2f} mean size\n".format(uniq_counts.mean(),
-                                                 uniq_counts.std())
+        msg = (
+            "Clustering is completed:\n"
+            + "{} clusters detected\n".format(uniq_counts.size)
+            + "{:.2f}+/-{:.2f} mean size\n".format(
+                uniq_counts.mean(), uniq_counts.std()
+            )
+        )
         print(msg)
 
     # create output DataFrame
     centroids_n_labels_df = pd.DataFrame(
-                                centroids_per_pixel,
-                                index=pixel_idxs,
-                                columns=['c'+bin1_id_name,'c'+bin2_id_name])
+        centroids_per_pixel,
+        index=pixel_idxs,
+        columns=["c" + bin1_id_name, "c" + bin2_id_name],
+    )
     # add labels per pixel:
     centroids_n_labels_df[clust_label_name] = clustered_labels.astype(np.int)
     # add cluster sizes:
     centroids_n_labels_df[clust_size_name] = cluster_sizes.astype(np.int)
 
-
     return centroids_n_labels_df
+
 
 ##################################
 # matrix tiling and tiles-generator
 ##################################
+
 
 def diagonal_matrix_tiling(start, stop, bandwidth, edge=0, verbose=False):
     """
@@ -335,14 +359,17 @@ def diagonal_matrix_tiling(start, stop, bandwidth, edge=0, verbose=False):
 
     # matrix parameters before chunking:
     if verbose:
-        print("matrix of size {}X{} to be split so that\n".format(size,size)+
-         "  diagonal region of size {} would be completely\n".format(bandwidth)+
-         "  covered by the tiling, additionally keeping\n"+
-         "  a small 'edge' of size w={}, to allow for\n".format(edge)+
-         "  meaningfull convolution around boundaries.\n"+
-         "  Resulting number of tiles is {}".format(tiles-1)+
-         "  Non-edge case size of each tile is {}X{}".format(2*(bandwidth+edge),
-                                                             2*(bandwidth+edge)))
+        print(
+            "matrix of size {}X{} to be split so that\n".format(size, size)
+            + "  diagonal region of size {} would be completely\n".format(bandwidth)
+            + "  covered by the tiling, additionally keeping\n"
+            + "  a small 'edge' of size w={}, to allow for\n".format(edge)
+            + "  meaningfull convolution around boundaries.\n"
+            + "  Resulting number of tiles is {}".format(tiles - 1)
+            + "  Non-edge case size of each tile is {}X{}".format(
+                2 * (bandwidth + edge), 2 * (bandwidth + edge)
+            )
+        )
 
     # actual number of tiles is tiles-1
     # by doing range(1, tiles) we are making sure we are processing the
@@ -350,10 +377,11 @@ def diagonal_matrix_tiling(start, stop, bandwidth, edge=0, verbose=False):
     for t in range(1, tiles):
         # l = max(0,M*t-M)
         # r = min(L,M*t+M)
-        lw = max(0    , bandwidth*(t-1) - edge)
-        rw = min(size , bandwidth*(t+1) + edge)
+        lw = max(0, bandwidth * (t - 1) - edge)
+        rw = min(size, bandwidth * (t + 1) + edge)
         # don't forget about the 'start' origin:
-        yield lw+start, rw+start
+        yield lw + start, rw + start
+
 
 def square_matrix_tiling(start, stop, step, edge, square=False, verbose=False):
     """
@@ -440,26 +468,29 @@ def square_matrix_tiling(start, stop, step, edge, square=False, verbose=False):
     tiles = size // step + bool(size % step)
 
     if verbose:
-        print("matrix of size {}X{} to be splitted\n".format(size,size)+
-         "  into square tiles of size {}.\n".format(step)+
-         "  A small 'edge' of size w={} is added, to allow for\n".format(edge)+
-         "  meaningfull convolution around boundaries.\n"+
-         "  Resulting number of tiles is {}".format(tiles*tiles))
+        print(
+            "matrix of size {}X{} to be splitted\n".format(size, size)
+            + "  into square tiles of size {}.\n".format(step)
+            + "  A small 'edge' of size w={} is added, to allow for\n".format(edge)
+            + "  meaningfull convolution around boundaries.\n"
+            + "  Resulting number of tiles is {}".format(tiles * tiles)
+        )
 
     for tx in range(tiles):
         for ty in range(tiles):
 
-            lwx = max(0,    step*tx - edge)
-            rwx = min(size, step*(tx+1) + edge)
+            lwx = max(0, step * tx - edge)
+            rwx = min(size, step * (tx + 1) + edge)
             if square and (rwx >= size):
                 lwx = size - step - edge
 
-            lwy = max(0,    step*ty - edge)
-            rwy = min(size, step*(ty+1) + edge)
+            lwy = max(0, step * ty - edge)
+            rwy = min(size, step * (ty + 1) + edge)
             if square and (rwy >= size):
                 lwy = size - step - edge
 
-            yield (lwx+start,rwx+start), (lwy+start,rwy+start)
+            yield (lwx + start, rwx + start), (lwy + start, rwy + start)
+
 
 def heatmap_tiles_generator_diag(clr, chroms, pad_size, tile_size, band_to_cover):
     """
@@ -493,26 +524,26 @@ def heatmap_tiles_generator_diag(clr, chroms, pad_size, tile_size, band_to_cover
 
     for chrom in chroms:
         chr_start, chr_stop = clr.extent(chrom)
-        for tilei, tilej in square_matrix_tiling(chr_start,
-                                                 chr_stop,
-                                                 tile_size,
-                                                 pad_size):
+        for tilei, tilej in square_matrix_tiling(
+            chr_start, chr_stop, tile_size, pad_size
+        ):
             # check if a given tile intersects with
             # with the diagonal band of interest ...
             diag_from = tilej[0] - tilei[1]
-            diag_to   = tilej[1] - tilei[0]
+            diag_to = tilej[1] - tilei[0]
             #
             band_from = 0
-            band_to   = band_to_cover
+            band_to = band_to_cover
             # we are using this >2*padding trick to exclude
             # tiles from the lower triangle from calculations ...
-            if (min(band_to,diag_to) - max(band_from,diag_from)) > 2*pad_size:
+            if (min(band_to, diag_to) - max(band_from, diag_from)) > 2 * pad_size:
                 yield chrom, tilei, tilej
+
 
 ##################################
 # kernel-convolution related:
 ##################################
-def _convolve_and_count_nans(O_bal,E_bal,E_raw,N_bal,kernel):
+def _convolve_and_count_nans(O_bal, E_bal, E_raw, N_bal, kernel):
     """
     Dense versions of a bunch of matrices needed for convolution and
     calculation of number of NaNs in a vicinity of each pixel. And a kernel to
@@ -521,32 +552,26 @@ def _convolve_and_count_nans(O_bal,E_bal,E_raw,N_bal,kernel):
     """
     # a matrix filled with the kernel-weighted sums
     # based on a balanced observed matrix:
-    KO = convolve(O_bal,
-                  kernel,
-                  mode='constant',
-                  cval=0.0,
-                  origin=0)
+    KO = convolve(O_bal, kernel, mode="constant", cval=0.0, origin=0)
     # a matrix filled with the kernel-weighted sums
     # based on a balanced expected matrix:
-    KE = convolve(E_bal,
-                  kernel,
-                  mode='constant',
-                  cval=0.0,
-                  origin=0)
+    KE = convolve(E_bal, kernel, mode="constant", cval=0.0, origin=0)
     # get number of NaNs in a vicinity of every
     # pixel (kernel's nonzero footprint)
     # based on the NaN-matrix N_bal.
     # N_bal is shared NaNs between O_bal E_bal,
     # is it redundant ?
-    NN = convolve(N_bal.astype(np.int),
-                  # we have to use kernel's
-                  # nonzero footprint:
-                  (kernel != 0).astype(np.int),
-                  mode='constant',
-                  # there are only NaNs
-                  # beyond the boundary:
-                  cval=1,
-                  origin=0)
+    NN = convolve(
+        N_bal.astype(np.int),
+        # we have to use kernel's
+        # nonzero footprint:
+        (kernel != 0).astype(np.int),
+        mode="constant",
+        # there are only NaNs
+        # beyond the boundary:
+        cval=1,
+        origin=0,
+    )
     ######################################
     # using cval=0 for actual data and
     # cval=1 for NaNs matrix reduces
@@ -561,17 +586,11 @@ def _convolve_and_count_nans(O_bal,E_bal,E_raw,N_bal,kernel):
     # in the form of dense matrices:
     return Ek_raw, NN
 
+
 ########################################################################
 # this should be a MAIN function to get locally adjusted expected
 # Die Hauptfunktion
 ########################################################################
-def get_adjusted_expected_tile_some_nans(origin,
-                                         observed,
-                                         expected,
-                                         bal_weights,
-                                         kernels,
-                                         balance_factor=None,
-                                         verbose=False):
 # ! use parameterized column names
 # # observed_count_name = "count"
 # # expected_count_name = "exp.raw"
@@ -579,10 +598,11 @@ def get_adjusted_expected_tile_some_nans(origin,
 # # nans_inkernel_name = lambda kernel_name: "la_exp."+kernel_name+".nnans"
 # # bin1_id_name='bin1_id'
 # # bin2_id_name='bin2_id'
-
+def get_adjusted_expected_tile_some_nans(
+    origin, observed, expected, bal_weights, kernels, balance_factor=None, verbose=False
+):
     """
-    'get_adjusted_expected_tile_some_nans', get locally adjusted
-    expected for a collection of local-filters (kernels).
+    Get locally adjusted expected for a collection of local-filters (kernels).
 
     Such locally adjusted expected, 'Ek' for a given kernel,
     can serve as a baseline for deciding whether a given
@@ -593,9 +613,13 @@ def get_adjusted_expected_tile_some_nans(origin,
     expected is a product of a global expected in that
     pixel E_bal[i,j] and an enrichment of local environ-
     ment of the pixel, described with a given kernel:
-                              KERNEL[i,j](O_bal)
-    Ek_bal[i,j] = E_bal[i,j]* ------------------
-                              KERNEL[i,j](E_bal)
+
+    ::
+
+                                  KERNEL[i,j](O_bal)
+        Ek_bal[i,j] = E_bal[i,j]* ------------------
+                                  KERNEL[i,j](E_bal)
+
     where KERNEL[i,j](X) is a result of convolution
     between the kernel and a slice of matrix X centered
     around (i,j). See link below for details:
@@ -607,13 +631,20 @@ def get_adjusted_expected_tile_some_nans(origin,
     Poisson test to decide is a given pixel is enriched.
     (comparison between balanced values using Poisson-
     test is intractable):
-                              KERNEL[i,j](O_bal)
-    Ek_raw[i,j] = E_raw[i,j]* ------------------ ,
-                              KERNEL[i,j](E_bal)
+
+    ::
+
+                                  KERNEL[i,j](O_bal)
+        Ek_raw[i,j] = E_raw[i,j]* ------------------ ,
+                                  KERNEL[i,j](E_bal)
+
     where E_raw[i,j] is:
-          1               1
-    -------------- * -------------- * E_bal[i,j]
-    bal_weights[i]   bal_weights[j]
+
+    ::
+
+              1               1
+        -------------- * -------------- * E_bal[i,j]
+        bal_weights[i]   bal_weights[j]
 
 
     Parameters
@@ -696,28 +727,31 @@ def get_adjusted_expected_tile_some_nans(origin,
     # extract origin coordinate of this tile:
     io, jo = origin
     # let's extract full matrices and ice_vector:
-    O_raw = observed # raw observed, no need to copy, no modifications.
+    O_raw = observed  # raw observed, no need to copy, no modifications.
     E_bal = np.copy(expected)
     # 'bal_weights': ndarray or a couple of those ...
     if isinstance(bal_weights, np.ndarray):
         v_bal_i = bal_weights
         v_bal_j = bal_weights
-    elif isinstance(bal_weights, (tuple,list)):
-        v_bal_i,v_bal_j = bal_weights
+    elif isinstance(bal_weights, (tuple, list)):
+        v_bal_i, v_bal_j = bal_weights
     else:
-        raise ValueError("'bal_weights' must be an numpy.ndarray"
-                    "for slices of a matrix with diagonal-origin or"
-                    "a tuple/list of a couple of numpy.ndarray-s"
-                    "for a slice of matrix with an arbitrary origin.")
+        raise ValueError(
+            "'bal_weights' must be an numpy.ndarray"
+            "for slices of a matrix with diagonal-origin or"
+            "a tuple/list of a couple of numpy.ndarray-s"
+            "for a slice of matrix with an arbitrary origin."
+        )
     # kernels must be a dict with kernel-names as keys
     # and kernel ndarrays as values.
     if not isinstance(kernels, dict):
-        raise ValueError("'kernels' must be a dictionary"
-                    "with name-keys and ndarrays-values.")
+        raise ValueError(
+            "'kernels' must be a dictionary" "with name-keys and ndarrays-values."
+        )
 
     # balanced observed, from raw-observed
     # by element-wise multiply:
-    O_bal = np.multiply(O_raw, np.outer(v_bal_i,v_bal_j))
+    O_bal = np.multiply(O_raw, np.outer(v_bal_i, v_bal_j))
     # O_bal is separate from O_raw memory-wise.
 
     # fill lower triangle of O_bal and E_bal with NaNs
@@ -726,18 +760,17 @@ def get_adjusted_expected_tile_some_nans(origin,
     # estimation for pixels very close to diagonal, whose
     # "donuts"(kernels) would be crossing the main diagonal.
     # The trickiest thing here would be dealing with the origin: io,jo.
-    O_bal[np.tril_indices_from(O_bal,k=(io-jo)-1)] = np.nan
-    E_bal[np.tril_indices_from(E_bal,k=(io-jo)-1)] = np.nan
+    O_bal[np.tril_indices_from(O_bal, k=(io - jo) - 1)] = np.nan
+    E_bal[np.tril_indices_from(E_bal, k=(io - jo) - 1)] = np.nan
 
     # raw E_bal: element-wise division of E_bal[i,j] and
     # v_bal[i]*v_bal[j]:
-    E_raw = np.divide(E_bal, np.outer(v_bal_i,v_bal_j))
+    E_raw = np.divide(E_bal, np.outer(v_bal_i, v_bal_j))
 
     # let's calculate a matrix of common NaNs
     # shared between observed and expected:
     # check if it's redundant ? (is NaNs from O_bal sufficient? )
-    N_bal = np.logical_or(np.isnan(O_bal),
-                          np.isnan(E_bal))
+    N_bal = np.logical_or(np.isnan(O_bal), np.isnan(E_bal))
     # fill in common nan-s with zeroes, preventing
     # NaNs during convolution part of '_convolve_and_count_nans':
     O_bal[N_bal] = 0.0
@@ -749,12 +782,11 @@ def get_adjusted_expected_tile_some_nans(origin,
     # we are going to accumulate all the results
     # into a DataFrame, keeping NaNs, and other
     # unfiltered results (even the lower triangle for now):
-    i,j = np.indices(O_raw.shape)
+    i, j = np.indices(O_raw.shape)
     # pack it into DataFrame to accumulate results:
-    peaks_df = pd.DataFrame({"bin1_id": i.flatten()+io,
-                             "bin2_id": j.flatten()+jo})
+    peaks_df = pd.DataFrame({"bin1_id": i.flatten() + io, "bin2_id": j.flatten() + jo})
 
-    with np.errstate(divide='ignore', invalid='ignore'):
+    with np.errstate(divide="ignore", invalid="ignore"):
         for kernel_name, kernel in kernels.items():
             ###############################
             # kernel-specific calculations:
@@ -776,31 +808,25 @@ def get_adjusted_expected_tile_some_nans(origin,
             # be provided of course.
             # a matrix filled with the kernel-weighted sums
             # based on a balanced observed matrix:
-            KO = convolve(O_bal,
-                          kernel,
-                          mode='constant',
-                          cval=0.0,
-                          origin=0)
+            KO = convolve(O_bal, kernel, mode="constant", cval=0.0, origin=0)
             # a matrix filled with the kernel-weighted sums
             # based on a balanced expected matrix:
-            KE = convolve(E_bal,
-                          kernel,
-                          mode='constant',
-                          cval=0.0,
-                          origin=0)
+            KE = convolve(E_bal, kernel, mode="constant", cval=0.0, origin=0)
             # get number of NaNs in a vicinity of every
             # pixel (kernel's nonzero footprint)
             # based on the NaN-matrix N_bal.
             # N_bal is shared NaNs between O_bal E_bal,
-            NN = convolve(N_bal.astype(np.int),
-                          # we have to use kernel's
-                          # nonzero footprint:
-                          (kernel != 0).astype(np.int),
-                          mode='constant',
-                          # there are only NaNs
-                          # beyond the boundary:
-                          cval=1,
-                          origin=0)
+            NN = convolve(
+                N_bal.astype(np.int),
+                # we have to use kernel's
+                # nonzero footprint:
+                (kernel != 0).astype(np.int),
+                mode="constant",
+                # there are only NaNs
+                # beyond the boundary:
+                cval=1,
+                origin=0,
+            )
             ######################################
             # using cval=0 for actual data and
             # cval=1 for NaNs matrix reduces
@@ -815,7 +841,9 @@ def get_adjusted_expected_tile_some_nans(origin,
             # some results of convolution and multuplt it by the
             # appropriate factor "cooler._load_attrs(‘bins/weight’)[‘scale’]" ...
             if balance_factor and (kernel_name == "lowleft"):
-                peaks_df["factor_balance."+kernel_name+".KerObs"] = balance_factor * KO.flatten()
+                peaks_df["factor_balance." + kernel_name + ".KerObs"] = (
+                    balance_factor * KO.flatten()
+                )
                 # KO*balance_factor: to be compared with 16 ...
             if verbose:
                 print("Convolution with kernel {} is complete.".format(kernel_name))
@@ -823,8 +851,8 @@ def get_adjusted_expected_tile_some_nans(origin,
             # accumulation into single DataFrame:
             # store locally adjusted expected for each kernel
             # and number of NaNs in the footprint of each kernel
-            peaks_df["la_exp."+kernel_name+".value"] = Ek_raw.flatten()
-            peaks_df["la_exp."+kernel_name+".nnans"] = NN.flatten()
+            peaks_df["la_exp." + kernel_name + ".value"] = Ek_raw.flatten()
+            peaks_df["la_exp." + kernel_name + ".nnans"] = NN.flatten()
             # do all the filter/logic/masking etc on the complete DataFrame ...
     #####################################
     # downstream stuff is supposed to be
@@ -841,12 +869,12 @@ def get_adjusted_expected_tile_some_nans(origin,
     mask_ndx = pd.Series(0, index=peaks_df.index, dtype=np.bool)
     for kernel_name, kernel in kernels.items():
         # accummulating with a vector full of 'False':
-        mask_ndx_kernel = ~np.isfinite(peaks_df["la_exp."+kernel_name+".value"])
-        mask_ndx = np.logical_or(mask_ndx_kernel,mask_ndx)
+        mask_ndx_kernel = ~np.isfinite(peaks_df["la_exp." + kernel_name + ".value"])
+        mask_ndx = np.logical_or(mask_ndx_kernel, mask_ndx)
 
     # returning only pixels from upper triangle of a matrix
     # is likely here to stay:
-    upper_band = (peaks_df["bin1_id"] < peaks_df["bin2_id"])
+    upper_band = peaks_df["bin1_id"] < peaks_df["bin2_id"]
     # Consider filling lower triangle of the OBSERVED matrix tile
     # with NaNs, instead of this - we'd need this for a fair
     # consideration of the pixels that are super close to the
@@ -856,17 +884,27 @@ def get_adjusted_expected_tile_some_nans(origin,
     # close etc, is now shifted to the outside of this function
     # a way to simplify code.
 
-
     # return good semi-sparsified DF:
     return peaks_df[~mask_ndx & upper_band].reset_index(drop=True)
 
 
 ##################################
-# step-specific dot-calling functions 
+# step-specific dot-calling functions
 ##################################
 
-def score_tile(tile_cij, clr, cis_exp, exp_v_name, bal_v_name, kernels,
-               nans_tolerated, band_to_cover, balance_factor, verbose):
+
+def score_tile(
+    tile_cij,
+    clr,
+    cis_exp,
+    exp_v_name,
+    bal_v_name,
+    kernels,
+    nans_tolerated,
+    band_to_cover,
+    balance_factor,
+    verbose,
+):
     """
     The main working function that given a tile of a heatmap, applies kernels to
     perform convolution to calculate locally-adjusted expected and then
@@ -933,19 +971,20 @@ def score_tile(tile_cij, clr, cis_exp, exp_v_name, bal_v_name, kernels,
         origin=origin,
         observed=observed,
         expected=expected,
-        bal_weights=(bal_weight_i,bal_weight_j),
+        bal_weights=(bal_weight_i, bal_weight_j),
         kernels=kernels,
         balance_factor=balance_factor,
-        verbose=verbose)
+        verbose=verbose,
+    )
 
     # Post-processing filters
     # (1) exclude pixels that connect loci further than 'band_to_cover' apart:
-    is_inside_band = (result["bin1_id"] > (result["bin2_id"]-band_to_cover))
+    is_inside_band = result["bin1_id"] > (result["bin2_id"] - band_to_cover)
 
     # (2) identify pixels that pass number of NaNs compliance test for ALL kernels:
     does_comply_nans = np.all(
-        result[["la_exp."+k+".nnans" for k in kernels]] < nans_tolerated,
-        axis=1)
+        result[["la_exp." + k + ".nnans" for k in kernels]] < nans_tolerated, axis=1
+    )
     # so, selecting inside band and nNaNs compliant results:
     # ( drop dropping index maybe ??? ) ...
     res_df = result[is_inside_band & does_comply_nans].reset_index(drop=True)
@@ -977,15 +1016,14 @@ def score_tile(tile_cij, clr, cis_exp, exp_v_name, bal_v_name, kernels,
     # rename obs.raw -> count
     # this would break A LOT of downstream stuff - but let it be ...
     #
-    return res_df[["bin1_id","bin2_id","count"]+ \
-                 ["la_exp."+k+".value" for k in kernels]] \
-                  .astype(dtype={"la_exp."+k+".value":'float64' for k in kernels})
+    return res_df[
+        ["bin1_id", "bin2_id", "count"] + ["la_exp." + k + ".value" for k in kernels]
+    ].astype(dtype={"la_exp." + k + ".value": "float64" for k in kernels})
 
-def histogram_scored_pixels(scored_df,
-                            kernels,
-                            ledges,
-                            verbose,
-                            obs_raw_name = observed_count_name):
+
+def histogram_scored_pixels(
+    scored_df, kernels, ledges, verbose, obs_raw_name=observed_count_name
+):
     """
     An attempt to implement HiCCUPS-like lambda-chunking
     statistical procedure.
@@ -1038,7 +1076,6 @@ def histogram_scored_pixels(scored_df,
     # hypothesis in a same "class", i.e. with the l.a. expecteds
     # from the same histogram bin.
 
-
     ########################
     # implementation ideas:
     ########################
@@ -1061,7 +1098,7 @@ def histogram_scored_pixels(scored_df,
         # needs to be histogrammed in every bin : scored_df["obs.raw"]
         #
         # lambda-bin index for kernel-type "k":
-        lbins = pd.cut(scored_df["la_exp."+k+".value"],ledges)
+        lbins = pd.cut(scored_df["la_exp." + k + ".value"], ledges)
         # now for each lambda-bin construct a histogramm of "obs.raw":
         obs_hist = {}
         for lbin, grp_df in scored_df.groupby(lbins):
@@ -1085,6 +1122,7 @@ def histogram_scored_pixels(scored_df,
         hists[k] = pd.DataFrame(obs_hist).fillna(0).astype(np.integer)
     # return a dict of DataFrames with a bunch of histograms:
     return hists
+
 
 def determine_thresholds(kernels, ledges, gw_hist, fdr):
     """
@@ -1123,8 +1161,9 @@ def determine_thresholds(kernels, ledges, gw_hist, fdr):
         rcs_Poisson[k] = pd.DataFrame()
         for mu, column in zip(ledges[1:-1], gw_hist[k].columns):
             renorm_factors = rcs_hist[k].loc[0, column]
-            rcs_Poisson[k][column] = (
-                renorm_factors * poisson.sf(gw_hist[k].index - 1, mu))
+            rcs_Poisson[k][column] = renorm_factors * poisson.sf(
+                gw_hist[k].index - 1, mu
+            )
 
         # Determine the threshold by checking the value at which 'fdr_diff'
         # first turns positive. Fill NaNs with an "unreachably" high value.
@@ -1132,9 +1171,9 @@ def determine_thresholds(kernels, ledges, gw_hist, fdr):
         very_high_value = len(rcs_hist[k])
         threshold_df[k] = (
             fdr_diff.where(fdr_diff > 0)
-                    .apply(lambda col: col.first_valid_index())
-                    .fillna(very_high_value)
-                    .astype(np.integer)
+            .apply(lambda col: col.first_valid_index())
+            .fillna(very_high_value)
+            .astype(np.integer)
         )
         # q-values
         # bear in mind some issues with lots of NaNs and Infs after
@@ -1143,12 +1182,10 @@ def determine_thresholds(kernels, ledges, gw_hist, fdr):
 
     return threshold_df, qvalues
 
-def extract_scored_pixels(scored_df,
-                        kernels,
-                        thresholds,
-                        ledges,
-                        verbose,
-                        obs_raw_name=observed_count_name):
+
+def extract_scored_pixels(
+    scored_df, kernels, thresholds, ledges, verbose, obs_raw_name=observed_count_name
+):
     """
     An attempt to implement HiCCUPS-like lambda-chunking
     statistical procedure.
@@ -1195,8 +1232,10 @@ def extract_scored_pixels(scored_df,
         # i.e. IntervalIndex can be .loc-ed with values that would be
         # corresponded with their Intervals (!!!):
         # obs.raw -> count
-        comply_fdr_k = (scored_df[obs_raw_name].values > \
-                        thresholds[k].loc[scored_df["la_exp."+k+".value"]].values)
+        comply_fdr_k = (
+            scored_df[obs_raw_name].values
+            > thresholds[k].loc[scored_df["la_exp." + k + ".value"]].values
+        )
         # extracting q-values for all of the pixels takes a lot of time
         # we'll do it externally for filtered_pixels only, in order to save
         # time
@@ -1213,9 +1252,21 @@ def extract_scored_pixels(scored_df,
 # basically - the dot-calling steps - ONE PASS DOT-CALLING:
 ##################################
 
-def scoring_step(clr, expected, expected_name, balance_name, tiles, kernels,
-                 max_nans_tolerated, loci_separation_bins, output_path,
-                 nproc, output_mode, verbose):
+
+def scoring_step(
+    clr,
+    expected,
+    expected_name,
+    balance_name,
+    tiles,
+    kernels,
+    max_nans_tolerated,
+    loci_separation_bins,
+    output_path,
+    nproc,
+    output_mode,
+    verbose,
+):
     """
     Calculates locally adjusted expected
     for each pixel in a designated area of
@@ -1239,15 +1290,19 @@ def scoring_step(clr, expected, expected_name, balance_name, tiles, kernels,
         # do not calculate dynamic-donut criteria
         # for now.
         balance_factor=None,
-        verbose=very_verbose)
+        verbose=very_verbose,
+    )
 
     if nproc > 1:
         pool = mp.Pool(nproc)
         map_ = pool.imap
-        map_kwargs = dict(chunksize=int(np.ceil(len(tiles)/nproc)))
+        map_kwargs = dict(chunksize=int(np.ceil(len(tiles) / nproc)))
         if verbose:
-            print("creating a Pool of {} workers to tackle {} tiles".format(
-                    nproc, len(tiles)))
+            print(
+                "creating a Pool of {} workers to tackle {} tiles".format(
+                    nproc, len(tiles)
+                )
+            )
     else:
         map_ = map
         if verbose:
@@ -1268,12 +1323,14 @@ def scoring_step(clr, expected, expected_name, balance_name, tiles, kernels,
             print("pandas hdf output ...")
             append = False
             for chunk in chunks:
-                chunk.to_hdf(output_path,
-                             key='results',
-                             format='table',
-                             complevel=9,
-                             complib="blosc:snappy",
-                             append=append)
+                chunk.to_hdf(
+                    output_path,
+                    key="results",
+                    format="table",
+                    complevel=9,
+                    complib="blosc:snappy",
+                    append=append,
+                )
                 append = True
             # success
             return 0
@@ -1287,24 +1344,26 @@ def scoring_step(clr, expected, expected_name, balance_name, tiles, kernels,
             # "create_cooler" API needs more consistency:
             # https://github.com/mirnylab/cooler/issues/149
             #  manually describing "data"-columns (except for bin_ids).
-            columns = ['count',]+["la_exp."+k+".value" for k in kernels]
+            columns = ["count",] + ["la_exp." + k + ".value" for k in kernels]
             # # dtype them just in case as well:
             # dtypes = {"la_exp."+k+".value":np.float64 for k in kernels}
             # dtypes["count"] = np.int32
             # create_cooler using buffered chunks iterator, to speed up
             # cooler merge, as suggested by @nvictus
-            cooler.create_cooler(output_path,
-                                clr.bins()[:],
-                                # iterator of larger pixel chunks ...
-                                buffer_df_chunks(chunks),
-                                columns=columns,
-                                # dtypes=dtypes,
-                                # # to be included later, copy from original clr?
-                                # metadata : dict, optional
-                                # assembly : str, optional
-                                ordered = False, # not ordered for sure
-                                symmetric_upper = True, # is it really ? should be
-                                mode = 'w')
+            cooler.create_cooler(
+                output_path,
+                clr.bins()[:],
+                # iterator of larger pixel chunks ...
+                buffer_df_chunks(chunks),
+                columns=columns,
+                # dtypes=dtypes,
+                # # to be included later, copy from original clr?
+                # metadata : dict, optional
+                # assembly : str, optional
+                ordered=False,  # not ordered for sure
+                symmetric_upper=True,  # is it really ? should be
+                mode="w",
+            )
             # success
             return 0
         # ###########################################
@@ -1322,7 +1381,7 @@ def scoring_step(clr, expected, expected_name, balance_name, tiles, kernels,
                 # compression='snappy',
                 # use_dictionary=True,
                 # version=2.0
-                )
+            )
             # success
             return 0
         # ###########################################
@@ -1339,7 +1398,10 @@ def scoring_step(clr, expected, expected_name, balance_name, tiles, kernels,
         if nproc > 1:
             pool.close()
 
-def histogramming_step(scores_input, input_mode, kernels, ledges, output_path=None, nproc=1, verbose=False):
+
+def histogramming_step(
+    scores_input, input_mode, kernels, ledges, output_path=None, nproc=1, verbose=False
+):
     """
     This is an implementation of the 1st step of lambda-chunking - histogramming.
     This function expects a BEDPE-style dataframe with the scores to be
@@ -1388,13 +1450,14 @@ def histogramming_step(scores_input, input_mode, kernels, ledges, output_path=No
 
     # add very_verbose to supress output from convolution of every tile
     very_verbose = False
-        
+
     if input_mode == "parquet":
         print("parquet input ...")
         # quick attempt - to be updated later
         # ask @nvictus for best practises
         #  wrap it in try statement at least ...
         from pyarrow.parquet import ParquetFile
+
         # check if scored_input is of str instance
         # or a file handle or whatever ...
         pf = ParquetFile(scores_input)
@@ -1410,21 +1473,20 @@ def histogramming_step(scores_input, input_mode, kernels, ledges, output_path=No
     else:
         raise ValueError("{} mode is not supported".format(input_mode))
 
-
     # to hist per scored chunk:
     to_hist = partial(
-        histogram_scored_pixels,
-        kernels=kernels,
-        ledges=ledges,
-        verbose=very_verbose)
+        histogram_scored_pixels, kernels=kernels, ledges=ledges, verbose=very_verbose
+    )
 
     # composing/piping scoring and histogramming
     # together :
-    job = lambda tile : to_hist(extract_df(tile))
+    job = lambda tile: to_hist(extract_df(tile))
 
     # copy paste from @nvictus modified 'scoring_step':
     if nproc > 1:
-        raise  NotImplementedError("reading parquet in chunks using multiprocess breaks!")
+        raise NotImplementedError(
+            "reading parquet in chunks using multiprocess breaks!"
+        )
         # pool = mp.Pool(nproc)
         # map_ = pool.imap
         # map_kwargs = dict(chunksize=int(np.ceil(len(tiles)/nproc)))
@@ -1455,12 +1517,12 @@ def histogramming_step(scores_input, input_mode, kernels, ledges, output_path=No
     # this is very ugly, but ok
     # for the draft lambda-chunking
     # lambda version of lambda-chunking:
-    def _sum_hists(hx,hy):
+    def _sum_hists(hx, hy):
         # perform a DataFrame summation
         # for every value of the dictionary:
         hxy = {}
         for k in kernels:
-            hxy[k] = hx[k].add(hy[k],fill_value=0).astype(np.integer)
+            hxy[k] = hx[k].add(hy[k], fill_value=0).astype(np.integer)
         # returning the sum:
         return hxy
 
@@ -1477,27 +1539,32 @@ def histogramming_step(scores_input, input_mode, kernels, ledges, output_path=No
     # top bin, i.e., there are no l.a. expecteds > base^(len(ledges)-1)
     for k in kernels:
         last_la_exp_bin = final_hist[k].columns[-1]
-        last_la_exp_vals = final_hist[k].iloc[:,-1]
+        last_la_exp_vals = final_hist[k].iloc[:, -1]
         # checking the top bin:
-        assert (last_la_exp_vals.sum()==0), \
-                "There are la_exp.{}.value in {}, please check the histogram" \
-                                                    .format(k,last_la_exp_bin)
+        assert (
+            last_la_exp_vals.sum() == 0
+        ), "There are la_exp.{}.value in {}, please check the histogram".format(
+            k, last_la_exp_bin
+        )
         # drop that last column/bin (last_edge, +inf]:
         final_hist[k] = final_hist[k].drop(columns=last_la_exp_bin)
         # consider dropping all of the columns that have zero .sum()
     # returning filtered histogram
     return final_hist
 
-def extraction_step(scores_input,
-                    input_mode,
-                    kernels,
-                    ledges,
-                    thresholds,
-                    nproc=1,
-                    output_path=None,
-                    verbose=False,
-                    bin1_id_name='bin1_id',
-                    bin2_id_name='bin2_id'):
+
+def extraction_step(
+    scores_input,
+    input_mode,
+    kernels,
+    ledges,
+    thresholds,
+    nproc=1,
+    output_path=None,
+    verbose=False,
+    bin1_id_name="bin1_id",
+    bin2_id_name="bin2_id",
+):
     """
 
     This would be an implementation of the second step of lambda-chunking, i.e.
@@ -1567,6 +1634,7 @@ def extraction_step(scores_input,
         # ask @nvictus for best practises
         #  wrap it in try statement at least ...
         from pyarrow.parquet import ParquetFile
+
         # check if scored_input is of str instance
         # or a file handle or whatever ...
         pf = ParquetFile(scores_input)
@@ -1582,22 +1650,24 @@ def extraction_step(scores_input,
     else:
         raise ValueError("{} mode is not supported".format(input_mode))
 
-
     # to hist per scored chunk:
     extract_significant = partial(
         extract_scored_pixels,
         kernels=kernels,
         thresholds=thresholds,
         ledges=ledges,
-        verbose=very_verbose)
+        verbose=very_verbose,
+    )
 
     # composing/piping scoring and histogramming
     # together :
-    job = lambda tile : extract_significant(extract_df(tile))
+    job = lambda tile: extract_significant(extract_df(tile))
 
     # copy paste from @nvictus modified 'scoring_step':
     if nproc > 1:
-        raise  NotImplementedError("reading parquet in chunks using multiprocess breaks!")
+        raise NotImplementedError(
+            "reading parquet in chunks using multiprocess breaks!"
+        )
     else:
         map_ = map
         if verbose:
@@ -1608,28 +1678,35 @@ def extraction_step(scores_input,
         # https://github.com/mirnylab/cooler/blob/9e72ee202b0ac6f9d93fd2444d6f94c524962769/cooler/tools.py#L59
         # here:
         filtered_pix_chunks = map_(job, tiles, **map_kwargs)
-        significant_pixels = pd.concat(filtered_pix_chunks,ignore_index=True)
+        significant_pixels = pd.concat(filtered_pix_chunks, ignore_index=True)
         if output_path is not None:
-            significant_pixels.to_csv(output_path,
-                                      sep='\t',
-                                      header=True,
-                                      index=False,
-                                      compression=None)
+            significant_pixels.to_csv(
+                output_path, sep="\t", header=True, index=False, compression=None
+            )
     finally:
         if nproc > 1:
-            pool.close()
+            # pool.close()
+            pass
     # there should be no duplicates in the "significant_pixels" DataFrame of pixels:
     significant_pixels_dups = significant_pixels.duplicated()
-    assert not significant_pixels_dups.any(), \
-         "Duplicated pixels detected during exctraction {}". \
-            format(significant_pixels[significant_pixels_dups])
+    assert (
+        not significant_pixels_dups.any()
+    ), "Duplicated pixels detected during exctraction {}".format(
+        significant_pixels[significant_pixels_dups]
+    )
     # sort the result just in case and drop its index:
-    return significant_pixels \
-                .sort_values(by=[bin1_id_name,bin2_id_name]) \
-                .reset_index(drop=True)
+    return significant_pixels.sort_values(by=[bin1_id_name, bin2_id_name]).reset_index(
+        drop=True
+    )
 
-def clustering_step(scores_df, expected_chroms,
-                          dots_clustering_radius, verbose, obs_raw_name = observed_count_name):
+
+def clustering_step(
+    scores_df,
+    expected_chroms,
+    dots_clustering_radius,
+    verbose,
+    obs_raw_name=observed_count_name,
+):
     """
 
     This is a new "clustering" step updated for the pixels processed by lambda-
@@ -1668,23 +1745,28 @@ def clustering_step(scores_df, expected_chroms,
     # using different bin12_id_names since all
     # pixels are annotated at this point.
     pixel_clust_list = []
-    for chrom  in expected_chroms:
+    for chrom in expected_chroms:
         # probably generate one big DataFrame with clustering
         # information only and then just merge it with the
         # existing 'scores_df'-DataFrame.
         # should we use groupby instead of 'scores_df['chrom12']==chrom' ?!
         # to be tested ...
-        df = scores_df[((scores_df['chrom1'].astype(str)==str(chrom)) &
-                        (scores_df['chrom2'].astype(str)==str(chrom)))]
+        df = scores_df[
+            (
+                (scores_df["chrom1"].astype(str) == str(chrom))
+                & (scores_df["chrom2"].astype(str) == str(chrom))
+            )
+        ]
         if not len(df):
             continue
 
         pixel_clust = clust_2D_pixels(
             df,
             threshold_cluster=dots_clustering_radius,
-            bin1_id_name='start1',
-            bin2_id_name='start2',
-            verbose=verbose)
+            bin1_id_name="start1",
+            bin2_id_name="start2",
+            verbose=verbose,
+        )
         pixel_clust_list.append(pixel_clust)
     if verbose:
         print("Clustering is over!")
@@ -1695,20 +1777,20 @@ def clustering_step(scores_df, expected_chroms,
     # now merge pixel_clust_df and scores_df DataFrame ...
     # # and merge (index-wise) with the main DataFrame:
     df = pd.merge(
-        scores_df,
-        pixel_clust_df,
-        how='left',
-        left_index=True,
-        right_index=True)
-
+        scores_df, pixel_clust_df, how="left", left_index=True, right_index=True
+    )
+    #prevents scores_df categorical values (all chroms, including chrM)
+    df['chrom1'] = df['chrom1'].astype(str)
+    df['chrom2'] = df['chrom2'].astype(str)
     # report only centroids with highest Observed:
     chrom_clust_group = df.groupby(["chrom1", "chrom2", "c_label"])
     centroids = df.loc[chrom_clust_group[obs_raw_name].idxmax()]
     return centroids
 
+
 # consider switching step names - "extraction" to "FDR-thresholding"
 # and "thresholding" to "enrichment" - for final enrichment selection:
-def thresholding_step(centroids, obs_raw_name = observed_count_name):
+def thresholding_step(centroids, obs_raw_name=observed_count_name):
     # (2)
     # filter by FDR, enrichment etc:
     enrichment_factor_1 = 1.5
@@ -1719,17 +1801,43 @@ def thresholding_step(centroids, obs_raw_name = observed_count_name):
     # # Temporarily remove orphans filtering, until q-vals are calculated:
     ######################################################################
     enrichment_fdr_comply = (
-        (centroids[obs_raw_name] > enrichment_factor_2 * centroids["la_exp.lowleft.value"]) &
-        (centroids[obs_raw_name] > enrichment_factor_2 * centroids["la_exp.donut.value"]) &
-        (centroids[obs_raw_name] > enrichment_factor_1 * centroids["la_exp.vertical.value"]) &
-        (centroids[obs_raw_name] > enrichment_factor_1 * centroids["la_exp.horizontal.value"]) &
-        ( (centroids[obs_raw_name] > enrichment_factor_3 * centroids["la_exp.lowleft.value"])
-            | (centroids[obs_raw_name] > enrichment_factor_3 * centroids["la_exp.donut.value"]) ) &
-        ( (centroids["c_size"] > 1)
-           | ((centroids["la_exp.lowleft.qval"]
-               + centroids["la_exp.donut.qval"]
-               + centroids["la_exp.vertical.qval"]
-               + centroids["la_exp.horizontal.qval"]) <= FDR_orphan_threshold)
+        (
+            centroids[obs_raw_name]
+            > enrichment_factor_2 * centroids["la_exp.lowleft.value"]
+        )
+        & (
+            centroids[obs_raw_name]
+            > enrichment_factor_2 * centroids["la_exp.donut.value"]
+        )
+        & (
+            centroids[obs_raw_name]
+            > enrichment_factor_1 * centroids["la_exp.vertical.value"]
+        )
+        & (
+            centroids[obs_raw_name]
+            > enrichment_factor_1 * centroids["la_exp.horizontal.value"]
+        )
+        & (
+            (
+                centroids[obs_raw_name]
+                > enrichment_factor_3 * centroids["la_exp.lowleft.value"]
+            )
+            | (
+                centroids[obs_raw_name]
+                > enrichment_factor_3 * centroids["la_exp.donut.value"]
+            )
+        )
+        & (
+            (centroids["c_size"] > 1)
+            | (
+                (
+                    centroids["la_exp.lowleft.qval"]
+                    + centroids["la_exp.donut.qval"]
+                    + centroids["la_exp.vertical.qval"]
+                    + centroids["la_exp.horizontal.qval"]
+                )
+                <= FDR_orphan_threshold
+            )
         )
     )
     # #
@@ -1789,29 +1897,29 @@ def thresholding_step(centroids, obs_raw_name = observed_count_name):
 
     # tentaive output columns list:
     columns_for_output = [
-        'chrom1',
-        'start1',
-        'end1',
-        'chrom2',
-        'start2',
-        'end2',
-        'cstart1',
-        'cstart2',
-        'c_label',
-        'c_size',
+        "chrom1",
+        "start1",
+        "end1",
+        "chrom2",
+        "start2",
+        "end2",
+        "cstart1",
+        "cstart2",
+        "c_label",
+        "c_size",
         obs_raw_name,
         # 'exp.raw',
-        'la_exp.donut.value',
-        'la_exp.vertical.value',
-        'la_exp.horizontal.value',
-        'la_exp.lowleft.value',
+        "la_exp.donut.value",
+        "la_exp.vertical.value",
+        "la_exp.horizontal.value",
+        "la_exp.lowleft.value",
         # "factor_balance.lowleft.KerObs",
         # 'la_exp.upright.value',
         # 'la_exp.upright.qval',
-        'la_exp.donut.qval',
-        'la_exp.vertical.qval',
-        'la_exp.horizontal.qval',
-        'la_exp.lowleft.qval'
+        "la_exp.donut.qval",
+        "la_exp.vertical.qval",
+        "la_exp.horizontal.qval",
+        "la_exp.lowleft.qval",
     ]
     return out[columns_for_output]
 
@@ -1821,8 +1929,20 @@ def thresholding_step(centroids, obs_raw_name = observed_count_name):
 # basically - the dot-calling steps - ON THE FLY - 2 PASS DOT-CALLING (HiCCUPS-style):
 ##################################
 
-def scoring_and_histogramming_step(clr, expected, expected_name, balance_name, tiles, kernels,
-                                   ledges, max_nans_tolerated, loci_separation_bins, nproc, verbose):
+
+def scoring_and_histogramming_step(
+    clr,
+    expected,
+    expected_name,
+    balance_name,
+    tiles,
+    kernels,
+    ledges,
+    max_nans_tolerated,
+    loci_separation_bins,
+    nproc,
+    verbose,
+):
     """
     This is a derivative of the 'scoring_step' which is supposed to implement
     the 1st of the lambda-chunking procedure - histogramming.
@@ -1849,27 +1969,29 @@ def scoring_and_histogramming_step(clr, expected, expected_name, balance_name, t
         # do not calculate dynamic-donut criteria
         # for now.
         balance_factor=None,
-        verbose=very_verbose)
+        verbose=very_verbose,
+    )
 
     # to hist per scored chunk:
     to_hist = partial(
-        histogram_scored_pixels,
-        kernels=kernels,
-        ledges=ledges,
-        verbose=very_verbose)
+        histogram_scored_pixels, kernels=kernels, ledges=ledges, verbose=very_verbose
+    )
 
     # composing/piping scoring and histogramming
     # together :
-    job = lambda tile : to_hist(to_score(tile))
+    job = lambda tile: to_hist(to_score(tile))
 
     # copy paste from @nvictus modified 'scoring_step':
     if nproc > 1:
         pool = mp.Pool(nproc)
         map_ = pool.imap
-        map_kwargs = dict(chunksize=int(np.ceil(len(tiles)/nproc)))
+        map_kwargs = dict(chunksize=int(np.ceil(len(tiles) / nproc)))
         if verbose:
-            print("creating a Pool of {} workers to tackle {} tiles".format(
-                    nproc, len(tiles)))
+            print(
+                "creating a Pool of {} workers to tackle {} tiles".format(
+                    nproc, len(tiles)
+                )
+            )
     else:
         map_ = map
         if verbose:
@@ -1894,12 +2016,12 @@ def scoring_and_histogramming_step(clr, expected, expected_name, balance_name, t
     # this is very ugly, but ok
     # for the draft lambda-chunking
     # lambda version of lambda-chunking:
-    def _sum_hists(hx,hy):
+    def _sum_hists(hx, hy):
         # perform a DataFrame summation
         # for every value of the dictionary:
         hxy = {}
         for k in kernels:
-            hxy[k] = hx[k].add(hy[k],fill_value=0).astype(np.integer)
+            hxy[k] = hx[k].add(hy[k], fill_value=0).astype(np.integer)
         # returning the sum:
         return hxy
 
@@ -1916,21 +2038,38 @@ def scoring_and_histogramming_step(clr, expected, expected_name, balance_name, t
     # top bin, i.e., there are no l.a. expecteds > base^(len(ledges)-1)
     for k in kernels:
         last_la_exp_bin = final_hist[k].columns[-1]
-        last_la_exp_vals = final_hist[k].iloc[:,-1]
+        last_la_exp_vals = final_hist[k].iloc[:, -1]
         # checking the top bin:
-        assert (last_la_exp_vals.sum()==0), \
-                "There are la_exp.{}.value in {}, please check the histogram" \
-                                                    .format(k,last_la_exp_bin)
+        assert (
+            last_la_exp_vals.sum() == 0
+        ), "There are la_exp.{}.value in {}, please check the histogram".format(
+            k, last_la_exp_bin
+        )
         # drop that last column/bin (last_edge, +inf]:
         final_hist[k] = final_hist[k].drop(columns=last_la_exp_bin)
         # consider dropping all of the columns that have zero .sum()
     # returning filtered histogram
     return final_hist
 
-def scoring_and_extraction_step(clr, expected, expected_name, balance_name, tiles, kernels,
-                               ledges, thresholds, max_nans_tolerated,
-                               balance_factor, loci_separation_bins, output_path,
-                               nproc, verbose, bin1_id_name='bin1_id', bin2_id_name='bin2_id'):
+
+def scoring_and_extraction_step(
+    clr,
+    expected,
+    expected_name,
+    balance_name,
+    tiles,
+    kernels,
+    ledges,
+    thresholds,
+    max_nans_tolerated,
+    balance_factor,
+    loci_separation_bins,
+    output_path,
+    nproc,
+    verbose,
+    bin1_id_name="bin1_id",
+    bin2_id_name="bin2_id",
+):
     """
     This is a derivative of the 'scoring_step' which is supposed to implement
     the 2nd of the lambda-chunking procedure - extracting pixels that are FDR
@@ -1957,7 +2096,8 @@ def scoring_and_extraction_step(clr, expected, expected_name, balance_name, tile
         nans_tolerated=max_nans_tolerated,
         band_to_cover=loci_separation_bins,
         balance_factor=balance_factor,
-        verbose=very_verbose)
+        verbose=very_verbose,
+    )
 
     # to hist per scored chunk:
     to_extract = partial(
@@ -1965,20 +2105,24 @@ def scoring_and_extraction_step(clr, expected, expected_name, balance_name, tile
         kernels=kernels,
         thresholds=thresholds,
         ledges=ledges,
-        verbose=very_verbose)
+        verbose=very_verbose,
+    )
 
     # composing/piping scoring and histogramming
     # together :
-    job = lambda tile : to_extract(to_score(tile))
+    job = lambda tile: to_extract(to_score(tile))
 
     # copy paste from @nvictus modified 'scoring_step':
     if nproc > 1:
         pool = mp.Pool(nproc)
         map_ = pool.imap
-        map_kwargs = dict(chunksize=int(np.ceil(len(tiles)/nproc)))
+        map_kwargs = dict(chunksize=int(np.ceil(len(tiles) / nproc)))
         if verbose:
-            print("creating a Pool of {} workers to tackle {} tiles".format(
-                    nproc, len(tiles)))
+            print(
+                "creating a Pool of {} workers to tackle {} tiles".format(
+                    nproc, len(tiles)
+                )
+            )
     else:
         map_ = map
         if verbose:
@@ -1989,31 +2133,32 @@ def scoring_and_extraction_step(clr, expected, expected_name, balance_name, tile
         # https://github.com/mirnylab/cooler/blob/9e72ee202b0ac6f9d93fd2444d6f94c524962769/cooler/tools.py#L59
         # here:
         filtered_pix_chunks = map_(job, tiles, **map_kwargs)
-        significant_pixels = pd.concat(filtered_pix_chunks,ignore_index=True)
+        significant_pixels = pd.concat(filtered_pix_chunks, ignore_index=True)
         if output_path is not None:
-            significant_pixels.to_csv(output_path,
-                                      sep='\t',
-                                      header=True,
-                                      index=False,
-                                      compression=None)
+            significant_pixels.to_csv(
+                output_path, sep="\t", header=True, index=False, compression=None
+            )
     finally:
         if nproc > 1:
             pool.close()
     # there should be no duplicates in the "significant_pixels" DataFrame of pixels:
     significant_pixels_dups = significant_pixels.duplicated()
-    assert not significant_pixels_dups.any(), \
-         "Duplicated pixels detected during exctraction {}". \
-            format(significant_pixels[significant_pixels_dups])
+    assert (
+        not significant_pixels_dups.any()
+    ), "Duplicated pixels detected during exctraction {}".format(
+        significant_pixels[significant_pixels_dups]
+    )
     # sort the result just in case and drop its index:
-    return significant_pixels \
-                .sort_values(by=[bin1_id_name,bin2_id_name]) \
-                .reset_index(drop=True)
+    return significant_pixels.sort_values(by=[bin1_id_name, bin2_id_name]).reset_index(
+        drop=True
+    )
+
 
 ##################################
 # OLD functions - to be retired :
 ##################################
 def get_qvals(pvals):
-    '''
+    """
     B&H FDR control procedure: sort a given array of N p-values, determine their
     rank i and then for each p-value compute a corres- ponding q-value, which is
     a minimum FDR at which that given p-value would pass a BH-FDR test.
@@ -2031,32 +2176,40 @@ def get_qvals(pvals):
     Notes
     -----
     - BH-FDR reminder: given an array of N p-values, sort it in ascending order
-    p[1]<p[2]<p[3]<...<p[N], and find a threshold p-value, p[j] for which
-    p[j] < FDR*j/N, and p[j+1] is already p[j+1] >= FDR*(j+1)/N. Peaks
-    corresponding to p-values p[1]<p[2]<...p[j] are considered significant.
+      p[1]<p[2]<p[3]<...<p[N], and find a threshold p-value, p[j] for which
+      p[j] < FDR*j/N, and p[j+1] is already p[j+1] >= FDR*(j+1)/N. Peaks
+      corresponding to p-values p[1]<p[2]<...p[j] are considered significant.
 
     - Mostly follows the statsmodels implementation:
-    http://www.statsmodels.org/dev/_modules/statsmodels/stats/multitest.html
+      http://www.statsmodels.org/dev/_modules/statsmodels/stats/multitest.html
 
     - Using alpha=0.02 it is possible to achieve called dots similar to
-    pre-update status alpha is meant to be a q-value threshold: "qvals <= alpha"
+      pre-update status alpha is meant to be a q-value threshold: "qvals <= alpha"
 
-    '''
+    """
     # NOTE: This is tested and is capable of reproducing
     # `multiple_test_BH` results
     pvals = np.asarray(pvals)
     n_obs = pvals.size
     # determine rank of p-values (1-indexed):
     porder = np.argsort(pvals)
-    prank  = np.empty_like(porder)
-    prank[porder] = np.arange(1, n_obs+1)
+    prank = np.empty_like(porder)
+    prank[porder] = np.arange(1, n_obs + 1)
     # q-value = p-value*N_obs/i(rank of a p-value) ...
-    qvals = np.true_divide(n_obs*pvals, prank)
+    qvals = np.true_divide(n_obs * pvals, prank)
     # return the qvals sorted as the initial pvals:
     return qvals
 
-def clustering_step_old(scores_file, expected_chroms, ktypes, fdr,
-                    dots_clustering_radius, verbose, obs_raw_name = observed_count_name):
+
+def clustering_step_old(
+    scores_file,
+    expected_chroms,
+    ktypes,
+    fdr,
+    dots_clustering_radius,
+    verbose,
+    obs_raw_name=observed_count_name,
+):
     """
     This is an old "clustering" step, before lambda-chunking
     was implemented.
@@ -2067,17 +2220,17 @@ def clustering_step_old(scores_file, expected_chroms, ktypes, fdr,
     hdf file, and it would try to read the entire file in
     memory.
     """
-    res_df = pd.read_hdf(scores_file, 'results')
+    res_df = pd.read_hdf(scores_file, "results")
 
     # do Benjamin-Hochberg FDR multiple hypothesis tests
     # genome-wide:
     for k in ktypes:
-        res_df["la_exp."+k+".qval"] = get_qvals( res_df["la_exp."+k+".pval"] )
+        res_df["la_exp." + k + ".qval"] = get_qvals(res_df["la_exp." + k + ".pval"])
 
     # combine results of all tests:
-    res_df['comply_fdr'] = np.all(
-        res_df[["la_exp."+k+".qval" for k in ktypes]] <= fdr,
-        axis=1)
+    res_df["comply_fdr"] = np.all(
+        res_df[["la_exp." + k + ".qval" for k in ktypes]] <= fdr, axis=1
+    )
 
     # print a message for timing:
     if verbose:
@@ -2086,22 +2239,27 @@ def clustering_step_old(scores_file, expected_chroms, ktypes, fdr,
     # using different bin12_id_names since all
     # pixels are annotated at this point.
     pixel_clust_list = []
-    for chrom  in expected_chroms:
+    for chrom in expected_chroms:
         # probably generate one big DataFrame with clustering
         # information only and then just merge it with the
         # existing 'res_df'-DataFrame.
         # should we use groupby instead of 'res_df['chrom12']==chrom' ?!
         # to be tested ...
-        df = res_df[(res_df['comply_fdr'] &
-                    (res_df['chrom1']==chrom) &
-                    (res_df['chrom2']==chrom))]
+        df = res_df[
+            (
+                res_df["comply_fdr"]
+                & (res_df["chrom1"] == chrom)
+                & (res_df["chrom2"] == chrom)
+            )
+        ]
 
         pixel_clust = clust_2D_pixels(
             df,
             threshold_cluster=dots_clustering_radius,
-            bin1_id_name='start1',
-            bin2_id_name='start2',
-            verbose=verbose)
+            bin1_id_name="start1",
+            bin2_id_name="start2",
+            verbose=verbose,
+        )
         pixel_clust_list.append(pixel_clust)
     if verbose:
         print("Clustering is over!")
@@ -2112,11 +2270,12 @@ def clustering_step_old(scores_file, expected_chroms, ktypes, fdr,
     # now merge pixel_clust_df and res_df DataFrame ...
     # # and merge (index-wise) with the main DataFrame:
     df = pd.merge(
-        res_df[res_df['comply_fdr']],
+        res_df[res_df["comply_fdr"]],
         pixel_clust_df,
-        how='left',
+        how="left",
         left_index=True,
-        right_index=True)
+        right_index=True,
+    )
 
     # report only centroids with highest Observed:
     chrom_clust_group = df.groupby(["chrom1", "chrom2", "c_label"])

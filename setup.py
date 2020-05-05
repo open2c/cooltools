@@ -18,6 +18,7 @@ classifiers = """\
     Programming Language :: Python :: 3.5
     Programming Language :: Python :: 3.6
     Programming Language :: Python :: 3.7
+    Programming Language :: Python :: 3.8
 """
 
 
@@ -41,27 +42,22 @@ def get_long_description():
     return _read('README.md')
 
 
+def get_requirements(path):
+    content = _read(path)
+    return [
+        req
+        for req in content.split("\n")
+        if req != '' and not req.startswith('#')
+    ]
+
+
 setup_requires = [
     'cython',
     'numpy',
 ]
 
 
-install_requires = [
-    'click>=7',
-    'cooler>=0.8.5',
-    'bioframe',
-    'cython',
-    'numba',
-    'numpy',
-    'scipy',
-    'pandas',
-    'multiprocess',
-    'cytoolz',
-    'scikit-learn',
-    'tables',
-    'joblib',
-]
+install_requires = get_requirements('requirements.txt')
 
 
 extensions = [

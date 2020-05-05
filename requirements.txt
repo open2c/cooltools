@@ -1,0 +1,14 @@
+bioframe<0.1.0
+click>=7
+cooler>=0.8.5
+cython
+cytoolz
+joblib
+matplotlib
+multiprocess
+numba
+numpy
+pandas
+scikit-learn
+scipy
+tables

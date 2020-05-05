@@ -1,0 +1,60 @@
+{
+    "description": "CoolTools: the tools for your .cools", 
+    "license": "MIT", 
+    "upload_type": "software", 
+    "access_right": "open", 
+    "creators": [
+        {
+            "name": "Sergey Venev",
+            "affiliation": "University of Massachusetts Medical School"
+        }, 
+        {
+            "name": "Nezar Abdennur",
+            "affiliation": "MIT"
+        }, 
+        {
+            "name": "Anton Goloborodko",
+            "affiliation": "IMBA"
+        }, 
+        {
+            "name": "Ilya Flyamer",
+            "affiliation": "University of Edinburgh"
+        }, 
+        {
+            "name": "Geoffrey Fudenberg",
+            "affiliation": "UCSF"
+        }, 
+        {
+            "name": "Johannes Nuebler",
+            "affiliation": "MIT"
+        }, 
+        {
+            "name": "Aleksandra Galitsyna",
+            "affiliation": "Skolkovo Institute of Science and Technology"
+        }, 
+        {
+            "name": "Betul Akgol",
+            "affiliation": "University of Massachusetts Medical School"
+        }, 
+        {
+            "name": "Sameer Abraham",
+            "affiliation": "MIT"
+        }, 
+        {
+            "name": "Peter Kerpedjiev",
+            "affiliation": "Harvard Medical School"
+        }, 
+        {
+            "name": "Maksim Imakaev",
+            "affiliation": "MIT"
+        }
+    ], 
+    "keywords": [
+        "genomics",
+        "bioinformatics",
+        "Hi-C",
+        "data",
+        "analysis",
+        "cooler"
+    ]
+}
