@@ -590,7 +590,7 @@ def trans_expected(clr, chromosomes, chunksize=1000000, use_dask=False):
 ###################
 
 
-def make_diag_tables(clr, regions, weight_name="weight", bad_bins=None):
+def make_diag_tables(clr, regions, regions2=None, weight_name="weight", bad_bins=None):
     """
     For every support region infer diagonals that intersect this region
     and calculate the size of these intersections in pixels, both "total" and
@@ -627,7 +627,10 @@ def make_diag_tables(clr, regions, weight_name="weight", bad_bins=None):
         raise NotImplementedError("providing external list \
             of bad bins is not implemented.")
 
-
+    regions = bioframe.region.normalize_regions(regions, clr.chromsizes).values
+    if regions2 is not None:
+        regions2 = bioframe.region.normalize_regions(regions2, clr.chromsizes).values
+    
     bins = clr.bins()[:]
     if weight_name is None:
         # ignore bad bins
@@ -648,26 +651,14 @@ def make_diag_tables(clr, regions, weight_name="weight", bad_bins=None):
 
     where = np.flatnonzero
     diag_tables = {}
-    for region in regions:
-        # parse region if str
-        if isinstance(region, str):
-            region = bioframe.parse_region(region)
-        # unpack region(s) into chroms,starts,ends
-        if len(region) == 1:
-            chrom, = region
-            start1, end1 = 0, clr.chromsizes[chrom]
-            start2, end2 = start1, end1
-        elif len(region) == 2:
-            chrom, start1, end1 = region[0]
-            _, start2, end2 = region[1]
-        elif len(region) == 3:
-            chrom, start1, end1 = region
-            start2, end2 = start1, end1
-        elif len(region) == 5:
-            chrom, start1, end1, start2, end2 = region
+    for i in range(len(regions)):
+        chrom,start1,end1,name1 = regions[i]
+        if regions2 is not None:
+            chrom2,start2, end2,name2 = regions2[i]
+            assert chrom2==chrom
         else:
-            raise ValueError("Regions must be sequences of length 1, 3 or 5")
-
+            start2, end2 = start1, end1
+            
         # translate regions into relative bin id-s:
         lo1, hi1 = clr.extent((chrom, start1, end1))
         lo2, hi2 = clr.extent((chrom, start2, end2))
@@ -678,7 +669,10 @@ def make_diag_tables(clr, regions, weight_name="weight", bad_bins=None):
         hi2 -= co
 
         bad_mask = bad_bin_dict[chrom]
-        diag_tables[region] = make_diag_table(bad_mask, [lo1, hi1], [lo2, hi2])
+        newname = name1 
+        if regions2 is not None:
+            newname = (name1, name2)
+        diag_tables[newname] = make_diag_table(bad_mask, [lo1, hi1], [lo2, hi2])
 
     return diag_tables
 
@@ -688,9 +682,10 @@ def _diagsum_symm(clr, fields, transforms, regions, span):
     bins = clr.bins()[:]
     pixels = clr.pixels()[lo:hi]
     pixels = cooler.annotate(pixels, bins, replace=False)
+    print(pixels.columns)
 
-    pixels["region1"] = assign_supports(pixels['bin1_id'], regions)
-    pixels["region2"] = assign_supports(pixels['bin2_id'], regions)
+    pixels["region1"] = assign_supports(pixels[["chrom1","start1","end1",'bin1_id']], regions.values, suffix="1")
+    pixels["region2"] = assign_supports(pixels[["chrom2","start2","end2",'bin2_id']], regions.values, suffix="2")
     pixels = pixels[pixels["region1"] == pixels["region2"]].copy()
 
     pixels["dist"] = pixels["bin2_id"] - pixels["bin1_id"]
@@ -698,9 +693,12 @@ def _diagsum_symm(clr, fields, transforms, regions, span):
         pixels[field] = t(pixels)
 
     pixelgroups = dict(iter(pixels.groupby("region1")))
-    return {
-        int(i): group.groupby("diag")[fields].sum() for i, group in pixelgroups.items()
-    }
+    
+    values = {}
+    for i,group in pixelgroups.items():
+        values[int(i)] = group.groupby("dist")[fields].sum()
+
+    return values
 
 
 def _diagsum_asymm(clr, fields, transforms, contact_type, regions1, regions2, span):
@@ -718,8 +716,8 @@ def _diagsum_asymm(clr, fields, transforms, contact_type, regions1, regions2, sp
     for field, t in transforms.items():
         pixels[field] = t(pixels)
 
-    pixels["region1"] = assign_supports(pixels['bin1_id'], regions1)
-    pixels["region2"] = assign_supports(pixels['bin2_id'], regions2)
+    pixels["region1"] = assign_supports(pixels[["chrom","start","end",'bin1_id']], regions.values)
+    pixels["region2"] = assign_supports(pixels[["chrom","start","end",'bin2_id']], regions.values)
 
     pixel_groups = dict(iter(pixels.groupby(["region1", "region2"])))
     return {
@@ -736,10 +734,10 @@ def _blocksum_asymm(clr, fields, transforms, regions1, regions2, span):
 
     pixels = pixels[pixels["chrom1"] != pixels["chrom2"]].copy()
     for field, t in transforms.items():
-        pixels[field] = t(pixels)
+        pixels[field] = t(pixels)       
 
-    pixels["region1"] = assign_supports(pixels, regions1, suffix="1")
-    pixels["region2"] = assign_supports(pixels, regions2, suffix="2")
+    pixels["region1"] = assign_supports(pixels, regions1.values, suffix="1")
+    pixels["region2"] = assign_supports(pixels, regions2.values, suffix="2")
     pixels = pixels.dropna()
 
     pixel_groups = dict(iter(pixels.groupby(["region1", "region2"])))
@@ -794,6 +792,10 @@ def diagsum(
     """
     spans = partition(0, len(clr.pixels()), chunksize)
     fields = ["count"] + list(transforms.keys())
+                                                 
+    regions = bioframe.region.normalize_regions(regions, clr.chromsizes)      
+    rval = regions.values
+                                                 
     dtables = make_diag_tables(clr, regions, weight_name=weight_name, bad_bins=bad_bins)
 
     for dt in dtables.values():
@@ -805,12 +807,13 @@ def diagsum(
     results = map(job, spans)
     for result in results:
         for i, agg in result.items():
-            region = regions[i]
+            region = regions.loc[i,"name"]
             for field in fields:
                 agg_name = "{}.sum".format(field)
                 dtables[region][agg_name] = dtables[region][agg_name].add(
                     agg[field], fill_value=0
                 )
+    
 
     if ignore_diags:
         for dt in dtables.values():
@@ -818,8 +821,13 @@ def diagsum(
                 agg_name = "{}.sum".format(field)
                 j = dt.columns.get_loc(agg_name)
                 dt.iloc[:ignore_diags, j] = np.nan
-
-    return dtables
+                
+    result = []
+    for i,dtable in dtables.items():
+        dtable = dtable.reset_index()
+        dtable.insert(0,"region", i)
+        result.append(dtable)
+    return pd.concat(result).reset_index(drop=True)
 
 
 def diagsum_asymm(
@@ -871,7 +879,10 @@ def diagsum_asymm(
     spans = partition(0, len(clr.pixels()), chunksize)
     fields = ["count"] + list(transforms.keys())
     areas = list(zip(regions1, regions2))
-    dtables = make_diag_tables(clr, areas, weight_name=weight_name, bad_bins=bad_bins)
+    regions1 = bioframe.region.normalize_regions(regions1, clr.chromsizes)                                                 
+    regions2 = bioframe.region.normalize_regions(regions2, clr.chromsizes)                                                 
+
+    dtables = make_diag_tables(clr, regions1, regions2, weight_name=weight_name, bad_bins=bad_bins)
 
     for dt in dtables.values():
         for field in fields:

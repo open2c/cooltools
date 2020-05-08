@@ -29,7 +29,7 @@ def assign_supports(features, supports, labels=False, suffix=""):
 
     for i, region in enumerate(supports):
         # single-region support
-        if len(region) == 3:
+        if len(region) in [3,4]:
             sel = (features[c] == region[0]) & (features[e] > region[1])
             if region[2] is not None:
                 sel &= features[s] < region[2]
