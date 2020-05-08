@@ -105,7 +105,7 @@ def digitize_track(binedges, track, regions=None):
         regions = [bioframe.parse_region(reg) for reg in regions]
         grouped = track.groupby("chrom")
         track = pd.concat(
-            bioframe.bedslice(grouped, chrom, st, end) for (chrom, st, end) in regions
+            bioframe.bedslice(grouped, region) for region in regions
         )
 
     # histogram the signal
@@ -296,6 +296,7 @@ def make_saddle(
 
     """
     digitized_df, name = digitized
+    digitized_df = digitized_df[["chrom","start","end",name]]
 
     if regions is None:
         regions = [
@@ -305,12 +306,10 @@ def make_saddle(
     else:
         regions = [bioframe.parse_region(reg) for reg in regions]
 
-    digitized_tracks = {
-        reg: bioframe.bedslice(digitized_df.groupby("chrom"), reg[0], reg[1], reg[2])[
-            name
-        ]
-        for reg in regions
-    }
+    digitized_tracks = {}
+    for reg in regions:
+        track = bioframe.bedslice(digitized_df, reg)
+        digitized_tracks[reg] = track[name]
 
     if contact_type == "cis":
         supports = list(zip(regions, regions))
