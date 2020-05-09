@@ -686,7 +686,6 @@ def _diagsum_symm(clr, fields, transforms, regions, span):
     bins = clr.bins()[:]
     pixels = clr.pixels()[lo:hi]
     pixels = cooler.annotate(pixels, bins, replace=False)
-    print(pixels.columns)
 
     pixels["region1"] = assign_supports(pixels[["chrom1","start1","end1",'bin1_id']], regions.values, suffix="1")
     pixels["region2"] = assign_supports(pixels[["chrom2","start2","end2",'bin2_id']], regions.values, suffix="2")
@@ -1107,15 +1106,6 @@ def logbin_expected(
 
     from cooltools.lib.numutils import logbins
 
-    exp = (
-        pd.concat(
-            [i.reset_index() for i in exp.values()],
-            keys=map(repr, exp.keys()),
-            names=["region"],
-        )
-        .reset_index(level=0)
-        .reset_index(drop=True)
-    )
     exp = exp[~pd.isna(exp["balanced.sum"])]
     exp["x"] = exp.pop("diag")
     diagmax = exp["x"].max()
