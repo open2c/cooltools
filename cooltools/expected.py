@@ -578,8 +578,8 @@ def diagsum(
         Use `None` to avoid masking "bad" pixels.
     bad_bins : array-like
         a list of bins to ignore per support region.
-        Overwrites inference of bad bins from balacning
-        weight [to be implemented].
+        Combines with the list of bad bins from balacning
+        weight.
     chunksize : int, optional
         Size of pixel table chunks to process
     ignore_diags : int, optional
@@ -654,8 +654,8 @@ def diagsum_asymm(
         Use `None` to avoid masking "bad" pixels.
     bad_bins : array-like
         a list of bins to ignore per support region.
-        Overwrites inference of bad bins from balacning
-        weight [to be implemented].
+        Combines with the list of bad bins from balacning
+        weight.
     chunksize : int, optional
         Size of pixel table chunks to process
     ignore_diags : int, optional
@@ -731,8 +731,8 @@ def blocksum_pairwise(
         Use `None` to avoid masking "bad" pixels.
     bad_bins : array-like
         a list of bins to ignore per support region.
-        Overwrites inference of bad bins from balacning
-        weight [to be implemented].
+        Combines with the list of bad bins from balacning
+        weight.
     chunksize : int, optional
         Size of pixel table chunks to process
     map : callable, optional
