@@ -218,8 +218,8 @@ def count_all_pixels_per_block(clr, regions):
         dictionary with total number of pixels per pair of support regions
     """
 
-    n = len(supports)
-    x = [clr.extent(region)[1] - clr.extent(region)[0] for region in supports]
+    n = len(regions)
+    x = [clr.extent(region)[1] - clr.extent(region)[0] for region in regions]
 
     blocks = {}
     for i in range(n):
