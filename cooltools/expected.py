@@ -251,9 +251,11 @@ def count_bad_pixels_per_block(clr, supports, weight_name="weight", bad_bins=Non
         if weight_name is None returns 0 for each block.
         Balancing weight are used to infer bad bins.
     bad_bins : array-like
-        a list of bins to ignore per support region.
-        Overwrites inference of bad bins from balacning
-        weight [to be implemented].
+        additional list of  bad bins. Bin indices must
+        be absolute, as in clr.bins()[:], as opposed to
+        being offset by chromosome start.
+        "bad_bins" will be combined with the bad bins
+        masked by balancing if there are any.
 
     Returns
     -------
@@ -262,36 +264,39 @@ def count_bad_pixels_per_block(clr, supports, weight_name="weight", bad_bins=Non
     """
     n = len(supports)
 
-    if bad_bins is not None:
-        raise NotImplementedError("providing external list \
-            of bad bins is not implemented.")
+    if bad_bins is None:
+        bad_bins = np.asarray([]).astype(int)
+    else:
+        bad_bins = np.asarray(bad_bins).astype(int)
 
     # Get the total number of bins per region
+    # and relative indices of bad_bins per region:
     n_tot = []
+    bad_bins_dict = {}
     for region in supports:
         lo, hi = clr.extent(region)
         n_tot.append(hi - lo)
+        bad_bins_reg = bad_bins[(bad_bins>=lo)&(bad_bins<hi)]
+        bad_bins_reg -= lo
+        bad_bins_dict[region] = bad_bins_reg
 
     # Get the number of bad bins per region
     if weight_name is None:
-        # ignore bad bins
+        # yield 0 bad bins per region, unless there are extra bins
         # useful for unbalanced data
-        n_bad = [0 for region in supports]
+        n_bad = [len(bad_bins_dict[region]) for region in supports]
     elif isinstance(weight_name, str):
         if weight_name not in clr.bins().columns:
             raise KeyError("Balancing weight {weight_name} not found!")
-        # bad bins are ones with the weight vector being NaN
-        n_bad = [
-            np.sum(
-                clr
-                .bins()[weight_name]
-                .fetch(region)
-                .isnull()
-                .astype(int)
-                .values
-            )
-            for region in supports
-        ]
+        # combine bins with the weight vector being NaN and
+        # additional bad_bins:
+        n_bad = []
+        for region in supports:
+            combined_bad_bins = clr.bins()[weight_name].fetch(region).isnull().values
+            # using relative indices mark exta bad_bins as null
+            bad_bins_reg = bad_bin_dict[region]
+            combined_bad_bins[bad_bins_reg] = True
+            n_bad.append( combined_bad_bins.astype(int).sum() )
     else:
         raise ValueError("`weight_name` can be `str` or `None`")
 
