@@ -139,11 +139,11 @@ def make_cis_obsexp_fetcher(clr, expected, weight_name="weight"):
 
     """
     expected, name = expected
-    expected = {k: x.values for k, x in expected.groupby("chrom")[name]}
+    expected = {k: x.values for k, x in expected.groupby("region")[name]}
 
     def _fetch_cis_oe(reg1, reg2):
         obs_mat = clr.matrix(balance=weight_name).fetch(reg1)
-        exp_mat = toeplitz(expected[reg1[0]][: obs_mat.shape[0]])
+        exp_mat = toeplitz(expected[reg1][: obs_mat.shape[0]])
         return obs_mat / exp_mat
 
     return _fetch_cis_oe
@@ -303,18 +303,18 @@ def make_saddle(
             (chrom, df.start.min(), df.end.max())
             for chrom, df in digitized_df.groupby("chrom")
         ]
-    else:
-        regions = [bioframe.parse_region(reg) for reg in regions]
 
+    regions = bioframe.region.normalize_regions(regions)
+      
     digitized_tracks = {}
-    for reg in regions:
+    for reg in regions.values:
         track = bioframe.bedslice(digitized_df, reg)
-        digitized_tracks[reg] = track[name]
+        digitized_tracks[reg[3]] = track[name]  # 3 = name
 
     if contact_type == "cis":
-        supports = list(zip(regions, regions))
+        supports = list(zip(regions["name"], regions["name"]))
     elif contact_type == "trans":
-        supports = list(combinations(regions, 2))
+        supports = list(combinations(regions["name"], 2))
     else:
         raise ValueError(
             "The allowed values for the contact_type " "argument are 'cis' or 'trans'."
