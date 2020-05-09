@@ -613,20 +613,17 @@ def make_diag_tables(clr, supports, weight_name="weight", bad_bins=None):
         if weight_name is None returns 0 for each block.
         Balancing weight are used to infer bad bins.
     bad_bins : array-like
-        a list of bins to ignore per support region.
-        Overwrites inference of bad bins from balacning
-        weight [to be implemented].
+        a list of bins to ignore. Indexes of bins must
+        be absolute, as in clr.bins()[:], as opposed to
+        being offset by chromosome start.
+        "bad_bins" will be combined with the bad bins
+        masked by balancing if there are any.
 
     Returns
     -------
     diag_tables : dict
         dictionary with DataFrames of relevant diagonals for every support.
     """
-
-    if bad_bins is not None:
-        raise NotImplementedError("providing external list \
-            of bad bins is not implemented.")
-
 
     bins = clr.bins()[:]
     if weight_name is None:
@@ -645,6 +642,22 @@ def make_diag_tables(clr, supports, weight_name="weight", bad_bins=None):
         }
     else:
         raise ValueError("`weight_name` can be `str` or `None`")
+
+    # combine custom "bad_bins" with "bad_bin_dict":
+    if bad_bins is not None:
+        # check if "bad_bins" are legit:
+        try:
+            bad_bins_chrom = bins.iloc[bad_bins].reset_index(drop=False)
+        except IndexError:
+            raise ValueError("Provided `bad_bins` are incorrect or out-of-bound")
+        # group them by observed chromosomes only
+        bad_bins_grp = bad_bins_chrom[["index","chrom"]].groupby("chrom",observed=True)
+        # update "bad_bin_dict" with "bad_bins" for each chrom:
+        for chrom, bin_ids in bad_bins_grp["index"]:
+            co = clr.offset(chrom)
+            # adjust by chromosome offset
+            bad_bin_dict[chrom][bin_ids.values - co] = True
+
 
     where = np.flatnonzero
     diag_tables = {}
