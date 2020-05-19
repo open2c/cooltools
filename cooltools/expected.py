@@ -613,10 +613,10 @@ def diagsum(
             if field in transforms:
                 # combine masking and transform, minding the scope:
                 t = transforms[field]
-                masked_transforms[field] = lambda p,t=t: t(p) * mask[p[bin1]] * mask[p[bin2]]
+                masked_transforms[field] = lambda p,t=t,m=bad_bins_mask: t(p) * m[p[bin1]] * m[p[bin2]]
             else:
                 # presumably field == "count", mind the scope as well:
-                masked_transforms[field] = lambda p,f=field: p[f] * mask[p[bin1]] * mask[p[bin2]]
+                masked_transforms[field] = lambda p,f=field,m=bad_bins_mask: p[f] * m[p[bin1]] * m[p[bin2]]
         # substitute transforms to the masked_transforms:
         transforms = masked_transforms
 
