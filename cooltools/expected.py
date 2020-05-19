@@ -707,6 +707,27 @@ def diagsum_asymm(
 
     dtables = make_diag_tables(clr, regions1, regions2, weight_name=weight_name, bad_bins=bad_bins)
 
+    # combine masking with existing transforms and add a "count" transform:
+    if bad_bins is not None:
+        # turn bad_bins into a mask of size clr.bins:
+        mask_size = len(clr.bins())
+        bad_bins_mask = np.ones(mask_size, dtype=int)
+        bad_bins_mask[bad_bins] = 0
+        #
+        masked_transforms = {}
+        bin1 = "bin1_id"
+        bin2 = "bin2_id"
+        for field in fields:
+            if field in transforms:
+                # combine masking and transform, minding the scope:
+                t = transforms[field]
+                masked_transforms[field] = lambda p,t=t,m=bad_bins_mask: t(p) * m[p[bin1]] * m[p[bin2]]
+            else:
+                # presumably field == "count", mind the scope as well:
+                masked_transforms[field] = lambda p,f=field,m=bad_bins_mask: p[f] * m[p[bin1]] * m[p[bin2]]
+        # substitute transforms to the masked_transforms:
+        transforms = masked_transforms
+
     for dt in dtables.values():
         for field in fields:
             agg_name = "{}.sum".format(field)
@@ -785,6 +806,27 @@ def blocksum_pairwise(
 
     n_tot = count_all_pixels_per_block(clr, regions)
     n_bad = count_bad_pixels_per_block(clr, regions, weight_name=weight_name, bad_bins=bad_bins)
+
+    # combine masking with existing transforms and add a "count" transform:
+    if bad_bins is not None:
+        # turn bad_bins into a mask of size clr.bins:
+        mask_size = len(clr.bins())
+        bad_bins_mask = np.ones(mask_size, dtype=int)
+        bad_bins_mask[bad_bins] = 0
+        #
+        masked_transforms = {}
+        bin1 = "bin1_id"
+        bin2 = "bin2_id"
+        for field in fields:
+            if field in transforms:
+                # combine masking and transform, minding the scope:
+                t = transforms[field]
+                masked_transforms[field] = lambda p,t=t,m=bad_bins_mask: t(p) * m[p[bin1]] * m[p[bin2]]
+            else:
+                # presumably field == "count", mind the scope as well:
+                masked_transforms[field] = lambda p,f=field,m=bad_bins_mask: p[f] * m[p[bin1]] * m[p[bin2]]
+        # substitute transforms to the masked_transforms:
+        transforms = masked_transforms
 
     records = {(c1, c2): defaultdict(int) for (c1, c2) in blocks}
     for c1, c2 in blocks:
