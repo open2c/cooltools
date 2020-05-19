@@ -488,6 +488,7 @@ def _diagsum_symm(clr, fields, transforms, regions, span):
     pixels["region2"] = assign_supports(pixels[["chrom2","start2","end2",'bin2_id']], regions.values, suffix="2")
     pixels = pixels[pixels["region1"] == pixels["region2"]].copy()
 
+    # working on a deep copy of pixels chunk, ok to modify, "disposable":
     pixels["dist"] = pixels["bin2_id"] - pixels["bin1_id"]
     for field, t in transforms.items():
         pixels[field] = t(pixels)
@@ -597,6 +598,28 @@ def diagsum(
     rval = regions.values
                                                  
     dtables = make_diag_tables(clr, regions, weight_name=weight_name, bad_bins=bad_bins)
+
+    # combine masking with existing transforms and add a "count" transform:
+    if bad_bins is not None:
+        # turn bad_bins into a mask of size clr.bins:
+        mask_size = len(clr.bins())
+        bad_bins_mask = np.ones(mask_size, dtype=int)
+        bad_bins_mask[bad_bins] = 0
+        #
+        masked_transforms = {}
+        bin1 = "bin1_id"
+        bin2 = "bin2_id"
+        for field in fields:
+            if field in transforms:
+                # combine masking and transform, minding the scope:
+                t = transforms[field]
+                masked_transforms[field] = lambda p,t=t: t(p) * mask[p[bin1]] * mask[p[bin2]]
+            else:
+                # presumably field == "count", mind the scope as well:
+                masked_transforms[field] = lambda p,f=field: p[f] * mask[p[bin1]] * mask[p[bin2]]
+        # substitute transforms to the masked_transforms:
+        transforms = masked_transforms
+
 
     for dt in dtables.values():
         for field in fields:
