@@ -517,8 +517,8 @@ def _diagsum_asymm(clr, fields, transforms, contact_type, regions1, regions2, sp
     for field, t in transforms.items():
         pixels[field] = t(pixels)
 
-    pixels["region1"] = assign_supports(pixels[["chrom","start","end",'bin1_id']], regions.values)
-    pixels["region2"] = assign_supports(pixels[["chrom","start","end",'bin2_id']], regions.values)
+    pixels["region1"] = assign_supports(pixels[["chrom1","start1","end1",'bin1_id']], regions.values)
+    pixels["region2"] = assign_supports(pixels[["chrom2","start2","end2",'bin2_id']], regions.values)
 
     pixel_groups = dict(iter(pixels.groupby(["region1", "region2"])))
     return {
