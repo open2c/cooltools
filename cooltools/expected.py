@@ -517,8 +517,8 @@ def _diagsum_asymm(clr, fields, transforms, contact_type, regions1, regions2, sp
     for field, t in transforms.items():
         pixels[field] = t(pixels)
 
-    pixels["region1"] = assign_supports(pixels[["chrom1","start1","end1",'bin1_id']], regions1.values)
-    pixels["region2"] = assign_supports(pixels[["chrom2","start2","end2",'bin2_id']], regions2.values)
+    pixels["region1"] = assign_supports(pixels, regions1.values, suffix="1")
+    pixels["region2"] = assign_supports(pixels, regions2.values, suffix="2")
 
     pixel_groups = dict(iter(pixels.groupby(["region1", "region2"])))
     return {
@@ -682,6 +682,8 @@ def diagsum_asymm(
         "left"-side support regions for diagonal summation
     regions2 : sequence of genomic range tuples
         "right"-side support regions for diagonal summation
+    contact_type : str
+        select trans or cis contacts for diagonal summation
     transforms : dict of str -> callable, optional
         Transformations to apply to pixels. The result will be assigned to
         a temporary column with the name given by the key. Callables take
@@ -776,6 +778,7 @@ def diagsum_asymm(
 def blocksum_pairwise(
     clr,
     regions,
+    contact_type="trans",
     transforms=None,
     weight_name="weight",
     bad_bins=None,
@@ -792,6 +795,8 @@ def blocksum_pairwise(
     regions : sequence of genomic range tuples
         Support regions for summation. Blocks for all pairs of support regions
         will be used.
+    contact_type : str
+        select trans or cis contacts for block summation
     transforms : dict of str -> callable, optional
         Transformations to apply to pixels. The result will be assigned to
         a temporary column with the name given by the key. Callables take
