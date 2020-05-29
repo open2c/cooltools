@@ -295,7 +295,7 @@ def count_bad_pixels_per_block(clr, regions, weight_name="weight", bad_bins=None
         for region in regions:
             combined_bad_bins = clr.bins()[weight_name].fetch(region).isnull().values
             # using relative indices mark exta bad_bins as null
-            bad_bins_reg = bad_bin_dict[region]
+            bad_bins_reg = bad_bins_dict[region]
             combined_bad_bins[bad_bins_reg] = True
             n_bad.append( combined_bad_bins.astype(int).sum() )
     else:
