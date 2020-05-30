@@ -73,12 +73,14 @@ def gc(bins_path, fasta_path, mapped_only):
 
 @genome.command()
 @click.argument("bins_path")
-@click.argument(
-    "db", 
-    help="The name of the genome assembly. "
-         "The gene locations will be automatically downloaded from the UCSC goldenPath."
-)
+@click.argument("db")
 def genecov(bins_path, db):
+    """
+    BINS_PATH is the path to bintable.
+    
+    DB is the name of the genome assembly.
+    The gene locations will be automatically downloaded from teh UCSC goldenPath.
+    """
     import bioframe
     import pandas as pd
 
