@@ -302,7 +302,7 @@ def cooler_cis_eig(
     if regions is None:  # normalize_regins will fill in the rest
         regions = list(bins["chrom"].unique()) # and check consistency
         
-    regions = bioframe.region.normalize_regions(regions, clr.chromsizes, force_UCSC_names=True) 
+    regions = bioframe.parse_regions(regions, clr.chromsizes, force_UCSC_names=True) 
 
     ignore_diags = (
         clr._load_attrs("bins/weight").get("ignore_diags", 2)
