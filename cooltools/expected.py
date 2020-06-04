@@ -229,7 +229,7 @@ def count_all_pixels_per_block(clr, regions):
 
 
 
-def count_bad_pixels_per_block(clr, supports, weight_name="weight", bad_bins=None):
+def count_bad_pixels_per_block(clr, regions, weight_name="weight", bad_bins=None):
 
     """
     Calculate number of "bad" pixels per rectangular block of a contact map
@@ -295,7 +295,7 @@ def count_bad_pixels_per_block(clr, supports, weight_name="weight", bad_bins=Non
         for region in regions:
             combined_bad_bins = clr.bins()[weight_name].fetch(region).isnull().values
             # using relative indices mark exta bad_bins as null
-            bad_bins_reg = bad_bin_dict[region]
+            bad_bins_reg = bad_bins_dict[region]
             combined_bad_bins[bad_bins_reg] = True
             n_bad.append( combined_bad_bins.astype(int).sum() )
     else:
@@ -488,6 +488,7 @@ def _diagsum_symm(clr, fields, transforms, regions, span):
     pixels["region2"] = assign_supports(pixels[["chrom2","start2","end2",'bin2_id']], regions.values, suffix="2")
     pixels = pixels[pixels["region1"] == pixels["region2"]].copy()
 
+    # working on a deep copy of pixels chunk, ok to modify, "disposable":
     pixels["dist"] = pixels["bin2_id"] - pixels["bin1_id"]
     for field, t in transforms.items():
         pixels[field] = t(pixels)
@@ -516,8 +517,8 @@ def _diagsum_asymm(clr, fields, transforms, contact_type, regions1, regions2, sp
     for field, t in transforms.items():
         pixels[field] = t(pixels)
 
-    pixels["region1"] = assign_supports(pixels[["chrom","start","end",'bin1_id']], regions.values)
-    pixels["region2"] = assign_supports(pixels[["chrom","start","end",'bin2_id']], regions.values)
+    pixels["region1"] = assign_supports(pixels, regions1.values, suffix="1")
+    pixels["region2"] = assign_supports(pixels, regions2.values, suffix="2")
 
     pixel_groups = dict(iter(pixels.groupby(["region1", "region2"])))
     return {
@@ -526,18 +527,24 @@ def _diagsum_asymm(clr, fields, transforms, contact_type, regions1, regions2, sp
     }
 
 
-def _blocksum_asymm(clr, fields, transforms, regions1, regions2, span):
+def _blocksum_asymm(clr, fields, transforms, contact_type, regions1, regions2, span):
     lo, hi = span
     bins = clr.bins()[:]
     pixels = clr.pixels()[lo:hi]
     pixels = cooler.annotate(pixels, bins, replace=False)
 
-    pixels = pixels[pixels["chrom1"] != pixels["chrom2"]].copy()
+    if contact_type == "cis":
+        pixels = pixels[pixels["chrom1"] == pixels["chrom2"]].copy()
+    elif contact_type == "trans":
+        pixels = pixels[pixels["chrom1"] != pixels["chrom2"]].copy()
+
     for field, t in transforms.items():
         pixels[field] = t(pixels)       
 
-    pixels["region1"] = assign_supports(pixels, regions1.values, suffix="1")
-    pixels["region2"] = assign_supports(pixels, regions2.values, suffix="2")
+    pixels["region1"] = assign_supports(pixels, regions1, suffix="1")
+    pixels["region2"] = assign_supports(pixels, regions2, suffix="2")
+    # might be incorrect for raw-counts, because raw counts
+    # are going dropped when "weight" is NaN: [keep it for now]
     pixels = pixels.dropna()
 
     pixel_groups = dict(iter(pixels.groupby(["region1", "region2"])))
@@ -549,7 +556,7 @@ def _blocksum_asymm(clr, fields, transforms, regions1, regions2, span):
 def diagsum(
     clr,
     regions,
-    transforms=None,
+    transforms={},
     weight_name="weight",
     bad_bins=None,
     chunksize=10000000,
@@ -593,10 +600,31 @@ def diagsum(
     spans = partition(0, len(clr.pixels()), chunksize)
     fields = ["count"] + list(transforms.keys())
                                                  
-    regions = bioframe.parse_regions(regions, clr.chromsizes)      
-    rval = regions.values
+    regions = bioframe.region.normalize_regions(regions, clr.chromsizes)      
                                                  
     dtables = make_diag_tables(clr, regions, weight_name=weight_name, bad_bins=bad_bins)
+
+    # combine masking with existing transforms and add a "count" transform:
+    if bad_bins is not None:
+        # turn bad_bins into a mask of size clr.bins:
+        mask_size = len(clr.bins())
+        bad_bins_mask = np.ones(mask_size, dtype=int)
+        bad_bins_mask[bad_bins] = 0
+        #
+        masked_transforms = {}
+        bin1 = "bin1_id"
+        bin2 = "bin2_id"
+        for field in fields:
+            if field in transforms:
+                # combine masking and transform, minding the scope:
+                t = transforms[field]
+                masked_transforms[field] = lambda p,t=t,m=bad_bins_mask: t(p) * m[p[bin1]] * m[p[bin2]]
+            else:
+                # presumably field == "count", mind the scope as well:
+                masked_transforms[field] = lambda p,f=field,m=bad_bins_mask: p[f] * m[p[bin1]] * m[p[bin2]]
+        # substitute transforms to the masked_transforms:
+        transforms = masked_transforms
+
 
     for dt in dtables.values():
         for field in fields:
@@ -614,14 +642,14 @@ def diagsum(
                     agg[field], fill_value=0
                 )
     
-
     if ignore_diags:
         for dt in dtables.values():
             for field in fields:
                 agg_name = "{}.sum".format(field)
                 j = dt.columns.get_loc(agg_name)
                 dt.iloc[:ignore_diags, j] = np.nan
-                
+
+    # returning dataframe for API consistency
     result = []
     for i,dtable in dtables.items():
         dtable = dtable.reset_index()
@@ -635,7 +663,7 @@ def diagsum_asymm(
     regions1,
     regions2,
     contact_type="cis",
-    transforms=None,
+    transforms={},
     weight_name="weight",
     bad_bins=None,
     chunksize=10000000,
@@ -650,8 +678,12 @@ def diagsum_asymm(
     ----------
     clr : cooler.Cooler
         Cooler object
-    regions : sequence of genomic range tuples
-        Support regions for intra-chromosomal diagonal summation
+    regions1 : sequence of genomic range tuples
+        "left"-side support regions for diagonal summation
+    regions2 : sequence of genomic range tuples
+        "right"-side support regions for diagonal summation
+    contact_type : str
+        select trans or cis contacts for diagonal summation
     transforms : dict of str -> callable, optional
         Transformations to apply to pixels. The result will be assigned to
         a temporary column with the name given by the key. Callables take
@@ -684,6 +716,27 @@ def diagsum_asymm(
 
     dtables = make_diag_tables(clr, regions1, regions2, weight_name=weight_name, bad_bins=bad_bins)
 
+    # combine masking with existing transforms and add a "count" transform:
+    if bad_bins is not None:
+        # turn bad_bins into a mask of size clr.bins:
+        mask_size = len(clr.bins())
+        bad_bins_mask = np.ones(mask_size, dtype=int)
+        bad_bins_mask[bad_bins] = 0
+        #
+        masked_transforms = {}
+        bin1 = "bin1_id"
+        bin2 = "bin2_id"
+        for field in fields:
+            if field in transforms:
+                # combine masking and transform, minding the scope:
+                t = transforms[field]
+                masked_transforms[field] = lambda p,t=t,m=bad_bins_mask: t(p) * m[p[bin1]] * m[p[bin2]]
+            else:
+                # presumably field == "count", mind the scope as well:
+                masked_transforms[field] = lambda p,f=field,m=bad_bins_mask: p[f] * m[p[bin1]] * m[p[bin2]]
+        # substitute transforms to the masked_transforms:
+        transforms = masked_transforms
+
     for dt in dtables.values():
         for field in fields:
             agg_name = "{}.sum".format(field)
@@ -695,8 +748,8 @@ def diagsum_asymm(
     results = map(job, spans)
     for result in results:
         for (i, j), agg in result.items():
-            region1 = regions1[i]
-            region2 = regions2[j]
+            region1 = regions1.loc[i,"name"]
+            region2 = regions2.loc[j,"name"]
             for field in fields:
                 agg_name = "{}.sum".format(field)
                 dtables[region1, region2][agg_name] = dtables[region1, region2][
@@ -708,15 +761,25 @@ def diagsum_asymm(
             for field in fields:
                 agg_name = "{}.sum".format(field)
                 j = dt.columns.get_loc(agg_name)
+                # this ignores whatever "ignore_diags" diagonals,
+                # not necessarily short-range genomic interactions
                 dt.iloc[:ignore_diags, j] = np.nan
 
-    return dtables
+    # returning a dataframe for API consistency:
+    result = []
+    for (i,j), dtable in dtables.items():
+        dtable = dtable.reset_index()
+        dtable.insert(0,"region1", i)
+        dtable.insert(1,"region2", j)
+        result.append(dtable)
+    return pd.concat(result).reset_index(drop=True)
 
 
 def blocksum_pairwise(
     clr,
     regions,
-    transforms=None,
+    contact_type="trans",
+    transforms={},
     weight_name="weight",
     bad_bins=None,
     chunksize=1000000,
@@ -732,6 +795,8 @@ def blocksum_pairwise(
     regions : sequence of genomic range tuples
         Support regions for summation. Blocks for all pairs of support regions
         will be used.
+    contact_type : str
+        select trans or cis contacts for block summation
     transforms : dict of str -> callable, optional
         Transformations to apply to pixels. The result will be assigned to
         a temporary column with the name given by the key. Callables take
@@ -754,20 +819,49 @@ def blocksum_pairwise(
     dict of support region -> (field name -> summary)
 
     """
+    regions_df = bioframe.region.normalize_regions(regions, clr.chromsizes)
+    # turn sanitized regions into tuple-based regions for compatibility
+    # with previous API:
+    regions_vals = [tuple(r) for r in regions_df[["chrom","start","end"]].values]
+    # establish a region -> name mapping:
+    reg_to_name = {(c,s,e):n for c,s,e,n in regions_df.values}
 
-    blocks = list(combinations(regions, 2))
+    blocks = list(combinations(regions_vals, 2))
     regions1, regions2 = list(zip(*blocks))
     spans = partition(0, len(clr.pixels()), chunksize)
     fields = ["count"] + list(transforms.keys())
 
-    n_tot = count_all_pixels_per_block(clr, regions)
-    n_bad = count_bad_pixels_per_block(clr, regions, weight_name=weight_name, bad_bins=bad_bins)
+    n_tot = count_all_pixels_per_block(clr, regions_vals)
+    n_bad = count_bad_pixels_per_block(clr, regions_vals, weight_name=weight_name, bad_bins=bad_bins)
 
-    records = {(c1, c2): defaultdict(int) for (c1, c2) in blocks}
+    # combine masking with existing transforms and add a "count" transform:
+    if bad_bins is not None:
+        # turn bad_bins into a mask of size clr.bins:
+        mask_size = len(clr.bins())
+        bad_bins_mask = np.ones(mask_size, dtype=int)
+        bad_bins_mask[bad_bins] = 0
+        #
+        masked_transforms = {}
+        bin1 = "bin1_id"
+        bin2 = "bin2_id"
+        for field in fields:
+            if field in transforms:
+                # combine masking and transform, minding the scope:
+                t = transforms[field]
+                masked_transforms[field] = lambda p,t=t,m=bad_bins_mask: t(p) * m[p[bin1]] * m[p[bin2]]
+            else:
+                # presumably field == "count", mind the scope as well:
+                masked_transforms[field] = lambda p,f=field,m=bad_bins_mask: p[f] * m[p[bin1]] * m[p[bin2]]
+        # substitute transforms to the masked_transforms:
+        transforms = masked_transforms
+
+    records = {(reg_to_name[c1], reg_to_name[c2]): defaultdict(int) for (c1, c2) in blocks}
     for c1, c2 in blocks:
-        records[c1, c2]["n_valid"] = n_tot[c1, c2] - n_bad[c1, c2]
+        n1 = reg_to_name[c1]
+        n2 = reg_to_name[c2]
+        records[n1, n2]["n_valid"] = n_tot[c1, c2] - n_bad[c1, c2]
 
-    job = partial(_blocksum_asymm, clr, fields, transforms, regions1, regions2)
+    job = partial(_blocksum_asymm, clr, fields, transforms, contact_type, regions1, regions2)
     results = map(job, spans)
     for result in results:
         for (i, j), agg in result.items():
@@ -775,9 +869,19 @@ def blocksum_pairwise(
                 agg_name = "{}.sum".format(field)
                 s = agg[field].item()
                 if not np.isnan(s):
-                    records[regions1[i], regions2[j]][agg_name] += s
+                    n1i = reg_to_name[regions1[i]]
+                    n2j = reg_to_name[regions2[j]]
+                    records[n1i, n2j][agg_name] += s
 
-    return records
+    # returning a dataframe for API consistency:
+    return pd.DataFrame(
+        [
+            {"region1": n1, "region2": n2, **rec}
+            for (n1, n2), rec in records.items()
+        ],
+        columns=["region1", "region2", "n_valid", "count.sum"] + \
+                [ k+".sum" for k in transforms.keys() ]
+    )
 
 
 def logbin_expected(
