@@ -5,14 +5,13 @@ Cool tools
 
 The tools for your .cool's.
 
-:copyright: (c) 2017 Massachusetts Institute of Technology
-:author: Mirny Lab
-:license: BSD
+:author: Cooltools developers
+:license: MIT
 
 """
 import logging
 
-__version__ = "0.3.0"
+__version__ = "0.3.2"
 
 from . import io
 from . import lib

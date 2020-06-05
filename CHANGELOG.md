@@ -1,6 +1,20 @@
 # Release notes
 
-## [v0.3.0](https://github.com/mirnylab/cooltools/compare/v0.2.0...HEAD)
+## [Upcoming release](https://github.com/mirnylab/cooltools/compare/v0.3.2...HEAD)
+
+## [v0.3.2](https://github.com/mirnylab/cooltools/compare/v0.3.0...v0.3.2)
+
+Date: 2020-05-05
+
+Updates and bug fixes
+* Error checking for vmin/vmax in compute-saddle
+* Various updates and fixes to expected and dot-caller code
+
+Project health
+* Added docs on RTD, tutorial notebooks, code formatting, linting, and contribution guidelines.
+
+
+## [v0.3.0](https://github.com/mirnylab/cooltools/compare/v0.2.0...v0.3.0)
 
 Date: 2019-11-04
 
