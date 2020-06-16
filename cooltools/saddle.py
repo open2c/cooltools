@@ -304,7 +304,7 @@ def make_saddle(
             for chrom, df in digitized_df.groupby("chrom")
         ]
 
-    regions = bioframe.region.normalize_regions(regions)
+    regions = bioframe.parse_regions(regions)
       
     digitized_tracks = {}
     for reg in regions.values:
