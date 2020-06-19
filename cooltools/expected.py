@@ -738,7 +738,6 @@ def diagsum_asymm(
     """
     spans = partition(0, len(clr.pixels()), chunksize)
     fields = ["count"] + list(transforms.keys())
-    areas = list(zip(regions1, regions2))
     regions1 = bioframe.parse_regions(regions1, clr.chromsizes)                                                 
     regions2 = bioframe.parse_regions(regions2, clr.chromsizes)                                                 
 
@@ -771,7 +770,7 @@ def diagsum_asymm(
             dt[agg_name] = 0
 
     job = partial(
-        _diagsum_asymm, clr, fields, transforms, regions1, regions2
+        _diagsum_asymm, clr, fields, transforms, regions1.values, regions2.values
     )
     results = map(job, spans)
     for result in results:
