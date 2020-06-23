@@ -1,6 +1,7 @@
 import os.path as op
 import pandas as pd
 
+import numpy as np
 from numpy import testing
 
 import bioframe
@@ -28,7 +29,7 @@ def _diagsum_dense(matrix, ignore_diags=2, bad_bins=None):
     # all the way to the upper right element
     diags = range(len(mat))
 
-    return [ np.nanmean(mat.diagonal(i)) if (i > ignore_diags) else np.nan for i in diags]
+    return [ np.nanmean(mat.diagonal(i)) if (i >= ignore_diags) else np.nan for i in diags]
 
 
 def _diagsum_asymm_dense(matrix, bad_bin_rows=None, bad_bin_cols=None):
