@@ -669,7 +669,7 @@ def diagsum(
             agg_name = "{}.sum".format(field)
             dt[agg_name] = 0
 
-    job = partial(_diagsum_symm, clr, fields, transforms, regions)
+    job = partial(_diagsum_symm, clr, fields, transforms, regions.values)
     results = map(job, spans)
     for result in results:
         for i, agg in result.items():
