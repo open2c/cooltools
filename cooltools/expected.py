@@ -505,27 +505,32 @@ def make_block_table(clr, regions1, regions2, weight_name="weight", bad_bins=Non
 
 
 def _diagsum_symm(clr, fields, transforms, regions, span):
+    """
+    calculates diagonal summary for a collection of
+    square symmteric regions defined by regions.
+    returns a dictionary of DataFrames with diagonal
+    sums as values, and 0-based indexes of square
+    genomic regions as keys.
+    """
     lo, hi = span
     bins = clr.bins()[:]
     pixels = clr.pixels()[lo:hi]
     pixels = cooler.annotate(pixels, bins, replace=False)
 
-    pixels["region1"] = assign_supports(pixels[["chrom1","start1","end1",'bin1_id']], regions.values, suffix="1")
-    pixels["region2"] = assign_supports(pixels[["chrom2","start2","end2",'bin2_id']], regions.values, suffix="2")
-    pixels = pixels[pixels["region1"] == pixels["region2"]].copy()
-
-    # working on a deep copy of pixels chunk, ok to modify, "disposable":
+    # this could further expanded to allow for custom groupings:
     pixels["dist"] = pixels["bin2_id"] - pixels["bin1_id"]
     for field, t in transforms.items():
         pixels[field] = t(pixels)
 
-    pixelgroups = dict(iter(pixels.groupby("region1")))
-    
-    values = {}
-    for i,group in pixelgroups.items():
-        values[int(i)] = group.groupby("dist")[fields].sum()
+    diag_sums = {}
+    # r define square symmetric block i:
+    for i, r in enumerate(regions):
+        r1 = assign_supports(pixels, [r], suffix="1")
+        r2 = assign_supports(pixels, [r], suffix="2")
+        # calculate diag_sums on the spot to allow for overlapping blocks:
+        diag_sums[i] = pixels[(r1==r2)].groupby("dist")[fields].sum()
 
-    return values
+    return diag_sums
 
 
 def _diagsum_asymm(clr, fields, transforms, regions1, regions2, span):
