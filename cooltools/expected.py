@@ -324,12 +324,20 @@ def make_diag_tables(clr, regions, regions2=None, weight_name="weight", bad_bins
     Setting `weight_name` and `bad_bins` to `None` yields 0 "bad" pixels per
     diagonal per support region.
 
+    When `regions2` are provided, all intersecting diagonals are reported for
+    each rectangular and asymmetric block defined by combinations of matching
+    elements of `regions` and `regions2`.
+    Otherwise only `regions`-based symmetric square blocks are considered.
+    Only intra-chromosomal regions are supported.
+
     Parameters
     ----------
     clr : cooler.Cooler
         Input cooler
     regions : list
         a list of genomic support regions
+    regions2 : list
+        a list of genomic support regions for asymmetric regions
     weight_name : str
         name of the weight vector in the "bins" table,
         if weight_name is None returns 0 for each block.
@@ -391,6 +399,7 @@ def make_diag_tables(clr, regions, regions2=None, weight_name="weight", bad_bins
         chrom,start1,end1,name1 = regions[i]
         if regions2 is not None:
             chrom2,start2, end2,name2 = regions2[i]
+            # cis-only for now:
             assert chrom2==chrom
         else:
             start2, end2 = start1, end1
@@ -709,6 +718,11 @@ def diagsum_asymm(
     """
 
     Diagonal summary statistics.
+
+    Matchings elements of `regions1` and  `regions2` define
+    asymmetric rectangular blocks for calculating diagonal
+    summary statistics.
+    Only intra-chromosomal blocks are supported.
 
     Parameters
     ----------
