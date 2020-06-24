@@ -4,11 +4,7 @@ channels:
 dependencies:
   - cython
   - h5py
-  - matplotlib
-  - numba
-  - numpy
   - pip
   - pytables
-  - scikit-learn
   - pip:
     - -r requirements-dev.txt
