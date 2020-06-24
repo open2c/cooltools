@@ -304,7 +304,7 @@ class CoolerSnipper:
         #             snippet[pad_bottom:pad_top,
         #                     pad_left:pad_right] = matrix[i0:i1, j0:j1].toarray()
         else:
-            snippet = matrix[lo1:hi1, lo2:hi2].toarray()
+            snippet = matrix[lo1:hi1, lo2:hi2].toarray().astype('float')
             snippet[self._isnan1[lo1:hi1], :] = np.nan
             snippet[:, self._isnan2[lo2:hi2]] = np.nan
         return snippet
