@@ -5,6 +5,5 @@ dependencies:
   - cython
   - h5py
   - pip
-  - pytables
   - pip:
     - -r requirements-dev.txt
