@@ -19,7 +19,7 @@ install:
   # Create test environment and install deps, prefer defaults, use bioconda when needed
   - conda create -n testenv -c defaults -c bioconda python=$TRAVIS_PYTHON_VERSION numpy cython h5py
   - source activate testenv
-  - pip instal -r requirements-dev.txt
+  - pip install -r requirements-dev.txt
   - python setup.py install build_ext --inplace
 script:
   - pytest
