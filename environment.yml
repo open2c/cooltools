@@ -1,9 +1,0 @@
-channels:
-  - defaults
-  - bioconda
-dependencies:
-  - cython
-  - h5py
-  - pip
-  - pip:
-    - -r requirements-dev.txt
