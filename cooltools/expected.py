@@ -324,12 +324,20 @@ def make_diag_tables(clr, regions, regions2=None, weight_name="weight", bad_bins
     Setting `weight_name` and `bad_bins` to `None` yields 0 "bad" pixels per
     diagonal per support region.
 
+    When `regions2` are provided, all intersecting diagonals are reported for
+    each rectangular and asymmetric block defined by combinations of matching
+    elements of `regions` and `regions2`.
+    Otherwise only `regions`-based symmetric square blocks are considered.
+    Only intra-chromosomal regions are supported.
+
     Parameters
     ----------
     clr : cooler.Cooler
         Input cooler
     regions : list
         a list of genomic support regions
+    regions2 : list
+        a list of genomic support regions for asymmetric regions
     weight_name : str
         name of the weight vector in the "bins" table,
         if weight_name is None returns 0 for each block.
@@ -391,6 +399,7 @@ def make_diag_tables(clr, regions, regions2=None, weight_name="weight", bad_bins
         chrom,start1,end1,name1 = regions[i]
         if regions2 is not None:
             chrom2,start2, end2,name2 = regions2[i]
+            # cis-only for now:
             assert chrom2==chrom
         else:
             start2, end2 = start1, end1
@@ -505,27 +514,32 @@ def make_block_table(clr, regions1, regions2, weight_name="weight", bad_bins=Non
 
 
 def _diagsum_symm(clr, fields, transforms, regions, span):
+    """
+    calculates diagonal summary for a collection of
+    square symmteric regions defined by regions.
+    returns a dictionary of DataFrames with diagonal
+    sums as values, and 0-based indexes of square
+    genomic regions as keys.
+    """
     lo, hi = span
     bins = clr.bins()[:]
     pixels = clr.pixels()[lo:hi]
     pixels = cooler.annotate(pixels, bins, replace=False)
 
-    pixels["region1"] = assign_supports(pixels[["chrom1","start1","end1",'bin1_id']], regions.values, suffix="1")
-    pixels["region2"] = assign_supports(pixels[["chrom2","start2","end2",'bin2_id']], regions.values, suffix="2")
-    pixels = pixels[pixels["region1"] == pixels["region2"]].copy()
-
-    # working on a deep copy of pixels chunk, ok to modify, "disposable":
+    # this could further expanded to allow for custom groupings:
     pixels["dist"] = pixels["bin2_id"] - pixels["bin1_id"]
     for field, t in transforms.items():
         pixels[field] = t(pixels)
 
-    pixelgroups = dict(iter(pixels.groupby("region1")))
-    
-    values = {}
-    for i,group in pixelgroups.items():
-        values[int(i)] = group.groupby("dist")[fields].sum()
+    diag_sums = {}
+    # r define square symmetric block i:
+    for i, r in enumerate(regions):
+        r1 = assign_supports(pixels, [r], suffix="1")
+        r2 = assign_supports(pixels, [r], suffix="2")
+        # calculate diag_sums on the spot to allow for overlapping blocks:
+        diag_sums[i] = pixels[(r1==r2)].groupby("dist")[fields].sum()
 
-    return values
+    return diag_sums
 
 
 def _diagsum_asymm(clr, fields, transforms, regions1, regions2, span):
@@ -664,7 +678,7 @@ def diagsum(
             agg_name = "{}.sum".format(field)
             dt[agg_name] = 0
 
-    job = partial(_diagsum_symm, clr, fields, transforms, regions)
+    job = partial(_diagsum_symm, clr, fields, transforms, regions.values)
     results = map(job, spans)
     for result in results:
         for i, agg in result.items():
@@ -705,6 +719,11 @@ def diagsum_asymm(
 
     Diagonal summary statistics.
 
+    Matchings elements of `regions1` and  `regions2` define
+    asymmetric rectangular blocks for calculating diagonal
+    summary statistics.
+    Only intra-chromosomal blocks are supported.
+
     Parameters
     ----------
     clr : cooler.Cooler
@@ -738,7 +757,6 @@ def diagsum_asymm(
     """
     spans = partition(0, len(clr.pixels()), chunksize)
     fields = ["count"] + list(transforms.keys())
-    areas = list(zip(regions1, regions2))
     regions1 = bioframe.parse_regions(regions1, clr.chromsizes)                                                 
     regions2 = bioframe.parse_regions(regions2, clr.chromsizes)                                                 
 
@@ -771,7 +789,7 @@ def diagsum_asymm(
             dt[agg_name] = 0
 
     job = partial(
-        _diagsum_asymm, clr, fields, transforms, regions1, regions2
+        _diagsum_asymm, clr, fields, transforms, regions1.values, regions2.values
     )
     results = map(job, spans)
     for result in results:
