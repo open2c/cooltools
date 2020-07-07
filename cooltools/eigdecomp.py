@@ -300,8 +300,7 @@ def cooler_cis_eig(
     sort_metric=None,
     map=map
 ):
-
-"""
+    """
     Compute compartment eigenvector for a given cooler `clr` in a number of
     symmetric intra chromosomal regions (cis-regions), or for each chromosome.
 
@@ -365,7 +364,7 @@ def cooler_cis_eig(
               employ `regions` (e.g. arms) to avoid issues with chromosomal arms,
               use `bad_bins` to ignore small transolcations.
 
-"""
+    """
 
     if regions is None:  # normalize_regins will fill in the rest
         regions = list(bins["chrom"].unique()) # and check consistency
