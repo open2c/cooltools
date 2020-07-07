@@ -295,14 +295,81 @@ def cooler_cis_eig(
     phasing_track_col="GC",
     balance="weight",
     ignore_diags=None,
+    bad_bins=None,
     clip_percentile=99.9,
     sort_metric=None,
     map=map
 ):
-    
+
+"""
+    Compute compartment eigenvector for a given cooler `clr` in a number of
+    symmetric intra chromosomal regions (cis-regions), or for each chromosome.
+
+    Note that the amplitude of compartment eigenvectors is weighted by their
+    corresponding eigenvalue
+
+    Parameters
+    ----------
+    clr : cooler
+        cooler object to fetch data from
+    bins : DataFrame
+        table of bins derived from clr with phasing track added
+    regions : iterable, optional
+        if provided, eigenvectors are calculated for the regions only,
+        otherwise chromosome-wide eigenvectors are computed,
+    n_eigs : int
+        number of eigenvectors to compute
+    phasing_track_col : str, optional
+        name of the columns in `bins` table, if provided, eigenvectors are
+        flipped to achieve a positive correlation with `bins[phasing_track_col]`.
+    balance : str
+        name of the column with balancing weights to be used.
+    ignore_diags : int, optional
+        the number of diagonals to ignore. Derived from cooler metadata
+        if not specified.
+    bad_bins : array-like
+        a list of bins to ignore. Indexes of bins must be absolute,
+        as in clr.bins()[:], as opposed to being offset by chromosome start.
+        `bad_bins` will be combined with the bad bins masked by balancing.
+    clip_percentile : float
+        if >0 and <100, clip pixels with diagonal-normalized values
+        higher than the specified percentile of matrix-wide values.
+    sort_metric : str
+        If provided, re-sort `eigenvecs` and `eigvals` in the order of
+        decreasing correlation between phasing_track and eigenvector, using the
+        specified measure of correlation. Possible values:
+        'pearsonr' - sort by decreasing Pearson correlation.
+        'var_explained' - sort by decreasing absolute amount of variation in
+        `eigvecs` explained by `phasing_track` (i.e. R^2 * var(eigvec))
+        'MAD_explained' - sort by decreasing absolute amount of Median Absolute
+        Deviation from the median of `eigvecs` explained by `phasing_track`
+        (i.e. COMED(eigvec, phasing_track) * MAD(eigvec)).
+        'spearmanr' - sort by decreasing Spearman correlation.
+        This option is designed to report the most "biologically" informative
+        eigenvectors first, and prevent eigenvector swapping caused by
+        translocations. In reality, however, sometimes it shows poor
+        performance and may lead to reporting of non-informative eigenvectors.
+        Off by default.
+    map : callable, optional
+        Map functor implementation.
+
+
+    Returns
+    -------
+    eigvals, eigvec_table -> DataFrames with eigenvalues for each region and
+    a table of eigenvectors filled in the `bins` table.
+
+    .. note:: ALWAYS check your EVs by eye. The first one occasionally does
+              not reflect the compartment structure, but instead describes
+              chromosomal arms or translocation blowouts. Possible mitigations:
+              employ `regions` (e.g. arms) to avoid issues with chromosomal arms,
+              use `bad_bins` to ignore small transolcations.
+
+"""
+
     if regions is None:  # normalize_regins will fill in the rest
         regions = list(bins["chrom"].unique()) # and check consistency
-        
+
     regions = bioframe.parse_regions(regions, clr.chromsizes, force_UCSC_names=True) 
 
     ignore_diags = (
@@ -316,8 +383,20 @@ def cooler_cis_eig(
         eigvec_table[f"E{i+1}"] = np.nan
     eig_columns = [f"E{i+1}" for i in range(n_eigs)]
 
+    # bad_bins provided as absolute indices
     def _each(region):
         A = clr.matrix(balance=balance).fetch(region[:3])
+        if bad_bins is not None:
+            # filter bad_bins for the region and turn relative:
+            lo, hi = clr.extent(region[:3])
+            bad_bins_region = bad_bins[(bad_bins>=lo)&(bad_bins<hi)]
+            bad_bins_region -= lo
+            if bad_bin_region:
+                # apply bad bins to symmetric matrix A:
+                A[:,bad_bins_region] = np.nan
+                A[bad_bins_region,:] = np.nan
+
+        # phasing column in bins-table:
         if phasing_track_col and (phasing_track_col not in bins):
             raise ValueError(
                 'No column "{}" in the bin table'.format(phasing_track_col)
@@ -345,12 +424,12 @@ def cooler_cis_eig(
 
     results = list(map(_each, regions.values))
 
-    for region, eigvecs, index in results:
+    for _, eigvecs, index in results:
         eigvec_table.at[index, eig_columns] = eigvecs.T
 
     eigvals = pd.DataFrame(
         index=regions["name"],
-        data=np.vstack([i[0] for i in results]),
+        data=np.vstack([eigval for eigval,_,_ in results]),
         columns=["eigval" + str(i + 1) for i in range(n_eigs)],
     )
 
