@@ -390,7 +390,7 @@ def cooler_cis_eig(
             lo, hi = clr.extent(region[:3])
             bad_bins_region = bad_bins[(bad_bins>=lo)&(bad_bins<hi)]
             bad_bins_region -= lo
-            if bad_bins_region:
+            if len(bad_bins_region) > 0:
                 # apply bad bins to symmetric matrix A:
                 A[:,bad_bins_region] = np.nan
                 A[bad_bins_region,:] = np.nan
