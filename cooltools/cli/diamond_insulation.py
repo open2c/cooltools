@@ -19,6 +19,13 @@ from .. import insulation
     type=int
 )
 @click.option(
+    "--output",
+    "-o",
+    help="Specify output file name to store the insulation in a tsv format.",
+    type=str,
+    required=False,
+)
+@click.option(
     "--ignore-diags",
     help="The number of diagonals to ignore. By default, equals"
     " the number of diagonals ignored during IC balancing.",
@@ -68,6 +75,7 @@ from .. import insulation
 def diamond_insulation(
     in_path,
     window,
+    output,
     ignore_diags,
     min_frac_valid_pixels,
     min_dist_bad_bin,
@@ -107,4 +115,9 @@ def diamond_insulation(
         min_dist_bad_bin=min_dist_bad_bin,
     )
 
-    print(ins_table.to_csv(sep="\t", index=False, na_rep="nan"))
+    # output to file if specified:
+    if output:
+        ins_table.to_csv(output, sep="\t", index=False, na_rep="nan")
+    # or print into stdout otherwise:
+    else:
+        print(ins_table.to_csv(sep="\t", index=False, na_rep="nan"))
