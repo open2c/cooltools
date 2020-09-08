@@ -297,25 +297,13 @@ def cooler_cis_eig(
     ignore_diags=None,
     clip_percentile=99.9,
     sort_metric=None,
+    map=map
 ):
-    # Perform consitency checks.
-    if regions is None:
-        chroms_not_in_clr = [
-            chrom for chrom in bins["chrom"].unique() if chrom not in clr.chromsizes
-        ]
-
-        if len(chroms_not_in_clr) > 0:
-            raise ValueError(
-                "The following chromosomes are found in the bin table, but not "
-                "in the cooler: " + str(chroms_not_in_clr)
-            )
-
-    if regions is None:
-        regions = (
-            [(chrom, 0, clr.chromsizes[chrom]) for chrom in bins["chrom"].unique()]
-            if regions is None
-            else [bioframe.parse_region(r) for r in regions]
-        )
+    
+    if regions is None:  # normalize_regins will fill in the rest
+        regions = list(bins["chrom"].unique()) # and check consistency
+        
+    regions = bioframe.parse_regions(regions, clr.chromsizes, force_UCSC_names=True) 
 
     ignore_diags = (
         clr._load_attrs("bins/weight").get("ignore_diags", 2)
@@ -325,19 +313,24 @@ def cooler_cis_eig(
 
     eigvec_table = bins.copy()
     for i in range(n_eigs):
-        eigvec_table["E" + str(i + 1)] = np.nan
+        eigvec_table[f"E{i+1}"] = np.nan
+    eig_columns = [f"E{i+1}" for i in range(n_eigs)]
 
     def _each(region):
-        A = clr.matrix(balance=balance).fetch(region)
+        A = clr.matrix(balance=balance).fetch(region[:3])
         if phasing_track_col and (phasing_track_col not in bins):
             raise ValueError(
                 'No column "{}" in the bin table'.format(phasing_track_col)
             )
-        phasing_track = (
-            bioframe.slice_bedframe(bins, region)[phasing_track_col].values
-            if phasing_track_col
-            else None
-        )
+        
+        # mask to determin bins belonging to the region 
+        subindex = clr.bins().fetch(region[:3]).index
+        subregion = bins.loc[subindex].copy()
+        
+        if phasing_track_col: 
+            phasing_track = subregion[phasing_track_col].values
+        else:
+            phasing_track = None 
 
         eigvals, eigvecs = cis_eig(
             A,
@@ -347,30 +340,17 @@ def cooler_cis_eig(
             clip_percentile=clip_percentile,
             sort_metric=sort_metric,
         )
+                 
+        return eigvals, eigvecs, subregion.index
 
-        return eigvals, eigvecs
+    results = list(map(_each, regions.values))
 
-    eigvals_per_reg, eigvecs_per_reg = zip(*map(_each, regions))
-
-    for region, eigvecs in zip(regions, eigvecs_per_reg):
-        lo, hi = bioframe.bisect_bedframe(bins, region)
-        for i, eigvec in enumerate(eigvecs):
-            eigvec_table.iloc[
-                lo:hi, eigvec_table.columns.get_loc("E" + str(i + 1))
-            ] = eigvec
-
-    region_strs = [
-        (
-            chrom
-            if (start == 0 and end == clr.chromsizes[chrom])
-            else "{}:{}-{}".format(chrom, start, end)
-        )
-        for chrom, start, end in regions
-    ]
+    for region, eigvecs, index in results:
+        eigvec_table.at[index, eig_columns] = eigvecs.T
 
     eigvals = pd.DataFrame(
-        index=region_strs,
-        data=np.vstack(eigvals_per_reg),
+        index=regions["name"],
+        data=np.vstack([i[0] for i in results]),
         columns=["eigval" + str(i + 1) for i in range(n_eigs)],
     )
 

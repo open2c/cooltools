@@ -170,7 +170,7 @@ def compute_expected(
     # using try-clause to close mp.Pool properly
     try:
         if contact_type == "cis":
-            tables = expected.diagsum(
+            result = expected.diagsum(
                 clr,
                 regions,
                 transforms=transforms,
@@ -179,11 +179,6 @@ def compute_expected(
                 chunksize=chunksize,
                 ignore_diags=ignore_diags,
                 map=map_,
-            )
-            result = pd.concat(
-                [tables[region] for region in regions],
-                keys=[name for name in region_names],
-                names=["region"],
             )
             result = result.reset_index()
 
