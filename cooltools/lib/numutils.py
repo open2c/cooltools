@@ -1360,84 +1360,91 @@ def adaptive_coarsegrain(ar, countar, cutoff=5, max_levels=8, min_shape=8):
     return ar_next
 
 
-def robust_gauss_filter(ar, 
-                        sigma=2, 
-                        functon=scipy.ndimage.filters.gaussian_filter1d,
-                        kwargs = None):
+def robust_gauss_filter(
+    ar,
+    sigma=2,
+    functon=scipy.ndimage.filters.gaussian_filter1d,
+    kwargs=None
+):
     """
-    Implements an edge-handling mode for gaussian filter that basically ignores the edge, and also handles NANs.
-    
-    Available edge-handling modes in ndimage.filters attempt to somehow "extrapolate" the edge value and then 
-    apply the filter (see https://docs.scipy.org/doc/scipy/reference/generated/scipy.ndimage.convolve.html). 
-    That's likely because convolve uses fast fourier transform, which requires the kernel to be constant. 
-    Here we design a better edge-handling for the gaussian smoothing. 
-    
-    In a gaussian-filtered array, a pixel away from the edge is a mean of nearby pixels with gaussian weights. 
-    With this mode, pixels near start/end are also a mean of nearby pixels with gaussian weights. That's it. 
-    If we encounter NANs, we also simply ignore them, following the same definition: mean of nearby valid pixels. 
-    Yes, it rases the weights for the first/last pixels, because now only a part of the whole gaussian is being used 
-    (up to 1/2 for the first/last pixel and large sigma). But it preserves the "mean of nearby pixels" definition. 
-    It is different from padding with zeros (it would drag the first pixel down to be more like zero). 
-    It is also different from "nearest" - that gives too much weight to the first/last pixel. 
-
-    
-    To achieve this smoothing, we preform regular gaussian smoothing using mode="constant" 
-    (pad with zeros). Then we takes an array of valid pixels and smooth it the same way. 
-    This calculates how many "average valid pixels" contributed to each point of a smoothed array. 
-    Dividing one by the other achieves the desired result. 
+    Implements an edge-handling mode for gaussian filter that basically ignores
+    the edge, and also handles NaNs.
 
     Parameters
     ----------
-    ar: array-like 
+    ar : array-like
         Input array
-    sigma: float
-        sigma to be passed to the filter 
-    function: callable
+    sigma : float
+        sigma to be passed to the filter
+    function : callable
         Filter to use. Default is gauusian_filter1d
-    kwargs: dict
+    kwargs : dict
         Additional args to pass to the filter. Default:None
-    
+
+    Notes
+    -----
+    Available edge-handling modes in ndimage.filters attempt to somehow
+    "extrapolate" the edge value and then  apply the filter (see
+    https://docs.scipy.org/doc/scipy/reference/generated/scipy.ndimage.convolve.html).
+     That's likely because convolve uses fast fourier transform, which requires
+    the kernel to be constant.  Here we design a better edge-handling for the
+    gaussian smoothing.
+
+    In a gaussian-filtered array, a pixel away from the edge is a mean of nearby
+    pixels with gaussian weights.  With this mode, pixels near start/end are
+    also a mean of nearby pixels with gaussian weights. That's it.  If we
+    encounter NANs, we also simply ignore them, following the same definition:
+    mean of nearby valid pixels.  Yes, it rases the weights for the first/last
+    pixels, because now only a part of the whole gaussian is being used  (up to
+    1/2 for the first/last pixel and large sigma). But it preserves the "mean of
+    nearby pixels" definition.  It is different from padding with zeros (it
+    would drag the first pixel down to be more like zero).  It is also different
+    from "nearest" - that gives too much weight to the first/last pixel.
+
+    To achieve this smoothing, we preform regular gaussian smoothing using
+    mode="constant"  (pad with zeros). Then we takes an array of valid pixels
+    and smooth it the same way.  This calculates how many "average valid pixels"
+    contributed to each point of a smoothed array.  Dividing one by the other
+    achieves the desired result.
     """
-    if kwargs == None:
-        kwargs = {}        
+    if kwargs is None:
+        kwargs = {}
     ar = np.asarray(ar, dtype=float)
     mask = np.isfinite(ar)
-    ar[~mask] = 0 
+    ar[~mask] = 0
     a = functon(ar, sigma=sigma, mode="constant", **kwargs)
     b = functon(1. * mask, sigma=sigma, mode="constant", **kwargs)
-    return a/b
-    
-    
+    return a / b
+
+
 def weighted_groupby_mean(df, group_by, weigh_by, mode="mean"):
     """
-    Weighted mean, std, and std in log space for a dataframe.groupby 
-    
+    Weighted mean, std, and std in log space for a dataframe.groupby
+
     Parameters
     ----------
-    df : dataframe 
+    df : dataframe
         Dataframe to groupby
     group_by : str or list
-        Columns to group by 
+        Columns to group by
     weight_by : str
-        Column to use as weights 
+        Column to use as weights
     mode : "mean", "std" or "logstd"
-        Do the weighted mean, the weighted standard deviaton, 
-        or the weighted std in log-space from the mean-log value 
+        Do the weighted mean, the weighted standard deviaton,
+        or the weighted std in log-space from the mean-log value
         (useful for P(s) etc.)
-    
-    
     """
     if type(group_by) == str:
         group_by = [group_by]
     gr = df.groupby(group_by)
-    if mode == "mean": 
+    if mode == "mean":
         def wstd(x):
             return np.average(x, weights=df.loc[x.index, weigh_by])
         wm = wstd
     elif mode == "std":
         def wstd(x):
             wm = np.average(x, weights=df.loc[x.index, weigh_by])
-            dev = x - wm 
+            dev = x - wm
             res = np.sqrt(np.average(dev**2, weights=df.loc[x.index, weigh_by]))
             return res
         wm = wstd
@@ -1445,14 +1452,13 @@ def weighted_groupby_mean(df, group_by, weigh_by, mode="mean"):
         def wstd(x):
             x = np.log(x)
             wm = np.average(x, weights=df.loc[x.index, weigh_by])
-            dev = x - wm 
-            res = np.sqrt(np.average(dev**2, weights=df.loc[x.index, weigh_by]))            
+            dev = x - wm
+            res = np.sqrt(np.average(dev**2, weights=df.loc[x.index, weigh_by]))
             return np.exp(res)
         wm = wstd
     else:
         raise NotImplementedError
-        
-            
+
     f = {}
     for i in df.columns:
         if i in group_by:
@@ -1461,68 +1467,69 @@ def weighted_groupby_mean(df, group_by, weigh_by, mode="mean"):
             f[i] = ['sum']
         else:
             f[i] = [wm]
-    agg =  gr.agg(f)
+    agg = gr.agg(f)
     agg.columns = [i[0] for i in agg.columns]
-    return agg 
+    return agg
 
 
 def persistent_log_bins(end=10, bins_per_order_magnitude=10):
     """
-    Creates most nicely looking log-spaced integer bins starting at 1, 
-    with the defined number of bins per order of magnitude. This is not a replacement for logbins, 
-    and it has a different purpose (see note below). 
-    
+    Creates most nicely looking log-spaced integer bins starting at 1, with the
+    defined number of bins per order of magnitude.
+
     Parameters
     ----------
-    
-    end : number (int recommended)
-        log10 of the last value. It is safe to put a large value here and select your range of bins later.           
-    
-    bins_per_order_magnitude : int >0
-        how many bins per order of magnitude
-    
-    
+    end : number (int recommended) log10 of the last value. It is safe to put a
+    large value here and select your range of bins later.
+
+    bins_per_order_magnitude : int >0 how many bins per order of magnitude
+
+    Notes
+    -----
+    This is not a replacement for logbins, and it has a different purpose.
+
     Difference between this and logbins
-    -----------------------------------
-    
-    Logbins creates bins from lo to hi, spaced logarithmically with an appriximate ratio. Logbins 
-    makes sure that the last bin is large  (i.e. hi/ratio ... hi), and will not allow the last 
-    bin to be much less than ratio. It would slightly adjust the ratio to achieve that. 
-    As a result, by construciton, logbins bins are different for different lo or hi. 
-    
-    This function is designed to create exactly the same bins that only depend on one parameter, 
-    bins_per_order_magnitude. The goal is to make things calculated for different datasets/organisms/etc.
-    comparable. For example, if these bins are used, it would allow us to divide P(s) for two different organisms
-    by each other because it was calculated for the same bins. 
-    
-    The price you pay for such versatility is that the last bin can be much less than others in real application. 
-    For example, if you have 10 bins per order of magnitude (ratio of 1.25), but your data ends at 10500, then 
-    the only points in the last bin would be 10000..10500, 1/5 of what could be. This may make the last point noisy. 
-    
-    The main part is done using np.logspace and rounding to the nearest integer, followed by unique. 
-    The gaps are then re-sorted to ensure that gaps are strictly increasing. The re-sorting of 
-    gaps was essential, and produced better results than manual adjustment. 
-    
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    Logbins creates bins from lo to hi, spaced logarithmically with an
+    appriximate ratio. Logbins  makes sure that the last bin is large  (i.e.
+    hi/ratio ... hi), and will not allow the last  bin to be much less than
+    ratio. It would slightly adjust the ratio to achieve that.  As a result, by
+    construciton, logbins bins are different for different lo or hi.
+
+    This function is designed to create exactly the same bins that only depend
+    on one parameter,  bins_per_order_magnitude. The goal is to make things
+    calculated for different datasets/organisms/etc. comparable. For example, if
+    these bins are used, it would allow us to divide P(s) for two different
+    organisms by each other because it was calculated for the same bins.
+
+    The price you pay for such versatility is that the last bin can be much less
+    than others in real application.  For example, if you have 10 bins per order
+    of magnitude (ratio of 1.25), but your data ends at 10500, then  the only
+    points in the last bin would be 10000..10500, 1/5 of what could be. This may
+    make the last point noisy.
+
+    The main part is done using np.logspace and rounding to the nearest integer,
+    followed by unique.  The gaps are then re-sorted to ensure that gaps are
+    strictly increasing. The re-sorting of  gaps was essential, and produced
+    better results than manual adjustment.
+
     Alternatives that produce irregular bins
-    ----------------------------------------
-    
-    Using np.unique(np.logspace(a,b,N,dtype=int)) can be sub-optimal 
-    For example, np.unique(np.logspace(0,1,11,dtype=int)) = [ 1,  2,  3,  5,  6,  7, 10]
-    Note the gaps jump from 1 to 2 back to 1 
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    Using np.unique(np.logspace(a,b,N,dtype=int)) can be sub-optimal  For
+    example, np.unique(np.logspace(0,1,11,dtype=int)) = [ 1,  2,  3,  5,  6,  7,
+    10] Note the gaps jump from 1 to 2 back to 1
 
     Similarly using np.unique(np.rint(np.logspace..)) can be suboptimal
-    np.unique(np.array(np.rint(np.logspace(0,1,9)),dtype=int))  = [ 1,  2,  3,  4,  6,  7, 10]        
+    np.unique(np.array(np.rint(np.logspace(0,1,9)),dtype=int))  = [ 1,  2,  3,
+    4,  6,  7, 10]
 
-    for bins_per_order_of_magnitude=16, 10 is not in bins. Other than that, 10, 100, 1000, etc. are always included. 
-    
-        
+    for bins_per_order_of_magnitude=16, 10 is not in bins. Other than that, 10,
+    100, 1000, etc. are always included.
     """
-    
     if end > 50:
         raise ValueError("End is a log10(max_value), not the max_value itself")
-    
     bin_float = np.logspace(0, end, end * bins_per_order_magnitude + 1)
     bin_int = np.array(np.rint(bin_float), dtype=int)  # rounding to the nearest int
-    bins = np.unique(bin_int)   # unique bins 
-    bins = np.cumsum(np.sort(np.r_[1,np.diff(bins)]))   #re-ordering gaps (important step)
+    bins = np.unique(bin_int)   # unique bins
+    bins = np.cumsum(np.sort(np.r_[1, np.diff(bins)]))  # re-ordering gaps (important step)
     return bins

@@ -13,26 +13,28 @@ from . import util
 
 
 @cli.command()
-@click.argument("cool_path", metavar="COOL_PATH", type=str, nargs=1)
+@click.argument(
+    "cool_path",
+    metavar="COOL_PATH",
+    type=str,
+    nargs=1
+)
 @click.option(
-    "--nproc",
-    "-p",
+    "--nproc", "-p",
     help="Number of processes to split the work between."
     "[default: 1, i.e. no process pool]",
     default=1,
     type=int,
 )
 @click.option(
-    "--chunksize",
-    "-c",
+    "--chunksize", "-c",
     help="Control the number of pixels handled by each worker process at a time.",
     type=int,
     default=int(10e6),
     show_default=True,
 )
 @click.option(
-    "--output",
-    "-o",
+    "--output", "-o",
     help="Specify output file name to store the expected in a tsv format.",
     type=str,
     required=False,
@@ -45,8 +47,7 @@ from . import util
     default=False,
 )
 @click.option(
-    "--contact-type",
-    "-t",
+    "--contact-type", "-t",
     help="compute expected for cis or trans region of a Hi-C map."
     "Ignored when genomic-regions are provided",
     type=click.Choice(["cis", "trans"]),

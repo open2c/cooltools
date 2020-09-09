@@ -296,7 +296,7 @@ def make_saddle(
 
     """
     digitized_df, name = digitized
-    digitized_df = digitized_df[["chrom","start","end",name]]
+    digitized_df = digitized_df[["chrom", "start", "end", name]]
 
     if regions is None:
         regions = [
@@ -305,7 +305,7 @@ def make_saddle(
         ]
 
     regions = bioframe.parse_regions(regions)
-      
+
     digitized_tracks = {}
     for reg in regions.values:
         track = bioframe.bedslice(digitized_df, reg)
