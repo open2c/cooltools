@@ -43,7 +43,7 @@ def _phase_eigs(eigvals, eigvecs, phasing_track, sort_metric=None):
                 eigvec[mask]
             )
         else:
-            raise ValueError("Unknown sorting metric: {}".format(sort_by))
+            raise ValueError("Unknown sorting metric: {}".format(sort_metric))
 
         corrs.append(corr)
 
@@ -353,11 +353,9 @@ def cooler_cis_eig(
     eigvals_per_reg, eigvecs_per_reg = zip(*map(_each, regions))
 
     for region, eigvecs in zip(regions, eigvecs_per_reg):
-        lo, hi = bioframe.bisect_bedframe(bins, region)
+        idx = bioframe.select(bins, region).index
         for i, eigvec in enumerate(eigvecs):
-            eigvec_table.iloc[
-                lo:hi, eigvec_table.columns.get_loc("E" + str(i + 1))
-            ] = eigvec
+            eigvec_table.loc[idx, "E" + str(i + 1)] = eigvec
 
     region_strs = [
         (

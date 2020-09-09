@@ -219,41 +219,41 @@ def compute_saddle(
     # it's contact_type dependent:
     if contact_type == "cis":
         # that's what we expect as column names:
-        expected_columns = ["chrom", "diag", "n_valid", expected_name]
+        expected_columns = ["region", "diag", "n_valid", expected_name]
         # what would become a MultiIndex:
-        expected_index = ["chrom", "diag"]
+        expected_index = ["region", "diag"]
         # expected dtype as a rudimentary form of validation:
         expected_dtype = {
-            "chrom": np.str,
+            "region": np.str,
             "diag": np.int64,
             "n_valid": np.int64,
             expected_name: np.float64,
         }
-        # unique list of chroms mentioned in expected_path:
-        get_exp_chroms = lambda df: df.index.get_level_values("chrom").unique()
-        # compute # of bins by comparing matching indexes:
-        get_exp_bins = lambda df, ref_chroms, _: (
-            df.index.get_level_values("chrom").isin(ref_chroms).sum()
-        )
+        # # unique list of chroms mentioned in expected_path:
+        # get_exp_chroms = lambda df: df.index.get_level_values("region").unique()
+        # # compute # of bins by comparing matching indexes:
+        # get_exp_bins = lambda df, ref_chroms, _: (
+        #     df.index.get_level_values("chrom").isin(ref_chroms).sum()
+        # )
     elif contact_type == "trans":
         # that's what we expect as column names:
-        expected_columns = ["chrom1", "chrom2", "n_valid", expected_name]
+        expected_columns = ["region1", "region2", "n_valid", expected_name]
         # what would become a MultiIndex:
-        expected_index = ["chrom1", "chrom2"]
+        expected_index = ["region1", "region2"]
         # expected dtype as a rudimentary form of validation:
         expected_dtype = {
-            "chrom1": np.str,
-            "chrom2": np.str,
+            "region1": np.str,
+            "region2": np.str,
             "n_valid": np.int64,
             expected_name: np.float64,
         }
-        # unique list of chroms mentioned in expected_path:
-        get_exp_chroms = lambda df: np.union1d(
-            df.index.get_level_values("chrom1").unique(),
-            df.index.get_level_values("chrom2").unique(),
-        )
-        # no way to get bins from trans-expected, so just get the number:
-        get_exp_bins = lambda _1, _2, correct_bins: correct_bins
+        # # unique list of chroms mentioned in expected_path:
+        # get_exp_chroms = lambda df: np.union1d(
+        #     df.index.get_level_values("region1").unique(),
+        #     df.index.get_level_values("region2").unique(),
+        # )
+        # # no way to get bins from trans-expected, so just get the number:
+        # get_exp_bins = lambda _1, _2, correct_bins: correct_bins
     else:
         raise ValueError(
             "Incorrect contact_type: {}, ".format(contact_type),
@@ -322,25 +322,25 @@ def compute_saddle(
                 track_bins, track_path, cool_bins, cool_path, track_chroms
             ),
         )
-    # EXPECTED vs TRACK:
-    # validate expected a bit as well:
-    expected_chroms = get_exp_chroms(expected)
-    # do simple column-name validation for now:
-    if not set(track_chroms).issubset(expected_chroms):
-        raise ValueError(
-            "Chromosomes in {} must be subset of ".format(track_path)
-            + "chromosomes in expected {}".format(expected_path)
-        )
-    # and again bins are supposed to match up:
-    # only for cis though ...
-    expected_bins = get_exp_bins(expected, track_chroms, track_bins)
-    if not (track_bins == expected_bins):
-        raise ValueError(
-            "Number of bins is not matching: ",
-            "{} in {}, and {} in {} for chromosomes {}".format(
-                track_bins, track_path, expected_bins, expected_path, track_chroms
-            ),
-        )
+    # # EXPECTED vs TRACK:
+    # # validate expected a bit as well:
+    # expected_chroms = get_exp_chroms(expected)
+    # # do simple column-name validation for now:
+    # if not set(track_chroms).issubset(expected_chroms):
+    #     raise ValueError(
+    #         "Chromosomes in {} must be subset of ".format(track_path)
+    #         + "chromosomes in expected {}".format(expected_path)
+    #     )
+    # # and again bins are supposed to match up:
+    # # only for cis though ...
+    # expected_bins = get_exp_bins(expected, track_chroms, track_bins)
+    # if not (track_bins == expected_bins):
+    #     raise ValueError(
+    #         "Number of bins is not matching: ",
+    #         "{} in {}, and {} in {} for chromosomes {}".format(
+    #             track_bins, track_path, expected_bins, expected_path, track_chroms
+    #         ),
+    #     )
     #############################################
     # CROSS-VALIDATION IS COMPLETE.
     #############################################

@@ -4,20 +4,22 @@ import sys
 
 import numpy as np
 import pandas as pd
+from click.testing import CliRunner
+from cooltools.cli import cli
 
 
 def test_compartment_cli(request, tmpdir):
     in_cool = op.join(request.fspath.dirname, "data/sin_eigs_mat.cool")
     out_eig_prefix = op.join(tmpdir, "test.eigs")
-    try:
-        subprocess.check_output(
-            f"python -m cooltools call-compartments -o {out_eig_prefix} {in_cool}",
-            shell=True,
-        ).decode("ascii")
-    except subprocess.CalledProcessError as e:
-        print(e.output)
-        print(sys.exc_info())
-        raise e
+    runner = CliRunner()
+    result = runner.invoke(
+        cli, [
+            'call-compartments',
+            '-o', out_eig_prefix,
+            in_cool,
+        ]
+    )
+    assert result.exit_code == 0
     test_eigs = pd.read_table(out_eig_prefix + ".cis.vecs.tsv", sep="\t")
     gb = test_eigs.groupby("chrom")
     for chrom in gb.groups:
@@ -36,15 +38,15 @@ def test_saddle_cli(request, tmpdir):
     out_expected = op.join(tmpdir, "test.expected")
     out_saddle_prefix = op.join(tmpdir, "test.saddle")
 
-    try:
-        subprocess.check_output(
-            f"python -m cooltools call-compartments -o {out_eig_prefix} {in_cool}",
-            shell=True,
-        ).decode("ascii")
-    except subprocess.CalledProcessError as e:
-        print(e.output)
-        print(sys.exc_info())
-        raise e
+    runner = CliRunner()
+    result = runner.invoke(
+        cli, [
+            'call-compartments',
+            '-o', out_eig_prefix,
+            in_cool
+        ]
+    )
+    assert result.exit_code == 0
 
     try:
         subprocess.check_output(
@@ -56,16 +58,20 @@ def test_saddle_cli(request, tmpdir):
         print(sys.exc_info())
         raise e
 
-    try:
-        subprocess.check_output(
-            f"python -m cooltools compute-saddle -o {out_saddle_prefix} --range -0.5 0.5 "
-            + f"--n-bins 30 --scale log {in_cool} {out_eig_prefix}.cis.vecs.tsv {out_expected}",
-            shell=True,
-        ).decode("ascii")
-    except subprocess.CalledProcessError as e:
-        print(e.output)
-        print(sys.exc_info())
-        raise e
+    runner = CliRunner()
+    result = runner.invoke(
+        cli, [
+            "compute-saddle",
+            "-o", out_saddle_prefix,
+            "--range", "-0.5", "0.5",
+            "--n-bins", "30",
+            "--scale", "log",
+            in_cool,
+            f"{out_eig_prefix}.cis.vecs.tsv",
+            out_expected
+        ]
+    )
+    assert result.exit_code == 0
 
     log2_sad = np.log2(np.load(out_saddle_prefix + ".saddledump.npz")["saddledata"])
     bins = np.load(out_saddle_prefix + ".saddledump.npz")["binedges"]
