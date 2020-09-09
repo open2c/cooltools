@@ -47,7 +47,7 @@ def get_requirements(path):
     return [
         req
         for req in content.split("\n")
-        if req != '' and not req.startswith('#')
+        if req != '' and not (req.startswith('#') or req.startswith('-'))
     ]
 
 
@@ -96,7 +96,7 @@ setup(
     install_requires=install_requires,
     entry_points={
         'console_scripts': [
-             'cooltools = cooltools.cli:cli',
+            'cooltools = cooltools.cli:cli',
         ]
     }
 )

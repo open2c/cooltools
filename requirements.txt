@@ -1,4 +1,4 @@
-bioframe
+-e git+https://github.com/mirnylab/bioframe.git@develop#egg=bioframe
 click>=7
 cooler>=0.8.5
 cython
