@@ -1,5 +1,5 @@
 import os.path as op
-import pandas as pd
+# import pandas as pd
 
 import numpy as np
 from numpy import testing
@@ -13,6 +13,8 @@ from itertools import combinations
 # setup new testing infrasctructure for expected ...
 
 # rudimentary expected functions for dense matrices:
+
+
 def _diagsum_dense(matrix, ignore_diags=2, bad_bins=None):
     """
     function returning a diagsum list
@@ -22,14 +24,16 @@ def _diagsum_dense(matrix, ignore_diags=2, bad_bins=None):
     """
     mat = matrix.copy().astype(float)
     if bad_bins is not None:
-        mat[bad_bins,:] = np.nan
-        mat[:,bad_bins] = np.nan
+        mat[bad_bins, :] = np.nan
+        mat[:, bad_bins] = np.nan
 
     # diagonal, starting from main one
     # all the way to the upper right element
     diags = range(len(mat))
 
-    return [ np.nanmean(mat.diagonal(i)) if (i >= ignore_diags) else np.nan for i in diags]
+    return [
+        np.nanmean(mat.diagonal(i)) if (i >= ignore_diags) else np.nan for i in diags
+    ]
 
 
 def _diagsum_asymm_dense(matrix, bad_bin_rows=None, bad_bin_cols=None):
@@ -44,17 +48,17 @@ def _diagsum_asymm_dense(matrix, bad_bin_rows=None, bad_bin_cols=None):
     """
     mat = matrix.copy().astype(float)
     if bad_bin_rows is not None:
-        mat[bad_bins_rows,:] = np.nan
+        mat[bad_bin_rows, :] = np.nan
     elif bad_bin_cols is not None:
-        mat[:,bad_bins_cols] = np.nan
+        mat[:, bad_bin_cols] = np.nan
 
     (mrows, mcols) = mat.shape
 
     # diagonals of an arbitrary rectangle matrix
     # negative diagonals are below the "main" one
-    diags = range(-mrows+1, mcols)
+    diags = range(-mrows + 1, mcols)
 
-    return [ np.nanmean(mat.diagonal(i)) for i in diags ]
+    return [np.nanmean(mat.diagonal(i)) for i in diags]
     # flatexp_tomat = lambda e,m_like: toeplitz(e[m_like.shape[0]-1::-1],e[m_like.shape[0]-1:])
 
 
@@ -66,9 +70,9 @@ def _blocksum_asymm_dense(matrix, bad_bin_rows=None, bad_bin_cols=None):
     """
     mat = matrix.copy().astype(float)
     if bad_bin_rows is not None:
-        mat[bad_bins_rows,:] = np.nan
+        mat[bad_bin_rows, :] = np.nan
     elif bad_bin_cols is not None:
-        mat[:,bad_bins_cols] = np.nan
+        mat[:, bad_bin_cols] = np.nan
 
     return np.nanmean(mat)
 
@@ -80,7 +84,7 @@ def _blocksum_asymm_dense(matrix, bad_bin_rows=None, bad_bin_cols=None):
 ignore_diags = 2
 weight_name = "weight"
 bad_bins = None
-chunksize = 10_000 # keep it small to engage chunking
+chunksize = 10_000  # keep it small to engage chunking
 weight1 = weight_name + "1"
 weight2 = weight_name + "2"
 transforms = {"balanced": lambda p: p["count"] * p[weight1] * p[weight2]}
@@ -95,11 +99,12 @@ supports = [(chrom, 0, chromsizes[chrom]) for chrom in chromosomes]
 common_regions = []
 for i in range(4):
     chrom = chromosomes[i]
-    halfway_chrom = int(chromsizes[chrom]/2)
+    halfway_chrom = int(chromsizes[chrom] / 2)
     reg1 = (chrom, 0, halfway_chrom)
     reg2 = (chrom, halfway_chrom, chromsizes[chrom])
     common_regions.append(reg1)
     common_regions.append(reg2)
+
 
 def test_diagsum(request):
     # perform test:
@@ -120,18 +125,20 @@ def test_diagsum(request):
     for name, group in grouped:
         matrix = clr.matrix(balance=weight_name).fetch(name, name)
         testing.assert_allclose(
-            actual = group["balanced.avg"].values,
-            desired = _diagsum_dense(matrix, ignore_diags=2),
+            actual=group["balanced.avg"].values,
+            desired=_diagsum_dense(matrix, ignore_diags=2),
             # rtol=1e-07,
             # atol=0,
-            equal_nan=True
+            equal_nan=True,
         )
 
 
 def test_diagsum_asymm(request):
     # perform test:
     clr = cooler.Cooler(op.join(request.fspath.dirname, "data/CN.mm9.1000kb.cool"))
-    cis_pairwise_regions = [(r1,r2) for (r1,r2) in combinations(common_regions, 2) if (r1[0]==r2[0])]
+    cis_pairwise_regions = [
+        (r1, r2) for (r1, r2) in combinations(common_regions, 2) if (r1[0] == r2[0])
+    ]
     regions1, regions2 = list(zip(*cis_pairwise_regions))
     res = cooltools.expected.diagsum_asymm(
         clr,
@@ -145,18 +152,16 @@ def test_diagsum_asymm(request):
     # calculate average:
     res["balanced.avg"] = res["balanced.sum"] / res["n_valid"]
     # check results for every block, defined as region1/2
-    grouped = res.groupby(["region1","region2"])
+    grouped = res.groupby(["region1", "region2"])
     for (name1, name2), group in grouped:
         matrix = clr.matrix(balance=weight_name).fetch(name1, name2)
         testing.assert_allclose(
-            actual = group["balanced.avg"].values,
-            desired = _diagsum_asymm_dense(matrix),
+            actual=group["balanced.avg"].values,
+            desired=_diagsum_asymm_dense(matrix),
             # rtol=1e-07,
             # atol=0,
-            equal_nan=True
+            equal_nan=True,
         )
-
-
 
 
 def test_blocksum(request):
@@ -177,14 +182,13 @@ def test_blocksum(request):
     res["balanced.avg"] = res["balanced.sum"] / res["n_valid"]
     # check results for every block , defined as region1/2
     # should be simplified as there is 1 number per block only
-    grouped = res.groupby(["region1","region2"])
+    grouped = res.groupby(["region1", "region2"])
     for (name1, name2), group in grouped:
         matrix = clr.matrix(balance=weight_name).fetch(name1, name2)
         testing.assert_allclose(
-            actual = group["balanced.avg"].values,
-            desired = _blocksum_asymm_dense(matrix),
+            actual=group["balanced.avg"].values,
+            desired=_blocksum_asymm_dense(matrix),
             # rtol=1e-07,
             # atol=0,
-            equal_nan=True
+            equal_nan=True,
         )
-
