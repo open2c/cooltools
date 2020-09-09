@@ -30,11 +30,11 @@ def logbins(lo, hi, ratio=0, N=0, version=2):
     N : int
         The target number of bins. The resulting number of bins is not guaranteed.
         Either ratio or N must be specified.
-        
-    version : int 
-        version=1 is a legacy mirnylib version 
-        
-        version=2 fixes ordering of bin gaps for some values, making sure 
+
+    version : int
+        version=1 is a legacy mirnylib version
+
+        version=2 fixes ordering of bin gaps for some values, making sure
         that bin gaps are always increasing (2/2/2020)
 
     """
@@ -49,10 +49,10 @@ def logbins(lo, hi, ratio=0, N=0, version=2):
     data10 = np.logspace(np.log10(lo), np.log10(hi), N)
     data10 = np.array(np.rint(data10), dtype=int)
     data10 = np.sort(np.unique(data10))
-    
+
     if version > 1:
         data10 = np.cumsum(np.r_[data10[0], np.sort(np.diff(data10))])
-    
+
     assert data10[0] == lo
     assert data10[-1] == hi
 
@@ -257,8 +257,8 @@ class MatVec(object):
 
         y_full = (
             split(self.clr, map=self.map, chunksize=self.chunksize)
-                .pipe(_matvec_product, x_full)
-                .reduce(add, np.zeros(n))
+            .pipe(_matvec_product, x_full)
+            .reduce(add, np.zeros(n))
         )
         y = y_full[mask]
 
