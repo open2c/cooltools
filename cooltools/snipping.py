@@ -304,7 +304,7 @@ class CoolerSnipper:
         #             snippet[pad_bottom:pad_top,
         #                     pad_left:pad_right] = matrix[i0:i1, j0:j1].toarray()
         else:
-            snippet = matrix[lo1:hi1, lo2:hi2].toarray()
+            snippet = matrix[lo1:hi1, lo2:hi2].toarray().astype('float')
             snippet[self._isnan1[lo1:hi1], :] = np.nan
             snippet[:, self._isnan2[lo2:hi2]] = np.nan
         return snippet
@@ -354,9 +354,9 @@ class ObsExpSnipper:
             matrix = matrix.tocsr()
         self._isnan1 = np.isnan(self.clr.bins()["weight"].fetch(region1).values)
         self._isnan2 = np.isnan(self.clr.bins()["weight"].fetch(region2).values)
-        self._expected = LazyToeplitz(
-            self.expected.groupby(self.regions_columns)
-            .get_group(region1[0] if len(self.regions_columns) > 0 else region1)[
+        gr = self.expected.groupby(self.regions_columns)
+        self._expected = LazyToeplitz(            
+            gr.get_group(region1)[
                 "balanced.avg"
             ]
             .values
@@ -454,9 +454,9 @@ class ExpectedSnipper:
         self.offsets[region2] = self.clr.offset(region2) - self.clr.offset(region2[0])
         self.m = np.diff(self.clr.extent(region1))
         self.n = np.diff(self.clr.extent(region2))
-        self._expected = LazyToeplitz(
-            self.expected.groupby(self.regions_columns)
-            .get_group(region1[0] if len(self.regions_columns) > 0 else region1)[
+        gr = self.expected.groupby(self.regions_columns)
+        self._expected = LazyToeplitz(            
+            gr.get_group(tuple(region1))[
                 "balanced.avg"
             ]
             .values
