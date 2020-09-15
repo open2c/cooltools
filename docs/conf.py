@@ -37,6 +37,7 @@ MOCK_MODULES = [
     'scipy.sparse',
     'scipy.sparse.linalg',
     'scipy.ndimage',
+    'scipy.ndimage.filters',
     'scipy.ndimage.interpolation',
     'scipy.signal',
     'scipy.stats',
