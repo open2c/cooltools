@@ -135,10 +135,7 @@ def compute_expected(
         region_names = [chrom for chrom in clr.chromnames]
     else:
         regions_buf, names = util.sniff_for_header(regions)
-        if names is not None:
-            regions = pd.read_csv(regions_buf, skiprows=1, sep="\t", header=None)
-        else:
-            regions = pd.read_csv(regions_buf, sep="\t", header=None)
+        regions = pd.read_csv(regions_buf, sep="\t", header=None)
         if regions.shape[1] not in (3, 4):
             raise ValueError(
                 "The region file does not have three or four tab-delimited columns."
