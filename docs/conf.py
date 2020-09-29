@@ -37,6 +37,7 @@ MOCK_MODULES = [
     'scipy.sparse',
     'scipy.sparse.linalg',
     'scipy.ndimage',
+    'scipy.ndimage.filters',
     'scipy.ndimage.interpolation',
     'scipy.signal',
     'scipy.stats',
@@ -97,7 +98,7 @@ nbsphinx_epilog = r"""
 
 This page was generated with nbsphinx_ from `{{ docname }}`__
 
-__ https://github.com/mirnylab/cooltools/blob/master{{ env.config.release }}/{{ docname }}
+__ https://github.com/open2c/cooltools/blob/master{{ env.config.release }}/{{ docname }}
 
 .. _nbsphinx: https://nbsphinx.readthedocs.io/
 
