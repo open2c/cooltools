@@ -2,11 +2,14 @@ import os.path as op
 # import pandas as pd
 
 import numpy as np
+import pandas as pd
 from numpy import testing
 
 import bioframe
 import cooler
 import cooltools.expected
+from click.testing import CliRunner
+from cooltools.cli import cli
 
 from itertools import combinations
 
@@ -123,7 +126,7 @@ def test_diagsum(request):
     # check results for every "region"
     grouped = res.groupby("region")
     for name, group in grouped:
-        matrix = clr.matrix(balance=weight_name).fetch(name, name)
+        matrix = clr.matrix(balance=weight_name).fetch(name)
         testing.assert_allclose(
             actual=group["balanced.avg"].values,
             desired=_diagsum_dense(matrix, ignore_diags=2),
@@ -188,6 +191,34 @@ def test_blocksum(request):
         testing.assert_allclose(
             actual=group["balanced.avg"].values,
             desired=_blocksum_asymm_dense(matrix),
+            # rtol=1e-07,
+            # atol=0,
+            equal_nan=True,
+        )
+
+
+def test_expected_cli(request, tmpdir):
+    # --regions regions.bed
+    in_cool = op.join(request.fspath.dirname, "data/CN.mm9.1000kb.cool")
+    out_cis_expected = op.join(tmpdir, "cis.exp.tsv")
+    runner = CliRunner()
+    result = runner.invoke(
+        cli, [
+            'compute-expected',
+            '-o', out_cis_expected,
+            in_cool,
+        ]
+    )
+    assert result.exit_code == 0
+    clr = cooler.Cooler(in_cool)
+    cis_expected = pd.read_table(out_cis_expected, sep="\t")
+    grouped = cis_expected.groupby("region")
+    # full chromosomes in this example:
+    for chrom, group in grouped:
+        matrix = clr.matrix().fetch(chrom)
+        testing.assert_allclose(
+            actual=group["balanced.avg"].values,
+            desired=_diagsum_dense(matrix, ignore_diags=2),
             # rtol=1e-07,
             # atol=0,
             equal_nan=True,
