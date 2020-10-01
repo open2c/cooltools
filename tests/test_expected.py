@@ -198,13 +198,14 @@ def test_blocksum(request):
 
 
 def test_expected_cli(request, tmpdir):
-    # --regions regions.bed
+    # CLI compute-expected for chrom-wide cis-data
     in_cool = op.join(request.fspath.dirname, "data/CN.mm9.1000kb.cool")
     out_cis_expected = op.join(tmpdir, "cis.exp.tsv")
     runner = CliRunner()
     result = runner.invoke(
         cli, [
             'compute-expected',
+            '--weight-name', weight_name,
             '-o', out_cis_expected,
             in_cool,
         ]
@@ -215,10 +216,89 @@ def test_expected_cli(request, tmpdir):
     grouped = cis_expected.groupby("region")
     # full chromosomes in this example:
     for chrom, group in grouped:
-        matrix = clr.matrix().fetch(chrom)
+        matrix = clr.matrix(balance=weight_name).fetch(chrom)
         testing.assert_allclose(
             actual=group["balanced.avg"].values,
             desired=_diagsum_dense(matrix, ignore_diags=2),
+            # rtol=1e-07,
+            # atol=0,
+            equal_nan=True,
+        )
+
+
+def test_expected_regions_cli(request, tmpdir):
+    # CLI compute expected for cis-data with arbitrary regions
+    # which may overlap. But it is symmetrical cis-case.
+    in_cool = op.join(request.fspath.dirname, "data/CN.mm9.1000kb.cool")
+    in_regions = op.join(request.fspath.dirname, "data/mm9.named_overlap_regions.bed")
+    out_cis_expected = op.join(tmpdir, "cis.regions.exp.tsv")
+    runner = CliRunner()
+    result = runner.invoke(
+        cli, [
+            'compute-expected',
+            '--weight-name', weight_name,
+            '--regions', in_regions,
+            '-o', out_cis_expected,
+            in_cool,
+        ]
+    )
+    assert result.exit_code == 0
+    clr = cooler.Cooler(in_cool)
+    cis_expected = pd.read_csv(out_cis_expected, sep="\t")
+    grouped = cis_expected.groupby("region")
+    # deal with named and overlapping regions here:
+    regions_df = pd.read_csv(in_regions, sep="\t", header=None)
+    regions_df = regions_df.set_index(3)
+    for region_name, group in grouped:
+        ucsc_region = regions_df.loc[region_name].to_list()
+        matrix = clr.matrix(balance=weight_name).fetch(ucsc_region)
+        testing.assert_allclose(
+            actual=group["balanced.avg"].values,
+            desired=_diagsum_dense(matrix, ignore_diags=2),
+            # rtol=1e-07,
+            # atol=0,
+            equal_nan=True,
+        )
+
+
+def test_trans_expected_regions_cli(request, tmpdir):
+    # CLI compute expected for cis-data with arbitrary regions
+    # which may overlap. But it is symmetrical cis-case.
+    in_cool = op.join(request.fspath.dirname, "data/CN.mm9.1000kb.cool")
+    in_regions = op.join(request.fspath.dirname, "data/mm9.named_nonoverlap_regions.bed")
+    out_trans_expected = op.join(tmpdir, "cis.regions.exp.tsv")
+    runner = CliRunner()
+    result = runner.invoke(
+        cli, [
+            'compute-expected',
+            '--weight-name', weight_name,
+            '--regions', in_regions,
+            '--contact-type', 'trans',
+            '-o', out_trans_expected,
+            in_cool,
+        ]
+    )
+    assert result.exit_code == 0
+    clr = cooler.Cooler(in_cool)
+    trans_expected = pd.read_csv(out_trans_expected, sep="\t")
+    # grouped = trans_expected.groupby("region1","region2")
+    trans_expected = trans_expected.set_index(["region1", "region2"])
+    # deal with named and overlapping regions here:
+    regions_df = pd.read_csv(in_regions, sep="\t", header=None)
+    # prepare pairwise combinations of regions for trans-expected (blocksum):
+    regions_pairwise = combinations(regions_df.itertuples(index=False), 2)
+    regions1, regions2 = zip(*regions_pairwise)
+    regions1 = pd.DataFrame(regions1)
+    regions2 = pd.DataFrame(regions2)
+    for i in range(len(trans_expected)):
+        region1_name = regions1.iloc[i, 3]
+        region2_name = regions2.iloc[i, 3]
+        ucsc_region1 = regions1.iloc[i, :3].to_list()
+        ucsc_region2 = regions2.iloc[i, :3].to_list()
+        matrix = clr.matrix(balance=weight_name).fetch(ucsc_region1, ucsc_region2)
+        testing.assert_allclose(
+            actual=trans_expected.loc[(region1_name, region2_name), "balanced.avg"],
+            desired=_blocksum_asymm_dense(matrix),
             # rtol=1e-07,
             # atol=0,
             equal_nan=True,

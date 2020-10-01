@@ -108,9 +108,9 @@ from . import cli
 @click.option(
     "--regions",
     help="Path to a BED file containing genomic regions "
-    "for which saddleplot will be calculated. Region names can"
-    "be provided in a 4th column and should match region names"
-    "in expected and in the input track.",
+    "for which saddleplot will be calculated. Region names can "
+    "be provided in a 4th column and should match regions and "
+    "their names in expected.",
     type=click.Path(exists=True),
     required=False,
 )
