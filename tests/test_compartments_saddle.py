@@ -149,7 +149,7 @@ def test_trans_saddle_cli(request, tmpdir):
             "--n-bins", "30",
             "--scale", "log",
             in_cool,
-            f"{out_eig_prefix}.trans.vecs.tsv::E3", # 3rd EV stores checkerboard
+            f"{out_eig_prefix}.trans.vecs.tsv::E3",  # 3rd EV stores checkerboard
             out_expected
         ]
     )
