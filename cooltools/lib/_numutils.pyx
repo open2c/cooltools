@@ -17,12 +17,12 @@ cdef extern from "stdlib.h":
     double c_libc_drandom "drand48"()
 
 
-def logbins(lo, hi, ratio=0, N=0):
+def logbins(lo, hi, ratio=0, N=0, version=2):
     """Make bins with edges evenly spaced in log-space.
 
     Parameters
     ----------
-    lo, hi : int 
+    lo, hi : int
         The span of the bins.
     ratio : float
         The target ratio between the upper and the lower edge of each bin.
@@ -31,18 +31,28 @@ def logbins(lo, hi, ratio=0, N=0):
         The target number of bins. The resulting number of bins is not guaranteed.
         Either ratio or N must be specified.
 
+    version : int
+        version=1 is a legacy mirnylib version
+
+        version=2 fixes ordering of bin gaps for some values, making sure
+        that bin gaps are always increasing (2/2/2020)
+
     """
     lo = int(lo)
     hi = int(hi)
     if ratio != 0:
         if N != 0:
             raise ValueError("Please specify N or ratio")
-        N = np.log(hi / lo) / np.log(ratio)
+        N = int(np.log(hi / lo) / np.log(ratio))
     elif N == 0:
         raise ValueError("Please specify N or ratio")
     data10 = np.logspace(np.log10(lo), np.log10(hi), N)
     data10 = np.array(np.rint(data10), dtype=int)
     data10 = np.sort(np.unique(data10))
+
+    if version > 1:
+        data10 = np.cumsum(np.r_[data10[0], np.sort(np.diff(data10))])
+
     assert data10[0] == lo
     assert data10[-1] == hi
 
@@ -99,7 +109,7 @@ def observed_over_expected(matrix, mask=None):
 @cython.cdivision(True)
 def iterative_correction_symmetric(
     x, max_iter=1000, ignore_diags = 0, tolerance=1e-5):
-    """The main method for correcting DS and SS read data. 
+    """The main method for correcting DS and SS read data.
     By default does iterative correction, but can perform an M-time correction
 
     Parameters
@@ -160,14 +170,14 @@ def iterative_correction_symmetric(
     totalBias /= corr
     report = {'converged':converged, 'iternum':iternum}
 
-    return x, totalBias, report 
+    return x, totalBias, report
 
 
 @cython.boundscheck(False)
 @cython.nonecheck(False)
 @cython.wraparound(False)
 def fake_cis(
-        np.ndarray[np.double_t, ndim = 2] data, 
+        np.ndarray[np.double_t, ndim = 2] data,
         np.ndarray[np.int64_t,ndim = 2] mask):
     cdef int N
     N = len(data)
@@ -195,27 +205,27 @@ def fake_cis(
 @cython.nonecheck(False)
 @cython.cdivision(True)
 def _matvec_sparse_symmetric(
-        np.ndarray[np.double_t, ndim=1] y, 
-        np.ndarray[np.int_t, ndim=1] bin1, 
-        np.ndarray[np.int_t, ndim=1] bin2, 
+        np.ndarray[np.double_t, ndim=1] y,
+        np.ndarray[np.int_t, ndim=1] bin1,
+        np.ndarray[np.int_t, ndim=1] bin2,
         np.ndarray[np.double_t, ndim=1] values,
         np.ndarray[np.double_t, ndim=1] x):
     """
-    Perform matrix vector product A * x for a sparse real 
+    Perform matrix vector product A * x for a sparse real
     symmetric matrix A.
-    
+
     bin1, bin2 : 1D array
         sparse representation of A
     x : 1D array
         input vector
     y : 1D array
         output vector (values are added to this)
-    
+
     """
     cdef int n = bin1.shape[0]
     cdef int ptr, i, j
     cdef double Aij
-    
+
     for ptr in range(n):
         i, j, Aij = bin1[ptr], bin2[ptr], values[ptr]
         y[i] += (Aij * x[j])
@@ -238,18 +248,18 @@ class MatVec(object):
         self.clr = clr
         self.chunksize = chunksize
         self.map = map
-    
+
     def __call__(self, x, mask):
         n = len(mask)
-        
+
         x_full = np.zeros(n)
         x_full[mask] = x
-        
+
         y_full = (
             split(self.clr, map=self.map, chunksize=self.chunksize)
-                .pipe(_matvec_product, x_full)
-                .reduce(add, np.zeros(n))
+            .pipe(_matvec_product, x_full)
+            .reduce(add, np.zeros(n))
         )
         y = y_full[mask]
-        
+
         return y

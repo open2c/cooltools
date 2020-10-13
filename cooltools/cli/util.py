@@ -5,7 +5,9 @@ import click
 
 
 class TabularFilePath(click.Path):
-    def __init__(self, default_column_index, exists=False, resolve_path=False, allow_dash=False):
+    def __init__(
+        self, default_column_index, exists=False, resolve_path=False, allow_dash=False
+    ):
         """
         Parameters
         ----------
@@ -20,13 +22,14 @@ class TabularFilePath(click.Path):
 
         """
         self.default_column_index = default_column_index
-        super().__init__(exists=exists, 
-                         resolve_path=resolve_path, 
-                         allow_dash=allow_dash)
+        super().__init__(
+            exists=exists, resolve_path=resolve_path, allow_dash=allow_dash
+        )
 
     def convert(self, value, param, ctx):
-        if value is None: return
-        file_path, _, field = value.partition('::')
+        if value is None:
+            return
+        file_path, _, field = value.partition("::")
         file_path = super().convert(file_path, param, ctx)
         if not field:
             col = self.default_column_index
@@ -39,12 +42,12 @@ class TabularFilePath(click.Path):
         return file_path, col
 
 
-def sniff_for_header(file_path, sep='\t', comment='#'):
+def sniff_for_header(file_path, sep="\t", comment="#"):
     """
     Warning: reads the entire file into a StringIO buffer!
 
     """
-    with open(file_path, 'r') as f:
+    with open(file_path, "r") as f:
         buf = io.StringIO(f.read())
 
     sample_lines = []
@@ -56,7 +59,7 @@ def sniff_for_header(file_path, sep='\t', comment='#'):
         sample_lines.append(buf.readline())
     buf.seek(0)
 
-    has_header = csv.Sniffer().has_header('\n'.join(sample_lines))
+    has_header = csv.Sniffer().has_header("\n".join(sample_lines))
     if has_header:
         names = sample_lines[0].strip().split(sep)
     else:
@@ -66,11 +69,13 @@ def sniff_for_header(file_path, sep='\t', comment='#'):
 
 
 def validate_csv(ctx, param, value, default_column):
-    if value is None: return
-    file_path, _, field_name = value.partition('::')
+    if value is None:
+        return
+    file_path, _, field_name = value.partition("::")
     if not op.exists(file_path):
         raise click.BadParameter(
-            ctx=ctx, param=param)
+            'Path not found: "{}"'.format(file_path), ctx=ctx, param=param
+        )
     if not field_name:
         field_name = default_column
     elif field_name.isdigit():

@@ -2,17 +2,14 @@ from itertools import chain, combinations
 from collections import defaultdict
 from functools import partial
 
+import warnings
+
 import numpy as np
 import pandas as pd
 from scipy.linalg import toeplitz
 from scipy.signal import fftconvolve
-import distributed
-import dask.dataframe as dd
-import dask.array as da
-import dask
 
 from cooler.tools import split, partition
-from cooler.contrib.dask import daskify
 import cooler
 import bioframe
 from .lib import assign_supports, numutils
@@ -25,9 +22,9 @@ def _contact_areas(distbins, scaffold_length):
     distbins = distbins.astype(float)
     scaffold_length = float(scaffold_length)
     outer_areas = np.maximum(scaffold_length - distbins[:-1], 0) ** 2
-    inner_areas = np.maximum(scaffold_length - distbins[1: ], 0) ** 2
+    inner_areas = np.maximum(scaffold_length - distbins[1:], 0) ** 2
     return 0.5 * (outer_areas - inner_areas)
-    
+
 
 def contact_areas(distbins, region1, region2):
     if region1 == region2:
@@ -40,66 +37,40 @@ def contact_areas(distbins, region1, region2):
             start1, start2 = start2, start1
             end1, end2 = end2, end1
         areas = (
-            _contact_areas(distbins, end2 - start1) -
-            _contact_areas(distbins, start2 - start1) -
-            _contact_areas(distbins, end2 - end1)
+            _contact_areas(distbins, end2 - start1)
+            - _contact_areas(distbins, start2 - start1)
+            - _contact_areas(distbins, end2 - end1)
         )
         if end1 < start2:
             areas += _contact_areas(distbins, start2 - end1)
-    
+
     return areas
 
 
-def compute_scaling(df, region1, region2=None, 
-                    dmin=int(1e1), 
-                    dmax=int(1e7), 
-                    n_bins=50):
+def compute_scaling(df, region1, region2=None, dmin=int(1e1), dmax=int(1e7), n_bins=50):
+
+    import dask.array as da
 
     if region2 is None:
         region2 = region1
-    
+
     distbins = numutils.logbins(dmin, dmax, N=n_bins)
     areas = contact_areas(distbins, region1, region2)
 
-    df = df[ 
-        (df['pos1'] >= region1[0]) & 
-        (df['pos1'] < region1[1]) & 
-        (df['pos2'] >= region2[0]) & 
-        (df['pos2'] < region2[1])
+    df = df[
+        (df["pos1"] >= region1[0])
+        & (df["pos1"] < region1[1])
+        & (df["pos2"] >= region2[0])
+        & (df["pos2"] < region2[1])
     ]
-    dists = (df['pos2'] - df['pos1']).values
+    dists = (df["pos2"] - df["pos1"]).values
 
     if isinstance(dists, da.Array):
-        obs, _ = da.histogram(
-            dists[(dists >= dmin) & (dists < dmax)],
-            bins=distbins)
+        obs, _ = da.histogram(dists[(dists >= dmin) & (dists < dmax)], bins=distbins)
     else:
-        obs, _ = np.histogram(
-            dists[(dists >= dmin) & (dists < dmax)],
-            bins=distbins)
+        obs, _ = np.histogram(dists[(dists >= dmin) & (dists < dmax)], bins=distbins)
 
     return distbins, obs, areas
-
-
-def bg2slice_frame(bg2, region1, region2):
-    """
-    Slice a dataframe with columns ['chrom1', 'start1', 'end1', 'chrom2',
-    'start2', 'end2']. Assumes no proper nesting of intervals.
-
-    """
-    chrom1, start1, end1 = region1
-    chrom2, start2, end2 = region2
-    if end1 is None:
-        end1 = np.inf
-    if end2 is None:
-        end2 = np.inf
-    out = bg2[(bg2['chrom1'] == chrom1) & 
-              (bg2['start1'] >= start1) &
-              (bg2['end1'] < end1) &
-              (bg2['chrom2'] == chrom2) & 
-              (bg2['start2'] >= start2) &
-              (bg2['end2'] < end2)]
-    return out
 
 
 def lattice_pdist_frequencies(n, points):
@@ -112,7 +83,7 @@ def lattice_pdist_frequencies(n, points):
     n : int
         Size of the lattice on which the integer points reside.
     points : sequence of int
-        Arbitrary integers between 0 and n-1, inclusive, in any order but 
+        Arbitrary integers between 0 and n-1, inclusive, in any order but
         with no duplicates.
 
     Returns
@@ -123,53 +94,54 @@ def lattice_pdist_frequencies(n, points):
     Notes
     -----
     This is done using a convolution via FFT. Thanks to Peter de Rivaz; see
-    <http://stackoverflow.com/questions/42423823/distribution-of-pairwise-
-    distances-between-many-integers>.
-    
+    `<http://stackoverflow.com/questions/42423823/distribution-of-pairwise-distances-between-many-integers>`_.
+
     """
     if len(np.unique(points)) != len(points):
         raise ValueError("Integers must be distinct.")
-    x = np.zeros(n); x[points] = 1
-    return np.round(fftconvolve(x, x[::-1], mode='full')).astype(int)[-n:]
+    x = np.zeros(n)
+    x[points] = 1
+    return np.round(fftconvolve(x, x[::-1], mode="full")).astype(int)[-n:]
 
 
 def count_bad_pixels_per_diag(n, bad_bins):
     """
     Efficiently count the number of bad pixels on each upper diagonal of a
     matrix assuming a sequence of bad bins forms a "grid" of invalid pixels.
-    
-    Each bad bin bifurcates into two a row and column of bad pixels, so an 
-    upper bound on number of bad pixels per diagonal is 2*k, where k is the 
+
+    Each bad bin bifurcates into two a row and column of bad pixels, so an
+    upper bound on number of bad pixels per diagonal is 2*k, where k is the
     number of bad bins. For a given diagonal, we need to subtract from this
     upper estimate the contribution from rows/columns reaching "out-of-bounds"
     and the contribution of the intersection points of bad rows with bad
     columns that get double counted.
-    
-    o : bad bin
-    * : bad pixel
-    x : intersection bad pixel
-    $ : out of bounds bad pixel
 
-         $    $     $
-     *--------------------------+    
-      *  *    *     *           |    
-       * *    *     *           |    
-        **    *     *           |    
-         o****x*****x***********|$    
-          *   *     *           |    
-           *  *     *           |    
-            * *     *           |    
-             o******x***********|$    
-              *     *           |    
-               *    *           |    
-                *   *           |    
-                 *  *           |    
-                  * *           |    
-                   **           |    
-                    o***********|$    
-                     *          |    
-                      *         |    
-    
+    ::
+
+        o : bad bin
+        * : bad pixel
+        x : intersection bad pixel
+        $ : out of bounds bad pixel
+             $    $     $
+         *--------------------------+
+          *  *    *     *           |
+           * *    *     *           |
+            **    *     *           |
+             o****x*****x***********|$
+              *   *     *           |
+               *  *     *           |
+                * *     *           |
+                 o******x***********|$
+                  *     *           |
+                   *    *           |
+                    *   *           |
+                     *  *           |
+                      * *           |
+                       **           |
+                        o***********|$
+                         *          |
+                          *         |
+
     Parameters
     ----------
     n : int
@@ -181,7 +153,7 @@ def count_bad_pixels_per_diag(n, bad_bins):
     -------
     dcount : 1D array of length n
         dcount[d] == number of bad pixels on diagonal d
-    
+
     """
     k = len(bad_bins)
     dcount = np.zeros(n, dtype=int)
@@ -202,11 +174,11 @@ def count_bad_pixels_per_diag(n, bad_bins):
                 if pl == k:
                     break
         if pr > 0:
-            while (bad_bins[pr-1] + diag) >= n:
+            while (bad_bins[pr - 1] + diag) >= n:
                 pr -= 1
                 if pr == 0:
                     break
-        dcount[diag] = 2*k - ixn[diag] - pl - (k - pr)
+        dcount[diag] = 2 * k - ixn[diag] - pl - (k - pr)
     return dcount
 
 
@@ -228,11 +200,59 @@ def count_all_pixels_per_diag(n):
     return np.arange(n, 0, -1)
 
 
+def count_all_pixels_per_block(x, y):
+    """
+    Calculate total number of pixels in a rectangular block
+
+    Parameters
+    ----------
+    x : int
+        block width in pixels
+    y : int
+        block height in pixels
+
+    Returns
+    -------
+    number_of_pixels : int
+        total number of pixels in a block
+    """
+    return x * y
+
+
+def count_bad_pixels_per_block(x, y, bad_bins_x, bad_bins_y):
+    """
+    Calculate number of "bad" pixels per rectangular block of a contact map
+
+    "Bad" pixels are inferred from the balancing weight column `weight_name` or
+    provided directly in the form of an array `bad_bins`.
+
+    Setting `weight_name` and `bad_bins` to `None` yields 0 bad pixels in a block.
+
+    Parameters
+    ----------
+    x : int
+        block width in pixels
+    y : int
+        block height in pixels
+    bad_bins_x : int
+        number of bad bins on x-side
+    bad_bins_y : int
+        number of bad bins on y-side
+
+    Returns
+    -------
+    number_of_pixes : int
+        number of "bad" pixels in a block
+    """
+
+    # Calculate the resulting bad pixels in a rectangular block:
+    return (x * bad_bins_y) + (y * bad_bins_x) - (bad_bins_x * bad_bins_y)
+
 
 def make_diag_table(bad_mask, span1, span2):
     """
-    Compute the total number of elements ``n_elem`` and the number of bad 
-    elements ``n_bad`` per diagonal for a single contact area encompassing 
+    Compute the total number of elements ``n_elem`` and the number of bad
+    elements ``n_bad`` per diagonal for a single contact area encompassing
     ``span1`` and ``span2`` on the same genomic scaffold (cis matrix).
 
     Follows the same principle as the algorithm for finding contact areas for
@@ -252,13 +272,13 @@ def make_diag_table(bad_mask, span1, span2):
         Table indexed by 'diag' with columns ['n_elem', 'n_bad'].
 
     """
+
     def _make_diag_table(n_bins, bad_locs):
-        diags = pd.DataFrame(index=pd.Series(np.arange(n_bins), name='diag'))
-        diags['n_elem'] = count_all_pixels_per_diag(n_bins)
-        diags['n_valid'] = (diags['n_elem'] - 
-                            count_bad_pixels_per_diag(n_bins, bad_locs))
+        diags = pd.DataFrame(index=pd.Series(np.arange(n_bins), name="diag"))
+        diags["n_elem"] = count_all_pixels_per_diag(n_bins)
+        diags["n_valid"] = diags["n_elem"] - count_bad_pixels_per_diag(n_bins, bad_locs)
         return diags
-    
+
     if span1 == span2:
         lo, hi = span1
         diags = _make_diag_table(hi - lo, where(bad_mask[lo:hi]))
@@ -270,261 +290,116 @@ def make_diag_table(bad_mask, span1, span2):
             hi1, hi2 = hi2, hi1
         diags = (
             _make_diag_table(hi2 - lo1, where(bad_mask[lo1:hi2]))
-                .subtract(_make_diag_table(lo2 - lo1, where(bad_mask[lo1:lo2])), 
-                          fill_value=0)
-                .subtract(_make_diag_table(hi2 - hi1, where(bad_mask[hi1:hi2])), 
-                          fill_value=0)            
+            .subtract(
+                _make_diag_table(lo2 - lo1, where(bad_mask[lo1:lo2])), fill_value=0
+            )
+            .subtract(
+                _make_diag_table(hi2 - hi1, where(bad_mask[hi1:hi2])), fill_value=0
+            )
         )
         if hi1 < lo2:
-            diags.add(_make_diag_table(lo2 - hi1, where(bad_mask[hi1:lo2])), 
-                      fill_value=0)
-        diags = diags[diags['n_elem'] > 0]
+            diags.add(
+                _make_diag_table(lo2 - hi1, where(bad_mask[hi1:lo2])), fill_value=0
+            )
+        diags = diags[diags["n_elem"] > 0]
 
-    diags = diags.drop('n_elem', axis=1)
+    diags = diags.drop("n_elem", axis=1)
     return diags.astype(int)
 
 
-def _sum_diagonals(df, field):
-    reduced = df.groupby('diag')[field].sum()
-    reduced.name = field + '.sum'
-    return reduced
-
-
-def cis_expected(clr, regions, field='balanced', chunksize=1000000, 
-                 use_dask=True, ignore_diags=2):
+def make_diag_tables(clr, regions, regions2=None, weight_name="weight", bad_bins=None):
     """
-    Compute the mean signal along diagonals of one or more regional blocks of
-    intra-chromosomal contact matrices. Typically used as a background model 
-    for contact frequencies on the same polymer chain. 
+    For every support region infer diagonals that intersect this region
+    and calculate the size of these intersections in pixels, both "total" and
+    "n_valid", where "n_valid" does not include "bad" bins into counting.
+
+    "Bad" pixels are inferred from the balancing weight column `weight_name` or
+    provided directly in the form of an array `bad_bins`.
+
+    Setting `weight_name` and `bad_bins` to `None` yields 0 "bad" pixels per
+    diagonal per support region.
+
+    When `regions2` are provided, all intersecting diagonals are reported for
+    each rectangular and asymmetric block defined by combinations of matching
+    elements of `regions` and `regions2`.
+    Otherwise only `regions`-based symmetric square blocks are considered.
+    Only intra-chromosomal regions are supported.
 
     Parameters
     ----------
     clr : cooler.Cooler
-        Input Cooler
-    regions : iterable of genomic regions or pairs of regions
-        Iterable of genomic region strings or 3-tuples, or 5-tuples for pairs
-        of regions
-    field : str, optional
-        Which values of the contact matrix to aggregate. This is currently a
-        no-op. *FIXME*
-    chunksize : int, optional
-        Size of dask chunks.
+        Input cooler
+    regions : list
+        a list of genomic support regions
+    regions2 : list
+        a list of genomic support regions for asymmetric regions
+    weight_name : str
+        name of the weight vector in the "bins" table,
+        if weight_name is None returns 0 for each block.
+        Balancing weight are used to infer bad bins.
+    bad_bins : array-like
+        a list of bins to ignore. Indexes of bins must
+        be absolute, as in clr.bins()[:], as opposed to
+        being offset by chromosome start.
+        "bad_bins" will be combined with the bad bins
+        masked by balancing if there are any.
 
     Returns
     -------
-    Dataframe of diagonal statistics, indexed by region and diagonal number
-
+    diag_tables : dict
+        dictionary with DataFrames of relevant diagonals for every support.
     """
-    if use_dask:
-        pixels = daskify(clr.filename, clr.root + '/pixels', chunksize=chunksize)
+
+    regions = bioframe.parse_regions(regions, clr.chromsizes).values
+    if regions2 is not None:
+        regions2 = bioframe.parse_regions(regions2, clr.chromsizes).values
+
+    bins = clr.bins()[:]
+    if weight_name is None:
+        # ignore bad bins
+        sizes = dict(bins.groupby("chrom").size())
+        bad_bin_dict = {
+            chrom: np.zeros(sizes[chrom], dtype=bool) for chrom in sizes.keys()
+        }
+    elif isinstance(weight_name, str):
+        # using balacning weight to infer bad bins
+        if weight_name not in clr.bins().columns:
+            raise KeyError("Balancing weight {weight_name} not found!")
+        groups = dict(iter(bins.groupby("chrom")[weight_name]))
+        bad_bin_dict = {
+            chrom: np.array(groups[chrom].isnull()) for chrom in groups.keys()
+        }
     else:
-        pixels = clr.pixels()[:]
-    pixels = cooler.annotate(pixels, clr.bins(), replace=False)
-    pixels = pixels[pixels.chrom1 == pixels.chrom2]
+        raise ValueError("`weight_name` can be `str` or `None`")
 
-    named_regions = False
-    if isinstance(regions, pd.DataFrame):
-        named_regions = True
-        chroms = regions['chrom'].values
-        names = regions['name'].values
-        regions = regions[['chrom', 'start', 'end']].to_records(index=False)
-    else:
-        chroms = [region[0] for region in regions]
-        names = chroms
-    cis_maps = {chrom: pixels[pixels.chrom1==chrom] for chrom in chroms}
+    # combine custom "bad_bins" with "bad_bin_dict":
+    if bad_bins is not None:
+        # check if "bad_bins" are legit:
+        try:
+            bad_bins_chrom = bins.iloc[bad_bins].reset_index(drop=False)
+        except IndexError:
+            raise ValueError("Provided `bad_bins` are incorrect or out-of-bound")
+        # group them by observed chromosomes only
+        bad_bins_grp = bad_bins_chrom[["index", "chrom"]].groupby(
+            "chrom", observed=True
+        )
+        # update "bad_bin_dict" with "bad_bins" for each chrom:
+        for chrom, bin_ids in bad_bins_grp["index"]:
+            co = clr.offset(chrom)
+            # adjust by chromosome offset
+            bad_bin_dict[chrom][bin_ids.values - co] = True
 
-    diag_tables = []
-    data_sums = []
-
-    for region in regions:
-        if len(region) == 1:
-            chrom, = region
-            start1, end1 = 0, clr.chromsizes[chrom]
-            start2, end2 = start1, end1
-        elif len(region) == 3:
-            chrom, start1, end1 = region
-            start2, end2 = start1, end1
-        elif len(region) == 5:
-            chrom, start1, end1, start2, end2 = region
-        else:
-            raise ValueError("Regions must be sequences of length 1, 3 or 5")
-
-        bins = clr.bins().fetch(chrom).reset_index(drop=True)
-        bad_mask = np.array(bins['weight'].isnull())
-        lo1, hi1 = clr.extent((chrom, start1, end1))
-        lo2, hi2 = clr.extent((chrom, start2, end2))
-        co = clr.offset(chrom)
-        lo1 -= co
-        lo2 -= co
-        hi1 -= co
-        hi2 -= co
-
-        dt = make_diag_table(bad_mask, [lo1, hi1], [lo2, hi2])
-        sel = bg2slice_frame(
-            cis_maps[chrom], 
-            (chrom, start1, end1), 
-            (chrom, start2, end2)
-        ).copy()
-        sel['diag'] = sel['bin2_id'] - sel['bin1_id']
-        sel['balanced'] = sel['count'] * sel['weight1'] * sel['weight2']
-        agg = _sum_diagonals(sel, field)
-        diag_tables.append(dt)
-        data_sums.append(agg)
-
-    # run dask scheduler
-    if len(data_sums) and isinstance(data_sums[0], dd.Series):
-        data_sums = dd.compute(*data_sums)
-
-    # append to tables
-    for dt, agg in zip(diag_tables, data_sums):
-        dt[agg.name] = 0
-        dt[agg.name] = dt[agg.name].add(agg, fill_value=0)
-        dt.iloc[:ignore_diags, dt.columns.get_loc(agg.name)] = np.nan
-
-    # merge and return
-    if named_regions:
-        dtable = pd.concat(
-            diag_tables, 
-            keys=zip(names, chroms), 
-            names=['name', 'chrom'])
-    else:
-        dtable = pd.concat(
-            diag_tables, 
-            keys=list(chroms), 
-            names=['chrom'])  
-
-    # the actual expected is balanced.sum/n_valid:
-    dtable['balanced.avg'] = dtable['balanced.sum'] / dtable['n_valid']
-    return dtable
-
-
-def trans_expected(clr, chromosomes, chunksize=1000000, use_dask=False):
-    """
-    Aggregate the signal in intrachromosomal blocks.
-    Can be used as abackground for contact frequencies between chromosomes.
-
-    Parameters
-    ----------
-    clr : cooler.Cooler
-        Cooler object
-    chromosomes : list of str
-        List of chromosome names
-    chunksize : int, optional
-        Size of dask chunks
-    use_dask : bool, optional
-        option to use dask
-    
-    Returns
-    -------
-    pandas.DataFrame that stores total number of
-    interactions between a pair of chromosomes: 'balanced.sum',
-    corresponding number of bins involved
-    in the inter-chromosomal interactions: 'n_valid', 
-    and a ratio 'balanced.avg = balanced.sum/n_valid', that is
-    the actual value of expected for every interchromosomal pair.
-
-    """
-    def n_total_trans_elements(clr, chromosomes):
-        n = len(chromosomes)
-        x = [clr.extent(chrom)[1] - clr.extent(chrom)[0] 
-                 for chrom in chromosomes]
-        pairblock_list = []
-        for i in range(n):
-            for j in range(i + 1, n):
-                # appending to the list of tuples
-                pairblock_list.append((chromosomes[i],
-                                       chromosomes[j],
-                                       x[i] * x[j] ))
-        return pd.DataFrame(pairblock_list, 
-            columns=['chrom1', 'chrom2', 'n_total'])
-
-    def n_bad_trans_elements(clr, chromosomes):
-        n = 0
-        # bad bins are ones with
-        # the weight vector being NaN:
-        x = [np.sum(clr.bins()['weight']
-                       .fetch(chrom)
-                       .isnull()
-                       .astype(int)
-                       .values)
-                 for chrom in chromosomes]
-        pairblock_list = []
-        for i in range(len(x)):
-            for j in range(i + 1, len(x)):
-                # appending to the list of tuples
-                pairblock_list.append((chromosomes[i],
-                                       chromosomes[j],
-                                       x[i] * x[j] ))
-        return pd.DataFrame(pairblock_list,
-            columns=['chrom1', 'chrom2', 'n_bad'])
-
-    if use_dask:
-        # pixels = daskify(clr.filename, clr.root + '/pixels', chunksize=chunksize)
-        raise NotImplementedError("To be implemented once dask supports MultiIndex")
-    else:
-        pixels = clr.pixels()[:]
-    # getting pixels that belong to trans-area,
-    # defined by the list of chromosomes:
-    pixels = cooler.annotate(pixels, clr.bins(), replace=False)
-    pixels = pixels[
-        (pixels.chrom1.isin(chromosomes)) &
-        (pixels.chrom2.isin(chromosomes)) &
-        (pixels.chrom1 != pixels.chrom2)
-    ]
-    pixels['balanced'] = pixels['count'] * pixels['weight1'] * pixels['weight2']
-    ntot = n_total_trans_elements(clr, chromosomes).groupby(('chrom1', 'chrom2'))['n_total'].sum()
-    nbad = n_bad_trans_elements(clr, chromosomes).groupby(('chrom1', 'chrom2'))['n_bad'].sum()
-    trans_area = ntot - nbad
-    trans_area.name = 'n_valid'
-    # processing with use_dask=True is different:
-    if use_dask:
-        # trans_sum = pixels.groupby(('chrom1', 'chrom2'))['balanced'].sum().compute()
-        pass
-    else:
-        trans_sum = pixels.groupby(('chrom1', 'chrom2'))['balanced'].sum()
-    # for consistency with the cis_expected function:
-    trans_sum.name = trans_sum.name + '.sum'
-
-    # returning a DataFrame with MultiIndex, that stores
-    # pairs of 'balanced.sum' and 'n_valid' values for each
-    # pair of chromosomes.
-    dtable = pd.merge(
-        trans_sum.to_frame(),
-        trans_area.to_frame(),
-        left_index=True,
-        right_index=True)
-
-    # the actual expected is balanced.sum/n_valid:
-    dtable['balanced.avg'] = dtable['balanced.sum'] / dtable['n_valid']
-    return dtable
-
-
-
-###################
-
-
-def make_diag_tables(clr, supports):
-    where = np.flatnonzero
     diag_tables = {}
-    for region in supports:
-        if isinstance(region, str):
-            region = bioframe.parse_region(region)
-        if len(region) == 1:
-            chrom, = region
-            start1, end1 = 0, clr.chromsizes[chrom]
-            start2, end2 = start1, end1
-        elif len(region) == 2:
-            chrom, start1, end1 = region[0]
-            _, start2, end2 = region[1]
-        elif len(region) == 3:
-            chrom, start1, end1 = region
-            start2, end2 = start1, end1
-        elif len(region) == 5:
-            chrom, start1, end1, start2, end2 = region
+    for i in range(len(regions)):
+        chrom, start1, end1, name1 = regions[i]
+        if regions2 is not None:
+            chrom2, start2, end2, name2 = regions2[i]
+            # cis-only for now:
+            assert chrom2 == chrom
         else:
-            raise ValueError("Regions must be sequences of length 1, 3 or 5")
-        bins = clr.bins().fetch(chrom).reset_index(drop=True)
-        bad_mask = np.array(bins['weight'].isnull())
+            start2, end2 = start1, end1
+
+        # translate regions into relative bin id-s:
         lo1, hi1 = clr.extent((chrom, start1, end1))
         lo2, hi2 = clr.extent((chrom, start2, end2))
         co = clr.offset(chrom)
@@ -532,73 +407,147 @@ def make_diag_tables(clr, supports):
         lo2 -= co
         hi1 -= co
         hi2 -= co
-        dt = make_diag_table(bad_mask, [lo1, hi1], [lo2, hi2])
-        diag_tables[region] = dt
+
+        bad_mask = bad_bin_dict[chrom]
+        newname = name1
+        if regions2 is not None:
+            newname = (name1, name2)
+        diag_tables[newname] = make_diag_table(bad_mask, [lo1, hi1], [lo2, hi2])
+
     return diag_tables
 
 
-def _diagsum_symm(clr, fields, transforms, supports, span):
+def make_block_table(clr, regions1, regions2, weight_name="weight", bad_bins=None):
+    """
+    Creates a table that characterizes a set of rectangular genomic blocks
+    formed by combining regions from regions1 and regions2.
+    For every block calculate its "area" in pixels ("n_total"), and calculate
+    number of "valid" pixels in each block ("n_valid").
+    "Valid" pixels exclude "bad" pixels, which in turn inferred from the balancing
+    weight column `weight_name` or provided directly in the form of an array of
+    `bad_bins`.
+
+    Setting `weight_name` and `bad_bins` to `None` yields 0 "bad" pixels per
+    block.
+
+    Parameters
+    ----------
+    clr : cooler.Cooler
+        Input cooler
+    regions1 : iterable
+        a collection of genomic regions
+    regions2 : iterable
+        a collection of genomic regions
+    weight_name : str
+        name of the weight vector in the "bins" table,
+        if weight_name is None returns 0 for each block.
+        Balancing weight are used to infer bad bins.
+    bad_bins : array-like
+        a list of bins to ignore. Indexes of bins must
+        be absolute, as in clr.bins()[:], as opposed to
+        being offset by chromosome start.
+        "bad_bins" will be combined with the bad bins
+        masked by balancing if there are any.
+
+    Returns
+    -------
+    block_table : dict
+        dictionary for blocks that are 0-indexed
+    """
+    if bad_bins is None:
+        bad_bins = np.asarray([]).astype(int)
+    else:
+        bad_bins = np.asarray(bad_bins).astype(int)
+
+    regions1 = bioframe.parse_regions(regions1, clr.chromsizes).values
+    regions2 = bioframe.parse_regions(regions2, clr.chromsizes).values
+
+    # should we check for nestedness here, or that each region1 is < region2 ?
+
+    block_table = {}
+    for r1, r2 in zip(regions1, regions2):
+        chrom1, start1, end1, name1 = r1
+        chrom2, start2, end2, name2 = r2
+        # translate regions into relative bin id-s:
+        lo1, hi1 = clr.extent((chrom1, start1, end1))
+        lo2, hi2 = clr.extent((chrom2, start2, end2))
+        # width and height of a block:
+        x = hi1 - lo1
+        y = hi2 - lo2
+        # get "regional" bad_bins for each of the regions
+        bx = bad_bins[(bad_bins >= lo1) & (bad_bins < hi1)] - lo1
+        by = bad_bins[(bad_bins >= lo2) & (bad_bins < hi2)] - lo2
+
+        # now we need to combine it with the balancing weights
+        if weight_name is None:
+            bad_bins_x = len(bx)
+            bad_bins_y = len(by)
+        elif isinstance(weight_name, str):
+            if weight_name not in clr.bins().columns:
+                raise KeyError("Balancing weight {weight_name} not found!")
+            else:
+                # extract "bad" bins filtered by balancing:
+                cb_bins_x = clr.bins()[weight_name][lo1:hi1].isnull().values
+                cb_bins_y = clr.bins()[weight_name][lo2:hi2].isnull().values
+                # combine with "bad_bins" using assignment:
+                cb_bins_x[bx] = True
+                cb_bins_y[by] = True
+                # count and yield final list of bad bins:
+                bad_bins_x = np.count_nonzero(cb_bins_x)
+                bad_bins_y = np.count_nonzero(cb_bins_y)
+        else:
+            raise ValueError("`weight_name` can be `str` or `None`")
+
+        # calculate total and bad pixels per block:
+        n_tot = count_all_pixels_per_block(x, y)
+        n_bad = count_bad_pixels_per_block(x, y, bad_bins_x, bad_bins_y)
+
+        # fill in "block_table" with number of valid pixels:
+        block_table[name1, name2] = defaultdict(int)
+        block_table[name1, name2]["n_valid"] = n_tot - n_bad
+
+    return block_table
+
+
+def _diagsum_symm(clr, fields, transforms, regions, span):
+    """
+    calculates diagonal summary for a collection of
+    square symmteric regions defined by regions.
+    returns a dictionary of DataFrames with diagonal
+    sums as values, and 0-based indexes of square
+    genomic regions as keys.
+    """
     lo, hi = span
     bins = clr.bins()[:]
     pixels = clr.pixels()[lo:hi]
     pixels = cooler.annotate(pixels, bins, replace=False)
-    
-    pixels = pixels[pixels['chrom1'] == pixels['chrom2']].copy()
-    pixels['diag'] = pixels['bin2_id'] - pixels['bin1_id']
+
+    # this could further expanded to allow for custom groupings:
+    pixels["dist"] = pixels["bin2_id"] - pixels["bin1_id"]
     for field, t in transforms.items():
         pixels[field] = t(pixels)
-    
-    pixels['support'] = assign_supports(pixels, supports, suffix='1')
-    
-    pixel_groups = dict(iter(pixels.groupby('support')))
-    return {int(i): group.groupby('diag')[fields].sum()
-                  for i, group in pixel_groups.items()}
+
+    diag_sums = {}
+    # r define square symmetric block i:
+    for i, r in enumerate(regions):
+        r1 = assign_supports(pixels, [r], suffix="1")
+        r2 = assign_supports(pixels, [r], suffix="2")
+        # calculate diag_sums on the spot to allow for overlapping blocks:
+        diag_sums[i] = pixels[(r1 == r2)].groupby("dist")[fields].sum()
+
+    return diag_sums
 
 
-def _diagsum_asymm(clr, fields, transforms, contact_type, supports1, supports2, span):
-    lo, hi = span
-    bins = clr.bins()[:]
-    pixels = clr.pixels()[lo:hi]
-    pixels = cooler.annotate(pixels, bins, replace=False)
-    
-    if contact_type == 'cis':
-        pixels = pixels[pixels['chrom1'] == pixels['chrom2']].copy()
-    elif contact_type == 'trans':
-        pixels = pixels[pixels['chrom1'] != pixels['chrom2']].copy()
-
-    pixels['diag'] = pixels['bin2_id'] - pixels['bin1_id']
-    for field, t in transforms.items():
-        pixels[field] = t(pixels)
-    
-    pixels['support1'] = assign_supports(pixels, supports1, suffix='1')
-    pixels['support2'] = assign_supports(pixels, supports1, suffix='2')
-    
-    pixel_groups = dict(iter(pixels.groupby(('support1', 'support2'))))
-    return {(int(i), int(j)): group.groupby('diag')[fields].sum()
-                  for (i, j), group in pixel_groups.items()}
-
-
-def _blocksum_asymm(clr, fields, transforms, supports1, supports2, span):
-    lo, hi = span
-    bins = clr.bins()[:]
-    pixels = clr.pixels()[lo:hi]
-    pixels = cooler.annotate(pixels, bins, replace=False)
-
-    pixels = pixels[pixels['chrom1'] != pixels['chrom2']].copy()
-    for field, t in transforms.items():
-        pixels[field] = t(pixels)
-    
-    pixels['support1'] = assign_supports(pixels, supports1, suffix='1')
-    pixels['support2'] = assign_supports(pixels, supports2, suffix='2')
-    pixels = pixels.dropna()
-    
-    pixel_groups = dict(iter(pixels.groupby(('support1', 'support2'))))
-    return {(int(i), int(j)): group[fields].sum()
-                  for (i, j), group in pixel_groups.items()}
-
-
-def diagsum(clr, supports, transforms=None, chunksize=10000000, ignore_diags=2, 
-            map=map):
+def diagsum(
+    clr,
+    regions,
+    transforms={},
+    weight_name="weight",
+    bad_bins=None,
+    chunksize=10000000,
+    ignore_diags=2,
+    map=map,
+):
     """
 
     Intra-chromosomal diagonal summary statistics.
@@ -607,12 +556,20 @@ def diagsum(clr, supports, transforms=None, chunksize=10000000, ignore_diags=2,
     ----------
     clr : cooler.Cooler
         Cooler object
-    supports : sequence of genomic range tuples
+    regions : sequence of genomic range tuples
         Support regions for intra-chromosomal diagonal summation
     transforms : dict of str -> callable, optional
         Transformations to apply to pixels. The result will be assigned to
         a temporary column with the name given by the key. Callables take
         one argument: the current chunk of the (annotated) pixel dataframe.
+    weight_name : str
+        name of the balancing weight vector used to count
+        "bad"(masked) pixels per diagonal.
+        Use `None` to avoid masking "bad" pixels.
+    bad_bins : array-like
+        a list of bins to ignore per support region.
+        Combines with the list of bad bins from balacning
+        weight.
     chunksize : int, optional
         Size of pixel table chunks to process
     ignore_diags : int, optional
@@ -624,110 +581,275 @@ def diagsum(clr, supports, transforms=None, chunksize=10000000, ignore_diags=2,
     -------
     dict of support region -> dataframe of diagonal statistics
 
-    """    
+    """
     spans = partition(0, len(clr.pixels()), chunksize)
-    fields = ['count'] + list(transforms.keys())
-    dtables = make_diag_tables(clr, supports)
-    
+    fields = ["count"] + list(transforms.keys())
+
+    regions = bioframe.parse_regions(regions, clr.chromsizes)
+
+    dtables = make_diag_tables(clr, regions, weight_name=weight_name, bad_bins=bad_bins)
+
+    # combine masking with existing transforms and add a "count" transform:
+    if bad_bins is not None:
+        # turn bad_bins into a mask of size clr.bins:
+        mask_size = len(clr.bins())
+        bad_bins_mask = np.ones(mask_size, dtype=int)
+        bad_bins_mask[bad_bins] = 0
+        #
+        masked_transforms = {}
+        bin1 = "bin1_id"
+        bin2 = "bin2_id"
+        for field in fields:
+            if field in transforms:
+                # combine masking and transform, minding the scope:
+                t = transforms[field]
+                masked_transforms[field] = (
+                    lambda p, t=t, m=bad_bins_mask: t(p) * m[p[bin1]] * m[p[bin2]]
+                )
+            else:
+                # presumably field == "count", mind the scope as well:
+                masked_transforms[field] = (
+                    lambda p, f=field, m=bad_bins_mask: p[f] * m[p[bin1]] * m[p[bin2]]
+                )
+        # substitute transforms to the masked_transforms:
+        transforms = masked_transforms
+
     for dt in dtables.values():
         for field in fields:
-            agg_name = '{}.sum'.format(field)
+            agg_name = "{}.sum".format(field)
             dt[agg_name] = 0
 
-    job = partial(_diagsum_symm, clr, fields, transforms, supports)
+    job = partial(_diagsum_symm, clr, fields, transforms, regions.values)
     results = map(job, spans)
     for result in results:
         for i, agg in result.items():
-            support = supports[i]
+            region = regions.loc[i, "name"]
             for field in fields:
-                agg_name = '{}.sum'.format(field)
-                dtables[support][agg_name] = \
-                    dtables[support][agg_name].add(agg[field], fill_value=0)
-    
+                agg_name = "{}.sum".format(field)
+                dtables[region][agg_name] = dtables[region][agg_name].add(
+                    agg[field], fill_value=0
+                )
+
     if ignore_diags:
         for dt in dtables.values():
             for field in fields:
-                agg_name = '{}.sum'.format(field)
-                j =  dt.columns.get_loc(agg_name)
+                agg_name = "{}.sum".format(field)
+                j = dt.columns.get_loc(agg_name)
                 dt.iloc[:ignore_diags, j] = np.nan
 
-    return dtables
+    # returning dataframe for API consistency
+    result = []
+    for i, dtable in dtables.items():
+        dtable = dtable.reset_index()
+        dtable.insert(0, "region", i)
+        result.append(dtable)
+    return pd.concat(result).reset_index(drop=True)
 
 
-def diagsum_asymm(clr, supports1, supports2, contact_type='cis', 
-                  transforms=None, chunksize=10000000, ignore_diags=2, map=map):
+def _diagsum_asymm(clr, fields, transforms, regions1, regions2, span):
+    """
+    calculates diagonal summary for a collection of
+    rectangular regions defined as combinations of
+    regions1 and regions2.
+    returns a dictionary of DataFrames with diagonal
+    sums as values, and 0-based indexes of rectangular
+    genomic regions as keys.
+    """
+    lo, hi = span
+    bins = clr.bins()[:]
+    pixels = clr.pixels()[lo:hi]
+    pixels = cooler.annotate(pixels, bins, replace=False)
+
+    # this could further expanded to allow for custom groupings:
+    pixels["dist"] = pixels["bin2_id"] - pixels["bin1_id"]
+    for field, t in transforms.items():
+        pixels[field] = t(pixels)
+
+    diag_sums = {}
+    # r1 and r2 define rectangular block i:
+    for i, (r1, r2) in enumerate(zip(regions1, regions2)):
+        r1 = assign_supports(pixels, [r1], suffix="1")
+        r2 = assign_supports(pixels, [r2], suffix="2")
+        # calculate diag_sums on the spot to allow for overlapping blocks:
+        diag_sums[i] = pixels[(r1 == r2)].groupby("dist")[fields].sum()
+
+    return diag_sums
+
+
+def diagsum_asymm(
+    clr,
+    regions1,
+    regions2,
+    transforms={},
+    weight_name="weight",
+    bad_bins=None,
+    chunksize=10000000,
+    map=map,
+):
     """
 
-    Intra-chromosomal diagonal summary statistics.
+    Diagonal summary statistics.
+
+    Matchings elements of `regions1` and  `regions2` define
+    asymmetric rectangular blocks for calculating diagonal
+    summary statistics.
+    Only intra-chromosomal blocks are supported.
 
     Parameters
     ----------
     clr : cooler.Cooler
         Cooler object
-    supports : sequence of genomic range tuples
-        Support regions for intra-chromosomal diagonal summation
+    regions1 : sequence of genomic range tuples
+        "left"-side support regions for diagonal summation
+    regions2 : sequence of genomic range tuples
+        "right"-side support regions for diagonal summation
     transforms : dict of str -> callable, optional
         Transformations to apply to pixels. The result will be assigned to
         a temporary column with the name given by the key. Callables take
         one argument: the current chunk of the (annotated) pixel dataframe.
+    weight_name : str
+        name of the balancing weight vector used to count
+        "bad"(masked) pixels per diagonal.
+        Use `None` to avoid masking "bad" pixels.
+    bad_bins : array-like
+        a list of bins to ignore per support region.
+        Combines with the list of bad bins from balacning
+        weight.
     chunksize : int, optional
         Size of pixel table chunks to process
-    ignore_diags : int, optional
-        Number of intial diagonals to exclude from statistics
     map : callable, optional
         Map functor implementation.
 
     Returns
     -------
-    dict of support region -> dataframe of diagonal statistics
+    DataFrame with summary statistic of every diagonal of every block:
+    region1, region2, diag, n_valid, count.sum
 
-    """    
+    """
     spans = partition(0, len(clr.pixels()), chunksize)
-    fields = ['count'] + list(transforms.keys())
-    areas = list(zip(supports1, supports2))
-    dtables = make_diag_tables(clr, areas)
-    
+    fields = ["count"] + list(transforms.keys())
+    regions1 = bioframe.parse_regions(regions1, clr.chromsizes)
+    regions2 = bioframe.parse_regions(regions2, clr.chromsizes)
+
+    dtables = make_diag_tables(
+        clr, regions1, regions2, weight_name=weight_name, bad_bins=bad_bins
+    )
+
+    # combine masking with existing transforms and add a "count" transform:
+    if bad_bins is not None:
+        # turn bad_bins into a mask of size clr.bins:
+        mask_size = len(clr.bins())
+        bad_bins_mask = np.ones(mask_size, dtype=int)
+        bad_bins_mask[bad_bins] = 0
+        #
+        masked_transforms = {}
+        bin1 = "bin1_id"
+        bin2 = "bin2_id"
+        for field in fields:
+            if field in transforms:
+                # combine masking and transform, minding the scope:
+                t = transforms[field]
+                masked_transforms[field] = (
+                    lambda p, t=t, m=bad_bins_mask: t(p) * m[p[bin1]] * m[p[bin2]]
+                )
+            else:
+                # presumably field == "count", mind the scope as well:
+                masked_transforms[field] = (
+                    lambda p, f=field, m=bad_bins_mask: p[f] * m[p[bin1]] * m[p[bin2]]
+                )
+        # substitute transforms to the masked_transforms:
+        transforms = masked_transforms
+
     for dt in dtables.values():
         for field in fields:
-            agg_name = '{}.sum'.format(field)
+            agg_name = "{}.sum".format(field)
             dt[agg_name] = 0
 
-    job = partial(_diagsum_asymm, clr, fields, transforms, contact_type, supports1, supports2)
+    job = partial(
+        _diagsum_asymm, clr, fields, transforms, regions1.values, regions2.values
+    )
     results = map(job, spans)
     for result in results:
-        for (i, j), agg in result.items():
-            support1 = supports1[i]
-            support2 = supports2[j]
+        for i, agg in result.items():
+            region1 = regions1.loc[i, "name"]
+            region2 = regions2.loc[i, "name"]
             for field in fields:
-                agg_name = '{}.sum'.format(field)
-                dtables[support1, support2][agg_name] = \
-                    dtables[support1, support2][agg_name].add(agg[field], fill_value=0)
-   
-    if ignore_diags:
-        for dt in dtables.values():
-            for field in fields:
-                agg_name = '{}.sum'.format(field)
-                j =  dt.columns.get_loc(agg_name)
-                dt.iloc[:ignore_diags, j] = np.nan
+                agg_name = "{}.sum".format(field)
+                dtables[region1, region2][agg_name] = dtables[region1, region2][
+                    agg_name
+                ].add(agg[field], fill_value=0)
 
-    return dtables
+    # returning a dataframe for API consistency:
+    result = []
+    for (i, j), dtable in dtables.items():
+        dtable = dtable.reset_index()
+        dtable.insert(0, "region1", i)
+        dtable.insert(1, "region2", j)
+        result.append(dtable)
+    return pd.concat(result).reset_index(drop=True)
 
 
-def blocksum_pairwise(clr, supports, transforms=None, chunksize=1000000, map=map):
+def _blocksum_asymm(clr, fields, transforms, regions1, regions2, span):
     """
-    Summary statistics on inter-chromosomal rectangular blocks.
+    calculates block summary for a collection of
+    rectangular regions defined as combinations of
+    regions1 and regions2.
+    returns a dictionary of with block sums as values,
+    and 0-based indexes of rectangular genomic regions
+    as keys.
+    """
+    lo, hi = span
+    bins = clr.bins()[:]
+    pixels = clr.pixels()[lo:hi]
+    pixels = cooler.annotate(pixels, bins, replace=False)
+
+    for field, t in transforms.items():
+        pixels[field] = t(pixels)
+
+    block_sums = {}
+    # r1 and r2 define rectangular block i:
+    for i, (r1, r2) in enumerate(zip(regions1, regions2)):
+        r1 = assign_supports(pixels, [r1], suffix="1")
+        r2 = assign_supports(pixels, [r2], suffix="2")
+        # calculate sum on the spot to allow for overlapping blocks:
+        block_sums[i] = pixels[(r1 == r2)][fields].sum()
+
+    return block_sums
+
+
+def blocksum_asymm(
+    clr,
+    regions1,
+    regions2,
+    transforms={},
+    weight_name="weight",
+    bad_bins=None,
+    chunksize=1000000,
+    map=map,
+):
+    """
+    Summary statistics on rectangular blocks of genomic regions.
 
     Parameters
     ----------
     clr : cooler.Cooler
         Cooler object
-    supports : sequence of genomic range tuples
-        Support regions for summation. Blocks for all pairs of support regions
-        will be used.
+    regions1 : sequence of genomic range tuples
+        "left"-side support regions for diagonal summation
+    regions2 : sequence of genomic range tuples
+        "right"-side support regions for diagonal summation
     transforms : dict of str -> callable, optional
         Transformations to apply to pixels. The result will be assigned to
         a temporary column with the name given by the key. Callables take
         one argument: the current chunk of the (annotated) pixel dataframe.
+    weight_name : str
+        name of the balancing weight vector used to count
+        "bad"(masked) pixels per block.
+        Use `None` to avoid masking "bad" pixels.
+    bad_bins : array-like
+        a list of bins to ignore per support region.
+        Combines with the list of bad bins from balacning
+        weight.
     chunksize : int, optional
         Size of pixel table chunks to process
     map : callable, optional
@@ -735,54 +857,401 @@ def blocksum_pairwise(clr, supports, transforms=None, chunksize=1000000, map=map
 
     Returns
     -------
-    dict of support region -> (field name -> summary)
+    DataFrame with entries for each blocks: region1, region2, n_valid, count.sum
 
-    """    
-    def n_total_block_elements(clr, supports):
-        n = len(supports)
-        x = [clr.extent(region)[1] - clr.extent(region)[0] 
-                 for region in supports]
-        blocks = {}
-        for i in range(n):
-            for j in range(i + 1, n):
-                blocks[supports[i], supports[j]] = x[i] * x[j]
-        return blocks
+    """
 
-    def n_bad_block_elements(clr, supports):
-        n = 0
-        # bad bins are ones with
-        # the weight vector being NaN:
-        x = [np.sum(clr.bins()['weight']
-                       .fetch(region)
-                       .isnull()
-                       .astype(int)
-                       .values)
-                 for region in supports]
-        blocks = {}
-        for i in range(len(x)):
-            for j in range(i + 1, len(x)):
-                blocks[supports[i], supports[j]] = x[i] * x[j]
-        return blocks
+    regions1 = bioframe.parse_regions(regions1, clr.chromsizes)
+    regions2 = bioframe.parse_regions(regions2, clr.chromsizes)
 
-    blocks = list(combinations(supports, 2))
-    supports1, supports2 = list(zip(*blocks))
     spans = partition(0, len(clr.pixels()), chunksize)
-    fields = ['count'] + list(transforms.keys())
+    fields = ["count"] + list(transforms.keys())
 
-    n_tot = n_total_block_elements(clr, supports)
-    n_bad = n_bad_block_elements(clr, supports)
-    records = {(c1, c2): defaultdict(int) for (c1, c2) in blocks}    
-    for c1, c2 in blocks:
-        records[c1, c2]['n_valid'] = n_tot[c1, c2] - n_bad[c1, c2]
-    
-    job = partial(_blocksum_asymm, clr, fields, transforms, supports1, supports2)
+    # similar with diagonal summations, pre-generate a block_table listing
+    # all of the rectangular blocks and "n_valid" number of pixels per each block:
+    records = make_block_table(
+        clr, regions1, regions2, weight_name=weight_name, bad_bins=bad_bins
+    )
+
+    # combine masking with existing transforms and add a "count" transform:
+    if bad_bins is not None:
+        # turn bad_bins into a mask of size clr.bins:
+        mask_size = len(clr.bins())
+        bad_bins_mask = np.ones(mask_size, dtype=int)
+        bad_bins_mask[bad_bins] = 0
+        #
+        masked_transforms = {}
+        bin1 = "bin1_id"
+        bin2 = "bin2_id"
+        for field in fields:
+            if field in transforms:
+                # combine masking and transform, minding the scope:
+                t = transforms[field]
+                masked_transforms[field] = (
+                    lambda p, t=t, m=bad_bins_mask: t(p) * m[p[bin1]] * m[p[bin2]]
+                )
+            else:
+                # presumably field == "count", mind the scope as well:
+                masked_transforms[field] = (
+                    lambda p, f=field, m=bad_bins_mask: p[f] * m[p[bin1]] * m[p[bin2]]
+                )
+        # substitute transforms to the masked_transforms:
+        transforms = masked_transforms
+
+    job = partial(
+        _blocksum_asymm, clr, fields, transforms, regions1.values, regions2.values
+    )
     results = map(job, spans)
     for result in results:
-        for (i, j), agg in result.items():
+        for i, agg in result.items():
             for field in fields:
-                agg_name = '{}.sum'.format(field)
-                s = np.asscalar(agg[field])
+                agg_name = "{}.sum".format(field)
+                s = agg[field].item()
                 if not np.isnan(s):
-                    records[supports1[i], supports2[j]][agg_name] += s
-                
-    return records
+                    n1 = regions1.loc[i, "name"]
+                    n2 = regions2.loc[i, "name"]
+                    records[n1, n2][agg_name] += s
+
+    # returning a dataframe for API consistency:
+    return pd.DataFrame(
+        [{"region1": n1, "region2": n2, **rec} for (n1, n2), rec in records.items()],
+        columns=["region1", "region2", "n_valid", "count.sum"]
+        + [k + ".sum" for k in transforms.keys()],
+    )
+
+
+def logbin_expected(
+    exp,
+    bins_per_order_magnitude=10,
+    bin_layout="fixed",
+    der_smooth_function_by_reg=lambda x: numutils.robust_gauss_filter(x, 2),
+    min_nvalid=200,
+    min_count=50,
+):
+    """
+    Logarithmically bins expected as produced by diagsum method.
+
+    Parameters
+    ----------
+    exp : dict
+        {region: expected_df} produced by diagsum
+
+    bins_per_order_magnitude : int (optional)
+        How many bins per order of magnitude. Default of 10 has a ratio of
+        neighboring bins of about 1.25
+
+    bin_layout : "fixed", "longest_region", or array
+        "fixed" means that bins are exactly the same for different datasets,
+        and only depend on bins_per_order_magnitude
+
+        "longest_region" means that the last bin will end at size of the
+        longest region.
+            GOOD: the last bin will have as much data as possible.
+            BAD: bin edges will end up different for different datasets, you
+            can't divide them by each other
+
+        array: provide your own bin edges. Can be of any size, and end at any
+        value. Bins exceeding the size of the largest region will be simply
+        ignored.
+
+    der_smooth_function_by_reg : callable
+        A smoothing function to be applied to log(P(s)) and log(x)
+        before calculating P(s) slopes for by-region data
+
+    der_smooth_function_combined : callable
+        A smoothing function for calculating slopes on combined data
+
+    min_nvalid : int
+        For each region, throw out bins (log-spaced) that have less than
+        min_nvalid valid pixels
+        This will ensure that each entree in Pc_by_region has at least n_valid
+        valid pixels
+        Don't set it to zero, or it will introduce bugs. Setting it to 1 is OK,
+        but not recommended.
+
+    min_count : int
+        If counts are found in the data, then for each region, throw out bins
+        (log-spaced)
+        that have more than min_counts of counts.sum (raw Hi-C counts).
+        This will ensure that each entree in Pc_by_region has at least
+        min_count raw Hi-C reads
+
+    Returns
+    -------
+    Pc : DataFrame
+        dataframe of contact probabilities and spread across regions
+    slope : ndarray
+        slope of Pc(s) on a log-log plot and spread across regions
+    bins : ndarray
+        an array of bin edges used for calculating P(s)
+
+    Notes
+    -----
+    For main Pc and slope, the algorithm is the following
+
+    1. concatenate all the expected for all regions into a large dataframe.
+    2. create logarithmically-spaced bins of diagonals (or use provided)
+    3. pool together n_valid and balanced.sum for each region and for each bin
+    4. calculate the average diagonal for each bucket, weighted by n_valid
+    5. divide balanced.sum by n_valid after summing for each bucket (not before)
+    6. calculate the slope in log space (for each region)
+
+    X values are not midpoints of bins
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    In step 4, we calculate the average diag index weighted by n_valid. This
+    seems counter-intuitive, but it actually is justified.
+
+    Let's take the worst case scenario. Let there be a bin from 40MB to 44MB.
+    Let there be a region that is exactly 41 MB long. The midpoint of the bin
+    is at 42MB. But the only part of this region belonging to this bin is
+    actually between 40MB and 41MB. Moreover, the "average" read in this
+    little triangle of the heatmap is actually not coming even from 40.5 MB
+    because the triangle is getting narrower towards 41MB. The center of mass
+    of a triangle is 1/3 of the way up, or 40.33 MB. So an average read for
+    this region in this bin is coming from 40.33.
+
+    Consider the previous bin, say, from 36MB to 40MB. The heatmap there is a
+    trapezoid with a long side of 5MB, the short side of 1MB, and height of
+    4MB. The center of mass of this trapezoid is at 36 + 14/9 = 37.55MB,
+    and not at 38MB. So the last bin center is definitely mis-assigned, and
+    the second-to-last bin center is off by some 25%.
+
+    In presence of missing bins, this all becomes more complex, but this kind
+    of averaging should take care of everything. It follows a general
+    principle: when averaging the y values with some weights, one needs to
+    average the x values with the same weights. The y values here are being
+    added together, so per-diag means are effectively averaged with the weight
+    of n_valid. Therefore, the x values (diag) should be averaged with the
+    same weights.
+
+    Other considerations
+    ~~~~~~~~~~~~~~~~~~~~
+    Steps #3 and #5 are important because the ratio of sums does not equal to
+    the sum of ratios, and the former is more correct (the latter is more
+    susceptible to noise). It is generally better to divide at the very end,
+    rather than dividing things for each diagonal.
+
+    Here we divide at the end twice: first we divide balanced.sum by n_valid
+    for each region, then we effectively multiply it back up and divide it for
+    each bin when combining different regions (see weighted average in the
+    next function).
+
+    Smoothing P(s) for the slope
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    For calcuating the slope, we apply smoothing to the P(s) to ensure the
+    slope is not too noisy. There are several caveats here: the P(s) has to
+    be smoothed in logspace, and both P and s have to be smoothed. It is
+    discussed in detail here
+
+    https://gist.github.com/mimakaev/4becf1310ba6ee07f6b91e511c531e73
+
+    Examples
+    --------
+    For example, see this gist: https://gist.github.com/mimakaev/e9117a7fcc318e7904702eba5b47d9e6
+
+    """
+    from cooltools.lib.numutils import logbins
+
+    exp = exp[~pd.isna(exp["balanced.sum"])]
+    exp["x"] = exp.pop("diag")
+    diagmax = exp["x"].max()
+
+    if bin_layout == "fixed":
+        bins = numutils.persistent_log_bins(
+            10, bins_per_order_magnitude=bins_per_order_magnitude
+        )
+    elif bin_layout == "longest_region":
+        bins = logbins(1, diagmax + 1, ratio=10 ** (1 / bins_per_order_magnitude))
+    else:
+        bins = bin_layout
+
+    if bins[-1] < diagmax:
+        raise ValueError("Bins end is less than the size of the largest region")
+
+    exp["bin_id"] = np.searchsorted(bins, exp["x"], side="right") - 1
+    exp = exp[exp["bin_id"] >= 0]
+
+    # constructing expected grouped by region
+    byReg = exp.copy()
+
+    # this averages x with the weight equal to n_valid, and sums everything else
+    byReg["x"] *= byReg["n_valid"]
+    byRegExp = byReg.groupby(["region", "bin_id"]).sum()
+    byRegExp["x"] /= byRegExp["n_valid"]
+
+    byRegExp = byRegExp.reset_index()
+    byRegExp = byRegExp[byRegExp["n_valid"] > min_nvalid]  # filtering by n_valid
+    byRegExp["Pc"] = byRegExp["balanced.sum"] / byRegExp["n_valid"]
+    byRegExp = byRegExp[byRegExp["Pc"] > 0]  # drop bins with 0 counts
+    if min_count:
+        if "count.sum" in byRegExp:
+            byRegExp = byRegExp[byRegExp["count.sum"] > min_count]
+        else:
+            warnings.warn(RuntimeWarning("counts not found"))
+
+    byRegExp["bin_start"] = bins[byRegExp["bin_id"].values]
+    byRegExp["bin_end"] = bins[byRegExp["bin_id"].values + 1] - 1
+
+    byRegDer = []
+    for reg, subdf in byRegExp.groupby("region"):
+        subdf = subdf.sort_values("bin_id")
+        valid = np.minimum(subdf.n_valid.values[:-1], subdf.n_valid.values[1:])
+        mids = np.sqrt(subdf.x.values[:-1] * subdf.x.values[1:])
+        f = der_smooth_function_by_reg
+        slope = np.diff(f(np.log(subdf.Pc.values))) / np.diff(f(np.log(subdf.x.values)))
+        newdf = pd.DataFrame(
+            {
+                "x": mids,
+                "slope": slope,
+                "n_valid": valid,
+                "bin_id": subdf.bin_id.values[:-1],
+            }
+        )
+        newdf["region"] = reg
+        byRegDer.append(newdf)
+    byRegDer = pd.concat(byRegDer).reset_index(drop=True)
+    return byRegExp, byRegDer, bins[: byRegExp.bin_id.max() + 2]
+
+
+def combine_binned_expected(
+    binned_exp,
+    binned_exp_slope=None,
+    der_smooth_function_combined=lambda x: numutils.robust_gauss_filter(x, 1.3),
+    spread_funcs="logstd",
+    spread_funcs_slope="std",
+    minmax_drop_bins=2,
+    concat_original=False,
+):
+    """
+    Combines by-region log-binned expected and slopes into
+
+    Parameters
+    ----------
+    binned_exp: dataframe
+        binned expected as outputed by logbin_expected
+
+    binned_exp_slope : dataframe or None
+        If provided, estimates spread of slopes.
+        Is necessary if concat_original is True
+
+    spread_funcs: "minmax", "std", "logstd" or a function (see below)
+        A way to estimate the spread of the P(s) curves between regions.
+        * "minmax" - use the minimum/maximum of by-region P(s)
+        * "std" - use weighted standard deviation of P(s) curves (may produce negative results)
+        * "logstd" (recommended) weighted standard deviation in logspace (as seen on the plot)
+
+    spread_funcs_slope: "minmax", "std" or a funciton
+        Similar to spread_func, but for slopes rather than P(s)
+
+    concat_original: bool (default = False)
+        Append original dataframe, and put combined under region "combined"
+
+    Returns
+    -------
+    scal, slope_df
+
+    Notes
+    -----
+    Calculating errorbars/spread
+
+    1. Take all by-region P(s)
+    2. For "minmax", remove the last var_drop_last_bins bins for each region
+       (by default two. They are most noisy and would inflate the
+       spread for the last points). Min/max are most susceptible to this.
+    3. Groupby P(s) by region
+    4. Apply spread_funcs to the pd.GroupBy object. Options are:
+       * minimum and maximum ("minmax"),
+       * weighted standard deviation ("std"),
+       * weighted standard deviation in logspace ("logstd", default) or two custom functions
+       We do not remove the last bins for "std" / "logstd" because we are
+       doing weighted standard deviation. Therefore, noisy "ends" of regions
+       would contribute very little to this.
+    5. Append them to the P(s) for the same bin.
+
+    As a result, by for minmax, we do not estimate spread for the last
+    two bins. This is because there are often very few chromosomal arms there,
+    and different arm measurements are noisy. For other methods, we do
+    estimate the spread there, and noisy last bins are taken care of by the
+    weighted standard deviation. However, the spread in the last bins may be
+    noisy, and may become a 0 if only one region is contributing to the last
+    pixel.
+    """
+    scal = numutils.weighted_groupby_mean(
+        binned_exp.select_dtypes(np.number), "bin_id", "n_valid", mode="mean"
+    )
+
+    if spread_funcs == "minmax":
+        byRegVar = binned_exp.copy()
+        byRegVar = byRegVar.loc[
+            byRegVar.index.difference(
+                byRegVar.groupby("region")["n_valid"].tail(minmax_drop_bins).index
+            )
+        ]
+        low_err = byRegVar.groupby("bin_id")["Pc"].min()
+        high_err = byRegVar.groupby("bin_id")["Pc"].max()
+    elif spread_funcs == "std":
+        var = numutils.weighted_groupby_mean(
+            binned_exp[["Pc", "bin_id", "n_valid"]], "bin_id", "n_valid", mode="std"
+        )["Pc"]
+        low_err = scal["Pc"] - var
+        high_err = scal["Pc"] + var
+    elif spread_funcs == "logstd":
+        var = numutils.weighted_groupby_mean(
+            binned_exp[["Pc", "bin_id", "n_valid"]], "bin_id", "n_valid", mode="logstd"
+        )["Pc"]
+        low_err = scal["Pc"] / var
+        high_err = scal["Pc"] * var
+
+    else:
+        low_err, high_err = spread_funcs(binned_exp, scal)
+
+    scal["low_err"] = low_err
+    scal["high_err"] = high_err
+
+    f = der_smooth_function_combined
+
+    slope = np.diff(f(np.log(scal.Pc.values))) / np.diff(f(np.log(scal.x.values)))
+    valid = np.minimum(scal.n_valid.values[:-1], scal.n_valid.values[1:])
+    mids = np.sqrt(scal.x.values[:-1] * scal.x.values[1:])
+    slope_df = pd.DataFrame(
+        {"x": mids, "slope": slope, "n_valid": valid, "bin_id": scal.index.values[:-1]}
+    )
+    slope_df = slope_df.set_index("bin_id")
+
+    if binned_exp_slope is not None:
+        if spread_funcs_slope == "minmax":
+            byRegDer = binned_exp_slope.copy()
+            byRegDer = byRegDer.loc[
+                byRegDer.index.difference(
+                    byRegDer.groupby("region")["n_valid"].tail(minmax_drop_bins).index
+                )
+            ]
+            low_err = byRegDer.groupby("bin_id")["slope"].min()
+            high_err = byRegDer.groupby("bin_id")["slope"].max()
+        elif spread_funcs_slope == "std":
+            var = numutils.weighted_groupby_mean(
+                binned_exp_slope[["slope", "bin_id", "n_valid"]],
+                "bin_id",
+                "n_valid",
+                mode="std",
+            )["slope"]
+            low_err = slope_df["slope"] - var
+            high_err = slope_df["slope"] + var
+
+        else:
+            low_err, high_err = spread_funcs_slope(binned_exp_slope, scal)
+        slope_df["low_err"] = low_err
+        slope_df["high_err"] = high_err
+
+    slope_df = slope_df.reset_index()
+    scal = scal.reset_index()
+
+    if concat_original:
+        scal["region"] = "combined"
+        slope_df["region"] = "combined"
+        scal = pd.concat([scal, binned_exp], sort=False).reset_index(drop=True)
+        slope_df = pd.concat([slope_df, binned_exp_slope], sort=False).reset_index(
+            drop=True
+        )
+
+    return scal, slope_df
