@@ -579,7 +579,7 @@ def diagsum(
 
     Returns
     -------
-    dict of support region -> dataframe of diagonal statistics
+    Dataframe of diagonal statistics for all regions
 
     """
     spans = partition(0, len(clr.pixels()), chunksize)
@@ -933,8 +933,8 @@ def logbin_expected(
 
     Parameters
     ----------
-    exp : dict
-        {region: expected_df} produced by diagsum
+    exp : DataFrame
+        DataFrame produced by diagsum
 
     bins_per_order_magnitude : int (optional)
         How many bins per order of magnitude. Default of 10 has a ratio of
@@ -957,9 +957,6 @@ def logbin_expected(
     der_smooth_function_by_reg : callable
         A smoothing function to be applied to log(P(s)) and log(x)
         before calculating P(s) slopes for by-region data
-
-    der_smooth_function_combined : callable
-        A smoothing function for calculating slopes on combined data
 
     min_nvalid : int
         For each region, throw out bins (log-spaced) that have less than
@@ -1133,7 +1130,10 @@ def combine_binned_expected(
     binned_exp_slope : dataframe or None
         If provided, estimates spread of slopes.
         Is necessary if concat_original is True
-
+        
+    der_smooth_function_combined : callable
+        A smoothing function for calculating slopes on combined data
+        
     spread_funcs: "minmax", "std", "logstd" or a function (see below)
         A way to estimate the spread of the P(s) curves between regions.
         * "minmax" - use the minimum/maximum of by-region P(s)
