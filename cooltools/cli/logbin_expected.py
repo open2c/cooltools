@@ -11,14 +11,12 @@ from . import cli
     type=str,
     nargs=1
 )
-
 @click.argument(
     "output_prefix",
     metavar="OUTPUT_PREFIX",
     type=str,
     nargs=1
 )
-
 @click.option(
     "--bins-per-order-magnitude",
     metavar="bins_per_order_magnitude",
@@ -29,7 +27,6 @@ from . import cli
     default=10,
     show_default=True
 )
-
 @click.option(
     "--bin-layout",
     metavar="bin_layout",
@@ -44,7 +41,6 @@ from . import cli
     default='fixed',
     show_default=True
 )
-
 @click.option(
     "--min-nvalid",
     metavar="min_nvalid",
@@ -58,7 +54,6 @@ from . import cli
     default=200,
     show_default=True
 )
-
 @click.option(
     "--min-count",
     metavar="min_count",
@@ -71,7 +66,6 @@ from . import cli
     default=50,
     show_default=True
 )
-
 @click.option(
     "--spread-funcs",
     metavar="spread_funcs",
@@ -84,7 +78,6 @@ from . import cli
     show_default=True,
     nargs=1,
 )
-
 @click.option(
     "--spread-funcs-slope",
     metavar="spread_funcs_slope",
@@ -94,7 +87,6 @@ from . import cli
     show_default=True,
     nargs=1,
 )
-
 @click.option(
     "--resolution",
     metavar="resolution",
@@ -103,7 +95,6 @@ from . import cli
     type=int,
     nargs=1,
 )
-
 def logbin_expected(
     expected_path,
     output_prefix,
@@ -130,12 +121,14 @@ def logbin_expected(
     """
 
     cvd = pd.read_csv(expected_path, sep='\t')
-    lb_cvd, lb_slopes, lb_distbins = expected.logbin_expected(cvd,
+    lb_cvd, lb_slopes, lb_distbins = expected.logbin_expected(
+        cvd,
         bins_per_order_magnitude=bins_per_order_magnitude,
         bin_layout=bin_layout,
         min_nvalid=min_nvalid,
         min_count=min_count)
-    lb_cvd_agg, lb_slopes_agg = expected.combine_binned_expected(lb_cvd,
+    lb_cvd_agg, lb_slopes_agg = expected.combine_binned_expected(
+        lb_cvd,
         binned_exp_slope=lb_slopes,
         spread_funcs=spread_funcs,
         spread_funcs_slope=spread_funcs_slope
