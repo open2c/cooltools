@@ -1,0 +1,5 @@
+chr1	0	99000000	chr1_firsthalf
+chr1	100000000	197195432	chr1_secondhalf
+chr2	0	99000000	chr2_firsthalf
+chr2	100000000	181748087	chr2_secondhalf
+chr10	0	129993255	chr10_full
