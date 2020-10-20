@@ -6,6 +6,7 @@ from numpy import testing
 
 import bioframe
 import cooler
+from click.testing import CliRunner
 import cooltools.expected
 
 from itertools import combinations
@@ -192,3 +193,36 @@ def test_blocksum(request):
             # atol=0,
             equal_nan=True,
         )
+
+def test_logbin_expected_cli(request, tmpdir):
+    # CLI compute-expected for chrom-wide cis-data
+    in_cool = op.join(request.fspath.dirname, "data/CN.mm9.1000kb.cool")
+    binsize = 1_000_000
+    out_cis_expected = op.join(tmpdir, "cis.exp.tsv")
+    runner = CliRunner()
+    result = runner.invoke(
+        cli, [
+            'compute-expected',
+            '--weight-name', weight_name,
+            '-o', out_cis_expected,
+            in_cool,
+        ]
+    )
+    assert result.exit_code == 0
+
+    logbin_prefix = "logbin_prefix"
+    runner = CliRunner()
+    result = runner.invoke(
+        cli, [
+            'logbin-expected',
+            '--resolution', binsize,
+            out_cis_expected,
+            logbin_prefix,
+        ]
+    )
+    assert result.exit_code == 0
+    # make sure logbin output is generated:
+    out_logbin_Pc = op.join(tmpdir, f"{logbin_prefix}.log.tsv")
+    out_logbin_der = op.join(tmpdir, f"{logbin_prefix}.log.tsv")
+    assert os.path.isfile(out_logbin_Pc)
+    assert os.path.isfile(out_logbin_der)
