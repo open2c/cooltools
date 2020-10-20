@@ -9,7 +9,6 @@ import bioframe
 import cooler
 from click.testing import CliRunner
 import cooltools.expected
-from click.testing import CliRunner
 from cooltools.cli import cli
 
 from itertools import combinations
@@ -197,6 +196,7 @@ def test_blocksum(request):
             equal_nan=True,
         )
 
+
 def test_expected_cli(request, tmpdir):
     # CLI compute-expected for chrom-wide cis-data
     in_cool = op.join(request.fspath.dirname, "data/CN.mm9.1000kb.cool")
@@ -211,7 +211,6 @@ def test_expected_cli(request, tmpdir):
         ]
     )
     assert result.exit_code == 0
-
     clr = cooler.Cooler(in_cool)
     cis_expected = pd.read_table(out_cis_expected, sep="\t")
     grouped = cis_expected.groupby("region")
@@ -305,6 +304,7 @@ def test_trans_expected_regions_cli(request, tmpdir):
             equal_nan=True,
         )
 
+
 def test_logbin_expected_cli(request, tmpdir):
     # test CLI logbin-expected for default chrom-wide output of compute-expected
     in_cool = op.join(request.fspath.dirname, "data/CN.mm9.1000kb.cool")
@@ -319,10 +319,10 @@ def test_logbin_expected_cli(request, tmpdir):
         ]
     )
     assert result.exit_code == 0
-    
+
     # consider adding logbin expected baswed on raw counts
     binsize = 1_000_000
-    logbin_prefix = "logbin_prefix"
+    logbin_prefix = op.join(tmpdir, "logbin_prefix")
     runner = CliRunner()
     result = runner.invoke(
         cli, [
@@ -334,7 +334,5 @@ def test_logbin_expected_cli(request, tmpdir):
     )
     assert result.exit_code == 0
     # make sure logbin output is generated:
-    out_logbin_Pc = op.join(tmpdir, f"{logbin_prefix}.log.tsv")
-    out_logbin_der = op.join(tmpdir, f"{logbin_prefix}.log.tsv")
-    assert os.path.isfile(out_logbin_Pc)
-    assert os.path.isfile(out_logbin_der)
+    assert op.isfile(f"{logbin_prefix}.log.tsv")
+    assert op.isfile(f"{logbin_prefix}.der.tsv")

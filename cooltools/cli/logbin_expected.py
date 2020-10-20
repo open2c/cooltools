@@ -1,4 +1,6 @@
 import pandas as pd
+import numpy as np
+from functools import partial
 from .. import expected
 
 import click
