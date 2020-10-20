@@ -7,8 +7,8 @@ from numpy import testing
 
 import bioframe
 import cooler
-import cooltools.expected
 from click.testing import CliRunner
+import cooltools.expected
 from cooltools.cli import cli
 
 from itertools import combinations
@@ -303,3 +303,36 @@ def test_trans_expected_regions_cli(request, tmpdir):
             # atol=0,
             equal_nan=True,
         )
+
+
+def test_logbin_expected_cli(request, tmpdir):
+    # test CLI logbin-expected for default chrom-wide output of compute-expected
+    in_cool = op.join(request.fspath.dirname, "data/CN.mm9.1000kb.cool")
+    out_cis_expected = op.join(tmpdir, "cis.exp.tsv")
+    runner = CliRunner()
+    result = runner.invoke(
+        cli, [
+            'compute-expected',
+            '--weight-name', weight_name,
+            '-o', out_cis_expected,
+            in_cool,
+        ]
+    )
+    assert result.exit_code == 0
+
+    # consider adding logbin expected baswed on raw counts
+    binsize = 1_000_000
+    logbin_prefix = op.join(tmpdir, "logbin_prefix")
+    runner = CliRunner()
+    result = runner.invoke(
+        cli, [
+            'logbin-expected',
+            '--resolution', binsize,
+            out_cis_expected,
+            logbin_prefix,
+        ]
+    )
+    assert result.exit_code == 0
+    # make sure logbin output is generated:
+    assert op.isfile(f"{logbin_prefix}.log.tsv")
+    assert op.isfile(f"{logbin_prefix}.der.tsv")
