@@ -148,6 +148,12 @@ def logbin_expected(
         verbose=False,
     )
 
+    # name of the column with Probability of contacts is
+    # based on the name of the column  with the diagonal-summary
+    # stats in the input expected DataFrame:
+    exp_summary_base, *_ = exp_summary_name.split(".")
+    Pc_name = f"{exp_summary_base}.avg"
+
     lb_cvd, lb_slopes, lb_distbins = expected.logbin_expected(
         cvd,
         exp_summary_name=exp_summary_name,
@@ -156,15 +162,17 @@ def logbin_expected(
         min_nvalid=min_nvalid,
         min_count=min_count
     )
+    # combine Probabilities of contact for the regions:
     lb_cvd_agg, lb_slopes_agg = expected.combine_binned_expected(
         lb_cvd,
+        Pc_name=Pc_name,
         binned_exp_slope=lb_slopes,
         spread_funcs=spread_funcs,
         spread_funcs_slope=spread_funcs_slope
     )
     if resolution is not None:
-        lb_cvd_agg['s_bp'] = lb_cvd_agg['x'] * resolution
-        lb_slopes_agg['s_bp'] = lb_slopes_agg['x'] * resolution
+        lb_cvd_agg['s_bp'] = lb_cvd_agg['diag.avg'] * resolution
+        lb_slopes_agg['s_bp'] = lb_slopes_agg['diag.avg'] * resolution
 
     lb_cvd_agg.to_csv(
         f'{output_prefix}.log.tsv',

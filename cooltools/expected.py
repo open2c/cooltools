@@ -1054,70 +1054,84 @@ def logbin_expected(
     """
     from cooltools.lib.numutils import logbins
 
-    exp = exp[~pd.isna(exp[exp_summary_name])]
-    exp["x"] = exp.pop("diag")
-    diagmax = exp["x"].max()
+    raw_summary_name = "count.sum"
+    exp_summary_base, *_ = exp_summary_name.split(".")
+    Pc_name = f"{exp_summary_base}.avg"
+    diag_name = "diag"
+    diag_avg_name = f"{diag_name}.avg"
 
+    exp = exp[~pd.isna(exp[exp_summary_name])]
+    exp[diag_avg_name] = exp.pop(diag_name) # "average" or weighted diagonals
+    diagmax = exp[diag_avg_name].max()
+
+    # create diag_bins based on chosen layout:
     if bin_layout == "fixed":
-        bins = numutils.persistent_log_bins(
-            10, bins_per_order_magnitude=bins_per_order_magnitude
+        diag_bins = numutils.persistent_log_bins(
+            10,
+            bins_per_order_magnitude=bins_per_order_magnitude
         )
     elif bin_layout == "longest_region":
-        bins = logbins(1, diagmax + 1, ratio=10 ** (1 / bins_per_order_magnitude))
+        diag_bins = logbins(
+            1,
+            diagmax + 1,
+            ratio=10 ** (1 / bins_per_order_magnitude)
+        )
     else:
-        bins = bin_layout
+        diag_bins = bin_layout
 
-    if bins[-1] < diagmax:
-        raise ValueError("Bins end is less than the size of the largest region")
+    if diag_bins[-1] < diagmax:
+        raise ValueError("Genomic separation bins end is less than the size of the largest region")
 
-    exp["bin_id"] = np.searchsorted(bins, exp["x"], side="right") - 1
-    exp = exp[exp["bin_id"] >= 0]
+    # assign diagonals in exp DataFrame to diag_bins, i.e. give them ids:
+    exp["diag_bin_id"] = np.searchsorted(diag_bins, exp[diag_avg_name], side="right") - 1
+    exp = exp[exp["diag_bin_id"] >= 0]
 
     # constructing expected grouped by region
     byReg = exp.copy()
 
-    # this averages x with the weight equal to n_valid, and sums everything else
-    byReg["x"] *= byReg["n_valid"]
-    byRegExp = byReg.groupby(["region", "bin_id"]).sum()
-    byRegExp["x"] /= byRegExp["n_valid"]
+    # this averages diag_avg with the weight equal to n_valid, and sums everything else
+    byReg[diag_avg_name] *= byReg["n_valid"]
+    byRegExp = byReg.groupby(["region", "diag_bin_id"]).sum()
+    byRegExp[diag_avg_name] /= byRegExp["n_valid"]
 
     byRegExp = byRegExp.reset_index()
     byRegExp = byRegExp[byRegExp["n_valid"] > min_nvalid]  # filtering by n_valid
-    byRegExp["Pc"] = byRegExp[exp_summary_name] / byRegExp["n_valid"]
-    byRegExp = byRegExp[byRegExp["Pc"] > 0]  # drop bins with 0 counts
+    byRegExp[Pc_name] = byRegExp[exp_summary_name] / byRegExp["n_valid"]
+    byRegExp = byRegExp[byRegExp[Pc_name] > 0]  # drop diag_bins with 0 counts
     if min_count:
-        if "count.sum" in byRegExp:
-            byRegExp = byRegExp[byRegExp["count.sum"] > min_count]
+        if raw_summary_name in byRegExp:
+            byRegExp = byRegExp[byRegExp[raw_summary_name] > min_count]
         else:
-            warnings.warn(RuntimeWarning("counts not found"))
+            warnings.warn(RuntimeWarning(f"{raw_summary_name} not found in the input expected"))
 
-    byRegExp["bin_start"] = bins[byRegExp["bin_id"].values]
-    byRegExp["bin_end"] = bins[byRegExp["bin_id"].values + 1] - 1
+    byRegExp["diag_bin_start"] = diag_bins[byRegExp["diag_bin_id"].values]
+    byRegExp["diag_bin_end"] = diag_bins[byRegExp["diag_bin_id"].values + 1] - 1
 
     byRegDer = []
     for reg, subdf in byRegExp.groupby("region"):
-        subdf = subdf.sort_values("bin_id")
-        valid = np.minimum(subdf.n_valid.values[:-1], subdf.n_valid.values[1:])
-        mids = np.sqrt(subdf.x.values[:-1] * subdf.x.values[1:])
+        subdf = subdf.sort_values("diag_bin_id")
+        valid = np.minimum(subdf["n_valid"].values[:-1], subdf["n_valid"].values[1:])
+        mids = np.sqrt(subdf[diag_avg_name].values[:-1] * subdf[diag_avg_name].values[1:])
         f = der_smooth_function_by_reg
-        slope = np.diff(f(np.log(subdf.Pc.values))) / np.diff(f(np.log(subdf.x.values)))
+        slope = np.diff(f(np.log(subdf[Pc_name].values))) / np.diff(f(np.log(subdf[diag_avg_name].values)))
         newdf = pd.DataFrame(
             {
-                "x": mids,
+                diag_avg_name: mids,
                 "slope": slope,
                 "n_valid": valid,
-                "bin_id": subdf.bin_id.values[:-1],
+                "diag_bin_id": subdf["diag_bin_id"].values[:-1],
             }
         )
         newdf["region"] = reg
         byRegDer.append(newdf)
     byRegDer = pd.concat(byRegDer).reset_index(drop=True)
-    return byRegExp, byRegDer, bins[: byRegExp.bin_id.max() + 2]
+    return byRegExp, byRegDer, diag_bins[: byRegExp["diag_bin_id"].max() + 2]
 
 
 def combine_binned_expected(
     binned_exp,
     binned_exp_slope=None,
+    Pc_name="balanced.avg",
     der_smooth_function_combined=lambda x: numutils.robust_gauss_filter(x, 1.3),
     spread_funcs="logstd",
     spread_funcs_slope="std",
@@ -1136,6 +1150,10 @@ def combine_binned_expected(
         If provided, estimates spread of slopes.
         Is necessary if concat_original is True
         
+    Pc_name : str
+        Name of the column with the probability of contacts.
+        Defaults to "balanced.avg".
+
     der_smooth_function_combined : callable
         A smoothing function for calculating slopes on combined data
         
@@ -1181,8 +1199,12 @@ def combine_binned_expected(
     noisy, and may become a 0 if only one region is contributing to the last
     pixel.
     """
+    diag_avg_name = "diag.avg"
     scal = numutils.weighted_groupby_mean(
-        binned_exp.select_dtypes(np.number), "bin_id", "n_valid", mode="mean"
+        binned_exp.select_dtypes(np.number),
+        group_by="diag_bin_id",
+        weigh_by="n_valid",
+        mode="mean"
     )
 
     if spread_funcs == "minmax":
@@ -1192,21 +1214,26 @@ def combine_binned_expected(
                 byRegVar.groupby("region")["n_valid"].tail(minmax_drop_bins).index
             )
         ]
-        low_err = byRegVar.groupby("bin_id")["Pc"].min()
-        high_err = byRegVar.groupby("bin_id")["Pc"].max()
+        low_err = byRegVar.groupby("diag_bin_id")[Pc_name].min()
+        high_err = byRegVar.groupby("diag_bin_id")[Pc_name].max()
     elif spread_funcs == "std":
         var = numutils.weighted_groupby_mean(
-            binned_exp[["Pc", "bin_id", "n_valid"]], "bin_id", "n_valid", mode="std"
-        )["Pc"]
-        low_err = scal["Pc"] - var
-        high_err = scal["Pc"] + var
+            binned_exp[[Pc_name, "diag_bin_id", "n_valid"]],
+            group_by="diag_bin_id",
+            weigh_by="n_valid",
+            mode="std"
+        )[Pc_name]
+        low_err = scal[Pc_name] - var
+        high_err = scal[Pc_name] + var
     elif spread_funcs == "logstd":
         var = numutils.weighted_groupby_mean(
-            binned_exp[["Pc", "bin_id", "n_valid"]], "bin_id", "n_valid", mode="logstd"
-        )["Pc"]
-        low_err = scal["Pc"] / var
-        high_err = scal["Pc"] * var
-
+            binned_exp[[Pc_name, "diag_bin_id", "n_valid"]],
+            group_by="diag_bin_id",
+            weigh_by="n_valid",
+            mode="logstd"
+        )[Pc_name]
+        low_err = scal[Pc_name] / var
+        high_err = scal[Pc_name] * var
     else:
         low_err, high_err = spread_funcs(binned_exp, scal)
 
@@ -1215,13 +1242,18 @@ def combine_binned_expected(
 
     f = der_smooth_function_combined
 
-    slope = np.diff(f(np.log(scal.Pc.values))) / np.diff(f(np.log(scal.x.values)))
-    valid = np.minimum(scal.n_valid.values[:-1], scal.n_valid.values[1:])
-    mids = np.sqrt(scal.x.values[:-1] * scal.x.values[1:])
+    slope = np.diff(f(np.log(scal[Pc_name].values))) / np.diff(f(np.log(scal[diag_avg_name].values)))
+    valid = np.minimum(scal["n_valid"].values[:-1], scal["n_valid"].values[1:])
+    mids = np.sqrt(scal[diag_avg_name].values[:-1] * scal[diag_avg_name].values[1:])
     slope_df = pd.DataFrame(
-        {"x": mids, "slope": slope, "n_valid": valid, "bin_id": scal.index.values[:-1]}
+        {
+            diag_avg_name: mids,
+            "slope": slope,
+            "n_valid": valid,
+            "diag_bin_id": scal.index.values[:-1],
+        }
     )
-    slope_df = slope_df.set_index("bin_id")
+    slope_df = slope_df.set_index("diag_bin_id")
 
     if binned_exp_slope is not None:
         if spread_funcs_slope == "minmax":
@@ -1231,13 +1263,13 @@ def combine_binned_expected(
                     byRegDer.groupby("region")["n_valid"].tail(minmax_drop_bins).index
                 )
             ]
-            low_err = byRegDer.groupby("bin_id")["slope"].min()
-            high_err = byRegDer.groupby("bin_id")["slope"].max()
+            low_err = byRegDer.groupby("diag_bin_id")["slope"].min()
+            high_err = byRegDer.groupby("diag_bin_id")["slope"].max()
         elif spread_funcs_slope == "std":
             var = numutils.weighted_groupby_mean(
-                binned_exp_slope[["slope", "bin_id", "n_valid"]],
-                "bin_id",
-                "n_valid",
+                binned_exp_slope[["slope", "diag_bin_id", "n_valid"]],
+                group_by="diag_bin_id",
+                weigh_by="n_valid",
                 mode="std",
             )["slope"]
             low_err = slope_df["slope"] - var
