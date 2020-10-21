@@ -298,6 +298,7 @@ def cooler_cis_eig(
     bad_bins=None,
     clip_percentile=99.9,
     sort_metric=None,
+    map=map,
 ):
     """
     Compute compartment eigenvector for a given cooler `clr` in a number of
@@ -365,10 +366,10 @@ def cooler_cis_eig(
 
     """
 
-    if regions is None:  # normalize_regins will fill in the rest
+    if regions is None:  # `parse_regions` will fill in the rest
         regions = list(bins["chrom"].unique()) # and check consistency
 
-    regions = bioframe.parse_regions(regions, clr.chromsizes, force_UCSC_names=True) 
+    regions = bioframe.parse_regions(regions, clr.chromsizes, overwrite_names=True) 
 
     ignore_diags = (
         clr._load_attrs("bins/weight").get("ignore_diags", 2)
@@ -378,7 +379,8 @@ def cooler_cis_eig(
 
     eigvec_table = bins.copy()
     for i in range(n_eigs):
-        eigvec_table["E" + str(i + 1)] = np.nan
+        eigvec_table[f"E{i+1}"] = np.nan
+    eig_columns = [f"E{i+1}" for i in range(n_eigs)]
 
     # bad_bins provided as absolute indices
     def _each(region):
@@ -396,13 +398,16 @@ def cooler_cis_eig(
         # phasing column in bins-table:
         if phasing_track_col and (phasing_track_col not in bins):
             raise ValueError(
-                'No column "{}" in the bin table'.format(phasing_track_col)
+                f'No column "{phasing_track_col}" in the bin table'
             )
-        phasing_track = (
-            bioframe.slice_bedframe(bins, region)[phasing_track_col].values
-            if phasing_track_col
-            else None
-        )
+        # mask to determine bins belonging to the region
+        subindex = clr.bins().fetch(region[:3]).index
+        subregion = bins.loc[subindex].copy()
+        
+        if phasing_track_col:
+            phasing_track = subregion[phasing_track_col].values
+        else:
+            phasing_track = None
 
         eigvals, eigvecs = cis_eig(
             A,
@@ -413,9 +418,9 @@ def cooler_cis_eig(
             sort_metric=sort_metric,
         )
 
-        return eigvals, eigvecs
+        return eigvals, eigvecs, subregion.index
 
-    eigvals_per_reg, eigvecs_per_reg = zip(*map(_each, regions))
+    results = list(map(_each, regions.values))
 
     for _, eigvecs, index in results:
         eigvec_table.at[index, eig_columns] = eigvecs.T
@@ -423,7 +428,7 @@ def cooler_cis_eig(
     eigvals = pd.DataFrame(
         index=regions["name"],
         data=np.vstack([eigval for eigval,_,_ in results]),
-        columns=["eigval" + str(i + 1) for i in range(n_eigs)],
+        columns=[f"eigval{i+1}" for i in range(n_eigs)],
     )
 
     eigvals.index.name = "region"
