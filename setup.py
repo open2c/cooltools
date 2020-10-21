@@ -47,7 +47,7 @@ def get_requirements(path):
     return [
         req
         for req in content.split("\n")
-        if req != '' and not req.startswith('#')
+        if req != '' and not (req.startswith('#') or req.startswith('-'))
     ]
 
 
@@ -77,7 +77,7 @@ packages = find_packages()
 
 setup(
     name='cooltools',
-    author='Mirny Lab',
+    author='Open2C',
     author_email='espresso@mit.edu',
     version=get_version(),
     license='MIT',
@@ -85,7 +85,7 @@ setup(
     long_description=get_long_description(),
     long_description_content_type='text/markdown',
     keywords=['genomics', 'bioinformatics', 'Hi-C', 'analysis', 'cooler'],
-    url='https://github.com/mirnylab/cooltools',
+    url='https://github.com/open2c/cooltools',
     zip_safe=False,
     classifiers=[s.strip() for s in classifiers.split('\n') if s],
 
@@ -96,7 +96,7 @@ setup(
     install_requires=install_requires,
     entry_points={
         'console_scripts': [
-             'cooltools = cooltools.cli:cli',
+            'cooltools = cooltools.cli:cli',
         ]
     }
 )

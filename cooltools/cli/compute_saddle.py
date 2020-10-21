@@ -7,10 +7,12 @@ import sys
 import pandas as pd
 import numpy as np
 import cooler
+from bioframe import parse_regions
 from .. import saddle
 
 import click
 from .util import validate_csv
+from . import util
 from . import cli
 
 
@@ -104,6 +106,15 @@ from . import cli
     default=False,
 )
 @click.option(
+    "--regions",
+    help="Path to a BED file containing genomic regions "
+    "for which saddleplot will be calculated. Region names can "
+    "be provided in a 4th column and should match regions and "
+    "their names in expected.",
+    type=click.Path(exists=True),
+    required=False,
+)
+@click.option(
     "-o", "--out-prefix",
     help="Dump 'saddledata', 'binedges' and 'hist' arrays in a numpy-specific "
     ".npz container. Use numpy.load to load these arrays into a "
@@ -169,6 +180,7 @@ def compute_saddle(
     qrange,
     weight_name,
     strength,
+    regions,
     out_prefix,
     fig,
     scale,
@@ -205,9 +217,30 @@ def compute_saddle(
     using options. Header must be present in a file.
 
     """
-    c = cooler.Cooler(cool_path)
+    clr = cooler.Cooler(cool_path)
     expected_path, expected_name = expected_path
     track_path, track_name = track_path
+
+    if regions is None:
+        regions = [(chrom, 0, clr.chromsizes[chrom]) for chrom in clr.chromnames]
+        regions = parse_regions(regions)
+        regions["name"] = clr.chromnames
+    else:
+        regions_buf, names = util.sniff_for_header(regions)
+        regions = pd.read_csv(regions_buf, sep="\t", header=None)
+        if regions.shape[1] not in (3, 4):
+            raise ValueError(
+                "The region file does not have three or four tab-delimited columns."
+                "We expect a bed file with columns chrom, start, end, and optional name"
+            )
+        if regions.shape[1] == 4:
+            regions = regions.rename(columns={0:"chrom",1:"start",2:"end",3:"name"})
+            regions = parse_regions(regions)
+        else:
+            regions = regions.rename(columns={0:"chrom",1:"start",2:"end"})
+            regions["name"] = list(regions.apply(lambda x: "{}:{}-{}".format(*x), axis=1))
+            regions = parse_regions(regions)
+
 
     if vmin <= 0 or vmax <= 0:
         raise ValueError(
@@ -219,41 +252,41 @@ def compute_saddle(
     # it's contact_type dependent:
     if contact_type == "cis":
         # that's what we expect as column names:
-        expected_columns = ["chrom", "diag", "n_valid", expected_name]
+        expected_columns = ["region", "diag", "n_valid", expected_name]
         # what would become a MultiIndex:
-        expected_index = ["chrom", "diag"]
+        expected_index = ["region", "diag"]
         # expected dtype as a rudimentary form of validation:
         expected_dtype = {
-            "chrom": np.str,
+            "region": np.str,
             "diag": np.int64,
             "n_valid": np.int64,
             expected_name: np.float64,
         }
-        # unique list of chroms mentioned in expected_path:
-        get_exp_chroms = lambda df: df.index.get_level_values("chrom").unique()
-        # compute # of bins by comparing matching indexes:
-        get_exp_bins = lambda df, ref_chroms, _: (
-            df.index.get_level_values("chrom").isin(ref_chroms).sum()
-        )
+        # # unique list of chroms mentioned in expected_path:
+        # get_exp_chroms = lambda df: df.index.get_level_values("region").unique()
+        # # compute # of bins by comparing matching indexes:
+        # get_exp_bins = lambda df, ref_chroms, _: (
+        #     df.index.get_level_values("chrom").isin(ref_chroms).sum()
+        # )
     elif contact_type == "trans":
         # that's what we expect as column names:
-        expected_columns = ["chrom1", "chrom2", "n_valid", expected_name]
+        expected_columns = ["region1", "region2", "n_valid", expected_name]
         # what would become a MultiIndex:
-        expected_index = ["chrom1", "chrom2"]
+        expected_index = ["region1", "region2"]
         # expected dtype as a rudimentary form of validation:
         expected_dtype = {
-            "chrom1": np.str,
-            "chrom2": np.str,
+            "region1": np.str,
+            "region2": np.str,
             "n_valid": np.int64,
             expected_name: np.float64,
         }
-        # unique list of chroms mentioned in expected_path:
-        get_exp_chroms = lambda df: np.union1d(
-            df.index.get_level_values("chrom1").unique(),
-            df.index.get_level_values("chrom2").unique(),
-        )
-        # no way to get bins from trans-expected, so just get the number:
-        get_exp_bins = lambda _1, _2, correct_bins: correct_bins
+        # # unique list of chroms mentioned in expected_path:
+        # get_exp_chroms = lambda df: np.union1d(
+        #     df.index.get_level_values("region1").unique(),
+        #     df.index.get_level_values("region2").unique(),
+        # )
+        # # no way to get bins from trans-expected, so just get the number:
+        # get_exp_bins = lambda _1, _2, correct_bins: correct_bins
     else:
         raise ValueError(
             "Incorrect contact_type: {}, ".format(contact_type),
@@ -263,10 +296,10 @@ def compute_saddle(
     if min_dist < 0:
         min_diag = 3
     else:
-        min_diag = int(np.ceil(min_dist / c.binsize))
+        min_diag = int(np.ceil(min_dist / clr.binsize))
 
     if max_dist >= 0:
-        max_diag = int(np.floor(max_dist / c.binsize))
+        max_diag = int(np.floor(max_dist / clr.binsize))
     else:
         max_diag = -1
 
@@ -307,14 +340,14 @@ def compute_saddle(
     # We might want to try this eventually:
     # https://github.com/TMiguelT/PandasSchema
     # do simple column-name validation for now:
-    if not set(track_chroms).issubset(c.chromnames):
+    if not set(track_chroms).issubset(clr.chromnames):
         raise ValueError(
             "Chromosomes in {} must be subset of ".format(track_path)
             + "chromosomes in cooler {}".format(cool_path)
         )
     # check number of bins:
     track_bins = len(track)
-    cool_bins = c.bins()[:]["chrom"].isin(track_chroms).sum()
+    cool_bins = clr.bins()[:]["chrom"].isin(track_chroms).sum()
     if not (track_bins == cool_bins):
         raise ValueError(
             "Number of bins is not matching: ",
@@ -322,38 +355,38 @@ def compute_saddle(
                 track_bins, track_path, cool_bins, cool_path, track_chroms
             ),
         )
-    # EXPECTED vs TRACK:
-    # validate expected a bit as well:
-    expected_chroms = get_exp_chroms(expected)
-    # do simple column-name validation for now:
-    if not set(track_chroms).issubset(expected_chroms):
-        raise ValueError(
-            "Chromosomes in {} must be subset of ".format(track_path)
-            + "chromosomes in expected {}".format(expected_path)
-        )
-    # and again bins are supposed to match up:
-    # only for cis though ...
-    expected_bins = get_exp_bins(expected, track_chroms, track_bins)
-    if not (track_bins == expected_bins):
-        raise ValueError(
-            "Number of bins is not matching: ",
-            "{} in {}, and {} in {} for chromosomes {}".format(
-                track_bins, track_path, expected_bins, expected_path, track_chroms
-            ),
-        )
+    # # EXPECTED vs TRACK:
+    # # validate expected a bit as well:
+    # expected_chroms = get_exp_chroms(expected)
+    # # do simple column-name validation for now:
+    # if not set(track_chroms).issubset(expected_chroms):
+    #     raise ValueError(
+    #         "Chromosomes in {} must be subset of ".format(track_path)
+    #         + "chromosomes in expected {}".format(expected_path)
+    #     )
+    # # and again bins are supposed to match up:
+    # # only for cis though ...
+    # expected_bins = get_exp_bins(expected, track_chroms, track_bins)
+    # if not (track_bins == expected_bins):
+    #     raise ValueError(
+    #         "Number of bins is not matching: ",
+    #         "{} in {}, and {} in {} for chromosomes {}".format(
+    #             track_bins, track_path, expected_bins, expected_path, track_chroms
+    #         ),
+    #     )
     #############################################
     # CROSS-VALIDATION IS COMPLETE.
     #############################################
 
-    track = saddle.mask_bad_bins((track, track_name), (c.bins()[:], weight_name))
+    track = saddle.mask_bad_bins((track, track_name), (clr.bins()[:], weight_name))
 
     if contact_type == "cis":
         getmatrix = saddle.make_cis_obsexp_fetcher(
-            c, (expected, expected_name), weight_name=weight_name
+            clr, (expected, expected_name), weight_name=weight_name
         )
     elif contact_type == "trans":
         getmatrix = saddle.make_trans_obsexp_fetcher(
-            c, (expected, expected_name), weight_name=weight_name
+            clr, (expected, expected_name), weight_name=weight_name
         )
 
     if quantiles:
@@ -383,6 +416,7 @@ def compute_saddle(
         binedges,
         (digitized, track_name + ".d"),
         contact_type=contact_type,
+        regions=regions,
         min_diag=min_diag,
         max_diag=max_diag,
     )

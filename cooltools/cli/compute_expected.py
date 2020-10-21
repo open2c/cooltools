@@ -1,6 +1,8 @@
 import multiprocess as mp
 import pandas as pd
+from itertools import combinations
 import cooler
+from bioframe import parse_regions
 from .. import expected
 
 import click
@@ -13,26 +15,28 @@ from . import util
 
 
 @cli.command()
-@click.argument("cool_path", metavar="COOL_PATH", type=str, nargs=1)
+@click.argument(
+    "cool_path",
+    metavar="COOL_PATH",
+    type=str,
+    nargs=1
+)
 @click.option(
-    "--nproc",
-    "-p",
+    "--nproc", "-p",
     help="Number of processes to split the work between."
     "[default: 1, i.e. no process pool]",
     default=1,
     type=int,
 )
 @click.option(
-    "--chunksize",
-    "-c",
+    "--chunksize", "-c",
     help="Control the number of pixels handled by each worker process at a time.",
     type=int,
     default=int(10e6),
     show_default=True,
 )
 @click.option(
-    "--output",
-    "-o",
+    "--output", "-o",
     help="Specify output file name to store the expected in a tsv format.",
     type=str,
     required=False,
@@ -45,10 +49,9 @@ from . import util
     default=False,
 )
 @click.option(
-    "--contact-type",
-    "-t",
+    "--contact-type", "-t",
     help="compute expected for cis or trans region of a Hi-C map."
-    "Ignored when genomic-regions are provided",
+    "trans-expected is calculated for pairwise combinations of specified regions.",
     type=click.Choice(["cis", "trans"]),
     default="cis",
     show_default=True,
@@ -56,7 +59,9 @@ from . import util
 @click.option(
     "--regions",
     help="Path to a BED file containing genomic regions "
-    "for which expected will be calculated.",
+    "for which expected will be calculated. Region names can"
+    "be provided in a 4th column, otherwise UCSC notaion is used."
+    "When not specified, expected is calculated for all chromosomes",
     type=click.Path(exists=True),
     required=False,
 )
@@ -114,12 +119,6 @@ def compute_expected(
 
     """
 
-    # if regions is not None:
-    #     raise NotImplementedError(
-    #         "Custom genomic regions for calculation of expected are not implemented in CLI,"
-    #         "use `cooltools.expected.blocksum/diagsum` functions."
-    #         )
-
     if blacklist is not None:
         raise NotImplementedError(
             "Custom genomic regions for masking from calculation of expected"
@@ -131,24 +130,23 @@ def compute_expected(
     clr = cooler.Cooler(cool_path)
     if regions is None:
         regions = [(chrom, 0, clr.chromsizes[chrom]) for chrom in clr.chromnames]
-        region_names = [chrom for chrom in clr.chromnames]
+        regions = parse_regions(regions)
+        regions["name"] = clr.chromnames
     else:
         regions_buf, names = util.sniff_for_header(regions)
-        if names is not None:
-            regions = pd.read_csv(regions_buf, skiprows=1, sep="\t", header=None)
-        else:
-            regions = pd.read_csv(regions_buf, sep="\t", header=None)
+        regions = pd.read_csv(regions_buf, sep="\t", header=None)
         if regions.shape[1] not in (3, 4):
             raise ValueError(
                 "The region file does not have three or four tab-delimited columns."
                 "We expect a bed file with columns chrom, start, end, and optional name"
             )
         if regions.shape[1] == 4:
-            region_names = regions[:, 3]
-            regions = regions[:, :3]
+            regions = regions.rename(columns={0:"chrom",1:"start",2:"end",3:"name"})
+            regions = parse_regions(regions)
         else:
-            region_names = list(regions.apply(lambda x: "{}:{}-{}".format(*x), axis=1))
-        regions = [tuple(row)[:3] for i, row in regions.iterrows()]
+            regions = regions.rename(columns={0:"chrom",1:"start",2:"end"})
+            regions["name"] = list(regions.apply(lambda x: "{}:{}-{}".format(*x), axis=1))
+            regions = parse_regions(regions)
 
     # define transofrms - balanced and raw ('count') for now
     if balance:
@@ -180,29 +178,19 @@ def compute_expected(
                 ignore_diags=ignore_diags,
                 map=map_,
             )
-            result = result.reset_index()
-
         elif contact_type == "trans":
-            records = expected.blocksum_pairwise(
+            # prepare pairwise combinations of regions for trans-expected (blocksum):
+            regions_pairwise = combinations(regions.itertuples(index=False), 2)
+            regions1, regions2 = zip(*regions_pairwise)
+            result = expected.blocksum_asymm(
                 clr,
-                regions,
+                regions1 = pd.DataFrame(regions1),
+                regions2 = pd.DataFrame(regions2),
                 transforms=transforms,
                 weight_name=weight_name,
                 bad_bins=None,
                 chunksize=chunksize,
                 map=map_,
-            )
-            result = pd.DataFrame(
-                [
-                    {
-                        "region1": region_names[regions.index(r1)],
-                        "region2": region_names[regions.index(r2)],
-                        **rec,
-                    }
-                    for (r1, r2), rec in records.items()
-                ],
-                columns=["region1", "region2", "n_valid", "count.sum"]
-                + [k + ".sum" for k in transforms.keys()],
             )
     finally:
         if nproc > 1:
@@ -222,5 +210,7 @@ def compute_expected(
 
     # would be nice to have some binary output to preserve precision.
     # to_hdf/read_hdf should work in this case as the file is small .
+    # still debated as to how should we store it - store in cooler seems
+    # to be consensus:
     if hdf:
         raise NotImplementedError("hdf output is to be implemented")

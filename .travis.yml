@@ -20,8 +20,6 @@ install:
   - conda create -n testenv python=$TRAVIS_PYTHON_VERSION numpy cython h5py
   - source activate testenv
   - pip install -r requirements-dev.txt
-  # temporary bioframe reinstall, until relevant changes merged are released
-  - pip install --no-deps --force-reinstall git+https://github.com/mirnylab/bioframe.git@develop#egg=bioframe
   - python setup.py install build_ext --inplace
 script:
   - pytest

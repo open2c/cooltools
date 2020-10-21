@@ -24,7 +24,7 @@ Ideally, provide full test coverage for new code submitted in PRs.
 For setting up an isolated virtual environment for development, we recommend using [conda](https://docs.conda.io/en/latest/miniconda.html). After forking and cloning the repository, install in "editable" (i.e. development) mode using the `-e` option:
 
 ```sh
-$ git clone https://github.com/mirnylab/cooltools.git
+$ git clone https://github.com/open2c/cooltools.git
 $ cd cooltools
 $ pip install -e .
 ```

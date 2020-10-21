@@ -43,7 +43,7 @@ def _phase_eigs(eigvals, eigvecs, phasing_track, sort_metric=None):
                 eigvec[mask]
             )
         else:
-            raise ValueError("Unknown sorting metric: {}".format(sort_by))
+            raise ValueError("Unknown sorting metric: {}".format(sort_metric))
 
         corrs.append(corr)
 
@@ -298,7 +298,6 @@ def cooler_cis_eig(
     bad_bins=None,
     clip_percentile=99.9,
     sort_metric=None,
-    map=map
 ):
     """
     Compute compartment eigenvector for a given cooler `clr` in a number of
@@ -379,8 +378,7 @@ def cooler_cis_eig(
 
     eigvec_table = bins.copy()
     for i in range(n_eigs):
-        eigvec_table[f"E{i+1}"] = np.nan
-    eig_columns = [f"E{i+1}" for i in range(n_eigs)]
+        eigvec_table["E" + str(i + 1)] = np.nan
 
     # bad_bins provided as absolute indices
     def _each(region):
@@ -400,15 +398,11 @@ def cooler_cis_eig(
             raise ValueError(
                 'No column "{}" in the bin table'.format(phasing_track_col)
             )
-        
-        # mask to determin bins belonging to the region 
-        subindex = clr.bins().fetch(region[:3]).index
-        subregion = bins.loc[subindex].copy()
-        
-        if phasing_track_col: 
-            phasing_track = subregion[phasing_track_col].values
-        else:
-            phasing_track = None 
+        phasing_track = (
+            bioframe.slice_bedframe(bins, region)[phasing_track_col].values
+            if phasing_track_col
+            else None
+        )
 
         eigvals, eigvecs = cis_eig(
             A,
@@ -418,10 +412,10 @@ def cooler_cis_eig(
             clip_percentile=clip_percentile,
             sort_metric=sort_metric,
         )
-                 
-        return eigvals, eigvecs, subregion.index
 
-    results = list(map(_each, regions.values))
+        return eigvals, eigvecs
+
+    eigvals_per_reg, eigvecs_per_reg = zip(*map(_each, regions))
 
     for _, eigvecs, index in results:
         eigvec_table.at[index, eig_columns] = eigvecs.T
