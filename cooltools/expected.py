@@ -579,7 +579,7 @@ def diagsum(
 
     Returns
     -------
-    dict of support region -> dataframe of diagonal statistics
+    Dataframe of diagonal statistics for all regions
 
     """
     spans = partition(0, len(clr.pixels()), chunksize)
@@ -922,6 +922,7 @@ def blocksum_asymm(
 
 def logbin_expected(
     exp,
+    exp_summary_name="balanced.sum",
     bins_per_order_magnitude=10,
     bin_layout="fixed",
     der_smooth_function_by_reg=lambda x: numutils.robust_gauss_filter(x, 2),
@@ -933,8 +934,12 @@ def logbin_expected(
 
     Parameters
     ----------
-    exp : dict
-        {region: expected_df} produced by diagsum
+    exp : DataFrame
+        DataFrame produced by diagsum
+
+    exp_summary_name : str (optional)
+        Name of the column of exp-DataFrame to use as a diagonal summary.
+        Default is "balanced.sum".
 
     bins_per_order_magnitude : int (optional)
         How many bins per order of magnitude. Default of 10 has a ratio of
@@ -957,9 +962,6 @@ def logbin_expected(
     der_smooth_function_by_reg : callable
         A smoothing function to be applied to log(P(s)) and log(x)
         before calculating P(s) slopes for by-region data
-
-    der_smooth_function_combined : callable
-        A smoothing function for calculating slopes on combined data
 
     min_nvalid : int
         For each region, throw out bins (log-spaced) that have less than
@@ -1052,7 +1054,7 @@ def logbin_expected(
     """
     from cooltools.lib.numutils import logbins
 
-    exp = exp[~pd.isna(exp["balanced.sum"])]
+    exp = exp[~pd.isna(exp[exp_summary_name])]
     exp["x"] = exp.pop("diag")
     diagmax = exp["x"].max()
 
@@ -1081,7 +1083,7 @@ def logbin_expected(
 
     byRegExp = byRegExp.reset_index()
     byRegExp = byRegExp[byRegExp["n_valid"] > min_nvalid]  # filtering by n_valid
-    byRegExp["Pc"] = byRegExp["balanced.sum"] / byRegExp["n_valid"]
+    byRegExp["Pc"] = byRegExp[exp_summary_name] / byRegExp["n_valid"]
     byRegExp = byRegExp[byRegExp["Pc"] > 0]  # drop bins with 0 counts
     if min_count:
         if "count.sum" in byRegExp:
@@ -1133,7 +1135,10 @@ def combine_binned_expected(
     binned_exp_slope : dataframe or None
         If provided, estimates spread of slopes.
         Is necessary if concat_original is True
-
+        
+    der_smooth_function_combined : callable
+        A smoothing function for calculating slopes on combined data
+        
     spread_funcs: "minmax", "std", "logstd" or a function (see below)
         A way to estimate the spread of the P(s) curves between regions.
         * "minmax" - use the minimum/maximum of by-region P(s)
