@@ -1016,7 +1016,9 @@ def logbin_expected(
     trapezoid with a long side of 5MB, the short side of 1MB, and height of
     4MB. The center of mass of this trapezoid is at 36 + 14/9 = 37.55MB,
     and not at 38MB. So the last bin center is definitely mis-assigned, and
-    the second-to-last bin center is off by some 25%.
+    the second-to-last bin center is off by some 25%. This would lead to a 25%
+    error of the P(s) slope estimated between the third-to-last and 
+    second-to-last bin. 
 
     In presence of missing bins, this all becomes more complex, but this kind
     of averaging should take care of everything. It follows a general
@@ -1060,7 +1062,7 @@ def logbin_expected(
     diag_name = "diag"
     diag_avg_name = f"{diag_name}.avg"
 
-    exp = exp[~pd.isna(exp[exp_summary_name])]
+    exp = exp[~pd.isna(exp[exp_summary_name])].copy()
     exp[diag_avg_name] = exp.pop(diag_name) # "average" or weighted diagonals
     diagmax = exp[diag_avg_name].max()
 
@@ -1139,7 +1141,9 @@ def combine_binned_expected(
     concat_original=False,
 ):
     """
-    Combines by-region log-binned expected and slopes into
+    Combines by-region log-binned expected and slopes into genome-wide averages, 
+    handling small chromosomes and "corners" in an optimal fashion, robust to 
+    outliers. Calculates spread of by-chromosome P(s) and slopes, also in an optimal fashion. 
 
     Parameters
     ----------
@@ -1175,6 +1179,10 @@ def combine_binned_expected(
 
     Notes
     -----
+    This function does not calculate errorbars. The spread is not the deviation of the mean, 
+    and rather is representative of variability between chromosomes. 
+    
+    
     Calculating errorbars/spread
 
     1. Take all by-region P(s)
@@ -1201,7 +1209,7 @@ def combine_binned_expected(
     """
     diag_avg_name = "diag.avg"
     scal = numutils.weighted_groupby_mean(
-        binned_exp.select_dtypes(np.number),
+        binned_exp[[Pc_name, "diag_bin_id", "n_valid", diag_avg_name]],
         group_by="diag_bin_id",
         weigh_by="n_valid",
         mode="mean"
