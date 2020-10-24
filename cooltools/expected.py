@@ -1060,7 +1060,7 @@ def logbin_expected(
     diag_name = "diag"
     diag_avg_name = f"{diag_name}.avg"
 
-    exp = exp[~pd.isna(exp[exp_summary_name])]
+    exp = exp[~pd.isna(exp[exp_summary_name])].copy()
     exp[diag_avg_name] = exp.pop(diag_name) # "average" or weighted diagonals
     diagmax = exp[diag_avg_name].max()
 
@@ -1201,7 +1201,7 @@ def combine_binned_expected(
     """
     diag_avg_name = "diag.avg"
     scal = numutils.weighted_groupby_mean(
-        binned_exp.select_dtypes(np.number),
+        binned_exp[[Pc_name, "diag_bin_id", "n_valid", diag_avg_name]],
         group_by="diag_bin_id",
         weigh_by="n_valid",
         mode="mean"
