@@ -23,11 +23,16 @@ def fetch_chromsizes(db):
 @genome.command()
 @click.argument("chromsizes_path")
 @click.argument("binsize", type=int)
-def binnify(chromsizes_path, binsize):
+@click.option(
+    "--all-names",
+    help="Parse all chromosome names from file, not only default r\"^chr[0-9]+$\", r\"^chr[XY]$\", r\"^chrM$\". ",
+    is_flag=True
+)
+def binnify(chromsizes_path, binsize, all_names):
     import bioframe
 
-    chromsizes = bioframe.read_chromsizes(chromsizes_path)
-    bins = bioframe.tools.binnify(chromsizes, binsize)
+    chromsizes = bioframe.read_chromsizes(chromsizes_path, filter_chroms=not(all_names))
+    bins = bioframe.genomeops.binnify(chromsizes, binsize)
     print(bins.to_csv(sep="\t", index=False))
 
 
