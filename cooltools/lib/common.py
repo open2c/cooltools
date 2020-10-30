@@ -4,6 +4,8 @@ import pandas as pd
 import requests
 import os
 
+URL_TEST_DATA = "https://raw.githubusercontent.com/open2c/cooltools/pileup-update/tests/data/external_test_files.tsv"
+
 def assign_supports(features, supports, labels=False, suffix=""):
     """
     Assign support regions to a table of genomic intervals.
@@ -164,7 +166,7 @@ def get_data_home(data_home=None):
     if not os.path.exists(data_home):
         os.makedirs(data_home)
 
-    return data_home
+    return os.path.join(data_home, '')
 
 
 def _get_datasets_info():
@@ -180,7 +182,7 @@ def _get_datasets_info():
 
     """
 
-    url = "https://github.com/agalitsyna/cooltools/tests/data/external_test_files.tsv"
+    url = URL_TEST_DATA
     datasets_metadata = requests.get(url, stream=True).iter_lines()
     datasets = []
     for line_metadata in datasets_metadata:
@@ -198,9 +200,9 @@ def print_available_datasets():
 
     """
 
-    url = "https://github.com/agalitsyna/cooltools/tests/data/external_test_files.tsv"
+    url = URL_TEST_DATA
     datasets_metadata = requests.get(url, stream=True).iter_lines()
     print("Available datasets:")
-    for line_metadata in datasets_metadata:
+    for i, line_metadata in enumerate(datasets_metadata):
         if not line_metadata.decode("utf-8")[0]=="#":
-            print("{0} : {3} \n  Downloaded from {2} \n  Stored as {1}".format(*line_metadata.decode("utf-8").split("\t")))
+            print("{0}) {1} : {4} \n  Downloaded from {3} \n  Stored as {2}".format(i, *line_metadata.decode("utf-8").split("\t")))
