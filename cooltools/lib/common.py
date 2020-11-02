@@ -1,5 +1,6 @@
 import numpy as np
 import pandas as pd
+
 # Test data download requirements:
 import requests
 import os
@@ -73,7 +74,7 @@ def assign_regions_to_bins(bin_ids, regions_span):
     return region_ids
 
 
-def download_test_data(name="all", cache=True, data_home=None):
+def download_test_data(name="all", cache=True, data_dir=None):
     """
 
     Parameters
@@ -83,8 +84,8 @@ def download_test_data(name="all", cache=True, data_home=None):
     cache : boolean, optional
         If True, try to load from the local cache first, and save to the cache
         if a download is required.
-    data_home : string, optional
-        The directory where to cache data; default is defined by :func:`get_data_home`.
+    data_dir : string, optional
+        The directory where to cache data; default is defined by :func:`get_data_dir`.
 
     Returns
     -------
@@ -117,7 +118,7 @@ def download_test_data(name="all", cache=True, data_home=None):
             Use print_available_datasets() to see the details. 
             """.format(key=name, datasets=','.join(available_keys)))
 
-    data_home = get_data_home(data_home)
+    data_dir = get_data_dir(data_dir)
 
     assert len(keys)>0 # Checking that test data file is parsed successfully
     downloaded = '' # Empty string that will be returned if the request was empty
@@ -125,18 +126,18 @@ def download_test_data(name="all", cache=True, data_home=None):
         if not key in keys:
             continue
 
-        file_path = os.path.join(data_home, local_filename)
+        file_path = os.path.join(data_dir, local_filename)
         if cache and os.path.exists(file_path):
             downloaded = file_path
             continue
         elif cache:
-            print("Test dataset {} (file {}) is not in the cache directory {}".format(key, local_filename, data_home))
+            print("Test dataset {} (file {}) is not in the cache directory {}".format(key, local_filename, data_dir))
         downloaded = download_file(url, file_path)
 
     return downloaded
 
 
-def get_data_home(data_home=None):
+def get_data_dir(data_dir=None):
     """
     Returns a path to cache directory for example datasets.
 
@@ -147,7 +148,7 @@ def get_data_home(data_home=None):
 
     Parameters
     ----------
-    data_home : str, optional
+    data_dir : str, optional
         Location of the home for test data storage
 
     Returns
@@ -161,19 +162,19 @@ def get_data_home(data_home=None):
 
     """
 
-    if data_home is None:
-        data_home = os.path.abspath(os.path.join(os.path.dirname( __file__ ), '..', '..', 'tests/data/external/'))
+    if data_dir is None:
+        data_dir = os.path.abspath(os.path.join(os.path.dirname( __file__ ), '..', '..', 'tests/data/external/'))
 
-    data_home = os.path.expanduser(data_home)
-    if not os.path.exists(data_home):
-        os.makedirs(data_home)
+    data_dir = os.path.expanduser(data_dir)
+    if not os.path.exists(data_dir):
+        os.makedirs(data_dir)
 
-    return os.path.join(data_home, '')
+    return os.path.join(data_dir, '')
 
 
 def _get_datasets_info():
     """
-    Reports all available datasets in https://github.com/open2c/cooltools/tests/data/external_test_files.tsv
+    Reports all available datasets in URL_TEST_DATA
 
     Requires an internet connection.
 
@@ -196,7 +197,7 @@ def _get_datasets_info():
 
 def print_available_datasets():
     """
-    Prints all available test datasets in https://github.com/open2c/cooltools/tests/data/external_test_files.tsv
+    Prints all available test datasets in URL_TEST_DATA
 
     Requires an internet connection.
 

@@ -1,13 +1,9 @@
-from collections import OrderedDict
 from functools import partial
+import warnings
 
-import matplotlib.pyplot as plt
-from scipy.linalg import toeplitz
-import scipy.sparse as sps
 import numpy as np
 import pandas as pd
 import bioframe
-import cooler
 
 from .lib.numutils import LazyToeplitz
 
@@ -184,7 +180,7 @@ def pileup(features, data_select, data_snip, map=map):
 
     """
     if features.region.isnull().any():
-        print("Some features do not have regions assigned! Some snips will be empty.")
+        warnings.warn("Some features do not have regions assigned! Some snips will be empty.")
 
     features = features.copy()
     features["_rank"] = range(len(features))
