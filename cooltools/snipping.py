@@ -140,9 +140,9 @@ def _pileup(data_select, data_snip, arg):
     support, feature_group = arg
     # check if support region is on- or off-diagonal
     if len(support) == 2:
-        region1, region2 = map(bioframe.parse_region_string, support)
+        region1, region2 = map(bioframe.region.parse_region_string, support)
     else:
-        region1 = region2 = bioframe.parse_region_string(support)
+        region1 = region2 = bioframe.region.parse_region_string(support)
 
     # check if features are on- or off-diagonal
     if "start" in feature_group:
@@ -184,9 +184,7 @@ def pileup(features, data_select, data_snip, map=map):
 
     """
     if features.region.isnull().any():
-        raise ValueError(
-            "Drop features with no region assignment before calling pileup!"
-        )
+        print("Some features do not have regions assigned! Some snips will be empty.")
 
     features = features.copy()
     features["_rank"] = range(len(features))

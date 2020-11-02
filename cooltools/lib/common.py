@@ -119,13 +119,15 @@ def download_test_data(name="all", cache=True, data_home=None):
 
     data_home = get_data_home(data_home)
 
-    assert len(keys)>0 # Checking that test data file is parsed sucessfully
+    assert len(keys)>0 # Checking that test data file is parsed successfully
+    downloaded = '' # Empty string that will be returned if the request was empty
     for key, url, local_filename in available_datasets:
         if not key in keys:
             continue
 
         file_path = os.path.join(data_home, local_filename)
         if cache and os.path.exists(file_path):
+            downloaded = file_path
             continue
         elif cache:
             print("Test dataset {} (file {}) is not in the cache directory {}".format(key, local_filename, data_home))
