@@ -106,7 +106,7 @@ def test_trans_compartment_cli(request, tmpdir):
     test_trans_eigs = pd.read_table(out_eig_prefix + ".trans.vecs.tsv", sep="\t")
     r = np.abs(
         np.corrcoef(
-            test_trans_eigs.E3.values, np.sin(test_trans_eigs.start * 2 * np.pi / 500)
+            test_trans_eigs.E1.values, np.sin(test_trans_eigs.start * 2 * np.pi / 500)
         )[0, 1]
     )
     assert r > 0.95
@@ -149,7 +149,7 @@ def test_trans_saddle_cli(request, tmpdir):
             "--n-bins", "30",
             "--scale", "log",
             in_cool,
-            f"{out_eig_prefix}.trans.vecs.tsv::E3",  # 3rd EV stores checkerboard
+            f"{out_eig_prefix}.trans.vecs.tsv",
             out_expected
         ]
     )

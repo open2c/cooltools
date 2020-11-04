@@ -266,7 +266,6 @@ def trans_eig(
     A[:, is_bad_bin] = 0
 
     # Fake cis and re-balance
-    A = numutils.iterative_correction_symmetric(A)[0]
     A = _fake_cis(A, ~is_trans)
     A = numutils.iterative_correction_symmetric(A)[0]
     A = _fake_cis(A, ~is_trans)
