@@ -32,7 +32,7 @@ def binnify(chromsizes_path, binsize, all_names):
     import bioframe
 
     chromsizes = bioframe.read_chromsizes(chromsizes_path, filter_chroms=not(all_names))
-    bins = bioframe.genomeops.binnify(chromsizes, binsize)
+    bins = bioframe.binnify(chromsizes, binsize)
     print(bins.to_csv(sep="\t", index=False))
 
 
