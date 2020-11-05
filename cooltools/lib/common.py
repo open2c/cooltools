@@ -5,7 +5,7 @@ import pandas as pd
 import requests
 import os
 
-URL_TEST_DATA = "https://raw.githubusercontent.com/open2c/cooltools/pileup-update/tests/data/external_test_files.tsv"
+URL_TEST_DATA = "https://raw.githubusercontent.com/open2c/cooltools/pileup-update/datasets/external_test_files.tsv"
 
 def assign_supports(features, supports, labels=False, suffix=""):
     """
@@ -74,7 +74,7 @@ def assign_regions_to_bins(bin_ids, regions_span):
     return region_ids
 
 
-def download_test_data(name="all", cache=True, data_dir=None):
+def download_data(name="all", cache=True, data_dir=None):
     """
 
     Parameters
@@ -163,7 +163,7 @@ def get_data_dir(data_dir=None):
     """
 
     if data_dir is None:
-        data_dir = os.path.abspath(os.path.join(os.path.dirname( __file__ ), '..', '..', 'tests/data/external/'))
+        data_dir = os.path.abspath(os.path.join(os.path.dirname( __file__ ), '..', '..', 'datasets/'))
 
     data_dir = os.path.expanduser(data_dir)
     if not os.path.exists(data_dir):
