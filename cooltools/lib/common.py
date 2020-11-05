@@ -5,7 +5,7 @@ import pandas as pd
 import requests
 import os
 
-URL_TEST_DATA = "https://raw.githubusercontent.com/open2c/cooltools/pileup-update/datasets/external_test_files.tsv"
+URL_DATA = "https://raw.githubusercontent.com/open2c/cooltools/pileup-update/datasets/external_test_files.tsv"
 
 def assign_supports(features, supports, labels=False, suffix=""):
     """
@@ -141,10 +141,10 @@ def get_data_dir(data_dir=None):
     """
     Returns a path to cache directory for example datasets.
 
-    This directory is then used by :func:`download_test_data`.
+    This directory is then used by :func:`download_data`.
 
     By default, this function uses the location of cooltools as the home folder
-    and stores the files under ./tests/data/external/ path there.
+    and stores the files under ./datasets/ path there.
 
     Parameters
     ----------
@@ -174,7 +174,7 @@ def get_data_dir(data_dir=None):
 
 def _get_datasets_info():
     """
-    Reports all available datasets in URL_TEST_DATA
+    Reports all available datasets in URL_DATA
 
     Requires an internet connection.
 
@@ -185,7 +185,7 @@ def _get_datasets_info():
 
     """
 
-    url = URL_TEST_DATA
+    url = URL_DATA
     datasets_metadata = requests.get(url, stream=True).iter_lines()
     datasets = []
     for line_metadata in datasets_metadata:
@@ -197,13 +197,13 @@ def _get_datasets_info():
 
 def print_available_datasets():
     """
-    Prints all available test datasets in URL_TEST_DATA
+    Prints all available test datasets in URL_DATA
 
     Requires an internet connection.
 
     """
 
-    url = URL_TEST_DATA
+    url = URL_DATA
     datasets_metadata = requests.get(url, stream=True).iter_lines()
     print("Available datasets:")
     for i, line_metadata in enumerate(datasets_metadata):
