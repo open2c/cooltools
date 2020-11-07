@@ -97,4 +97,5 @@ ENV/
 tmp/
 
 # Downloaded data
-tests/data/external/
+datasets/
+!datasets/external_test_files.tsv

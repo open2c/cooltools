@@ -105,7 +105,7 @@ def download_data(name="all", cache=True, data_dir=None):
         return local_filename
 
     available_datasets = _get_datasets_info()
-    available_keys = map(lambda x: x[0], available_datasets)
+    available_keys = list( map(lambda x: x[0], available_datasets) )
 
     if name in available_keys:
         keys = [name]
@@ -123,7 +123,7 @@ def download_data(name="all", cache=True, data_dir=None):
     assert len(keys)>0 # Checking that test data file is parsed successfully
     downloaded = '' # Empty string that will be returned if the request was empty
     for key, url, local_filename in available_datasets:
-        if not key in keys:
+        if key not in keys:
             continue
 
         file_path = os.path.join(data_dir, local_filename)
