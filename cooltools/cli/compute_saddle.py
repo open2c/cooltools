@@ -312,7 +312,7 @@ def compute_saddle(
         index_col=expected_index,
         dtype=expected_dtype,
         comment=None,
-        verbose=False,
+        verbose=verbose,
     )
 
     # read bedGraph-file :
@@ -329,7 +329,7 @@ def compute_saddle(
         usecols=track_columns,
         dtype=track_dtype,
         comment=None,
-        verbose=False,
+        verbose=verbose,
     )
 
     #############################################
@@ -474,6 +474,7 @@ def compute_saddle(
             xlabel=track_label,
             ylabel=track_label,
             clabel=clabel,
+            cmap=cmap
         )
 
         for ext in fig:

@@ -1,0 +1,4 @@
+# key	filename	link	comment
+HFF_MicroC	test.mcool	https://osf.io/3h9js/download	Micro-C data from HFF human cells for two chromosomes (hg38) in a multi-resolution mcool format.
+HFF_CTCF_fc	test_CTCF.bigWig	https://osf.io/w92u3/download	ChIP-Seq fold change over input with CTCF antibodies in HFF cells (hg38). Downloaded from ENCODE ENCSR000DWQ, ENCFF761RHS.bigWig file
+HFF_CTCF_binding	test_CTCF.bed.gz	https://osf.io/c9pwe/download	Binding sites called from CTCF ChIP-Seq peaks for HFF cells (hg38). Peaks are from ENCODE ENCSR000DWQ, ENCFF498QCT.bed file. The motifs are called with gimmemotifs (options --nreport 1 --cutoff 0), with JASPAR pwm MA0139.
