@@ -120,7 +120,7 @@ def digitize_track(binedges, track, regions=None):
 
 def make_cis_obsexp_fetcher(clr, expected, weight_name="weight"):
     """
-    Construct a function that returns intra-chromosomal OBS/EXP.
+    Construct a function that returns intra-chromosomal OBS/EXP for symmetrical regions.
 
     Parameters
     ----------
@@ -128,17 +128,17 @@ def make_cis_obsexp_fetcher(clr, expected, weight_name="weight"):
         Observed matrix.
     expected : tuple of (DataFrame, str)
         Diagonal summary statistics for each chromosome, and name of the column
-        to use
+        with the values of expected to use.
     weight_name : str
         Name of the column in the clr.bins to use as balancing weights
 
     Returns
     -------
-    getexpected(chrom, _). 2nd arg is ignored.
+    getexpected(reg, _). 2nd arg is ignored.
 
     """
-    expected, name = expected
-    expected = {k: x.values for k, x in expected.groupby("region")[name]}
+    expected, expected_name = expected
+    expected = {k: x.values for k, x in expected.groupby("region")[expected_name]}
 
     def _fetch_cis_oe(reg1, reg2):
         obs_mat = clr.matrix(balance=weight_name).fetch(reg1)
@@ -159,8 +159,8 @@ def make_trans_obsexp_fetcher(clr, expected, weight_name="weight"):
     expected : (DataFrame, name) or scalar
         Average trans values. If a scalar, it is assumed to be a global trans
         expected value. If a tuple of (dataframe, name), the dataframe must
-        have a MultiIndex with 'chrom1' and 'chrom2' and must also have a column
-        labeled ``name``.
+        have a MultiIndex with 'region1' and 'region2' and must also have a column
+        labeled ``name``, with the values of expected.
     weight_name : str
         Name of the column in the clr.bins to use as balancing weights
 
@@ -176,27 +176,27 @@ def make_trans_obsexp_fetcher(clr, expected, weight_name="weight"):
         )
 
     elif isinstance(expected, (tuple, list)):
-        expected, name = expected
+        expected, expected_name = expected
 
-        if not name:
+        if not expected_name:
             raise ValueError("Name of data column not provided.")
 
         expected = {
-            k: x.values for k, x in expected.groupby(["chrom1", "chrom2"])[name]
+            k: x.values for k, x in expected.groupby(["region1", "region2"])[expected_name]
         }
 
-        def _fetch_trans_exp(chrom1, chrom2):
-            # Handle chrom flipping
-            if (chrom1, chrom2) in expected.keys():
-                return expected[chrom1, chrom2]
-            elif (chrom2, chrom1) in expected.keys():
-                return expected[chrom2, chrom1]
-            # .loc is the right way to get [chrom1,chrom2] value from MultiIndex df:
+        def _fetch_trans_exp(region1, region2):
+            # Handle region flipping
+            if (region1, region2) in expected.keys():
+                return expected[region1, region2]
+            elif (region2, region1) in expected.keys():
+                return expected[region2, region1]
+            # .loc is the right way to get [region1,region2] value from MultiIndex df:
             # https://pandas.pydata.org/pandas-docs/stable/advanced.html#advanced-indexing-with-hierarchical-index
             else:
                 raise KeyError(
                     "trans-exp index is missing a pair of chromosomes: "
-                    "{}, {}".format(chrom1, chrom2)
+                    "{}, {}".format(region1, region2)
                 )
 
         def _fetch_trans_oe(reg1, reg2):
