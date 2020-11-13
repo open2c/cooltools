@@ -491,7 +491,7 @@ def square_matrix_tiling(start, stop, step, edge, square=False, verbose=False):
             yield (lwx + start, rwx + start), (lwy + start, rwy + start)
 
 
-def heatmap_tiles_generator_diag(clr, chroms, pad_size, tile_size, band_to_cover):
+def heatmap_tiles_generator_diag(clr, regions, pad_size, tile_size, band_to_cover):
     """
     A generator yielding heatmap tiles that are needed to cover the requested
     band_to_cover around diagonal. Each tile is "padded" with pad_size edge to
@@ -501,8 +501,8 @@ def heatmap_tiles_generator_diag(clr, chroms, pad_size, tile_size, band_to_cover
     ----------
     clr : cooler
         Cooler object to use to extract chromosome extents.
-    chroms : iterable
-        Iterable of chromosomes to process
+    regions : pd.DataFrame
+        Dataframe of genomic regions to process, chrom, start, end, name.
     pad_size : int
         Size of padding around each tile. Typically the outer size of the
         kernel.
@@ -517,14 +517,17 @@ def heatmap_tiles_generator_diag(clr, chroms, pad_size, tile_size, band_to_cover
     tile : tuple
         Generator of tuples of three, which contain
         chromosome name, row index of the tile,
-        column index of the tile (chrom, tilei, tilej).
+        column index of the tile (region_name, tilei, tilej).
 
     """
 
-    for chrom in chroms:
-        chr_start, chr_stop = clr.extent(chrom)
+    for chrom, start, end, name in regions.iter:
+        region_begin, region_end = clr.extent(chrom)
         for tilei, tilej in square_matrix_tiling(
-            chr_start, chr_stop, tile_size, pad_size
+            region_begin,
+            region_end,
+            tile_size,
+            pad_size
         ):
             # check if a given tile intersects with
             # with the diagonal band of interest ...
@@ -536,7 +539,7 @@ def heatmap_tiles_generator_diag(clr, chroms, pad_size, tile_size, band_to_cover
             # we are using this >2*padding trick to exclude
             # tiles from the lower triangle from calculations ...
             if (min(band_to, diag_to) - max(band_from, diag_from)) > 2 * pad_size:
-                yield chrom, tilei, tilej
+                yield name, tilei, tilej
 
 
 ##################################
@@ -919,7 +922,7 @@ def score_tile(
     clr : cooler
         Cooler object to use to extract Hi-C heatmap data.
     cis_exp : pandas.DataFrame
-        DataFrame with 1 dimensional expected, indexed with 'chrom' and 'diag'.
+        DataFrame with cis-expected, indexed with 'name' and 'diag'.
     exp_v_name : str
         Name of a value column in expected DataFrame
     bal_v_name : str
@@ -950,12 +953,12 @@ def score_tile(
 
     """
     # unpack tile's coordinates
-    chrom, tilei, tilej = tile_cij
+    region_name, tilei, tilej = tile_cij
     origin = (tilei[0], tilej[0])
 
     # we have to do it for every tile, because
-    # chrom is not known apriori (maybe move outside):
-    lazy_exp = LazyToeplitz(cis_exp.loc[chrom][exp_v_name].values)
+    # region_name is not known apriori (maybe move outside):
+    lazy_exp = LazyToeplitz(cis_exp.loc[region_name][exp_v_name].values)
 
     # RAW observed matrix slice:
     observed = clr.matrix(balance=False)[slice(*tilei), slice(*tilej)]
