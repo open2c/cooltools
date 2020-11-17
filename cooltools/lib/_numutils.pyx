@@ -177,27 +177,42 @@ def iterative_correction_symmetric(
 @cython.nonecheck(False)
 @cython.wraparound(False)
 def fake_cis(
-        np.ndarray[np.double_t, ndim = 2] data,
-        np.ndarray[np.int64_t,ndim = 2] mask):
-    cdef int N
-    N = len(data)
-    cdef int i,j,r,s
+        np.ndarray[np.double_t, ndim=2] data,
+        np.ndarray[np.uint8_t, ndim=2] mask
+):
+    """
+    Replace target pixels (e.g. cis areas) of a contact matrix with decoy data
+    sampled from source pixels (e.g. trans areas) in the same row or column.
+
+    Operation is done in-place.
+
+    Parameters
+    ----------
+    data : array of double (n, n)
+        Contact matrix.
+    mask : array of uint8 (n, n)
+        Ternary mask. 0 = source pixels to sample from, 1 = target pixels to
+        fill, 2 = invalid pixels to ignore.
+
+    """
+    cdef int N = data.shape[0]
+    cdef int i, j, row_or_col, src_i, src_j
+
     for i in range(N):
-        for j in range(i,N):
-            if mask[i,j] == 1:
+        for j in range(i, N):
+
+            if mask[i, j] == 1:  # valid target pixel?
                 while True:
-                    r = c_libc_random() % 2
-                    if (r == 0):
-                        s = c_libc_random() % N
-                        if mask[i,s] == 0:
-                            data[i,j] = data[i,s]
-                            data[j,i] = data[i,s]
-                            break
+                    row_or_col = c_libc_random() % 2
+                    if row_or_col == 0:
+                        src_i = i
                     else:
-                        s = c_libc_random() % N
-                        if mask[j,s] == 0:
-                            data[i,j] = data[j,s]
-                            data[j,i] = data[j,s]
+                        src_i = j
+                    src_j = c_libc_random() % N
+
+                    if mask[src_i, src_j] == 0:  # valid source pixel?
+                        data[i, j] = data[j, i] = data[src_i, src_j]
+                        break
 
 
 @cython.boundscheck(False)
