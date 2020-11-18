@@ -135,7 +135,7 @@ def logbin_expected(
         "region": np.str,
         "diag": np.int64,
         "n_valid": np.int64,
-        "count.sum": np.int64,
+        "count.sum": np.float64,
         exp_summary_name: np.float64,
     }
 
