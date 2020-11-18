@@ -6,7 +6,7 @@ import requests
 import os
 import hashlib
 
-URL_DATA = "https://raw.githubusercontent.com/open2c/cooltools/pileup-update/datasets/external_test_files.tsv"
+URL_DATA = "https://raw.githubusercontent.com/open2c/cooltools/master/datasets/external_test_files.tsv"
 
 
 def assign_supports(features, supports, labels=False, suffix=""):
