@@ -4,8 +4,10 @@ import pandas as pd
 # Test data download requirements:
 import requests
 import os
+import hashlib
 
 URL_DATA = "https://raw.githubusercontent.com/open2c/cooltools/pileup-update/datasets/external_test_files.tsv"
+
 
 def assign_supports(features, supports, labels=False, suffix=""):
     """
@@ -57,11 +59,10 @@ def assign_supports(features, supports, labels=False, suffix=""):
 
 
 def assign_regions_to_bins(bin_ids, regions_span):
-
     regions_binsorted = (
         regions_span[(regions_span["bin_start"] >= 0) & (regions_span["bin_end"] >= 0)]
-        .sort_values(["bin_start", "bin_end"])
-        .reset_index()
+            .sort_values(["bin_start", "bin_end"])
+            .reset_index()
     )
 
     bin_reg_idx_lo = regions_span["bin_start"].searchsorted(bin_ids, "right") - 1
@@ -74,42 +75,66 @@ def assign_regions_to_bins(bin_ids, regions_span):
     return region_ids
 
 
-def download_data(name="all", cache=True, data_dir=None):
+def download_file(url, local_filename=None):
     """
+    Download single file and return its name.
+
+    """
+
+    if local_filename is None:
+        local_filename = url.split('/')[-1]
+    print('downloading:', url, 'as', local_filename)
+    with requests.get(url, stream=True) as r:
+        r.raise_for_status()
+        with open(local_filename, 'wb') as f:
+            for chunk in r.iter_content(chunk_size=8192):
+                f.write(chunk)
+    return local_filename
+
+
+def download_data(name="all",
+                  cache=True,
+                  data_dir=None,
+                  ignore_checksum=False,
+                  checksum_chunk=8192,
+                  _url_info=URL_DATA):
+    """
+    Download the specified dataset or all available datasets ("all" option).
+    Check available datasets with cooltools.print_available_datasets()
+
+    By default, checksums are verified for downloaded and cached files.
 
     Parameters
     ----------
     name : str
-        Name of the dataset.
+        Name of the dataset. Default: "all"
+
     cache : boolean, optional
         If True, try to load from the local cache first, and save to the cache
-        if a download is required.
+        if a download is required. Default: True
+
     data_dir : string, optional
         The directory where to cache data; default is defined by :func:`get_data_dir`.
 
+    ignore_checksum : boolean, optional
+        Ignore checksum of the file (not recommended). Default: False
+
+    checksum_chunk : int, optional
+        Sets the chunksize for calculation of md5sum of the file.
+        Used only if ignore_checksum is False.
+
     Returns
     -------
-    Path to the last downloaded file.
+    Path to the file if a single file was downloaded, or a list (for 'all' download).
 
     """
 
-    def download_file(url, local_filename=None):
-        if local_filename is None:
-            local_filename = url.split('/')[-1]
-        print('downloading:', url, 'as', local_filename)
-        with requests.get(url, stream=True) as r:
-            r.raise_for_status()
-            with open(local_filename, 'wb') as f:
-                for chunk in r.iter_content(chunk_size=8192):
-                    f.write(chunk)
-        return local_filename
-
-    available_datasets = _get_datasets_info()
-    available_keys = list( map(lambda x: x[0], available_datasets) )
+    available_datasets = _get_datasets_info(_url_info)
+    available_keys = list(map(lambda x: x['key'], available_datasets))
 
     if name in available_keys:
         keys = [name]
-    elif name=="all":
+    elif name == "all":
         keys = available_keys
     else:
         raise Exception(
@@ -120,26 +145,81 @@ def download_data(name="all", cache=True, data_dir=None):
 
     data_dir = get_data_dir(data_dir)
 
-    assert len(keys)>0 # Checking that test data file is parsed successfully
-    downloaded = '' # Empty string that will be returned if the request was empty
-    for key, url, local_filename in available_datasets:
+    assert len(keys) > 0  # Checking that test data file is parsed successfully
+    downloaded = []
+    for data in available_datasets:
+
+        key, url, local_filename, original_checksum = data["key"], data["link"], data["filename"], data["checksum"]
+
         if key not in keys:
             continue
 
         file_path = os.path.join(data_dir, local_filename)
+
         if cache and os.path.exists(file_path):
-            downloaded = file_path
+            if not ignore_checksum:
+                checksum = get_md5sum(file_path, chunksize=checksum_chunk)
+                assert checksum==original_checksum, \
+f"""The downloaded {key} file in {local_filename} differs from original test: {url}
+Re-reun with cache=False """
+            downloaded += [file_path]
             continue
+
         elif cache:
             print("Test dataset {} (file {}) is not in the cache directory {}".format(key, local_filename, data_dir))
-        downloaded = download_file(url, file_path)
 
-    return downloaded
+        file_path = download_file(url, file_path)
+        if not ignore_checksum:
+            checksum = get_md5sum(file_path, chunksize=checksum_chunk)
+            assert checksum == original_checksum, \
+                f"Download of {key} to {local_filename} failed. File differs from original test: {url}"
+
+        downloaded += [file_path]
+
+    # No files, return empty string
+    if len(downloaded) == 0:
+        return ''
+    # A single file downloaded, return its name
+    elif len(downloaded) == 1:
+        return downloaded[0]
+    # Multiple files downloaded, return list
+    else:
+        return downloaded
+
+
+def get_md5sum(file_path, chunksize=8192):
+    """
+    Load file by chunks and return md5sum of a file.
+    File might be rather large, and we don't load it into memory as a whole.
+    Name is excluded from calculation of hash.
+
+    Parameters
+    ----------
+    file_path : str
+        Location of the file
+
+    chunksize : int
+        Size of the chunk
+
+    Returns
+    -------
+    String with md5sum hex hash
+
+    """
+
+    md5 = hashlib.md5()
+    with open(file_path, "rb") as f:
+        while True:
+            file_fragment = f.read(chunksize)
+            if not file_fragment:
+                break
+            md5.update(file_fragment)
+        return md5.hexdigest()
 
 
 def get_data_dir(data_dir=None):
     """
-    Returns a path to cache directory for example datasets.
+    Return a path to cache directory for example datasets.
 
     This directory is then used by :func:`download_data`.
 
@@ -163,7 +243,7 @@ def get_data_dir(data_dir=None):
     """
 
     if data_dir is None:
-        data_dir = os.path.abspath(os.path.join(os.path.dirname( __file__ ), '..', '..', 'datasets/'))
+        data_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'datasets/'))
 
     data_dir = os.path.expanduser(data_dir)
     if not os.path.exists(data_dir):
@@ -172,40 +252,56 @@ def get_data_dir(data_dir=None):
     return os.path.join(data_dir, '')
 
 
-def _get_datasets_info():
+def _get_datasets_info(url=URL_DATA):
     """
     Reports all available datasets in URL_DATA
 
-    Requires an internet connection.
+    Requires internet connection if url is a remote link.
 
     Returns
     -------
 
-    A list of datasets: [key, url, local_filename]
+    A list of datasets, where each element is a dictionary with key, url, local_filename and checksum fields.
 
     """
 
-    url = URL_DATA
-    datasets_metadata = requests.get(url, stream=True).iter_lines()
-    datasets = []
-    for line_metadata in datasets_metadata:
-        line_metadata = line_metadata.decode("utf-8")
-        if not line_metadata[0]=="#":
-            datasets.append([line_metadata.split()[0], line_metadata.split()[2], line_metadata.split()[1]])
+    # Info file is remote
+    if url.startswith("https://") or url.startswith("http://"):
+        datasets_metadata = requests.get(url, stream=True).iter_lines()
+    # Info file is local
+    else:
+        datasets_metadata = open(url, 'rb').readlines()
 
-    return datasets
+    header = []
+    datasets_parsed = []
+    for i, line_metadata in enumerate(datasets_metadata):
+        # Read header:
+        if line_metadata.decode("utf-8")[0] == "#":
+            header = line_metadata.decode("utf-8")[2:].strip().split("\t")
+        # Read the rest of the file:
+        else:
+            if len(header)==0:
+                raise Exception(f"Data info file {url} is corrupted, no header denoted by '#'.")
+            data_line = line_metadata.decode("utf-8").strip().split("\t")
+            data = dict(zip(header, data_line))
+            data.update({'index': i})
+            datasets_parsed.append(dict(data))
 
-def print_available_datasets():
+    return datasets_parsed
+
+
+def print_available_datasets(url=URL_DATA):
     """
     Prints all available test datasets in URL_DATA
 
-    Requires an internet connection.
+    Requires internet connection if url is a remote link.
 
     """
 
-    url = URL_DATA
-    datasets_metadata = requests.get(url, stream=True).iter_lines()
-    print("Available datasets:")
-    for i, line_metadata in enumerate(datasets_metadata):
-        if not line_metadata.decode("utf-8")[0]=="#":
-            print("{0}) {1} : {4} \n  Downloaded from {3} \n  Stored as {2}".format(i, *line_metadata.decode("utf-8").split("\t")))
+    datasets_parsed = _get_datasets_info(url)
+    for data in datasets_parsed:
+        print("""{index}) {key} : {comment} 
+\tDownloaded from {link} 
+\tStored as {filename} 
+\tOriginal md5sum: {checksum}
+""".format(**data))
