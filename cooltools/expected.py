@@ -8,6 +8,7 @@ import numpy as np
 import pandas as pd
 from scipy.linalg import toeplitz
 from scipy.signal import fftconvolve
+from scipy.interpolate import interp1d
 
 from cooler.tools import split, partition
 import cooler
@@ -1063,29 +1064,28 @@ def logbin_expected(
     diag_avg_name = f"{diag_name}.avg"
 
     exp = exp[~pd.isna(exp[exp_summary_name])].copy()
-    exp[diag_avg_name] = exp.pop(diag_name) # "average" or weighted diagonals
+    exp[diag_avg_name] = exp.pop(diag_name)  # "average" or weighted diagonals
     diagmax = exp[diag_avg_name].max()
 
     # create diag_bins based on chosen layout:
     if bin_layout == "fixed":
         diag_bins = numutils.persistent_log_bins(
-            10,
-            bins_per_order_magnitude=bins_per_order_magnitude
+            10, bins_per_order_magnitude=bins_per_order_magnitude
         )
     elif bin_layout == "longest_region":
-        diag_bins = logbins(
-            1,
-            diagmax + 1,
-            ratio=10 ** (1 / bins_per_order_magnitude)
-        )
+        diag_bins = logbins(1, diagmax + 1, ratio=10 ** (1 / bins_per_order_magnitude))
     else:
         diag_bins = bin_layout
 
     if diag_bins[-1] < diagmax:
-        raise ValueError("Genomic separation bins end is less than the size of the largest region")
+        raise ValueError(
+            "Genomic separation bins end is less than the size of the largest region"
+        )
 
     # assign diagonals in exp DataFrame to diag_bins, i.e. give them ids:
-    exp["diag_bin_id"] = np.searchsorted(diag_bins, exp[diag_avg_name], side="right") - 1
+    exp["diag_bin_id"] = (
+        np.searchsorted(diag_bins, exp[diag_avg_name], side="right") - 1
+    )
     exp = exp[exp["diag_bin_id"] >= 0]
 
     # constructing expected grouped by region
@@ -1104,7 +1104,9 @@ def logbin_expected(
         if raw_summary_name in byRegExp:
             byRegExp = byRegExp[byRegExp[raw_summary_name] > min_count]
         else:
-            warnings.warn(RuntimeWarning(f"{raw_summary_name} not found in the input expected"))
+            warnings.warn(
+                RuntimeWarning(f"{raw_summary_name} not found in the input expected")
+            )
 
     byRegExp["diag_bin_start"] = diag_bins[byRegExp["diag_bin_id"].values]
     byRegExp["diag_bin_end"] = diag_bins[byRegExp["diag_bin_id"].values + 1] - 1
@@ -1113,9 +1115,13 @@ def logbin_expected(
     for reg, subdf in byRegExp.groupby("region"):
         subdf = subdf.sort_values("diag_bin_id")
         valid = np.minimum(subdf["n_valid"].values[:-1], subdf["n_valid"].values[1:])
-        mids = np.sqrt(subdf[diag_avg_name].values[:-1] * subdf[diag_avg_name].values[1:])
+        mids = np.sqrt(
+            subdf[diag_avg_name].values[:-1] * subdf[diag_avg_name].values[1:]
+        )
         f = der_smooth_function_by_reg
-        slope = np.diff(f(np.log(subdf[Pc_name].values))) / np.diff(f(np.log(subdf[diag_avg_name].values)))
+        slope = np.diff(f(np.log(subdf[Pc_name].values))) / np.diff(
+            f(np.log(subdf[diag_avg_name].values))
+        )
         newdf = pd.DataFrame(
             {
                 diag_avg_name: mids,
@@ -1209,10 +1215,19 @@ def combine_binned_expected(
     """
     diag_avg_name = "diag.avg"
     scal = numutils.weighted_groupby_mean(
-        binned_exp[[Pc_name, "diag_bin_id", "n_valid", diag_avg_name, "diag_bin_start", "diag_bin_end"]],
+        binned_exp[
+            [
+                Pc_name,
+                "diag_bin_id",
+                "n_valid",
+                diag_avg_name,
+                "diag_bin_start",
+                "diag_bin_end",
+            ]
+        ],
         group_by="diag_bin_id",
         weigh_by="n_valid",
-        mode="mean"
+        mode="mean",
     )
 
     if spread_funcs == "minmax":
@@ -1229,7 +1244,7 @@ def combine_binned_expected(
             binned_exp[[Pc_name, "diag_bin_id", "n_valid"]],
             group_by="diag_bin_id",
             weigh_by="n_valid",
-            mode="std"
+            mode="std",
         )[Pc_name]
         low_err = scal[Pc_name] - var
         high_err = scal[Pc_name] + var
@@ -1238,7 +1253,7 @@ def combine_binned_expected(
             binned_exp[[Pc_name, "diag_bin_id", "n_valid"]],
             group_by="diag_bin_id",
             weigh_by="n_valid",
-            mode="logstd"
+            mode="logstd",
         )[Pc_name]
         low_err = scal[Pc_name] / var
         high_err = scal[Pc_name] * var
@@ -1250,7 +1265,9 @@ def combine_binned_expected(
 
     f = der_smooth_function_combined
 
-    slope = np.diff(f(np.log(scal[Pc_name].values))) / np.diff(f(np.log(scal[diag_avg_name].values)))
+    slope = np.diff(f(np.log(scal[Pc_name].values))) / np.diff(
+        f(np.log(scal[diag_avg_name].values))
+    )
     valid = np.minimum(scal["n_valid"].values[:-1], scal["n_valid"].values[1:])
     mids = np.sqrt(scal[diag_avg_name].values[:-1] * scal[diag_avg_name].values[1:])
     slope_df = pd.DataFrame(
@@ -1300,3 +1317,90 @@ def combine_binned_expected(
         )
 
     return scal, slope_df
+
+
+def interpolate_expected(
+    expected,
+    binned_expected,
+    columns=["balanced.avg"],
+    kind="quadratic",
+    by_region=True,
+    extrapolate_small_s=False,
+):
+    """
+    Interpolates expected to match binned_expected. 
+    Basically, this function smoothes the original expected according to the logbinned expected. 
+    It could either use by-region expected (each region will have different expected)
+    or use combined binned_expected (all regions will have the same expected after that)
+    
+    Parameters
+    ----------
+    
+    expected: pd.DataFrame
+        expected as returned by diagsum 
+    binned_expected: pd.DataFrame
+        binned expected (combined or not)
+    columns: list[str] (optional)
+        Columns to interpolate. Must be present in binned_expected,
+        but not necessarily in expected.
+    kind: str (optional)
+        Interpolation type, according to scipy.interpolate.interp1d
+    by_region: bool or str (optional)
+        Whether to do interpolation by-region (default=True).
+        False means use one expected for all regions (use entire table). 
+        If a region name is provided, expected for that region is used.
+    """
+
+    exp_int = expected.copy()
+    gr_exp = exp_int.groupby("region")  # groupby original expected by region
+
+    if by_region is not False and "region" not in binned_expected:
+        warnings.warn("Region column not found, assuming combined expected")
+        by_region = False
+
+    if by_region is True:
+        # groupby expected
+        gr_binned = binned_expected.groupby("region")
+    elif by_region is not False:
+        # extract a region that we want to use
+        binned_expected = binned_expected[binned_expected["region"] == by_region]
+
+    if by_region is not True:
+        # check that we have no duplicates in expected
+        assert len(binned_expected["diag_bin_id"].drop_duplicates()) == len(
+            binned_expected
+        )
+
+    interp_dfs = []
+
+    for reg, df_orig in gr_exp:
+        if by_region is True:  # use binned expected for this region
+            if reg not in gr_binned.groups:
+                continue
+            subdf = gr_binned.get_group(reg)
+        else:
+            subdf = binned_expected
+
+        diag_orig = df_orig["diag"].values
+        diag_mid = (subdf["diag_bin_start"] + subdf["diag_bin_end"]) / 2
+        interp_df = pd.DataFrame(
+            index=df_orig.index
+        )  # df to put interpolated values in
+        with np.errstate(invalid="ignore", divide="ignore"):
+            for colname in columns:  # interpolate each column
+                value_column = subdf[colname]
+                interp = interp1d(
+                    np.log(diag_mid),
+                    np.log(value_column),
+                    kind=kind,
+                    fill_value="extrapolate",
+                )
+                interp_df[colname] = np.exp(interp(np.log(diag_orig)))
+            if not extrapolate_small_s:
+                mask = diag_orig >= subdf["diag_bin_start"].min()
+                interp_df = interp_df.iloc[mask]
+        interp_dfs.append(interp_df)
+    interp_df = pd.concat(interp_dfs)
+    for i in interp_df.columns:
+        exp_int[i] = interp_df[i]
+    return exp_int

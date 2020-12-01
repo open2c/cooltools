@@ -336,3 +336,49 @@ def test_logbin_expected_cli(request, tmpdir):
     # make sure logbin output is generated:
     assert op.isfile(f"{logbin_prefix}.log.tsv")
     assert op.isfile(f"{logbin_prefix}.der.tsv")
+
+def test_logbin_interpolate_roundtrip():
+    from cooltools.expected import logbin_expected, diagsum, combine_binned_expected, interpolate_expected
+    N = [100,300]
+
+    diag =np.concatenate([np.arange(i,dtype=int) for i in N])
+    region = np.concatenate([i*[j] for i,j in zip(N, ["chr1","chr2"])])
+    prob = 1 / (diag+1)
+    n_valid = prob * 0 + 300 
+    count_sum = n_valid * prob * 100
+    balanced_sum = n_valid * prob 
+    df = pd.DataFrame({"region":region, "diag":diag, "n_valid":n_valid, "count.sum":count_sum, "balanced.sum":balanced_sum})
+    df2 = df.copy()
+    df2["balanced.sum"].values[:N[0]] *= 2  # chr2 is different  in df2
+
+    # simple roundtrip 
+    exp1,der1,bins = logbin_expected(df2)
+    interp = interpolate_expected(df2, exp1)
+    max_dev = np.nanmax(np.abs((interp["balanced.avg"] - df2["balanced.sum"] / df2["n_valid"]) / interp["balanced.avg"]))
+    assert max_dev < 0.1   # maximum absolute deviation less than 10%
+
+    # using combined expected succeeds when chroms are same
+    exp1,der1,bins = logbin_expected(df)
+    comb, cder = combine_binned_expected(exp1, der1)
+    interp = interpolate_expected(df, comb, by_region=False)
+    max_dev = np.nanmax(np.abs((interp["balanced.avg"] - df["balanced.sum"] / df["n_valid"]) / interp["balanced.avg"]))
+    assert max_dev < 0.1  # we are now different because we fed combined expected 
+
+    # using combined expected deemed to fail with df2
+    exp1,der1,bins = logbin_expected(df2)
+    comb, cder = combine_binned_expected(exp1, der1)
+    interp = interpolate_expected(df2, comb, by_region=False)
+    max_dev = np.nanmax(np.abs((interp["balanced.avg"] - df2["balanced.sum"] / df2["n_valid"]) / interp["balanced.avg"]))
+    assert max_dev > 0.1  # we are now different because we fed combined expected 
+
+    # using chr2 for chr1 works if they are the same
+    interp = interpolate_expected(df, exp1, by_region = "chr2")
+    max_dev = np.abs((interp["balanced.avg"] - df["balanced.sum"] / df["n_valid"]) / interp["balanced.avg"])
+    assert np.nanmax(max_dev) < 0.1  # we are now different because we fed combined expected 
+
+    # using chr2 for chr1 fails if chroms are different 
+    interp = interpolate_expected(df2, exp1, by_region = "chr2")
+    max_dev = np.abs((interp["balanced.avg"] - df2["balanced.sum"] / df2["n_valid"]) / interp["balanced.avg"])
+    assert np.nanmax(max_dev[N[0]:]) < 0.1  # we are now correct for chr2 because we chose chr2 
+    assert np.nanmax(max_dev[:N[0]]) > 0.5  # we are now different for chr1  
+
