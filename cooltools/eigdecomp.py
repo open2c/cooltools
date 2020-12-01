@@ -165,7 +165,7 @@ def _filter_heatmap(A, transmask, perc_top, perc_bottom):
 
 
 def _fake_cis(A, cismask):
-    cismask = cismask.astype(np.int64)
+    cismask = cismask.astype(np.uint8)
     s = np.abs(np.sum(A, axis=0)) <= 1e-10
     cismask[:, s] = 2
     cismask[s, :] = 2
@@ -266,7 +266,6 @@ def trans_eig(
     A[:, is_bad_bin] = 0
 
     # Fake cis and re-balance
-    A = numutils.iterative_correction_symmetric(A)[0]
     A = _fake_cis(A, ~is_trans)
     A = numutils.iterative_correction_symmetric(A)[0]
     A = _fake_cis(A, ~is_trans)
@@ -334,7 +333,7 @@ def cooler_cis_eig(
                 'No column "{}" in the bin table'.format(phasing_track_col)
             )
         phasing_track = (
-            bioframe.slice_bedframe(bins, region)[phasing_track_col].values
+            bioframe.select(bins, region)[phasing_track_col].values
             if phasing_track_col
             else None
         )

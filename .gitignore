@@ -95,3 +95,7 @@ ENV/
 .ropeproject
 
 tmp/
+
+# Downloaded data
+datasets/
+!datasets/external_test_files.tsv

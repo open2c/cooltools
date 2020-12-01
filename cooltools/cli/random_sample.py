@@ -1,3 +1,4 @@
+import multiprocess as mp
 import click
 
 import cooler
@@ -35,13 +36,20 @@ from .. import sample
     is_flag=True,
 )
 @click.option(
+    "--nproc", "-p",
+    help="Number of processes to split the work between."
+    "[default: 1, i.e. no process pool]",
+    default=1,
+    type=int,
+)
+@click.option(
     "--chunksize",
     help="The number of pixels loaded and processed per step of computation.",
     type=int,
     default=int(1e7),
     show_default=True,
 )
-def random_sample(in_path, out_path, count, frac, exact, chunksize):
+def random_sample(in_path, out_path, count, frac, exact, nproc, chunksize):
     """
     Pick a random sample of contacts from a Hi-C map, w/o replacement.
 
@@ -53,12 +61,22 @@ def random_sample(in_path, out_path, count, frac, exact, chunksize):
 
     """
 
-    sample.sample_cooler(
-        in_path,
-        out_path,
-        count=count,
-        frac=frac,
-        exact=exact,
-        chunksize=chunksize,
-        map_func=map,
-    )
+    if nproc > 1:
+        pool = mp.Pool(nproc)
+        map_ = pool.map
+    else:
+        map_ = map
+
+    try:
+        sample.sample_cooler(
+            in_path,
+            out_path,
+            count=count,
+            frac=frac,
+            exact=exact,
+            chunksize=chunksize,
+            map_func=map_
+        )
+    finally:
+        if nproc > 1:
+            pool.close()
