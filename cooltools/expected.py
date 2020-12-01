@@ -1209,7 +1209,7 @@ def combine_binned_expected(
     """
     diag_avg_name = "diag.avg"
     scal = numutils.weighted_groupby_mean(
-        binned_exp[[Pc_name, "diag_bin_id", "n_valid", diag_avg_name]],
+        binned_exp[[Pc_name, "diag_bin_id", "n_valid", diag_avg_name, "diag_bin_start", "diag_bin_end"]],
         group_by="diag_bin_id",
         weigh_by="n_valid",
         mode="mean"
