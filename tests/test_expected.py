@@ -1,4 +1,5 @@
 import os.path as op
+
 # import pandas as pd
 
 import numpy as np
@@ -203,12 +204,15 @@ def test_expected_cli(request, tmpdir):
     out_cis_expected = op.join(tmpdir, "cis.exp.tsv")
     runner = CliRunner()
     result = runner.invoke(
-        cli, [
-            'compute-expected',
-            '--weight-name', weight_name,
-            '-o', out_cis_expected,
+        cli,
+        [
+            "compute-expected",
+            "--weight-name",
+            weight_name,
+            "-o",
+            out_cis_expected,
             in_cool,
-        ]
+        ],
     )
     assert result.exit_code == 0
     clr = cooler.Cooler(in_cool)
@@ -234,13 +238,17 @@ def test_expected_regions_cli(request, tmpdir):
     out_cis_expected = op.join(tmpdir, "cis.regions.exp.tsv")
     runner = CliRunner()
     result = runner.invoke(
-        cli, [
-            'compute-expected',
-            '--weight-name', weight_name,
-            '--regions', in_regions,
-            '-o', out_cis_expected,
+        cli,
+        [
+            "compute-expected",
+            "--weight-name",
+            weight_name,
+            "--regions",
+            in_regions,
+            "-o",
+            out_cis_expected,
             in_cool,
-        ]
+        ],
     )
     assert result.exit_code == 0
     clr = cooler.Cooler(in_cool)
@@ -265,18 +273,25 @@ def test_trans_expected_regions_cli(request, tmpdir):
     # CLI compute expected for cis-data with arbitrary regions
     # which may overlap. But it is symmetrical cis-case.
     in_cool = op.join(request.fspath.dirname, "data/CN.mm9.1000kb.cool")
-    in_regions = op.join(request.fspath.dirname, "data/mm9.named_nonoverlap_regions.bed")
+    in_regions = op.join(
+        request.fspath.dirname, "data/mm9.named_nonoverlap_regions.bed"
+    )
     out_trans_expected = op.join(tmpdir, "cis.regions.exp.tsv")
     runner = CliRunner()
     result = runner.invoke(
-        cli, [
-            'compute-expected',
-            '--weight-name', weight_name,
-            '--regions', in_regions,
-            '--contact-type', 'trans',
-            '-o', out_trans_expected,
+        cli,
+        [
+            "compute-expected",
+            "--weight-name",
+            weight_name,
+            "--regions",
+            in_regions,
+            "--contact-type",
+            "trans",
+            "-o",
+            out_trans_expected,
             in_cool,
-        ]
+        ],
     )
     assert result.exit_code == 0
     clr = cooler.Cooler(in_cool)
@@ -311,12 +326,15 @@ def test_logbin_expected_cli(request, tmpdir):
     out_cis_expected = op.join(tmpdir, "cis.exp.tsv")
     runner = CliRunner()
     result = runner.invoke(
-        cli, [
-            'compute-expected',
-            '--weight-name', weight_name,
-            '-o', out_cis_expected,
+        cli,
+        [
+            "compute-expected",
+            "--weight-name",
+            weight_name,
+            "-o",
+            out_cis_expected,
             in_cool,
-        ]
+        ],
     )
     assert result.exit_code == 0
 
@@ -325,60 +343,145 @@ def test_logbin_expected_cli(request, tmpdir):
     logbin_prefix = op.join(tmpdir, "logbin_prefix")
     runner = CliRunner()
     result = runner.invoke(
-        cli, [
-            'logbin-expected',
-            '--resolution', binsize,
+        cli,
+        [
+            "logbin-expected",
+            "--resolution",
+            binsize,
             out_cis_expected,
             logbin_prefix,
-        ]
+        ],
     )
     assert result.exit_code == 0
     # make sure logbin output is generated:
     assert op.isfile(f"{logbin_prefix}.log.tsv")
     assert op.isfile(f"{logbin_prefix}.der.tsv")
 
+
 def test_logbin_interpolate_roundtrip():
-    from cooltools.expected import logbin_expected, diagsum, combine_binned_expected, interpolate_expected
-    N = [100,300]
+    from cooltools.expected import (
+        logbin_expected,
+        combine_binned_expected,
+        interpolate_expected,
+    )
 
-    diag =np.concatenate([np.arange(i,dtype=int) for i in N])
-    region = np.concatenate([i*[j] for i,j in zip(N, ["chr1","chr2"])])
-    prob = 1 / (diag+1)
-    n_valid = prob * 0 + 300 
+    N = [100, 300]
+    diag = np.concatenate([np.arange(i, dtype=int) for i in N])
+    region = np.concatenate([i * [j] for i, j in zip(N, ["chr1", "chr2"])])
+    prob = 1 / (diag + 1)
+    n_valid = prob * 0 + 300
     count_sum = n_valid * prob * 100
-    balanced_sum = n_valid * prob 
-    df = pd.DataFrame({"region":region, "diag":diag, "n_valid":n_valid, "count.sum":count_sum, "balanced.sum":balanced_sum})
+    balanced_sum = n_valid * prob
+    df = pd.DataFrame(
+        {
+            "region": region,
+            "diag": diag,
+            "n_valid": n_valid,
+            "count.sum": count_sum,
+            "balanced.sum": balanced_sum,
+        }
+    )
     df2 = df.copy()
-    df2["balanced.sum"].values[:N[0]] *= 2  # chr2 is different  in df2
+    df2["balanced.sum"].values[: N[0]] *= 2  # chr2 is different  in df2
 
-    # simple roundtrip 
-    exp1,der1,bins = logbin_expected(df2)
+    # simple roundtrip
+    exp1, der1, bins = logbin_expected(df2)
     interp = interpolate_expected(df2, exp1)
-    max_dev = np.nanmax(np.abs((interp["balanced.avg"] - df2["balanced.sum"] / df2["n_valid"]) / interp["balanced.avg"]))
-    assert max_dev < 0.1   # maximum absolute deviation less than 10%
+    max_dev = np.nanmax(
+        np.abs(
+            (interp["balanced.avg"] - df2["balanced.sum"] / df2["n_valid"])
+            / interp["balanced.avg"]
+        )
+    )
+    assert max_dev < 0.1  # maximum absolute deviation less than 10%
 
     # using combined expected succeeds when chroms are same
-    exp1,der1,bins = logbin_expected(df)
+    exp1, der1, bins = logbin_expected(df)
     comb, cder = combine_binned_expected(exp1, der1)
     interp = interpolate_expected(df, comb, by_region=False)
-    max_dev = np.nanmax(np.abs((interp["balanced.avg"] - df["balanced.sum"] / df["n_valid"]) / interp["balanced.avg"]))
-    assert max_dev < 0.1  # we are now different because we fed combined expected 
+    max_dev = np.nanmax(
+        np.abs(
+            (interp["balanced.avg"] - df["balanced.sum"] / df["n_valid"])
+            / interp["balanced.avg"]
+        )
+    )
+    assert max_dev < 0.1  # we are now different because we fed combined expected
 
     # using combined expected deemed to fail with df2
-    exp1,der1,bins = logbin_expected(df2)
+    exp1, der1, bins = logbin_expected(df2)
     comb, cder = combine_binned_expected(exp1, der1)
     interp = interpolate_expected(df2, comb, by_region=False)
-    max_dev = np.nanmax(np.abs((interp["balanced.avg"] - df2["balanced.sum"] / df2["n_valid"]) / interp["balanced.avg"]))
-    assert max_dev > 0.1  # we are now different because we fed combined expected 
+    max_dev = np.nanmax(
+        np.abs(
+            (interp["balanced.avg"] - df2["balanced.sum"] / df2["n_valid"])
+            / interp["balanced.avg"]
+        )
+    )
+    assert max_dev > 0.1  # we are now different because we fed combined expected
 
     # using chr2 for chr1 works if they are the same
-    interp = interpolate_expected(df, exp1, by_region = "chr2")
-    max_dev = np.abs((interp["balanced.avg"] - df["balanced.sum"] / df["n_valid"]) / interp["balanced.avg"])
-    assert np.nanmax(max_dev) < 0.1  # we are now different because we fed combined expected 
+    interp = interpolate_expected(df, exp1, by_region="chr2")
+    max_dev = np.abs(
+        (interp["balanced.avg"] - df["balanced.sum"] / df["n_valid"])
+        / interp["balanced.avg"]
+    )
+    assert (
+        np.nanmax(max_dev) < 0.1
+    )  # we are now different because we fed combined expected
 
-    # using chr2 for chr1 fails if chroms are different 
-    interp = interpolate_expected(df2, exp1, by_region = "chr2")
-    max_dev = np.abs((interp["balanced.avg"] - df2["balanced.sum"] / df2["n_valid"]) / interp["balanced.avg"])
-    assert np.nanmax(max_dev[N[0]:]) < 0.1  # we are now correct for chr2 because we chose chr2 
-    assert np.nanmax(max_dev[:N[0]]) > 0.5  # we are now different for chr1  
+    # using chr2 for chr1 fails if chroms are different
+    interp = interpolate_expected(df2, exp1, by_region="chr2")
+    max_dev = np.abs(
+        (interp["balanced.avg"] - df2["balanced.sum"] / df2["n_valid"])
+        / interp["balanced.avg"]
+    )
+    assert (
+        np.nanmax(max_dev[N[0] :]) < 0.1
+    )  # we are now correct for chr2 because we chose chr2
+    assert np.nanmax(max_dev[: N[0]]) > 0.5  # we are now different for chr1
 
+
+def test_preprocess_regions():
+    from cooltools.expected import _preprocess_regions as func
+
+    regs = [(None, 42), (42, None), ((None, 42), (42, None))]
+    names, processed = func(regs, 100)
+    assert (processed[0] == np.array([[0, 42], [0, 42]])).all()
+    assert (processed[1] == np.array([[42, 100], [42, 100]])).all()
+    assert (processed[2] == np.array([[0, 42], [42, 100]])).all()
+    assert names == ["0-42", "42-100", "0-42;42-100"]
+
+    names, processed = func(regs[:1])
+    assert (processed[0] == np.array([[0, 42], [0, 42]])).all()
+
+    # testing names
+    assert func([[0, 100]])[0][0] == "0-100"
+    assert func([[0, 100]], resolution=1000)[0][0] == "0-100000"
+    names3 = func([[0, 100]], chrom="chr1", resolution=1000)[0][0]
+    assert names3 == "chr1:0-100000"
+    names4 = func([[0, 100]], chrom="chr1", resolution=1000, offset_bp=1000)[0][0]
+    assert names4 == "chr1:1000-101000"
+
+
+def test_mat_expected():
+    from cooltools.expected import mat_expected
+
+    ar = np.arange(100)
+    ar = np.abs(ar[:, None] - ar[None, :])
+    ar[ar == 0] = 1
+    ar = 1 / ar
+
+    exp1 = mat_expected(ar)
+    exp1["balanced.avg"] = exp1["balanced.sum"] / exp1["n_valid"]
+
+    ar[3:5] = 0
+    ar[:, 3:5] = 0
+
+    exp2 = mat_expected(ar)
+    exp2["balanced.avg"] = exp2["balanced.sum"] / exp2["n_valid"]
+
+    exp3 = mat_expected(ar, regions=[[(0, 50), (50, 100)]])
+    exp3["balanced.avg"] = exp3["balanced.sum"] / exp3["n_valid"]
+
+    assert np.allclose(exp1["balanced.avg"], exp2["balanced.avg"])
+    assert np.allclose(exp1["balanced.avg"], exp3["balanced.avg"])

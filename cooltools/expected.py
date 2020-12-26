@@ -1,4 +1,4 @@
-from itertools import chain, combinations
+from itertools import chain
 from collections import defaultdict
 from functools import partial
 
@@ -6,11 +6,10 @@ import warnings
 
 import numpy as np
 import pandas as pd
-from scipy.linalg import toeplitz
 from scipy.signal import fftconvolve
 from scipy.interpolate import interp1d
 
-from cooler.tools import split, partition
+from cooler.tools import partition
 import cooler
 import bioframe
 from .lib import assign_supports, numutils
@@ -921,6 +920,170 @@ def blocksum_asymm(
     )
 
 
+def _preprocess_regions(regions, M=None, chrom=None, resolution=1, offset_bp=0):
+    """
+    Pre-processes regions and assigns names for the function that calculates
+    expected from the raw matrix
+
+    For now, just put the test here  they explain functionality well.
+
+    regs = [(None, 42), (42, None), ((None, 42), (42, None))]
+    names, processed = _preprocess_regions(regs, 100)
+
+    assert (processed[0] == np.array([[0, 42], [0, 42]])).all()
+    assert (processed[1] == np.array([[42, 100], [42, 100]])).all()
+    assert (processed[2] == np.array([[0, 42], [42, 100]])).all()
+    assert names == ['0-42', '42-100', '0-42;42-100']
+
+    names, processed = _preprocess_regions(regs[:1])
+    assert (processed[0] == np.array([[0, 42], [0, 42]])).all()
+
+    # testing names
+    assert _preprocess_regions([[0,100]])[0][0] == "0-100"
+    assert _preprocess_regions([[0,100]], resolution=1000)[0][0] == "0-100000"
+    assert _preprocess_regions([[0,100]], chrom="chr1",resolution=1000)[0][0] == "chr1:0-100000"
+    assert _preprocess_regions([[0,100]], chrom="chr1",resolution=1000, offset_bp=1000)[0][0] == "chr1:1000-101000"
+    """
+    processed_regions = []
+    for reg in regions:
+        try:
+            reg[0][0]
+        except Exception:
+            reg = [reg, reg]
+        reg = list([list(reg[0]), list(reg[1])])
+        for r in reg:
+            if r[0] is None:
+                r[0] = 0
+            if r[1] is None:
+                if M is None:
+                    raise ValueError("Matrix size M is needed to fill None at the end")
+                r[1] = M
+        reg = np.array(reg)
+        if reg.shape != (2, 2):
+            raise ValueError("Regions should be (st,end) or [(st1, end1), (st2, end2)]")
+        processed_regions.append(reg)
+
+    names = []
+    for reg in processed_regions:
+        name = f"{reg[0][0]*resolution + offset_bp}-{reg[0][1]*resolution + offset_bp}"
+        if not (reg[0] == reg[1]).all():
+            name = (
+                name
+                + ";"
+                + f"{reg[1][0]*resolution + offset_bp}-{reg[1][1]*resolution + offset_bp}"
+            )
+        if chrom is not None:
+            name = f"{chrom}:" + name
+        names.append(name)
+
+    return names, processed_regions
+
+
+def mat_expected(
+    heatmap,
+    regions=None,
+    raw_map=None,
+    *,
+    exclude_diag=2,
+    chrom=None,
+    resolution=1,
+    offset_bp=0,
+):
+    """
+    Calculates open2c-formatted expected from a heatmap.
+    Optionally adds chromosomes, and converts region names to meaningful names.
+
+    Parameters
+    ----------
+
+    heatmap: 2D array
+        Heatmap to calculate expected (expected goes to balanced.sum)
+    regions: [(st, end), ((st1, end1), (st2, end2))]
+        on-diagonal or off-diagonal regions to calculate expected
+    raw_map: 2D array or None (optional; default=None)
+        Raw heatmap to populate count.sum
+    exclude_diags: int (optional; default=2)
+        Number of diagonals to exclude. Resulting diags are not filled with NaNs.
+    chrom: str or None (optional; default=None)
+        If set to str, would append chrom to region name to obtain UCSC-style strings
+    resolution: int (optional; default=1)
+        If set to a number, would assume this is a size of a pixel.
+        Helpful for obtaining UCSC-style regions that are meaningful.
+    offset_bp: int (optional; default=0)
+        Add this offset to start/end for region name only.
+        Helpful if your heatmap does not start at the beginning of a chromosome
+
+    Caveats
+    -------
+
+    For symmetric regions, every diagonal is counted once.
+
+    For assymetric regions that do not cross main diagonal,
+    each diagonal is counted once as well.
+
+    For assymetric regions that cross main diagonal (RLY?)
+    the "overhang" would be counted twice. Also, why would you want that?
+    """
+
+    heatmap = np.array(heatmap, dtype=float)
+    M = len(heatmap)
+
+    if regions is None:
+        regions = [(0, M)]
+
+    names, regions = _preprocess_regions(
+        regions,
+        M=M,
+        chrom=chrom,
+        resolution=resolution,
+        offset_bp=offset_bp,
+    )
+
+    heatmap[~np.isfinite(heatmap)] = 0
+    mask = np.sum(heatmap, axis=0) == 0  # valid diag mask
+    exclude_diag = 2
+
+    valid = np.ones_like(heatmap, dtype=bool)
+    valid[mask] = False
+    valid[:, mask] = False
+
+    ar = np.arange(len(heatmap), dtype=np.int32)
+    diag_mask = np.abs(ar[:, None] - ar[None, :])
+    diag_mask[~valid] = -1
+
+    dfs = []
+    for name, reg in zip(names, regions):
+        (st1, ed1), (st2, ed2) = reg
+        subhm = heatmap[st1:ed1, st2:ed2].flatten()
+        subdiag = diag_mask[st1:ed1, st2:ed2].flatten()
+
+        mask = subdiag >= exclude_diag
+        subhm = subhm[mask]
+        subdiag = subdiag[mask]
+
+        n_valid = np.bincount(subdiag)
+        balanced_sum = np.bincount(subdiag, weights=subhm)
+        diag = np.arange(len(n_valid), dtype=int)
+
+        mask2 = n_valid > 0
+        n_valid = n_valid[mask2]
+        balanced_sum = balanced_sum[mask2]
+        diag = diag[mask2]
+        vals = {
+            "n_valid": n_valid,
+            "diag": diag,
+            "balanced.sum": balanced_sum,
+            "region": name,
+        }
+        if raw_map is not None:
+            subraw = raw_map[st1:ed1, st2:ed2].flatten()
+            subraw = subraw[mask]
+            count_sum = np.bincount(subdiag, weights=subraw)
+            vals["count.sum"] = count_sum
+        dfs.append(pd.DataFrame(vals))
+    return pd.concat(dfs)
+
+
 def logbin_expected(
     exp,
     exp_summary_name="balanced.sum",
@@ -1018,8 +1181,8 @@ def logbin_expected(
     4MB. The center of mass of this trapezoid is at 36 + 14/9 = 37.55MB,
     and not at 38MB. So the last bin center is definitely mis-assigned, and
     the second-to-last bin center is off by some 25%. This would lead to a 25%
-    error of the P(s) slope estimated between the third-to-last and 
-    second-to-last bin. 
+    error of the P(s) slope estimated between the third-to-last and
+    second-to-last bin.
 
     In presence of missing bins, this all becomes more complex, but this kind
     of averaging should take care of everything. It follows a general
@@ -1147,9 +1310,9 @@ def combine_binned_expected(
     concat_original=False,
 ):
     """
-    Combines by-region log-binned expected and slopes into genome-wide averages, 
-    handling small chromosomes and "corners" in an optimal fashion, robust to 
-    outliers. Calculates spread of by-chromosome P(s) and slopes, also in an optimal fashion. 
+    Combines by-region log-binned expected and slopes into genome-wide averages,
+    handling small chromosomes and "corners" in an optimal fashion, robust to
+    outliers. Calculates spread of by-chromosome P(s) and slopes, also in an optimal fashion.
 
     Parameters
     ----------
@@ -1159,14 +1322,14 @@ def combine_binned_expected(
     binned_exp_slope : dataframe or None
         If provided, estimates spread of slopes.
         Is necessary if concat_original is True
-        
+
     Pc_name : str
         Name of the column with the probability of contacts.
         Defaults to "balanced.avg".
 
     der_smooth_function_combined : callable
         A smoothing function for calculating slopes on combined data
-        
+
     spread_funcs: "minmax", "std", "logstd" or a function (see below)
         A way to estimate the spread of the P(s) curves between regions.
         * "minmax" - use the minimum/maximum of by-region P(s)
@@ -1185,10 +1348,10 @@ def combine_binned_expected(
 
     Notes
     -----
-    This function does not calculate errorbars. The spread is not the deviation of the mean, 
-    and rather is representative of variability between chromosomes. 
-    
-    
+    This function does not calculate errorbars. The spread is not the deviation of the mean,
+    and rather is representative of variability between chromosomes.
+
+
     Calculating errorbars/spread
 
     1. Take all by-region P(s)
@@ -1328,16 +1491,16 @@ def interpolate_expected(
     extrapolate_small_s=False,
 ):
     """
-    Interpolates expected to match binned_expected. 
-    Basically, this function smoothes the original expected according to the logbinned expected. 
+    Interpolates expected to match binned_expected.
+    Basically, this function smoothes the original expected according to the logbinned expected.
     It could either use by-region expected (each region will have different expected)
     or use combined binned_expected (all regions will have the same expected after that)
-    
+
     Parameters
     ----------
-    
+
     expected: pd.DataFrame
-        expected as returned by diagsum 
+        expected as returned by diagsum
     binned_expected: pd.DataFrame
         binned expected (combined or not)
     columns: list[str] (optional)
@@ -1347,7 +1510,7 @@ def interpolate_expected(
         Interpolation type, according to scipy.interpolate.interp1d
     by_region: bool or str (optional)
         Whether to do interpolation by-region (default=True).
-        False means use one expected for all regions (use entire table). 
+        False means use one expected for all regions (use entire table).
         If a region name is provided, expected for that region is used.
     """
 
