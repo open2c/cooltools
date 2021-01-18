@@ -72,7 +72,7 @@ def gc(bins_path, fasta_path, mapped_only):
             "Some chromosomes mentioned in {}"
             " are not found in {}".format(bins_path, fasta_path)
         )
-    bins["GC"] = bioframe.frac_gc(bins, fasta_records, mapped_only)
+    bins = bioframe.frac_gc(bins, fasta_records, mapped_only)
     print(bins.to_csv(sep="\t", index=False))
 
 
