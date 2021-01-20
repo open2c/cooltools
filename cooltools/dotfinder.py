@@ -521,7 +521,7 @@ def heatmap_tiles_generator_diag(clr, regions, pad_size, tile_size, band_to_cove
 
     """
 
-    for chrom, start, end, name in regions.iter:
+    for chrom, start, end, region_name in regions.itertuples(index=False):
         region_begin, region_end = clr.extent(chrom)
         for tilei, tilej in square_matrix_tiling(
             region_begin,
@@ -539,7 +539,7 @@ def heatmap_tiles_generator_diag(clr, regions, pad_size, tile_size, band_to_cove
             # we are using this >2*padding trick to exclude
             # tiles from the lower triangle from calculations ...
             if (min(band_to, diag_to) - max(band_from, diag_from)) > 2 * pad_size:
-                yield name, tilei, tilej
+                yield region_name, tilei, tilej
 
 
 ##################################

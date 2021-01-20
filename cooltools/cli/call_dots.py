@@ -186,7 +186,7 @@ def call_dots(
 
     COOL_PATH : The paths to a .cool file with a balanced Hi-C map.
 
-    EXPECTED_PATH : The paths to a tsv-like file with expected signal.
+    EXPECTED_PATH : The paths to a tsv-like file with expected cis-expected.
 
     Analysis will be performed for chromosomes referred to in EXPECTED_PATH, and
     therefore these chromosomes must be a subset of chromosomes referred to in
@@ -197,16 +197,16 @@ def call_dots(
     COOL_PATH and EXPECTED_PATH must be binned at the same resolution.
 
     EXPECTED_PATH must contain at least the following columns for cis contacts:
-    'chrom', 'diag', 'n_valid', value_name. value_name is controlled using
+    'region', 'diag', 'n_valid', value_name. value_name is controlled using
     options. Header must be present in a file.
 
     """
     clr = cooler.Cooler(cool_path)
 
-    expected_columns = ["chrom", "diag", "n_valid", expected_name]
-    expected_index = ["chrom", "diag"]
+    expected_columns = ["region", "diag", "n_valid", expected_name]
+    expected_index = ["region", "diag"]
     expected_dtypes = {
-        "chrom": np.str,
+        "region": np.str,
         "diag": np.int64,
         "n_valid": np.int64,
         expected_name: np.float64,
@@ -221,19 +221,21 @@ def call_dots(
     expected.set_index(expected_index, inplace=True)
 
     # Input validation
-    # unique list of chroms mentioned in expected_path
+    # unique list of regions mentioned in expected_path
     # do simple column-name validation for now
-    get_exp_chroms = lambda df: df.index.get_level_values("chrom").unique()
+    # [work of entire chromosomes for now, until generic regions are supported]
+    get_exp_chroms = lambda df: df.index.get_level_values("region").unique()
     expected_chroms = get_exp_chroms(expected)
     if not set(expected_chroms).issubset(clr.chromnames):
         raise ValueError(
             "Chromosomes in {} must be subset of ".format(expected_path)
             + "chromosomes in cooler {}".format(cool_path)
+            + "`call_dots` does not yet support generic regions."
         )
     # check number of bins
     # compute # of bins by comparing matching indexes
     get_exp_bins = lambda df, ref_chroms: (
-        df.index.get_level_values("chrom").isin(ref_chroms).sum()
+        df.index.get_level_values("region").isin(ref_chroms).sum()
     )
     expected_bins = get_exp_bins(expected, expected_chroms)
     cool_bins = clr.bins()[:]["chrom"].isin(expected_chroms).sum()
