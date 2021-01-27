@@ -50,7 +50,7 @@ def digest(chromsizes_path, fasta_path, enzyme_name):
             "Some chromosomes mentioned in {}"
             " are not found in {}".format(chromsizes_path, fasta_path)
         )
-    frags = bioframe.tools.digest(fasta_records, enzyme_name)
+    frags = bioframe.digest(fasta_records, enzyme_name)
     print(frags.to_csv(sep="\t", index=False))
 
 
@@ -72,7 +72,7 @@ def gc(bins_path, fasta_path, mapped_only):
             "Some chromosomes mentioned in {}"
             " are not found in {}".format(bins_path, fasta_path)
         )
-    bins["GC"] = bioframe.genomeops.frac_gc(bins, fasta_records, mapped_only, return_input=False)
+    bins = bioframe.frac_gc(bins, fasta_records, mapped_only)
     print(bins.to_csv(sep="\t", index=False))
 
 
@@ -90,5 +90,5 @@ def genecov(bins_path, db):
     import pandas as pd
 
     bins = pd.read_table(bins_path)
-    bins = bioframe.tools.frac_gene_coverage(bins, db)
+    bins = bioframe.frac_gene_coverage(bins, db)
     print(bins.to_csv(sep="\t", index=False))
