@@ -984,7 +984,7 @@ def mat_expected(
     regions=None,
     raw_map=None,
     *,
-    exclude_diag=2,
+    exclude_diags=2,
     chrom=None,
     resolution=1,
     offset_bp=0,
@@ -997,7 +997,7 @@ def mat_expected(
     ----------
 
     heatmap: 2D array
-        Heatmap to calculate expected (expected goes to balanced.sum)
+        Square heatmap to calculate expected (expected goes to balanced.sum)
     regions: [(st, end), ((st1, end1), (st2, end2))]
         on-diagonal or off-diagonal regions to calculate expected
     raw_map: 2D array or None (optional; default=None)
@@ -1039,47 +1039,52 @@ def mat_expected(
         offset_bp=offset_bp,
     )
 
+    # exclude empty and filtered rows/columns from "valid"
     heatmap[~np.isfinite(heatmap)] = 0
     mask = np.sum(heatmap, axis=0) == 0  # valid diag mask
-    exclude_diag = 2
-
     valid = np.ones_like(heatmap, dtype=bool)
     valid[mask] = False
     valid[:, mask] = False
 
-    ar = np.arange(len(heatmap), dtype=np.int32)
+    # matrix of diags, with non-valid pixels filled with "-1"
+    ar = np.arange(M, dtype=np.int32)
     diag_mask = np.abs(ar[:, None] - ar[None, :])
     diag_mask[~valid] = -1
 
     dfs = []
     for name, reg in zip(names, regions):
+        # for a given region extract sub-heatmap and sub-diag_mask
         (st1, ed1), (st2, ed2) = reg
         subhm = heatmap[st1:ed1, st2:ed2].flatten()
         subdiag = diag_mask[st1:ed1, st2:ed2].flatten()
 
-        mask = subdiag >= exclude_diag
-        subhm = subhm[mask]
-        subdiag = subdiag[mask]
+        # exclude non-valid pixels (-1) and "exclude_diags" diags
+        mask_per_pixel = subdiag >= exclude_diags
+        subhm = subhm[mask_per_pixel]
+        subdiag = subdiag[mask_per_pixel]
 
+        # count valid pixels and sum their values on each diagonal
         n_valid = np.bincount(subdiag)
         balanced_sum = np.bincount(subdiag, weights=subhm)
-        diag = np.arange(len(n_valid), dtype=int)
+        diag = np.arange(len(n_valid), dtype=int) # 0...max(subdiag)
 
-        mask2 = n_valid > 0
-        n_valid = n_valid[mask2]
-        balanced_sum = balanced_sum[mask2]
-        diag = diag[mask2]
+        # return only non-trivial values - ? NaN filling instead ?
+        mask_per_diag = n_valid > 0
+        n_valid = n_valid[mask_per_diag]
+        balanced_sum = balanced_sum[mask_per_diag]
+        diag = diag[mask_per_diag]
         vals = {
             "n_valid": n_valid,
             "diag": diag,
             "balanced.sum": balanced_sum,
-            "region": name,
+            "region": name, # same region
         }
+        # sum raw pixel counts for each diag, when raw_map provided
         if raw_map is not None:
             subraw = raw_map[st1:ed1, st2:ed2].flatten()
-            subraw = subraw[mask]
+            subraw = subraw[mask_per_pixel]
             count_sum = np.bincount(subdiag, weights=subraw)
-            vals["count.sum"] = count_sum
+            vals["count.sum"] = count_sum[mask_per_diag] # match len(vals)
         dfs.append(pd.DataFrame(vals))
     return pd.concat(dfs)
 
