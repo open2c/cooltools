@@ -1382,6 +1382,7 @@ def combine_binned_expected(
     pixel.
     """
     diag_avg_name = "diag.avg"
+    # combine pre-logbinned expecteds
     scal = numutils.weighted_groupby_mean(
         binned_exp[
             [
@@ -1398,6 +1399,7 @@ def combine_binned_expected(
         mode="mean",
     )
 
+    # for every diagonal calculate the spread of expected
     if spread_funcs == "minmax":
         byRegVar = binned_exp.copy()
         byRegVar = byRegVar.loc[
@@ -1431,8 +1433,8 @@ def combine_binned_expected(
     scal["low_err"] = low_err
     scal["high_err"] = high_err
 
+    # re-calculate slope of the combined expected (log,smooth,diff)
     f = der_smooth_function_combined
-
     slope = np.diff(f(np.log(scal[Pc_name].values))) / np.diff(
         f(np.log(scal[diag_avg_name].values))
     )
@@ -1448,6 +1450,7 @@ def combine_binned_expected(
     )
     slope_df = slope_df.set_index("diag_bin_id")
 
+    # when pre-region slopes are provided, calculate spread of slopes
     if binned_exp_slope is not None:
         if spread_funcs_slope == "minmax":
             byRegDer = binned_exp_slope.copy()
@@ -1476,6 +1479,7 @@ def combine_binned_expected(
     slope_df = slope_df.reset_index()
     scal = scal.reset_index()
 
+    # append "combined" expected/slopes to the input DataFrames (not in-place)
     if concat_original:
         scal["region"] = "combined"
         slope_df["region"] = "combined"
@@ -1500,6 +1504,8 @@ def interpolate_expected(
     Basically, this function smoothes the original expected according to the logbinned expected.
     It could either use by-region expected (each region will have different expected)
     or use combined binned_expected (all regions will have the same expected after that)
+
+    Such a smoothed expected should be used to calculate observed/expected for downstream analysis.
 
     Parameters
     ----------

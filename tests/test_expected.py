@@ -405,7 +405,7 @@ def test_logbin_interpolate_roundtrip():
             / interp["balanced.avg"]
         )
     )
-    assert max_dev < 0.1  # we are now different because we fed combined expected
+    assert max_dev < 0.1  # maximum absolute deviation less than 10%
 
     # using combined expected deemed to fail with df2
     exp1, der1, bins = logbin_expected(df2)
@@ -427,7 +427,7 @@ def test_logbin_interpolate_roundtrip():
     )
     assert (
         np.nanmax(max_dev) < 0.1
-    )  # we are now different because we fed combined expected
+    )  # maximum absolute deviation less than 10%
 
     # using chr2 for chr1 fails if chroms are different
     interp = interpolate_expected(df2, exp1, by_region="chr2")
@@ -465,23 +465,26 @@ def test_preprocess_regions():
 
 def test_mat_expected():
     from cooltools.expected import mat_expected
-
+    # create a uniform 1/s decay as input
     ar = np.arange(100)
-    ar = np.abs(ar[:, None] - ar[None, :])
+    ar = np.abs(ar[:, None] - ar[None, :]) #like toeplitz(ar)
     ar[ar == 0] = 1
     ar = 1 / ar
 
     exp1 = mat_expected(ar)
     exp1["balanced.avg"] = exp1["balanced.sum"] / exp1["n_valid"]
 
+    # fake some "bad" bins. Same outcome
     ar[3:5] = 0
     ar[:, 3:5] = 0
 
     exp2 = mat_expected(ar)
     exp2["balanced.avg"] = exp2["balanced.sum"] / exp2["n_valid"]
 
+    # calculate expected in an assymetric region. Same outcome
     exp3 = mat_expected(ar, regions=[[(0, 50), (50, 100)]])
     exp3["balanced.avg"] = exp3["balanced.sum"] / exp3["n_valid"]
 
+    # all outcomes are identical because input was homogenous decay
     assert np.allclose(exp1["balanced.avg"], exp2["balanced.avg"])
     assert np.allclose(exp1["balanced.avg"], exp3["balanced.avg"])
