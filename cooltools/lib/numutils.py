@@ -436,7 +436,8 @@ def get_eig(mat, n=3, mask_zero_rows=False, subtract_mean=False, divide_by_mean=
         A square matrix, must not contain nans, infs or zero rows.
 
     n : int
-        The number of eigenvectors to return.
+        The number of eigenvectors to return. Output is backfilled with NaNs
+        when n exceeds the size of the input matrix.
 
     mask_zero_rows : bool
         If True, mask empty rows/columns before eigenvector decomposition.
@@ -454,7 +455,7 @@ def get_eig(mat, n=3, mask_zero_rows=False, subtract_mean=False, divide_by_mean=
         An array of eigenvectors (in rows), sorted by a decreasing absolute
         eigenvalue.
 
-    eigvecs : np.ndarray
+    eigvals : np.ndarray
         An array of sorted eigenvalues.
 
     """
@@ -467,6 +468,12 @@ def get_eig(mat, n=3, mask_zero_rows=False, subtract_mean=False, divide_by_mean=
         warnings.warn(
             "The matrix contains empty rows/columns and is symmetric. "
             "Mask the empty rows with remove_zeros=True"
+        )
+    # size of the input matrix
+    n_rows = mat.shape[0]
+    if n > n_rows:
+        warnings.warn(
+            "Number n of requested eigenvalues is larger than the matrix size."
         )
 
     if mask_zero_rows:
@@ -482,7 +489,6 @@ def get_eig(mat, n=3, mask_zero_rows=False, subtract_mean=False, divide_by_mean=
             subtract_mean=subtract_mean,
             divide_by_mean=divide_by_mean,
         )
-        n_rows = mat.shape[0]
         eigvecs = np.full((n, n_rows), np.nan)
         for i in range(n):
             eigvecs[i][mask] = eigvecs_collapsed[i]
@@ -490,6 +496,12 @@ def get_eig(mat, n=3, mask_zero_rows=False, subtract_mean=False, divide_by_mean=
         return eigvecs, eigvals
     else:
         mat = mat.astype(np.float, copy=True)  # make a copy, ensure float
+
+        # prepare NaN-filled arrays for output in case we requested
+        # more eigenvalues that can be computed (eigs/eigsh k limits)
+        eigvals = np.full(n, np.nan)
+        eigvecs = np.full((n, n_rows), np.nan)
+
         mean = np.mean(mat)
 
         if subtract_mean:
@@ -498,12 +510,18 @@ def get_eig(mat, n=3, mask_zero_rows=False, subtract_mean=False, divide_by_mean=
             mat /= mean
 
         if symmetric:
-            eigvals, eigvecs = scipy.sparse.linalg.eigsh(mat, n)
+            # adjust requested number of eigvals for "eigsh"
+            _n = n if n < n_rows else (n_rows - 1)
+            _eigvals, _eigvecs = scipy.sparse.linalg.eigsh(mat, _n)
         else:
-            eigvals, eigvecs = scipy.sparse.linalg.eigs(mat, n)
-        order = np.argsort(-np.abs(eigvals))
-        eigvals = eigvals[order]
-        eigvecs = eigvecs.T[order]
+            # adjust requested number of eigvals for "eigs"
+            _n = n if n < (n_rows - 1) else (n_rows - 2)
+            _eigvals, _eigvecs = scipy.sparse.linalg.eigs(mat, _n)
+
+        # reorder according to eigvals and copy into output arrays
+        order = np.argsort(-np.abs(_eigvals))
+        eigvals[:_n] = _eigvals[order]
+        eigvecs[:_n,:] = _eigvecs.T[order]
 
         return eigvecs, eigvals
 
