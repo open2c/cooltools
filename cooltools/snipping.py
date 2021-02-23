@@ -134,6 +134,18 @@ def assign_regions(features, supports):
 
 def _pileup(data_select, data_snip, arg):
     support, feature_group = arg
+
+    # check if region is annotated
+    if pd.isnull(support):
+        lo = feature_group["lo"].values
+        hi = feature_group["hi"].values
+        s = hi-lo
+        stack = list(map(np.empty, zip(s, s)))
+        stack = np.dstack(stack)
+        stack[:] = np.nan
+        # return empty snippets if region is not annotated
+        return stack, feature_group["_rank"].values
+
     # check if support region is on- or off-diagonal
     if len(support) == 2:
         region1, region2 = map(bioframe.region.parse_region_string, support)
