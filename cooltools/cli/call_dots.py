@@ -228,8 +228,8 @@ def call_dots(
     expected_chroms = get_exp_chroms(expected)
     if not set(expected_chroms).issubset(clr.chromnames):
         raise ValueError(
-            "Chromosomes in {} must be subset of ".format(expected_path)
-            + "chromosomes in cooler {}".format(cool_path)
+            f"Chromosomes in {expected_path} must be subset of "
+            + f"chromosomes in cooler {cool_path}, because "
             + "`call_dots` does not yet support generic regions."
         )
     # check number of bins
@@ -241,16 +241,12 @@ def call_dots(
     cool_bins = clr.bins()[:]["chrom"].isin(expected_chroms).sum()
     if not (expected_bins == cool_bins):
         raise ValueError(
-            "Number of bins is not matching: ",
-            "{} in {}, and {} in {} for chromosomes {}".format(
-                expected_bins, expected_path, cool_bins, cool_path, expected_chroms
-            ),
+            f"Number of bins is not matching: {expected_bins} in {expected_path},"
+            + f" and {cool_bins} in {cool_path} for chromosomes {expected_chroms}"
         )
     if verbose:
-        print(
-            "{} and {} passed cross-compatibility checks.".format(
-                cool_path, expected_path
-            )
+        print( # replace with logging
+            f"{cool_path} and {expected_path} passed cross-compatibility checks."
         )
 
     # Prepare some parameters.
@@ -269,15 +265,13 @@ def call_dots(
     if (kernel_width is None) or (kernel_peak is None):
         w, p = dotfinder.recommend_kernel_params(binsize)
         print(
-            "Using kernel parameters w={}, p={} recommended for binsize {}".format(
-                w, p, binsize
-            )
+            f"Using kernel parameters w={w}, p={p} recommended for binsize {binsize}"
         )
     else:
         w, p = kernel_width, kernel_peak
         # add some sanity check for w,p:
-        assert w > p, "Wrong inner/outer kernel parameters w={}, p={}".format(w, p)
-        print("Using kernel parameters w={}, p={} provided by user".format(w, p))
+        assert w > p, f"Wrong inner/outer kernel parameters w={w}, p={p}"
+        print(f"Using kernel parameters w={w}, p={p} provided by user")
 
     # once kernel parameters are setup check max_nans_tolerated
     # to make sure kernel footprints overlaping 1 side with the
@@ -291,6 +285,7 @@ def call_dots(
 
     # list of tile coordinate ranges
     tiles = list(
+        # heatmap_tiles_generator_diag is ready for arbitrary regions
         dotfinder.heatmap_tiles_generator_diag(
             clr, expected_chroms, w, tile_size_bins, loci_separation_bins
         )
@@ -357,7 +352,7 @@ def call_dots(
     # 4. Post-processing
     if verbose:
         print(
-            "Begin post-processing of {} filtered pixels".format(len(filtered_pixels))
+            f"Begin post-processing of {len(filtered_pixels)} filtered pixels"
         )
         print("preparing to extract needed q-values ...")
 
@@ -367,7 +362,7 @@ def call_dots(
     # 4a. clustering
     ########################################################################
     # Clustering has to be done using annotated DataFrame of filtered pixels
-    # why ? - because - clustering has to be done chromosome by chromosome !
+    # why ? - because - clustering has to be done independently for every region!
     ########################################################################
     filtered_pixels_annotated = cooler.annotate(filtered_pixels_qvals, clr.bins()[:])
     centroids = dotfinder.clustering_step(
