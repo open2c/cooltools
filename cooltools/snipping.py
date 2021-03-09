@@ -134,8 +134,9 @@ def assign_regions(features, supports):
 
 def _pileup(data_select, data_snip, arg):
     support, feature_group = arg
-    # check if region is annotated
-    if pd.isnull(support):
+    
+    # check if region is unannotated
+    if len(support)==0:
         lo = feature_group["lo"].values[0]
         hi = feature_group["hi"].values[0]
         s = hi-lo # Shape of individual snip
@@ -192,6 +193,7 @@ def pileup(features, data_select, data_snip, map=map):
         warnings.warn("Some features do not have regions assigned! Some snips will be empty.")
 
     features = features.copy()
+    features['region'] = features.region.fillna('') # fill in unanotated regions with empty string
     features["_rank"] = range(len(features))
 
     # cumul_stack = []
@@ -199,8 +201,8 @@ def pileup(features, data_select, data_snip, map=map):
     cumul_stack, orig_rank = zip(
         *map(
             partial(_pileup, data_select, data_snip),
-            # Note that unannotated regions are NaNs and will be treated as a separate group
-            features.groupby("region", sort=False, dropna=False),
+            # Note that unannotated regions will form a separate group
+            features.groupby("region", sort=False),
         )
     )
 
