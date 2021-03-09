@@ -344,13 +344,7 @@ def test_logbin_expected_cli(request, tmpdir):
     runner = CliRunner()
     result = runner.invoke(
         cli,
-        [
-            "logbin-expected",
-            "--resolution",
-            binsize,
-            out_cis_expected,
-            logbin_prefix,
-        ],
+        ["logbin-expected", "--resolution", binsize, out_cis_expected, logbin_prefix],
     )
     assert result.exit_code == 0
     # make sure logbin output is generated:
@@ -425,9 +419,7 @@ def test_logbin_interpolate_roundtrip():
         (interp["balanced.avg"] - df["balanced.sum"] / df["n_valid"])
         / interp["balanced.avg"]
     )
-    assert (
-        np.nanmax(max_dev) < 0.1
-    )  # maximum absolute deviation less than 10%
+    assert np.nanmax(max_dev) < 0.1  # maximum absolute deviation less than 10%
 
     # using chr2 for chr1 fails if chroms are different
     interp = interpolate_expected(df2, exp1, by_region="chr2")
@@ -465,9 +457,10 @@ def test_preprocess_regions():
 
 def test_mat_expected():
     from cooltools.expected import mat_expected
+
     # create a uniform 1/s decay as input
     ar = np.arange(100)
-    ar = np.abs(ar[:, None] - ar[None, :]) #like toeplitz(ar)
+    ar = np.abs(ar[:, None] - ar[None, :])  # like toeplitz(ar)
     ar[ar == 0] = 1
     ar = 1 / ar
 

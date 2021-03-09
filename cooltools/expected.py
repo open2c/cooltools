@@ -920,7 +920,7 @@ def blocksum_asymm(
     )
 
 
-def _preprocess_regions(regions, M=None, chrom=None, resolution=1, offset_bp=0):
+def _preprocess_regions(regions, n_bins=None, chrom=None, resolution=1, offset_bp=0):
     """
     Pre-processes regions and assigns names for the function that calculates
     expected from the raw matrix
@@ -948,19 +948,21 @@ def _preprocess_regions(regions, M=None, chrom=None, resolution=1, offset_bp=0):
     for reg in regions:
         try:
             reg[0][0]
-        except Exception:
+        except IndexError:
             reg = [reg, reg]
-        reg = list([list(reg[0]), list(reg[1])])
+
+        reg = [list(reg[0]), list(reg[1])]
         for r in reg:
             if r[0] is None:
                 r[0] = 0
             if r[1] is None:
-                if M is None:
-                    raise ValueError("Matrix size M is needed to fill None at the end")
-                r[1] = M
+                if n_bins is None:
+                    raise ValueError("Matrix size is needed to fill None at the end")
+                r[1] = n_bins
         reg = np.array(reg)
         if reg.shape != (2, 2):
             raise ValueError("Regions should be (st,end) or [(st1, end1), (st2, end2)]")
+
         processed_regions.append(reg)
 
     names = []
@@ -979,30 +981,30 @@ def _preprocess_regions(regions, M=None, chrom=None, resolution=1, offset_bp=0):
     return names, processed_regions
 
 
-def mat_expected(
+def diagsum_from_array(
     heatmap,
     regions=None,
     raw_map=None,
     *,
-    exclude_diags=2,
+    ignore_diags=2,
     chrom=None,
     resolution=1,
     offset_bp=0,
 ):
     """
     Calculates open2c-formatted expected from a heatmap.
+
     Optionally adds chromosomes, and converts region names to meaningful names.
 
     Parameters
     ----------
-
     heatmap: 2D array
         Square heatmap to calculate expected (expected goes to balanced.sum)
     regions: [(st, end), ((st1, end1), (st2, end2))]
         on-diagonal or off-diagonal regions to calculate expected
     raw_map: 2D array or None (optional; default=None)
         Raw heatmap to populate count.sum
-    exclude_diags: int (optional; default=2)
+    ignore_diags: int (optional; default=2)
         Number of diagonals to exclude. Resulting diags are not filled with NaNs.
     chrom: str or None (optional; default=None)
         If set to str, would append chrom to region name to obtain UCSC-style strings
@@ -1013,35 +1015,30 @@ def mat_expected(
         Add this offset to start/end for region name only.
         Helpful if your heatmap does not start at the beginning of a chromosome
 
-    Caveats
-    -------
-
+    Notes
+    -----
     For symmetric regions, every diagonal is counted once.
 
-    For assymetric regions that do not cross main diagonal,
-    each diagonal is counted once as well.
+    For assymetric regions that do not cross main diagonal, each diagonal is
+    counted once as well.
 
-    For assymetric regions that cross main diagonal (RLY?)
-    the "overhang" would be counted twice. Also, why would you want that?
+    For assymetric regions that cross main diagonal (RLY?) the "overhang"
+    would be counted twice. Also, why would you want that?
     """
-
     heatmap = np.array(heatmap, dtype=float)
-    M = len(heatmap)
+    m = len(heatmap)
 
     if regions is None:
-        regions = [(0, M)]
+        regions = [(0, m)]
 
     names, regions = _preprocess_regions(
-        regions,
-        M=M,
-        chrom=chrom,
-        resolution=resolution,
-        offset_bp=offset_bp,
+        regions, n_bins=m, chrom=chrom, resolution=resolution, offset_bp=offset_bp
     )
 
     # exclude empty and filtered rows/columns from "valid"
     heatmap[~np.isfinite(heatmap)] = 0
     mask = np.sum(heatmap, axis=0) == 0  # valid diag mask
+
     valid = np.ones_like(heatmap, dtype=bool)
     valid[mask] = False
     valid[:, mask] = False
@@ -1059,14 +1056,14 @@ def mat_expected(
         subdiag = diag_mask[st1:ed1, st2:ed2].flatten()
 
         # exclude non-valid pixels (-1) and "exclude_diags" diags
-        mask_per_pixel = subdiag >= exclude_diags
+        mask_per_pixel = subdiag >= ignore_diags
         subhm = subhm[mask_per_pixel]
         subdiag = subdiag[mask_per_pixel]
 
         # count valid pixels and sum their values on each diagonal
         n_valid = np.bincount(subdiag)
         balanced_sum = np.bincount(subdiag, weights=subhm)
-        diag = np.arange(len(n_valid), dtype=int) # 0...max(subdiag)
+        diag = np.arange(len(n_valid), dtype=int)  # 0...max(subdiag)
 
         # return only non-trivial values - ? NaN filling instead ?
         mask_per_diag = n_valid > 0
@@ -1077,24 +1074,24 @@ def mat_expected(
             "n_valid": n_valid,
             "diag": diag,
             "balanced.sum": balanced_sum,
-            "region": name, # same region
+            "region": name,  # same region
         }
         # sum raw pixel counts for each diag, when raw_map provided
         if raw_map is not None:
             subraw = raw_map[st1:ed1, st2:ed2].flatten()
             subraw = subraw[mask_per_pixel]
             count_sum = np.bincount(subdiag, weights=subraw)
-            vals["count.sum"] = count_sum[mask_per_diag] # match len(vals)
+            vals["count.sum"] = count_sum[mask_per_diag]  # match len(vals)
         dfs.append(pd.DataFrame(vals))
     return pd.concat(dfs)
 
 
 def logbin_expected(
     exp,
-    exp_summary_name="balanced.sum",
+    summary_name="balanced.sum",
     bins_per_order_magnitude=10,
     bin_layout="fixed",
-    der_smooth_function_by_reg=lambda x: numutils.robust_gauss_filter(x, 2),
+    smooth=lambda x: numutils.robust_gauss_filter(x, 2),
     min_nvalid=200,
     min_count=50,
 ):
@@ -1106,11 +1103,11 @@ def logbin_expected(
     exp : DataFrame
         DataFrame produced by diagsum
 
-    exp_summary_name : str (optional)
+    summary_name : str, optional
         Name of the column of exp-DataFrame to use as a diagonal summary.
         Default is "balanced.sum".
 
-    bins_per_order_magnitude : int (optional)
+    bins_per_order_magnitude : int, optional
         How many bins per order of magnitude. Default of 10 has a ratio of
         neighboring bins of about 1.25
 
@@ -1128,7 +1125,7 @@ def logbin_expected(
         value. Bins exceeding the size of the largest region will be simply
         ignored.
 
-    der_smooth_function_by_reg : callable
+    smooth : callable
         A smoothing function to be applied to log(P(s)) and log(x)
         before calculating P(s) slopes for by-region data
 
@@ -1226,12 +1223,12 @@ def logbin_expected(
     from cooltools.lib.numutils import logbins
 
     raw_summary_name = "count.sum"
-    exp_summary_base, *_ = exp_summary_name.split(".")
+    exp_summary_base, *_ = summary_name.split(".")
     Pc_name = f"{exp_summary_base}.avg"
     diag_name = "diag"
     diag_avg_name = f"{diag_name}.avg"
 
-    exp = exp[~pd.isna(exp[exp_summary_name])].copy()
+    exp = exp[~pd.isna(exp[summary_name])].copy()
     exp[diag_avg_name] = exp.pop(diag_name)  # "average" or weighted diagonals
     diagmax = exp[diag_avg_name].max()
 
@@ -1266,7 +1263,7 @@ def logbin_expected(
 
     byRegExp = byRegExp.reset_index()
     byRegExp = byRegExp[byRegExp["n_valid"] > min_nvalid]  # filtering by n_valid
-    byRegExp[Pc_name] = byRegExp[exp_summary_name] / byRegExp["n_valid"]
+    byRegExp[Pc_name] = byRegExp[summary_name] / byRegExp["n_valid"]
     byRegExp = byRegExp[byRegExp[Pc_name] > 0]  # drop diag_bins with 0 counts
     if min_count:
         if raw_summary_name in byRegExp:
@@ -1286,9 +1283,8 @@ def logbin_expected(
         mids = np.sqrt(
             subdf[diag_avg_name].values[:-1] * subdf[diag_avg_name].values[1:]
         )
-        f = der_smooth_function_by_reg
-        slope = np.diff(f(np.log(subdf[Pc_name].values))) / np.diff(
-            f(np.log(subdf[diag_avg_name].values))
+        slope = np.diff(smooth(np.log(subdf[Pc_name].values))) / np.diff(
+            smooth(np.log(subdf[diag_avg_name].values))
         )
         newdf = pd.DataFrame(
             {
@@ -1509,7 +1505,6 @@ def interpolate_expected(
 
     Parameters
     ----------
-
     expected: pd.DataFrame
         expected as returned by diagsum
     binned_expected: pd.DataFrame
@@ -1523,6 +1518,7 @@ def interpolate_expected(
         Whether to do interpolation by-region (default=True).
         False means use one expected for all regions (use entire table).
         If a region name is provided, expected for that region is used.
+
     """
 
     exp_int = expected.copy()
