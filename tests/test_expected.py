@@ -455,29 +455,29 @@ def test_preprocess_regions():
     assert names4 == "chr1:1000-101000"
 
 
-def test_mat_expected():
-    from cooltools.expected import mat_expected
+def test_diagsum_from_array():
+    from cooltools.expected import diagsum_from_array
 
     # create a uniform 1/s decay as input
     ar = np.arange(100)
-    ar = np.abs(ar[:, None] - ar[None, :])  # like toeplitz(ar)
+    ar = np.abs(ar[:, None] - ar[None, :]) # like toeplitz(ar)
     ar[ar == 0] = 1
     ar = 1 / ar
 
-    exp1 = mat_expected(ar)
+    exp1 = diagsum_from_array(ar)
     exp1["balanced.avg"] = exp1["balanced.sum"] / exp1["n_valid"]
 
-    # fake some "bad" bins. Same outcome
+    # fake some "bad" bins. Should have same outcome
     ar[3:5] = 0
     ar[:, 3:5] = 0
 
-    exp2 = mat_expected(ar)
+    exp2 = diagsum_from_array(ar)
     exp2["balanced.avg"] = exp2["balanced.sum"] / exp2["n_valid"]
 
     # calculate expected in an assymetric region. Same outcome
-    exp3 = mat_expected(ar, regions=[[(0, 50), (50, 100)]])
+    exp3 = diagsum_from_array(ar, regions=[[(0, 50), (50, 100)]])
     exp3["balanced.avg"] = exp3["balanced.sum"] / exp3["n_valid"]
 
     # all outcomes are identical because input was homogenous decay
-    assert np.allclose(exp1["balanced.avg"], exp2["balanced.avg"])
-    assert np.allclose(exp1["balanced.avg"], exp3["balanced.avg"])
+    assert np.allclose(exp1["balanced.avg"], exp2["balanced.avg"], equal_nan = True)
+    assert np.allclose(exp1["balanced.avg"], exp3["balanced.avg"], equal_nan = True)

@@ -946,9 +946,8 @@ def _preprocess_regions(regions, n_bins=None, chrom=None, resolution=1, offset_b
     """
     processed_regions = []
     for reg in regions:
-        try:
-            reg[0][0]
-        except IndexError:
+        # handle symmetric (1D) definitions of regions:
+        if not hasattr(reg[0], "__len__"):
             reg = [reg, reg]
 
         reg = [list(reg[0]), list(reg[1])]
@@ -987,6 +986,7 @@ def diagsum_from_array(
     raw_map=None,
     *,
     ignore_diags=2,
+    filter_rawmap=True,
     chrom=None,
     resolution=1,
     offset_bp=0,
@@ -1006,6 +1006,8 @@ def diagsum_from_array(
         Raw heatmap to populate count.sum
     ignore_diags: int (optional; default=2)
         Number of diagonals to exclude. Resulting diags are not filled with NaNs.
+    filter_rawmap: bool (optional; default=True)
+        apply filtering from balanced matrix to the raw one, ignored when raw_map is None
     chrom: str or None (optional; default=None)
         If set to str, would append chrom to region name to obtain UCSC-style strings
     resolution: int (optional; default=1)
@@ -1023,7 +1025,7 @@ def diagsum_from_array(
     counted once as well.
 
     For assymetric regions that cross main diagonal (RLY?) the "overhang"
-    would be counted twice. Also, why would you want that?
+    would be ignored. Also, why would you want that?
     """
     heatmap = np.array(heatmap, dtype=float)
     m = len(heatmap)
@@ -1032,44 +1034,48 @@ def diagsum_from_array(
         regions = [(0, m)]
 
     names, regions = _preprocess_regions(
-        regions, n_bins=m, chrom=chrom, resolution=resolution, offset_bp=offset_bp
+        regions,
+        n_bins=m,
+        chrom=chrom,
+        resolution=resolution,
+        offset_bp=offset_bp,
     )
 
     # exclude empty and filtered rows/columns from "valid"
     heatmap[~np.isfinite(heatmap)] = 0
-    mask = np.sum(heatmap, axis=0) == 0  # valid diag mask
-
-    valid = np.ones_like(heatmap, dtype=bool)
-    valid[mask] = False
-    valid[:, mask] = False
-
-    # matrix of diags, with non-valid pixels filled with "-1"
-    ar = np.arange(M, dtype=np.int32)
-    diag_mask = np.abs(ar[:, None] - ar[None, :])
-    diag_mask[~valid] = -1
+    valid_mask = np.sum(heatmap, axis=0) == 0
+    # lazily prepare an indicator matrix of "diagonals" (toeplitz)
+    # that distingusih "tril" and "triu": negative diagonals in "tril"
+    ar = np.arange(m, dtype=np.int32)
+    diag_hm = numutils.LazyToeplitz(-ar, ar)
 
     dfs = []
     for name, reg in zip(names, regions):
         # for a given region extract sub-heatmap and sub-diag_mask
         (st1, ed1), (st2, ed2) = reg
         subhm = heatmap[st1:ed1, st2:ed2].flatten()
-        subdiag = diag_mask[st1:ed1, st2:ed2].flatten()
-
-        # exclude non-valid pixels (-1) and "exclude_diags" diags
-        mask_per_pixel = subdiag >= ignore_diags
+        subdiag = diag_hm[st1:ed1, st2:ed2]  # diag indicator matrix
+        max_diag = subdiag.max() + 1  # max genomic separation for the region
+        # apply valid_mask to the slice of the heatmap and mask_diag
+        # we could also add some custom badbins amsking here as well
+        mask_slice_1 = valid_mask[st1:ed1]
+        mask_slice_2 = valid_mask[st2:ed2]
+        subdiag[mask_slice_1, :] = -1
+        subdiag[:, mask_slice_2] = -1
+        subdiag = subdiag.flatten()
+        # ignore bad pixels, and below main diagonal
+        mask_per_pixel = subdiag >= 0
         subhm = subhm[mask_per_pixel]
-        subdiag = subdiag[mask_per_pixel]
+        subdiag_filtered = subdiag[mask_per_pixel]
 
         # count valid pixels and sum their values on each diagonal
-        n_valid = np.bincount(subdiag)
-        balanced_sum = np.bincount(subdiag, weights=subhm)
-        diag = np.arange(len(n_valid), dtype=int)  # 0...max(subdiag)
+        n_valid = np.bincount(subdiag_filtered, minlength=max_diag)
+        balanced_sum = np.bincount(subdiag_filtered, weights=subhm, minlength=max_diag)
+        diag = np.arange(max_diag, dtype=int)
 
-        # return only non-trivial values - ? NaN filling instead ?
-        mask_per_diag = n_valid > 0
-        n_valid = n_valid[mask_per_diag]
-        balanced_sum = balanced_sum[mask_per_diag]
-        diag = diag[mask_per_diag]
+        # ignore diagonals when needed
+        mask_per_diag = diag >= ignore_diags
+        balanced_sum[~mask_per_diag] = np.nan
         vals = {
             "n_valid": n_valid,
             "diag": diag,
@@ -1079,9 +1085,16 @@ def diagsum_from_array(
         # sum raw pixel counts for each diag, when raw_map provided
         if raw_map is not None:
             subraw = raw_map[st1:ed1, st2:ed2].flatten()
-            subraw = subraw[mask_per_pixel]
-            count_sum = np.bincount(subdiag, weights=subraw)
-            vals["count.sum"] = count_sum[mask_per_diag]  # match len(vals)
+            if filter_rawmap:  # apply same filtering as to heatmap
+                subraw = subraw[mask_per_pixel]
+                count_sum = np.bincount(
+                    subdiag_filtered, weights=subraw, minlength=max_diag
+                )
+            else:  # count every interaction for the raw data:
+                raw_subdiag = diag_hm[st1:ed1, st2:ed2].flatten()
+                count_sum = np.bincount(raw_subdiag, weights=subraw, minlength=max_diag)
+            count_sum[~mask_per_diag] = np.nan  # ignore diags if requested
+            vals["count.sum"] = count_sum
         dfs.append(pd.DataFrame(vals))
     return pd.concat(dfs)
 
