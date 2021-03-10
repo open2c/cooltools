@@ -983,7 +983,7 @@ def _preprocess_regions(regions, n_bins=None, chrom=None, resolution=1, offset_b
 def diagsum_from_array(
     heatmap,
     regions=None,
-    raw_map=None,
+    rawmap=None,
     *,
     ignore_diags=2,
     filter_rawmap=True,
@@ -992,7 +992,7 @@ def diagsum_from_array(
     offset_bp=0,
 ):
     """
-    Calculates open2c-formatted expected from a heatmap.
+    Calculates Open2C-formatted expected from a dense whole genome array.
 
     Optionally adds chromosomes, and converts region names to meaningful names.
 
@@ -1002,12 +1002,12 @@ def diagsum_from_array(
         Square heatmap to calculate expected (expected goes to balanced.sum)
     regions: [(st, end), ((st1, end1), (st2, end2))]
         on-diagonal or off-diagonal regions to calculate expected
-    raw_map: 2D array or None (optional; default=None)
+    rawmap: 2D array or None (optional; default=None)
         Raw heatmap to populate count.sum
     ignore_diags: int (optional; default=2)
         Number of diagonals to exclude. Resulting diags are not filled with NaNs.
     filter_rawmap: bool (optional; default=True)
-        apply filtering from balanced matrix to the raw one, ignored when raw_map is None
+        apply filtering from balanced matrix to the raw one, ignored when rawmap is None
     chrom: str or None (optional; default=None)
         If set to str, would append chrom to region name to obtain UCSC-style strings
     resolution: int (optional; default=1)
@@ -1028,75 +1028,77 @@ def diagsum_from_array(
     would be ignored. Also, why would you want that?
     """
     heatmap = np.array(heatmap, dtype=float)
-    m = len(heatmap)
+    n_bins = len(heatmap)
 
     if regions is None:
-        regions = [(0, m)]
+        regions = [(0, n_bins)]
 
     names, regions = _preprocess_regions(
-        regions,
-        n_bins=m,
-        chrom=chrom,
-        resolution=resolution,
-        offset_bp=offset_bp,
+        regions, n_bins=n_bins, chrom=chrom, resolution=resolution, offset_bp=offset_bp
     )
 
     # exclude empty and filtered rows/columns from "valid"
     heatmap[~np.isfinite(heatmap)] = 0
     valid_mask = np.sum(heatmap, axis=0) == 0
-    # lazily prepare an indicator matrix of "diagonals" (toeplitz)
-    # that distingusih "tril" and "triu": negative diagonals in "tril"
-    ar = np.arange(m, dtype=np.int32)
-    diag_hm = numutils.LazyToeplitz(-ar, ar)
 
-    dfs = []
-    for name, reg in zip(names, regions):
-        # for a given region extract sub-heatmap and sub-diag_mask
-        (st1, ed1), (st2, ed2) = reg
-        subhm = heatmap[st1:ed1, st2:ed2].flatten()
-        subdiag = diag_hm[st1:ed1, st2:ed2]  # diag indicator matrix
-        max_diag = subdiag.max() + 1  # max genomic separation for the region
-        # apply valid_mask to the slice of the heatmap and mask_diag
-        # we could also add some custom badbins amsking here as well
-        mask_slice_1 = valid_mask[st1:ed1]
-        mask_slice_2 = valid_mask[st2:ed2]
-        subdiag[mask_slice_1, :] = -1
-        subdiag[:, mask_slice_2] = -1
-        subdiag = subdiag.flatten()
-        # ignore bad pixels, and below main diagonal
-        mask_per_pixel = subdiag >= 0
-        subhm = subhm[mask_per_pixel]
-        subdiag_filtered = subdiag[mask_per_pixel]
+    # Prepare a lazily evaluated indicator matrix of "diagonals" (toeplitz).
+    # Lower triangle diagonals are negative.
+    ar = np.arange(n_bins, dtype=np.int32)
+    diag_indicator = numutils.LazyToeplitz(-ar, ar)
 
-        # count valid pixels and sum their values on each diagonal
-        n_valid = np.bincount(subdiag_filtered, minlength=max_diag)
-        balanced_sum = np.bincount(subdiag_filtered, weights=subhm, minlength=max_diag)
-        diag = np.arange(max_diag, dtype=int)
+    result = []
+    for name, region in zip(names, regions):
+        # Extract the current sub-heatmap.
+        (lo1, hi1), (lo2, hi2) = region
+        A = heatmap[lo1:hi1, lo2:hi2]
 
-        # ignore diagonals when needed
+        # Apply valid_mask to the indicator matrix.
+        # Invalid and lower triangle pixels will now have negative indicator values.
+        D = diag_indicator[lo1:hi1, lo2:hi2]
+        diag_max = D.max() + 1
+        D[valid_mask[lo1:hi1], :] = -1
+        D[:, valid_mask[lo2:hi2]] = -1
+
+        # Drop invalid and lower triangle pixels and flatten.
+        mask_per_pixel = D >= 0
+        A_flat = A[mask_per_pixel]
+        D_flat = D[mask_per_pixel]
+
+        # Group by diagonal and sum the number of valid pixels and pixel values
+        n_valid = np.bincount(D_flat, minlength=diag_max)
+        balanced_sum = np.bincount(D_flat, weights=A_flat, minlength=diag_max)
+
+        # Mask to ignore initial diagonals
+        diag = np.arange(diag_max, dtype=int)
         mask_per_diag = diag >= ignore_diags
+
         balanced_sum[~mask_per_diag] = np.nan
-        vals = {
-            "n_valid": n_valid,
-            "diag": diag,
-            "balanced.sum": balanced_sum,
-            "region": name,  # same region
-        }
-        # sum raw pixel counts for each diag, when raw_map provided
-        if raw_map is not None:
-            subraw = raw_map[st1:ed1, st2:ed2].flatten()
-            if filter_rawmap:  # apply same filtering as to heatmap
-                subraw = subraw[mask_per_pixel]
-                count_sum = np.bincount(
-                    subdiag_filtered, weights=subraw, minlength=max_diag
-                )
-            else:  # count every interaction for the raw data:
-                raw_subdiag = diag_hm[st1:ed1, st2:ed2].flatten()
-                count_sum = np.bincount(raw_subdiag, weights=subraw, minlength=max_diag)
-            count_sum[~mask_per_diag] = np.nan  # ignore diags if requested
-            vals["count.sum"] = count_sum
-        dfs.append(pd.DataFrame(vals))
-    return pd.concat(dfs)
+        df = pd.DataFrame(
+            {
+                "region": name,
+                "diag": diag,
+                "n_valid": n_valid,
+                "balanced.sum": balanced_sum,
+            }
+        )
+
+        # Include raw pixel counts for each diag if rawmap is provided.
+        if rawmap is not None:
+            C = rawmap[lo1:hi1, lo2:hi2].flatten()
+            # Either count everything or apply the same filtering as heatmap.
+            if filter_rawmap:
+                C = C[mask_per_pixel]
+                count_sum = np.bincount(D, weights=C, minlength=diag_max)
+            else:
+                D_raw = diag_indicator[lo1:hi1, lo2:hi2].flatten()
+                count_sum = np.bincount(D_raw, weights=C, minlength=diag_max)
+
+            count_sum[~mask_per_diag] = np.nan
+            df["count.sum"] = count_sum
+
+        result.append(df)
+
+    return pd.concat(result, ignore_index=True)
 
 
 def logbin_expected(

@@ -460,7 +460,7 @@ def test_diagsum_from_array():
 
     # create a uniform 1/s decay as input
     ar = np.arange(100)
-    ar = np.abs(ar[:, None] - ar[None, :]) # like toeplitz(ar)
+    ar = np.abs(ar[:, None] - ar[None, :])  # like toeplitz(ar)
     ar[ar == 0] = 1
     ar = 1 / ar
 
@@ -479,5 +479,5 @@ def test_diagsum_from_array():
     exp3["balanced.avg"] = exp3["balanced.sum"] / exp3["n_valid"]
 
     # all outcomes are identical because input was homogenous decay
-    assert np.allclose(exp1["balanced.avg"], exp2["balanced.avg"], equal_nan = True)
-    assert np.allclose(exp1["balanced.avg"], exp3["balanced.avg"], equal_nan = True)
+    assert np.allclose(exp1["balanced.avg"], exp2["balanced.avg"], equal_nan=True)
+    assert np.allclose(exp1["balanced.avg"], exp3["balanced.avg"], equal_nan=True)
