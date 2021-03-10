@@ -1039,7 +1039,7 @@ def diagsum_from_array(
 
     # exclude empty and filtered rows/columns from "valid"
     heatmap[~np.isfinite(heatmap)] = 0
-    valid_mask = np.sum(heatmap, axis=0) == 0
+    invalid_mask = np.sum(heatmap, axis=0) == 0
 
     # Prepare a lazily evaluated indicator matrix of "diagonals" (toeplitz).
     # Lower triangle diagonals are negative.
@@ -1052,12 +1052,12 @@ def diagsum_from_array(
         (lo1, hi1), (lo2, hi2) = region
         A = heatmap[lo1:hi1, lo2:hi2]
 
-        # Apply valid_mask to the indicator matrix.
+        # Apply validity mask to the indicator matrix.
         # Invalid and lower triangle pixels will now have negative indicator values.
         D = diag_indicator[lo1:hi1, lo2:hi2]
         diag_max = D.max() + 1
-        D[valid_mask[lo1:hi1], :] = -1
-        D[:, valid_mask[lo2:hi2]] = -1
+        D[invalid_mask[lo1:hi1], :] = -1
+        D[:, invalid_mask[lo2:hi2]] = -1
 
         # Drop invalid and lower triangle pixels and flatten.
         mask_per_pixel = D >= 0
