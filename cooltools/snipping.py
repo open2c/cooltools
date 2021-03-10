@@ -136,7 +136,7 @@ def _pileup(data_select, data_snip, arg):
     support, feature_group = arg
     
     # check if region is unannotated
-    if len(support)==0:
+    if len(support) == 0:
         lo = feature_group["lo"].values[0]
         hi = feature_group["hi"].values[0]
         s = hi-lo # Shape of individual snip
