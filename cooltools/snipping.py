@@ -1,13 +1,9 @@
-from collections import OrderedDict
 from functools import partial
+import warnings
 
-import matplotlib.pyplot as plt
-from scipy.linalg import toeplitz
-import scipy.sparse as sps
 import numpy as np
 import pandas as pd
 import bioframe
-import cooler
 
 from .lib.numutils import LazyToeplitz
 import warnings
@@ -139,11 +135,21 @@ def assign_regions(features, supports):
 
 def _pileup(data_select, data_snip, arg):
     support, feature_group = arg
+    
+    # check if region is unannotated
+    if len(support) == 0:
+        lo = feature_group["lo"].values[0]
+        hi = feature_group["hi"].values[0]
+        s = hi-lo # Shape of individual snip
+        stack = np.full((s, s, len(feature_group)), np.nan)
+        # return empty snippets if region is not annotated
+        return stack, feature_group["_rank"].values
+
     # check if support region is on- or off-diagonal
     if len(support) == 2:
-        region1, region2 = map(bioframe.parse_region_string, support)
+        region1, region2 = map(bioframe.region.parse_region_string, support)
     else:
-        region1 = region2 = bioframe.parse_region_string(support)
+        region1 = region2 = bioframe.region.parse_region_string(support)
 
     # check if features are on- or off-diagonal
     if "start" in feature_group:
@@ -185,11 +191,10 @@ def pileup(features, data_select, data_snip, map=map):
 
     """
     if features.region.isnull().any():
-        raise ValueError(
-            "Drop features with no region assignment before calling pileup!"
-        )
+        warnings.warn("Some features do not have regions assigned! Some snips will be empty.")
 
     features = features.copy()
+    features['region'] = features.region.fillna('') # fill in unanotated regions with empty string
     features["_rank"] = range(len(features))
 
     # cumul_stack = []
@@ -197,6 +202,7 @@ def pileup(features, data_select, data_snip, map=map):
     cumul_stack, orig_rank = zip(
         *map(
             partial(_pileup, data_select, data_snip),
+            # Note that unannotated regions will form a separate group
             features.groupby("region", sort=False),
         )
     )
@@ -305,7 +311,7 @@ class CoolerSnipper:
         #             snippet[pad_bottom:pad_top,
         #                     pad_left:pad_right] = matrix[i0:i1, j0:j1].toarray()
         else:
-            snippet = matrix[lo1:hi1, lo2:hi2].toarray()
+            snippet = matrix[lo1:hi1, lo2:hi2].toarray().astype('float')
             snippet[self._isnan1[lo1:hi1], :] = np.nan
             snippet[:, self._isnan2[lo2:hi2]] = np.nan
         return snippet

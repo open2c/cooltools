@@ -57,6 +57,7 @@ from . import (
     dump_cworld,
     diamond_insulation,
     compute_expected,
+    logbin_expected,
     compute_saddle,
     call_dots,
     call_compartments,

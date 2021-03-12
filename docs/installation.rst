@@ -21,7 +21,7 @@ or install the latest version directly from github:
 
 .. code-block:: bash
 
-    $ pip install git+https://github.com/mirnylab/cooltools.git
+    $ pip install git+https://github.com/open2c/cooltools.git
 
 
 Install the development version
@@ -32,7 +32,7 @@ github. First, make a local clone of the github repository:
 
 .. code-block:: bash
 
-    $ git clone https://github.com/mirnylab/cooltools 
+    $ git clone https://github.com/open2c/cooltools 
 
 Then, you can compile and install `cooltools` in 
 `the development mode <https://setuptools.readthedocs.io/en/latest/setuptools.html#development-mode>`_, 
