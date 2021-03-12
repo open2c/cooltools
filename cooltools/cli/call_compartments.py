@@ -19,6 +19,7 @@ from . import cli
     "--reference-track",
     help="Reference track for orienting and ranking eigenvectors",
     type=TabularFilePath(exists=True, default_column_index=3),
+    metavar="TRACK_PATH"
 )
 @click.option(
     "--contact-type",

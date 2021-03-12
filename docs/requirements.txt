@@ -4,6 +4,7 @@ ipython
 nbsphinx
 multiprocess
 numpy
+pygments<3,>=2.4.1
 recommonmark
 Sphinx
 sphinx-rtd-theme

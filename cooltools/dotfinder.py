@@ -16,8 +16,7 @@ import cooler
 
 from .lib.numutils import LazyToeplitz, get_kernel
 
-from bioframe.io import formats
-
+import bioframe
 
 # these are the constants from HiCCUPS, that dictate how initial histogramms
 # for lambda-chunking are computed: W1 is the # of logspaced lambda bins,
@@ -1373,7 +1372,7 @@ def scoring_step(
         # ###########################################
         elif output_mode == "parquet":
             print("parquet output ...")
-            formats.to_parquet(
+            bioframe.to_parquet(
                 chunks,
                 output_path,
                 # # use defaults first ...
@@ -1464,7 +1463,7 @@ def histogramming_step(
         # read number of groups
         # still don't know how to control that
         # maybe:
-        # "formats.to_parquet(... row_group_size = chunksize...)" ?!?
+        # "bioframe.to_parquet(... row_group_size = chunksize...)" ?!?
         tiles = range(pf.num_row_groups)
         # gg.read_row_group(i, columns=None,
         #                    nthreads=None, use_threads=True,
