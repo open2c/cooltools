@@ -10,6 +10,7 @@ import bioframe
 import cooler
 
 from .lib.numutils import LazyToeplitz
+import warnings
 
 
 def make_bin_aligned_windows(
@@ -311,33 +312,36 @@ class CoolerSnipper:
 
 
 class ObsExpSnipper:
-    def __init__(self, clr, expected, cooler_opts=None):
+    def __init__(self, clr, expected, cooler_opts=None, regions=None):
         self.clr = clr
         self.expected = expected
 
         # Detecting the columns for the detection of regions
         columns = expected.columns
         assert len(columns) > 0
-        if "chrom" in columns and "start" in columns and "end" in columns:
-            self.regions_columns = [
-                "chrom",
-                "start",
-                "end",
-            ]  # Chromosome arms encoded by multiple columns
-        elif "chrom" in columns:
-            self.regions_columns = [
-                "chrom"
-            ]  # Chromosomes or regions encoded in string mode: "chr3:XXXXXXX-YYYYYYYY"
-        elif "region" in columns:
-            self.regions_columns = [
-                "region"
-            ]  # Regions encoded in string mode: "chr3:XXXXXXX-YYYYYYYY"
-        elif len(columns) > 0:
-            self.regions_columns = columns[
-                0
-            ]  # The first columns is treated as chromosome/region annotation
-        else:
-            raise ValueError("Expected dataframe has no columns.")
+        if "region" not in columns:
+            if "chrom" in columns:
+                self.expected = self.expected.rename(columns={"chrom": "region"})
+                warnings.warn(
+                    "The expected dataframe appears to be in the old format."
+                    "It should have a `region` column, not `chrom`."
+                )
+            else:
+                raise ValueError(
+                    "Please check the expected dataframe, it has no `region` column"
+                )
+        if regions is None:
+            if set(self.expected["region"]).issubset(clr.chromnames):
+                regions = pd.DataFrame(
+                    [(chrom, 0, l, chrom) for chrom, l in clr.chromsizes.items()],
+                    columns=["chrom", "start", "end", "name"],
+                )
+            else:
+                raise ValueError(
+                    "Please provide the regions table, if region names"
+                    "are not simply chromosome names."
+                )
+        self.regions = regions.set_index("name")
 
         self.binsize = self.clr.binsize
         self.offsets = {}
@@ -347,19 +351,23 @@ class ObsExpSnipper:
 
     def select(self, region1, region2):
         assert region1 == region2, "ObsExpSnipper is implemented for cis contacts only."
-        self.offsets[region1] = self.clr.offset(region1) - self.clr.offset(region1[0])
-        self.offsets[region2] = self.clr.offset(region2) - self.clr.offset(region2[0])
-        matrix = self.clr.matrix(**self.cooler_opts).fetch(region1, region2)
+        region1_coords = self.regions.loc[region1]
+        region2_coords = self.regions.loc[region2]
+        self.offsets[region1] = self.clr.offset(region1_coords) - self.clr.offset(
+            region1_coords[0]
+        )
+        self.offsets[region2] = self.clr.offset(region2_coords) - self.clr.offset(
+            region2_coords[0]
+        )
+        matrix = self.clr.matrix(**self.cooler_opts).fetch(
+            region1_coords, region2_coords
+        )
         if self.cooler_opts["sparse"]:
             matrix = matrix.tocsr()
-        self._isnan1 = np.isnan(self.clr.bins()["weight"].fetch(region1).values)
-        self._isnan2 = np.isnan(self.clr.bins()["weight"].fetch(region2).values)
+        self._isnan1 = np.isnan(self.clr.bins()["weight"].fetch(region1_coords).values)
+        self._isnan2 = np.isnan(self.clr.bins()["weight"].fetch(region2_coords).values)
         self._expected = LazyToeplitz(
-            self.expected.groupby(self.regions_columns)
-            .get_group(region1[0] if len(self.regions_columns) > 0 else region1)[
-                "balanced.avg"
-            ]
-            .values
+            self.expected.groupby("region").get_group(region1)["balanced.avg"].values
         )
         return matrix
 
@@ -408,40 +416,44 @@ class ObsExpSnipper:
 
 
 class ExpectedSnipper:
-    def __init__(self, clr, expected):
+    def __init__(self, clr, expected, regions=None):
         self.clr = clr
         self.expected = expected
-
         # Detecting the columns for the detection of regions
         columns = expected.columns
         assert len(columns) > 0
-        if "chrom" in columns and "start" in columns and "end" in columns:
-            self.regions_columns = [
-                "chrom",
-                "start",
-                "end",
-            ]  # Chromosome arms encoded by multiple columns
-        elif "chrom" in columns:
-            self.regions_columns = [
-                "chrom"
-            ]  # Chromosomes or regions encoded in string mode: "chr3:XXXXXXX-YYYYYYYY"
-        elif "region" in columns:
-            self.regions_columns = [
-                "region"
-            ]  # Regions encoded in string mode: "chr3:XXXXXXX-YYYYYYYY"
-        elif len(columns) > 0:
-            self.regions_columns = columns[
-                0
-            ]  # The first columns is treated as chromosome/region annotation
-        else:
-            raise ValueError("Expected dataframe has no columns.")
+        if "region" not in columns:
+            if "chrom" in columns:
+                self.expected = self.expected.rename(columns={"chrom": "region"})
+                warnings.warn(
+                    "The expected dataframe appears to be in the old format."
+                    "It should have a `region` column, not `chrom`."
+                )
+            else:
+                raise ValueError(
+                    "Please check the expected dataframe, it has no `region` column"
+                )
+        if regions is None:
+            if set(self.expected["region"]).issubset(clr.chromnames):
+                regions = pd.DataFrame(
+                    [(chrom, 0, l, chrom) for chrom, l in clr.chromsizes.items()],
+                    columns=["chrom", "start", "end", "name"],
+                )
+            else:
+                raise ValueError(
+                    "Please provide the regions table, if region names"
+                    "are not simply chromosome names."
+                )
+        self.regions = regions.set_index("name")
 
         try:
-            for region, group in self.expected.groupby(self.regions_columns):
-                assert group.shape[0]==np.diff(self.clr.extent(region))[0]
+            for region, group in self.expected.groupby("region"):
+                assert group.shape[0] == np.diff(self.clr.extent(region))[0]
         except AssertionError:
-            raise ValueError("Region shape mismatch between expected and cooler. "
-                             "Are they using the same resolution?")
+            raise ValueError(
+                "Region shape mismatch between expected and cooler. "
+                "Are they using the same resolution?"
+            )
 
         self.binsize = self.clr.binsize
         self.offsets = {}
@@ -450,16 +462,18 @@ class ExpectedSnipper:
         assert (
             region1 == region2
         ), "ExpectedSnipper is implemented for cis contacts only."
-        self.offsets[region1] = self.clr.offset(region1) - self.clr.offset(region1[0])
-        self.offsets[region2] = self.clr.offset(region2) - self.clr.offset(region2[0])
-        self.m = np.diff(self.clr.extent(region1))
-        self.n = np.diff(self.clr.extent(region2))
+        region1_coords = self.regions.loc[region1]
+        region2_coords = self.regions.loc[region2]
+        self.offsets[region1] = self.clr.offset(region1_coords) - self.clr.offset(
+            region1_coords[0]
+        )
+        self.offsets[region2] = self.clr.offset(region2_coords) - self.clr.offset(
+            region2_coords[0]
+        )
+        self.m = np.diff(self.clr.extent(region1_coords))
+        self.n = np.diff(self.clr.extent(region2_coords))
         self._expected = LazyToeplitz(
-            self.expected.groupby(self.regions_columns)
-            .get_group(region1[0] if len(self.regions_columns) > 0 else region1)[
-                "balanced.avg"
-            ]
-            .values
+            self.expected.groupby("region").get_group(region1)["balanced.avg"].values
         )
         return self._expected
 
