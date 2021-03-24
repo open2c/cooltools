@@ -1,11 +1,13 @@
 import cooler
+import bioframe
 import os.path as op
 
 import cooltools.snipping
 import numpy as np
+import pandas as pd
 
 
-def test_snipper(request):
+def test_pileup(request):
     """
     Test the snipping on matrix:
     """
@@ -40,3 +42,20 @@ def test_snipper(request):
     assert stack.shape == (5, 5, 2)
     assert np.all(np.isfinite(stack[:, :, 0]))
     assert np.all(np.isnan(stack[:, :, 1]))
+
+
+def test_snipper_with_regions(request):
+    clr = cooler.Cooler(op.join(request.fspath.dirname, "data/CN.mm9.1000kb.cool"))
+    exp = pd.read_table(op.join(request.fspath.dirname, "data/CN.mm9.toy_expected.tsv"))
+    regions = bioframe.read_table(
+        op.join(request.fspath.dirname, "data/CN.mm9.toy_regions.bed"),
+        schema='bed4'
+    )
+    for snipper_class in (cooltools.snipping.ObsExpSnipper, cooltools.snipping.ExpectedSnipper):
+        snipper = snipper_class(clr, exp, regions=regions)
+        matrix = snipper.select('foo', 'foo')
+        snippet = snipper.snip(
+            matrix, 'foo', 'foo',
+            (110_000_000, 120_000_000, 110_000_000, 120_000_000)
+        )
+        assert snippet.shape is not None

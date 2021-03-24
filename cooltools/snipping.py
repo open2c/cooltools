@@ -135,12 +135,12 @@ def assign_regions(features, supports):
 
 def _pileup(data_select, data_snip, arg):
     support, feature_group = arg
-    
+
     # check if region is unannotated
     if len(support) == 0:
         lo = feature_group["lo"].values[0]
         hi = feature_group["hi"].values[0]
-        s = hi-lo # Shape of individual snip
+        s = hi - lo  # Shape of individual snip
         stack = np.full((s, s, len(feature_group)), np.nan)
         # return empty snippets if region is not annotated
         return stack, feature_group["_rank"].values
@@ -349,6 +349,18 @@ class ObsExpSnipper:
                 )
         self.regions = regions.set_index("name")
 
+        try:
+            for region_name, group in self.expected.groupby("region"):
+                n_diags = group.shape[0]
+                region = self.regions.loc[region_name]
+                lo, hi = self.clr.extent(region)
+                assert n_diags == (hi - lo)
+        except AssertionError:
+            raise ValueError(
+                "Region shape mismatch between expected and cooler. "
+                "Are they using the same resolution?"
+            )
+
         self.binsize = self.clr.binsize
         self.offsets = {}
         self.pad = True
@@ -453,8 +465,11 @@ class ExpectedSnipper:
         self.regions = regions.set_index("name")
 
         try:
-            for region, group in self.expected.groupby("region"):
-                assert group.shape[0] == np.diff(self.clr.extent(region))[0]
+            for region_name, group in self.expected.groupby("region"):
+                n_diags = group.shape[0]
+                region = self.regions.loc[region_name]
+                lo, hi = self.clr.extent(region)
+                assert n_diags == (hi - lo)
         except AssertionError:
             raise ValueError(
                 "Region shape mismatch between expected and cooler. "
