@@ -80,57 +80,105 @@ def assign_regions(features, supports):
     """
     features = features.copy()
 
-    # on-diagonal features
     if "chrom" in features.columns:
-        for i, region in enumerate(supports):
-            if len(region) == 3:
-                sel = features.chrom == region[0]
-                sel &= features.end >= region[1]
-                if region[2] is not None:
-                    sel &= features.start < region[2]
+        overlap = bioframe.overlap(
+            features,
+            supports,
+            how="left",
+            cols1=["chrom", "start", "end"],
+            cols2=["chrom", "start", "end"],
+            keep_order=True,
+            return_overlap=True,
+        )
+        overlap["overlap_length"] = overlap["overlap_end"] - overlap["overlap_start"]
+        # To filter out overlaps with multiple regions:
+        overlap = (
+            overlap.sort_values("overlap_length", ascending=False)
+            .drop_duplicates(keep="first")
+            .sort_index()
+        )
+        features["region"] = overlap["name_2"]
 
-                features.loc[sel, "region"] = i
+    if "chrom1" in features.columns:
+        for idx in ("1", "2"):
+            overlap = bioframe.overlap(
+                features,
+                supports,
+                how="left",
+                cols1=[f"chrom{idx}", f"start{idx}", f"end{idx}"],
+                cols2=[f"chrom", f"start", f"end"],
+                keep_order=True,
+                return_overlap=True,
+            )
+            overlap["overlap_length"] = (
+                overlap["overlap_end"] - overlap["overlap_start"]
+            )
+            # To filter out overlaps with multiple regions:
+            overlap = (
+                overlap.sort_values("overlap_length", ascending=False)
+                .drop_duplicates(keep="first")
+                .sort_index()
+            )
 
-            elif len(region) == 2:
-                region1, region2 = region
-                sel1 = features.chrom == region1[0]
-                sel1 &= features.end >= region1[1]
-                if region1[2] is not None:
-                    sel1 &= features.start < region1[2]
+            features[f"region{idx}"] = overlap["name_2"]
+        # If region1 != region2, return np.nan:
+        features["region"] = np.where(
+            features["region1"] != features["region2"], features["region1"], np.nan
+        )
 
-                sel2 = features.chrom == region2[0]
-                sel2 &= features.end >= region2[1]
-                if region2[2] is not None:
-                    sel2 &= features.start < region2[2]
-
-                features.loc[(sel1 | sel2), "region"] = i
-
-    # off-diagonal features
-    elif "chrom1" in features.columns:
-        for i, region in enumerate(supports):
-            if len(region) == 3:
-                region1, region2 = region, region
-            elif len(region) == 2:
-                region1, region2 = region[0], region[1]
-
-            sel1 = features.chrom1 == region1[0]
-            sel1 &= features.end1 >= region1[1]
-            if region1[2] is not None:
-                sel1 &= features.start1 < region1[2]
-
-            sel2 = features.chrom2 == region2[0]
-            sel2 &= features.end2 >= region2[1]
-            if region2[2] is not None:
-                sel2 &= features.start2 < region2[2]
-
-            features.loc[(sel1 | sel2), "region"] = i
-    else:
-        raise ValueError("Could not parse `features` data frame.")
-
-    features["region"] = features["region"].map(
-        lambda i: "{}:{}-{}".format(*supports[int(i)]), na_action="ignore"
-    )
     return features
+
+    # # on-diagonal features
+    # if "chrom" in features.columns:
+    #     for i, region in enumerate(supports):
+    #         if len(region) == 3:
+    #             sel = features.chrom == region[0]
+    #             sel &= features.end >= region[1]
+    #             if region[2] is not None:
+    #                 sel &= features.start < region[2]
+    #
+    #             features.loc[sel, "region"] = i
+    #
+    #         elif len(region) == 2:
+    #             region1, region2 = region
+    #             sel1 = features.chrom == region1[0]
+    #             sel1 &= features.end >= region1[1]
+    #             if region1[2] is not None:
+    #                 sel1 &= features.start < region1[2]
+    #
+    #             sel2 = features.chrom == region2[0]
+    #             sel2 &= features.end >= region2[1]
+    #             if region2[2] is not None:
+    #                 sel2 &= features.start < region2[2]
+    #
+    #             features.loc[(sel1 | sel2), "region"] = i
+    #
+    # # off-diagonal features
+    # elif "chrom1" in features.columns:
+    #     for i, region in enumerate(supports):
+    #         if len(region) == 3:
+    #             region1, region2 = region, region
+    #         elif len(region) == 2:
+    #             region1, region2 = region[0], region[1]
+    #
+    #         sel1 = features.chrom1 == region1[0]
+    #         sel1 &= features.end1 >= region1[1]
+    #         if region1[2] is not None:
+    #             sel1 &= features.start1 < region1[2]
+    #
+    #         sel2 = features.chrom2 == region2[0]
+    #         sel2 &= features.end2 >= region2[1]
+    #         if region2[2] is not None:
+    #             sel2 &= features.start2 < region2[2]
+    #
+    #         features.loc[(sel1 | sel2), "region"] = i
+    # else:
+    #     raise ValueError("Could not parse `features` data frame.")
+    #
+    # features["region"] = features["region"].map(
+    #     lambda i: "{}:{}-{}".format(*supports[int(i)]), na_action="ignore"
+    # )
+    # return features
 
 
 def _pileup(data_select, data_snip, arg):
@@ -147,9 +195,9 @@ def _pileup(data_select, data_snip, arg):
 
     # check if support region is on- or off-diagonal
     if len(support) == 2:
-        region1, region2 = map(bioframe.region.parse_region_string, support)
+        region1, region2 = support  # map(bioframe.region.parse_region_string, support)
     else:
-        region1 = region2 = bioframe.region.parse_region_string(support)
+        region1 = region2 = support  # bioframe.region.parse_region_string(support)
 
     # check if features are on- or off-diagonal
     if "start" in feature_group:
@@ -191,10 +239,14 @@ def pileup(features, data_select, data_snip, map=map):
 
     """
     if features.region.isnull().any():
-        warnings.warn("Some features do not have regions assigned! Some snips will be empty.")
+        warnings.warn(
+            "Some features do not have regions assigned! Some snips will be empty."
+        )
 
     features = features.copy()
-    features['region'] = features.region.fillna('') # fill in unanotated regions with empty string
+    features["region"] = features.region.fillna(
+        ""
+    )  # fill in unanotated regions with empty string
     features["_rank"] = range(len(features))
 
     # cumul_stack = []
@@ -257,7 +309,15 @@ def pair_sites(sites, separation, slop):
 
 
 class CoolerSnipper:
-    def __init__(self, clr, cooler_opts=None):
+    def __init__(self, clr, cooler_opts=None, regions=None):
+
+        if regions is None:
+            regions = pd.DataFrame(
+                [(chrom, 0, l, chrom) for chrom, l in clr.chromsizes.items()],
+                columns=["chrom", "start", "end", "name"],
+            )
+        self.regions = regions.set_index("name")
+
         self.clr = clr
         self.binsize = self.clr.binsize
         self.offsets = {}
@@ -266,11 +326,19 @@ class CoolerSnipper:
         self.cooler_opts.setdefault("sparse", True)
 
     def select(self, region1, region2):
-        self.offsets[region1] = self.clr.offset(region1) - self.clr.offset(region1[0])
-        self.offsets[region2] = self.clr.offset(region2) - self.clr.offset(region2[0])
-        self._isnan1 = np.isnan(self.clr.bins()["weight"].fetch(region1).values)
-        self._isnan2 = np.isnan(self.clr.bins()["weight"].fetch(region2).values)
-        matrix = self.clr.matrix(**self.cooler_opts).fetch(region1, region2)
+        region1_coords = self.regions.loc[region1]
+        region2_coords = self.regions.loc[region2]
+        self.offsets[region1] = self.clr.offset(region1_coords) - self.clr.offset(
+            region1_coords[0]
+        )
+        self.offsets[region2] = self.clr.offset(region2_coords) - self.clr.offset(
+            region2_coords[0]
+        )
+        matrix = self.clr.matrix(**self.cooler_opts).fetch(
+            region1_coords, region2_coords
+        )
+        self._isnan1 = np.isnan(self.clr.bins()["weight"].fetch(region1_coords).values)
+        self._isnan2 = np.isnan(self.clr.bins()["weight"].fetch(region2_coords).values)
         if self.cooler_opts["sparse"]:
             matrix = matrix.tocsr()
         return matrix
@@ -311,7 +379,7 @@ class CoolerSnipper:
         #             snippet[pad_bottom:pad_top,
         #                     pad_left:pad_right] = matrix[i0:i1, j0:j1].toarray()
         else:
-            snippet = matrix[lo1:hi1, lo2:hi2].toarray().astype('float')
+            snippet = matrix[lo1:hi1, lo2:hi2].toarray().astype("float")
             snippet[self._isnan1[lo1:hi1], :] = np.nan
             snippet[:, self._isnan2[lo2:hi2]] = np.nan
         return snippet
