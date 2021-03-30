@@ -128,59 +128,6 @@ def assign_regions(features, supports):
 
     return features
 
-    # # on-diagonal features
-    # if "chrom" in features.columns:
-    #     for i, region in enumerate(supports):
-    #         if len(region) == 3:
-    #             sel = features.chrom == region[0]
-    #             sel &= features.end >= region[1]
-    #             if region[2] is not None:
-    #                 sel &= features.start < region[2]
-    #
-    #             features.loc[sel, "region"] = i
-    #
-    #         elif len(region) == 2:
-    #             region1, region2 = region
-    #             sel1 = features.chrom == region1[0]
-    #             sel1 &= features.end >= region1[1]
-    #             if region1[2] is not None:
-    #                 sel1 &= features.start < region1[2]
-    #
-    #             sel2 = features.chrom == region2[0]
-    #             sel2 &= features.end >= region2[1]
-    #             if region2[2] is not None:
-    #                 sel2 &= features.start < region2[2]
-    #
-    #             features.loc[(sel1 | sel2), "region"] = i
-    #
-    # # off-diagonal features
-    # elif "chrom1" in features.columns:
-    #     for i, region in enumerate(supports):
-    #         if len(region) == 3:
-    #             region1, region2 = region, region
-    #         elif len(region) == 2:
-    #             region1, region2 = region[0], region[1]
-    #
-    #         sel1 = features.chrom1 == region1[0]
-    #         sel1 &= features.end1 >= region1[1]
-    #         if region1[2] is not None:
-    #             sel1 &= features.start1 < region1[2]
-    #
-    #         sel2 = features.chrom2 == region2[0]
-    #         sel2 &= features.end2 >= region2[1]
-    #         if region2[2] is not None:
-    #             sel2 &= features.start2 < region2[2]
-    #
-    #         features.loc[(sel1 | sel2), "region"] = i
-    # else:
-    #     raise ValueError("Could not parse `features` data frame.")
-    #
-    # features["region"] = features["region"].map(
-    #     lambda i: "{}:{}-{}".format(*supports[int(i)]), na_action="ignore"
-    # )
-    # return features
-
-
 def _pileup(data_select, data_snip, arg):
     support, feature_group = arg
 
@@ -195,9 +142,9 @@ def _pileup(data_select, data_snip, arg):
 
     # check if support region is on- or off-diagonal
     if len(support) == 2:
-        region1, region2 = support  # map(bioframe.region.parse_region_string, support)
+        region1, region2 = support
     else:
-        region1 = region2 = support  # bioframe.region.parse_region_string(support)
+        region1 = region2 = support
 
     # check if features are on- or off-diagonal
     if "start" in feature_group:
