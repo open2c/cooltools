@@ -2,6 +2,7 @@ import os.path as op
 import pandas as pd
 import numpy as np
 import cooler
+import bioframe
 
 import click
 from . import cli
@@ -20,6 +21,17 @@ from .. import dotfinder
     metavar="EXPECTED_PATH",
     type=click.Path(exists=True, dir_okay=False),
     nargs=1,
+)
+@click.option(
+    "--regions",
+    help="Path to a BED file with the definition of regions"
+    " used in the calculation of EXPECTED_PATH. Dot-calling will be"
+    " performed for these regions independently e.g. chromosome arms."
+    " When not provided regions will be interpreted from `region` column"
+    " of EXPECTED_PATH (UCSC formatted, or full chromosome names).",
+    type=click.Path(exists=False, dir_okay=False),
+    default=None,
+    show_default=True,
 )
 @click.option(
     "--expected-name",
@@ -203,51 +215,72 @@ def call_dots(
     """
     clr = cooler.Cooler(cool_path)
 
-    expected_columns = ["region", "diag", "n_valid", expected_name]
-    expected_index = ["region", "diag"]
+    # read region table provided by the user
+    if regions is not None:
+        region_table = bioframe.read_table(regions, header=None)
+        region_table = bioframe.parse_regions(region_table)
+        # now regions_table should have column names chrom, start, end, name
+    else:
+        region_table = None
+
+    # preliminary SCHEMA for cis-expected
+    region_cols = ['region']
+    expected_columns = region_cols + ['diag', 'n_valid', expected_name]
     expected_dtypes = {
-        "region": np.str,
-        "diag": np.int64,
-        "n_valid": np.int64,
-        expected_name: np.float64,
+        'diag': np.int64,
+        'n_valid': np.int64,
+        expected_name: np.float64
     }
-    expected = pd.read_table(
-        expected_path,
-        usecols=expected_columns,
-        dtype=expected_dtypes,
-        comment=None,
-        verbose=verbose,
-    )
+    for _reg_col in region_cols:
+        expected_dtypes[_reg_col] = np.str
+    # end of SCHEMA for cis-expected
+    expected_index = region_cols + ["diag",]
+
+    try:
+        expected = pd.read_table(
+            expected_path,
+            usecols=expected_columns,
+            dtype=expected_dtypes,
+            comment=None,
+            verbose=verbose,
+        )
+    except ValueError as e:
+        raise ValueError(
+            "input expected does not match the schema\n"
+            "tab-separated expected file must have a header as wel"
+            )
+
+    # check if regions in expected are compatible with regions
+    # or try to interpret regions from region_cols of expected 
+    if region_table is None:
+        try:
+            uniq_regions = expected[region_cols].stack().unique()
+            region_table = bioframe.parse_regions(uniq_regions, clr.chromsizes)
+        except ValueError as e:
+            raise ValueError(
+                "Cannot interpret regions from EXPECTED_PATH\n"
+                "specify regions definitions using --regions option."
+                )
+    else:
+        # uniq regions from EXPECTED_PATH must be contained within region_table
+        uniq_regions = expected[region_cols].stack().unique()
+        ### TODO redo this to check if uniq_regions are IN region_table ...
+        region_table = region_table[region_table["name"].isin(uniq_regions)]
+
+    ### TODO:
+    # also need to check if binsize in EXPECTED_PATH and clr are matching
+    # maybe check number of entries in EXPECTED_PATH per region to make sure
+    # it is compatible with the binsize in cooler !
+
+    # after all the check are done, we can set
+    # expected_index from SCHEMA as such
     expected.set_index(expected_index, inplace=True)
 
-    # Input validation
-    # unique list of regions mentioned in expected_path
-    # do simple column-name validation for now
-    # [work of entire chromosomes for now, until generic regions are supported]
-    get_exp_chroms = lambda df: df.index.get_level_values("region").unique()
-    expected_chroms = get_exp_chroms(expected)
-    if not set(expected_chroms).issubset(clr.chromnames):
-        raise ValueError(
-            f"Chromosomes in {expected_path} must be subset of "
-            + f"chromosomes in cooler {cool_path}, because "
-            + "`call_dots` does not yet support generic regions."
-        )
-    # check number of bins
-    # compute # of bins by comparing matching indexes
-    get_exp_bins = lambda df, ref_chroms: (
-        df.index.get_level_values("region").isin(ref_chroms).sum()
-    )
-    expected_bins = get_exp_bins(expected, expected_chroms)
-    cool_bins = clr.bins()[:]["chrom"].isin(expected_chroms).sum()
-    if not (expected_bins == cool_bins):
-        raise ValueError(
-            f"Number of bins is not matching: {expected_bins} in {expected_path},"
-            + f" and {cool_bins} in {cool_path} for chromosomes {expected_chroms}"
-        )
     if verbose:
         print( # replace with logging
-            f"{cool_path} and {expected_path} passed cross-compatibility checks."
+            f"{cool_path}, {expected_path} and {regions} passed cross-compatibility checks."
         )
+    # by now we have a usable region_table and expected for most scenarios
 
     # Prepare some parameters.
     binsize = clr.binsize
