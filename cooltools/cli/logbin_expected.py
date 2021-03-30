@@ -159,7 +159,7 @@ def logbin_expected(
 
     lb_cvd, lb_slopes, lb_distbins = expected.logbin_expected(
         cvd,
-        exp_summary_name=exp_summary_name,
+        summary_name=exp_summary_name,
         bins_per_order_magnitude=bins_per_order_magnitude,
         bin_layout=bin_layout,
         min_nvalid=min_nvalid,
