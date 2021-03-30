@@ -14,17 +14,15 @@ from cooltools.cli import cli
 
 from itertools import combinations
 
-# setup new testing infrasctructure for expected ...
 
 # rudimentary expected functions for dense matrices:
 
 
 def _diagsum_dense(matrix, ignore_diags=2, bad_bins=None):
     """
-    function returning a diagsum list
-    for a square symmetric and dense matrix
-    it starts from the main diagonal and goes
-    until the upper right element - the furthermost diagonal.
+    function returning a diagsum list for a square symmetric and dense matrix
+    it starts from the main diagonal and goes until the upper right element -
+    the furthermost diagonal.
     """
     mat = matrix.copy().astype(float)
     if bad_bins is not None:
@@ -42,13 +40,11 @@ def _diagsum_dense(matrix, ignore_diags=2, bad_bins=None):
 
 def _diagsum_asymm_dense(matrix, bad_bin_rows=None, bad_bin_cols=None):
     """
-    function returning a diagsum list
-    for an arbitrary dense matrix, with no
+    function returning a diagsum list for an arbitrary dense matrix, with no
     assumptions on symmetry.
 
-    it starts from the bottom left element, goes
-    through the "main" diagonal and to the upper
-    right element - the frther most diagonal.
+    it starts from the bottom left element, goes through the "main" diagonal
+    and to the upper right element - the frther most diagonal.
     """
     mat = matrix.copy().astype(float)
     if bad_bin_rows is not None:
@@ -68,9 +64,8 @@ def _diagsum_asymm_dense(matrix, bad_bin_rows=None, bad_bin_cols=None):
 
 def _blocksum_asymm_dense(matrix, bad_bin_rows=None, bad_bin_cols=None):
     """
-    function returning a blocksum-based average
-    for an arbitrary dense matrix, with no
-    assumptions on symmetry.
+    function returning a blocksum-based average for an arbitrary dense matrix,
+    with no assumptions on symmetry.
     """
     mat = matrix.copy().astype(float)
     if bad_bin_rows is not None:
@@ -79,9 +74,6 @@ def _blocksum_asymm_dense(matrix, bad_bin_rows=None, bad_bin_cols=None):
         mat[:, bad_bin_cols] = np.nan
 
     return np.nanmean(mat)
-
-
-# numpy.testing.assert_allclose(actual, desired, rtol=1e-07, atol=0, equal_nan=True, err_msg='', verbose=True)
 
 
 # common parameters:
@@ -433,51 +425,32 @@ def test_logbin_interpolate_roundtrip():
     assert np.nanmax(max_dev[: N[0]]) > 0.5  # we are now different for chr1
 
 
-def test_preprocess_regions():
-    from cooltools.expected import _preprocess_regions as func
-
-    regs = [(None, 42), (42, None), ((None, 42), (42, None))]
-    names, processed = func(regs, 100)
-    assert (processed[0] == np.array([[0, 42], [0, 42]])).all()
-    assert (processed[1] == np.array([[42, 100], [42, 100]])).all()
-    assert (processed[2] == np.array([[0, 42], [42, 100]])).all()
-    assert names == ["0-42", "42-100", "0-42;42-100"]
-
-    names, processed = func(regs[:1])
-    assert (processed[0] == np.array([[0, 42], [0, 42]])).all()
-
-    # testing names
-    assert func([[0, 100]])[0][0] == "0-100"
-    assert func([[0, 100]], resolution=1000)[0][0] == "0-100000"
-    names3 = func([[0, 100]], chrom="chr1", resolution=1000)[0][0]
-    assert names3 == "chr1:0-100000"
-    names4 = func([[0, 100]], chrom="chr1", resolution=1000, offset_bp=1000)[0][0]
-    assert names4 == "chr1:1000-101000"
-
-
 def test_diagsum_from_array():
     from cooltools.expected import diagsum_from_array
 
-    # create a uniform 1/s decay as input
+    # Toy data: create a uniform 1/s decay as input
     ar = np.arange(100)
     ar = np.abs(ar[:, None] - ar[None, :])  # like toeplitz(ar)
     ar[ar == 0] = 1
     ar = 1 / ar
 
-    exp1 = diagsum_from_array(ar)
+    # Simple symmetric case
+    exp = _diagsum_dense(ar, ignore_diags=0, bad_bins=None)
+    exp1 = diagsum_from_array(ar, ignore_diags=0)
     exp1["balanced.avg"] = exp1["balanced.sum"] / exp1["n_valid"]
+    assert np.allclose(exp, exp1["balanced.avg"].values, equal_nan=True)
 
-    # fake some "bad" bins. Should have same outcome
+    # Assymetric region
+    exp = _diagsum_asymm_dense(ar[:50, 50:], bad_bin_rows=None, bad_bin_cols=None)
+    exp1 = diagsum_from_array(ar[:50, 50:], ignore_diags=0, offset=(0, 50))
+    exp1["balanced.avg"] = exp1["balanced.sum"] / exp1["n_valid"]
+    assert np.allclose(exp, exp1["balanced.avg"].values, equal_nan=True)
+
+    # Add some "bad" bins. Should have same outcome for this synthetic dataset
+    # because input was homogenous decay.
     ar[3:5] = 0
     ar[:, 3:5] = 0
-
-    exp2 = diagsum_from_array(ar)
-    exp2["balanced.avg"] = exp2["balanced.sum"] / exp2["n_valid"]
-
-    # calculate expected in an assymetric region. Same outcome
-    exp3 = diagsum_from_array(ar, regions=[[(0, 50), (50, 100)]])
-    exp3["balanced.avg"] = exp3["balanced.sum"] / exp3["n_valid"]
-
-    # all outcomes are identical because input was homogenous decay
-    assert np.allclose(exp1["balanced.avg"], exp2["balanced.avg"], equal_nan=True)
-    assert np.allclose(exp1["balanced.avg"], exp3["balanced.avg"], equal_nan=True)
+    exp = _diagsum_dense(ar, ignore_diags=0, bad_bins=list(range(3, 5)))
+    exp1 = diagsum_from_array(ar, ignore_diags=0)
+    exp1["balanced.avg"] = exp1["balanced.sum"] / exp1["n_valid"]
+    assert np.allclose(exp, exp1["balanced.avg"].values, equal_nan=True)

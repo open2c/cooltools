@@ -926,6 +926,7 @@ def diagsum_from_array(
     """
     Calculates Open2C-formatted expected for a dense submatrix of a whole
     genome contact map.
+
     Parameters
     ----------
     A : 2D array
@@ -943,10 +944,26 @@ def diagsum_from_array(
     region_name : str or (str, str), optional
         A custom region name or pair of region names. If provided, region
         columns will be included in the output.
+
     Notes
     -----
     For regions that cross the main diagonal of the whole-genome contact map,
     the lower triangle "overhang" is ignored.
+
+    Examples
+    --------
+    >>> A = clr.matrix()[:, :]  # whole genome balanced
+    >>> C = clr.matrix(balance=False)[:, :]  # whole genome raw
+
+    Using only balanced data:
+    >>> exp = diagsum_from_array(A)
+
+    Using balanced and raw counts:
+    >>> exp1 = diagsum_from_array(A, C)
+
+    Using an off-diagonal submatrix
+    >>> exp2 = diagsum_from_array(A[:50, 50:], offset=(0, 50))
+
     """
     if isinstance(offset, (list, tuple)):
         offset1, offset2 = offset
@@ -975,8 +992,8 @@ def diagsum_from_array(
     ar1 = np.arange(lo1, hi1, dtype=np.int32)
     ar2 = np.arange(lo2, hi2, dtype=np.int32)
     diag_indicator = ar2[np.newaxis, :] - ar1[:, np.newaxis]
-    diag_min = max(lo2 - hi1, 0)
-    diag_max = hi2 - lo1
+    diag_lo = max(lo2 - hi1 + 1, 0)
+    diag_hi = hi2 - lo1
 
     # Apply the validity mask to the indicator matrix.
     # Both invalid and lower triangle pixels will now have negative indicator values.
@@ -989,9 +1006,11 @@ def diagsum_from_array(
     D_flat = D[mask_per_pixel]
 
     # Group by diagonal and aggregate the number of valid pixels and pixel values.
-    diagonals = np.arange(diag_min, diag_max, dtype=int)
-    n_valid = np.bincount(D_flat, minlength=diag_max - diag_min)
-    balanced_sum = np.bincount(D_flat, weights=A_flat, minlength=diag_max - diag_min)
+    diagonals = np.arange(diag_lo, diag_hi, dtype=int)
+    n_valid = np.bincount(D_flat, minlength=diag_hi - diag_hi)[diag_lo:]
+    balanced_sum = np.bincount(D_flat, weights=A_flat, minlength=diag_hi - diag_lo)[
+        diag_lo:
+    ]
     # Mask to ignore initial diagonals.
     mask_per_diag = diagonals >= ignore_diags
 
@@ -1009,15 +1028,15 @@ def diagsum_from_array(
         if filter_counts:
             C_flat = counts[mask_per_pixel]
             count_sum = np.bincount(
-                D_flat, weights=C_flat, minlength=diag_max - diag_min
-            )
+                D_flat, weights=C_flat, minlength=diag_hi - diag_lo
+            )[diag_lo:]
         else:
             mask_per_pixel = diag_indicator >= 0
             D_flat = diag_indicator[mask_per_pixel]
             C_flat = counts[mask_per_pixel]
             count_sum = np.bincount(
-                D_flat, weights=C_flat, minlength=diag_max - diag_min
-            )
+                D_flat, weights=C_flat, minlength=diag_hi - diag_lo
+            )[diag_lo:]
         count_sum[~mask_per_diag] = np.nan
         df["count.sum"] = count_sum
 
