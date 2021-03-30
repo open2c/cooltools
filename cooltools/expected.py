@@ -920,185 +920,111 @@ def blocksum_asymm(
     )
 
 
-def _preprocess_regions(regions, n_bins=None, chrom=None, resolution=1, offset_bp=0):
-    """
-    Pre-processes regions and assigns names for the function that calculates
-    expected from the raw matrix
-
-    For now, just put the test here  they explain functionality well.
-
-    regs = [(None, 42), (42, None), ((None, 42), (42, None))]
-    names, processed = _preprocess_regions(regs, 100)
-
-    assert (processed[0] == np.array([[0, 42], [0, 42]])).all()
-    assert (processed[1] == np.array([[42, 100], [42, 100]])).all()
-    assert (processed[2] == np.array([[0, 42], [42, 100]])).all()
-    assert names == ['0-42', '42-100', '0-42;42-100']
-
-    names, processed = _preprocess_regions(regs[:1])
-    assert (processed[0] == np.array([[0, 42], [0, 42]])).all()
-
-    # testing names
-    assert _preprocess_regions([[0,100]])[0][0] == "0-100"
-    assert _preprocess_regions([[0,100]], resolution=1000)[0][0] == "0-100000"
-    assert _preprocess_regions([[0,100]], chrom="chr1",resolution=1000)[0][0] == "chr1:0-100000"
-    assert _preprocess_regions([[0,100]], chrom="chr1",resolution=1000, offset_bp=1000)[0][0] == "chr1:1000-101000"
-    """
-    processed_regions = []
-    for reg in regions:
-        # handle symmetric (1D) definitions of regions:
-        if not hasattr(reg[0], "__len__"):
-            reg = [reg, reg]
-
-        reg = [list(reg[0]), list(reg[1])]
-        for r in reg:
-            if r[0] is None:
-                r[0] = 0
-            if r[1] is None:
-                if n_bins is None:
-                    raise ValueError("Matrix size is needed to fill None at the end")
-                r[1] = n_bins
-        reg = np.array(reg)
-        if reg.shape != (2, 2):
-            raise ValueError("Regions should be (st,end) or [(st1, end1), (st2, end2)]")
-
-        processed_regions.append(reg)
-
-    names = []
-    for reg in processed_regions:
-        name = f"{reg[0][0]*resolution + offset_bp}-{reg[0][1]*resolution + offset_bp}"
-        if not (reg[0] == reg[1]).all():
-            name = (
-                name
-                + ";"
-                + f"{reg[1][0]*resolution + offset_bp}-{reg[1][1]*resolution + offset_bp}"
-            )
-        if chrom is not None:
-            name = f"{chrom}:" + name
-        names.append(name)
-
-    return names, processed_regions
-
-
 def diagsum_from_array(
-    heatmap,
-    regions=None,
-    rawmap=None,
-    *,
-    ignore_diags=2,
-    filter_rawmap=True,
-    chrom=None,
-    resolution=1,
-    offset_bp=0,
+    A, counts=None, *, offset=0, ignore_diags=2, filter_counts=False, region_name=None
 ):
     """
-    Calculates Open2C-formatted expected from a dense whole genome array.
-
-    Optionally adds chromosomes, and converts region names to meaningful names.
-
+    Calculates Open2C-formatted expected for a dense submatrix of a whole
+    genome contact map.
     Parameters
     ----------
-    heatmap: 2D array
-        Square heatmap to calculate expected (expected goes to balanced.sum)
-    regions: [(st, end), ((st1, end1), (st2, end2))]
-        on-diagonal or off-diagonal regions to calculate expected
-    rawmap: 2D array or None (optional; default=None)
-        Raw heatmap to populate count.sum
-    ignore_diags: int (optional; default=2)
-        Number of diagonals to exclude. Resulting diags are not filled with NaNs.
-    filter_rawmap: bool (optional; default=True)
-        apply filtering from balanced matrix to the raw one, ignored when rawmap is None
-    chrom: str or None (optional; default=None)
-        If set to str, would append chrom to region name to obtain UCSC-style strings
-    resolution: int (optional; default=1)
-        If set to a number, would assume this is a size of a pixel.
-        Helpful for obtaining UCSC-style regions that are meaningful.
-    offset_bp: int (optional; default=0)
-        Add this offset to start/end for region name only.
-        Helpful if your heatmap does not start at the beginning of a chromosome
-
+    A : 2D array
+        Normalized submatrix to calculate expected (``balanced.sum``).
+    counts : 2D array or None, optional
+        Corresponding raw contacts to populate ``count.sum``.
+    offset : int or (int, int)
+        i- and j- bin offsets of A relative to the parent matrix. If a single
+        offset is provided it is applied to both axes.
+    ignore_diags : int, optional
+        Number of initial diagonals to ignore.
+    filter_counts : bool, optional
+        Apply the validity mask from balanced matrix to the raw one. Ignored
+        when counts is None.
+    region_name : str or (str, str), optional
+        A custom region name or pair of region names. If provided, region
+        columns will be included in the output.
     Notes
     -----
-    For symmetric regions, every diagonal is counted once.
-
-    For assymetric regions that do not cross main diagonal, each diagonal is
-    counted once as well.
-
-    For assymetric regions that cross main diagonal (RLY?) the "overhang"
-    would be ignored. Also, why would you want that?
+    For regions that cross the main diagonal of the whole-genome contact map,
+    the lower triangle "overhang" is ignored.
     """
-    heatmap = np.array(heatmap, dtype=float)
-    n_bins = len(heatmap)
+    if isinstance(offset, (list, tuple)):
+        offset1, offset2 = offset
+    else:
+        offset1, offset2 = offset, offset
+    if isinstance(region_name, (list, tuple)):
+        region1, region2 = region_name
+    elif region_name is not None:
+        region1, region2 = region_name, region_name
+    A = np.asarray(A, dtype=float)
+    if counts is not None:
+        counts = np.asarray(counts)
+        if counts.shape != A.shape:
+            raise ValueError("`counts` must have the same shape as `A`.")
 
-    if regions is None:
-        regions = [(0, n_bins)]
+    # Compute validity mask for bins on each axis
+    A[~np.isfinite(A)] = 0
+    invalid_mask1 = np.sum(A, axis=1) == 0
+    invalid_mask2 = np.sum(A, axis=0) == 0
 
-    names, regions = _preprocess_regions(
-        regions, n_bins=n_bins, chrom=chrom, resolution=resolution, offset_bp=offset_bp
-    )
+    # Prepare an indicator matrix of "diagonals" (toeplitz) where the lower
+    # triangle diagonals wrt the parent matrix are negative.
+    # The "outer difference" operation below produces a toeplitz matrix.
+    lo1, hi1 = offset1, offset1 + A.shape[0]
+    lo2, hi2 = offset2, offset2 + A.shape[1]
+    ar1 = np.arange(lo1, hi1, dtype=np.int32)
+    ar2 = np.arange(lo2, hi2, dtype=np.int32)
+    diag_indicator = ar2[np.newaxis, :] - ar1[:, np.newaxis]
+    diag_min = max(lo2 - hi1, 0)
+    diag_max = hi2 - lo1
 
-    # exclude empty and filtered rows/columns from "valid"
-    heatmap[~np.isfinite(heatmap)] = 0
-    invalid_mask = np.sum(heatmap, axis=0) == 0
+    # Apply the validity mask to the indicator matrix.
+    # Both invalid and lower triangle pixels will now have negative indicator values.
+    D = diag_indicator.copy()
+    D[invalid_mask1, :] = -1
+    D[:, invalid_mask2] = -1
+    # Drop invalid and lower triangle pixels and flatten.
+    mask_per_pixel = D >= 0
+    A_flat = A[mask_per_pixel]
+    D_flat = D[mask_per_pixel]
 
-    # Prepare a lazily evaluated indicator matrix of "diagonals" (toeplitz).
-    # Lower triangle diagonals are negative.
-    ar = np.arange(n_bins, dtype=np.int32)
-    diag_indicator = numutils.LazyToeplitz(-ar, ar)
+    # Group by diagonal and aggregate the number of valid pixels and pixel values.
+    diagonals = np.arange(diag_min, diag_max, dtype=int)
+    n_valid = np.bincount(D_flat, minlength=diag_max - diag_min)
+    balanced_sum = np.bincount(D_flat, weights=A_flat, minlength=diag_max - diag_min)
+    # Mask to ignore initial diagonals.
+    mask_per_diag = diagonals >= ignore_diags
 
-    result = []
-    for name, region in zip(names, regions):
-        # Extract the current sub-heatmap.
-        (lo1, hi1), (lo2, hi2) = region
-        A = heatmap[lo1:hi1, lo2:hi2]
+    # Populate the output dataframe.
+    # Include region columns if region names are provided.
+    # Include raw pixel counts for each diag if counts is provided.
+    df = pd.DataFrame({"diag": diagonals, "n_valid": n_valid})
 
-        # Apply validity mask to the indicator matrix.
-        # Invalid and lower triangle pixels will now have negative indicator values.
-        D = diag_indicator[lo1:hi1, lo2:hi2]
-        diag_max = D.max() + 1
-        D[invalid_mask[lo1:hi1], :] = -1
-        D[:, invalid_mask[lo2:hi2]] = -1
+    if region_name is not None:
+        df.insert(0, "region1", region1)
+        df.insert(1, "region2", region2)
 
-        # Drop invalid and lower triangle pixels and flatten.
-        mask_per_pixel = D >= 0
-        A_flat = A[mask_per_pixel]
-        D_flat = D[mask_per_pixel]
+    if counts is not None:
+        # Either count everything or apply the same filtering as A.
+        if filter_counts:
+            C_flat = counts[mask_per_pixel]
+            count_sum = np.bincount(
+                D_flat, weights=C_flat, minlength=diag_max - diag_min
+            )
+        else:
+            mask_per_pixel = diag_indicator >= 0
+            D_flat = diag_indicator[mask_per_pixel]
+            C_flat = counts[mask_per_pixel]
+            count_sum = np.bincount(
+                D_flat, weights=C_flat, minlength=diag_max - diag_min
+            )
+        count_sum[~mask_per_diag] = np.nan
+        df["count.sum"] = count_sum
 
-        # Group by diagonal and sum the number of valid pixels and pixel values
-        n_valid = np.bincount(D_flat, minlength=diag_max)
-        balanced_sum = np.bincount(D_flat, weights=A_flat, minlength=diag_max)
+    balanced_sum[~mask_per_diag] = np.nan
+    df["balanced.sum"] = balanced_sum
 
-        # Mask to ignore initial diagonals
-        diag = np.arange(diag_max, dtype=int)
-        mask_per_diag = diag >= ignore_diags
-
-        balanced_sum[~mask_per_diag] = np.nan
-        df = pd.DataFrame(
-            {
-                "region": name,
-                "diag": diag,
-                "n_valid": n_valid,
-                "balanced.sum": balanced_sum,
-            }
-        )
-
-        # Include raw pixel counts for each diag if rawmap is provided.
-        if rawmap is not None:
-            C = rawmap[lo1:hi1, lo2:hi2].flatten()
-            # Either count everything or apply the same filtering as heatmap.
-            if filter_rawmap:
-                C = C[mask_per_pixel]
-                count_sum = np.bincount(D, weights=C, minlength=diag_max)
-            else:
-                D_raw = diag_indicator[lo1:hi1, lo2:hi2].flatten()
-                count_sum = np.bincount(D_raw, weights=C, minlength=diag_max)
-
-            count_sum[~mask_per_diag] = np.nan
-            df["count.sum"] = count_sum
-
-        result.append(df)
-
-    return pd.concat(result, ignore_index=True)
+    return df
 
 
 def logbin_expected(
