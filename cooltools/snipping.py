@@ -76,9 +76,15 @@ def make_bin_aligned_windows(
 
 def assign_regions(features, supports):
     """
-
+    For each feature in features dataframe assign the genomic region (support)
+    that overlaps with it. In case if feature overlaps multiple supports, the 
+    region with largest overlap will be reported.
     """
-    features = features.copy()
+
+    index_name = features.index.name  # Store the name of index
+    features = (
+        features.copy().reset_index()
+    )  # Store the original features' order as a column with original index
 
     if "chrom" in features.columns:
         overlap = bioframe.overlap(
@@ -90,13 +96,15 @@ def assign_regions(features, supports):
             keep_order=True,
             return_overlap=True,
         )
+        overlap_columns = overlap.columns  # To filter out duplicates later
         overlap["overlap_length"] = overlap["overlap_end"] - overlap["overlap_start"]
-        # To filter out overlaps with multiple regions:
+        # Filter out overlaps with multiple regions:
         overlap = (
             overlap.sort_values("overlap_length", ascending=False)
-            .drop_duplicates(keep="first")
+            .drop_duplicates(overlap_columns, keep="first")
             .sort_index()
         )
+        # Copy single column with overlapping region name:
         features["region"] = overlap["name_2"]
 
     if "chrom1" in features.columns:
@@ -110,34 +118,62 @@ def assign_regions(features, supports):
                 keep_order=True,
                 return_overlap=True,
             )
-            overlap["overlap_length"] = (
-                overlap["overlap_end"] - overlap["overlap_start"]
+            overlap_columns = overlap.columns  # To filter out duplicates later
+            overlap[f"overlap_length{idx}"] = (
+                overlap[f"overlap_end{idx}"] - overlap[f"overlap_start{idx}"]
             )
-            # To filter out overlaps with multiple regions:
+            # Filter out overlaps with multiple regions:
             overlap = (
-                overlap.sort_values("overlap_length", ascending=False)
-                .drop_duplicates(keep="first")
+                overlap.sort_values(f"overlap_length{idx}", ascending=False)
+                .drop_duplicates(overlap_columns, keep="first")
                 .sort_index()
             )
-
+            # Copy single column with overlapping region name:
             features[f"region{idx}"] = overlap["name_2"]
-        # If region1 != region2, return np.nan:
-        features["region"] = np.where(
-            features["region1"] != features["region2"], features["region1"], np.nan
-        )
 
+        # Form a single column with region names where region1 == region2, and np.nan in other cases:
+        features["region"] = np.where(
+            features["region1"] == features["region2"], features["region1"], np.nan
+        )
+        features = features.drop(
+            ["region1", "region2"], axis=1
+        )  # Remove unnecessary columns
+
+    features = features.set_index(
+        index_name if not index_name is None else "index"
+    )  # Restore the original index
+    features.index.name = index_name  # Restore original index title
     return features
+
 
 def _pileup(data_select, data_snip, arg):
     support, feature_group = arg
 
-    # check if region is unannotated
+    # return empty snippets if region is unannotated:
     if len(support) == 0:
-        lo = feature_group["lo"].values[0]
-        hi = feature_group["hi"].values[0]
-        s = hi - lo  # Shape of individual snip
-        stack = np.full((s, s, len(feature_group)), np.nan)
-        # return empty snippets if region is not annotated
+        if "start" in feature_group:  # on-diagonal off-region case:
+            lo = feature_group["lo"].values
+            hi = feature_group["hi"].values
+            s = hi - lo  # Shape of individual snips
+            assert (
+                s.max() == s.min()
+            ), "Pileup accepts only the windows of the same size"
+            stack = np.full((s[0], s[0], len(feature_group)), np.nan)
+        else:  # off-diagonal off-region case:
+            lo1 = feature_group["lo1"].values
+            hi1 = feature_group["hi1"].values
+            lo2 = feature_group["lo2"].values
+            hi2 = feature_group["hi2"].values
+            s1 = hi1 - lo1  # Shape of individual snips
+            s2 = hi1 - lo1
+            assert (
+                s1.max() == s1.min()
+            ), "Pileup accepts only the windows of the same size"
+            assert (
+                s2.max() == s2.min()
+            ), "Pileup accepts only the windows of the same size"
+            stack = np.full((s1[0], s2[0], len(feature_group)), np.nan)
+
         return stack, feature_group["_rank"].values
 
     # check if support region is on- or off-diagonal
