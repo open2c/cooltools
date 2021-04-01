@@ -15,7 +15,7 @@ def test_call_dots_cli(request, tmpdir):
         cli,
         [
             "call-dots",
-            "--regions-path",
+            "--regions",
             in_regions,
             "-p",
             1,

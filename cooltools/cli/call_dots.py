@@ -8,6 +8,7 @@ import click
 from . import cli
 from ..lib.common import assign_regions
 from .. import dotfinder
+from . import util
 
 
 @cli.command()
@@ -49,7 +50,8 @@ from .. import dotfinder
     show_default=True,
 )
 @click.option(
-    "-p", "--nproc",
+    "-p",
+    "--nproc",
     help="Number of processes to split the work between."
     " [default: 1, i.e. no process pool]",
     default=1,
@@ -121,28 +123,26 @@ from .. import dotfinder
     show_default=True,
 )
 @click.option(
-    "-v", "--verbose",
-    help="Enable verbose output",
-    is_flag=True,
-    default=False
+    "-v", "--verbose", help="Enable verbose output", is_flag=True, default=False
 )
 @click.option(
-    "-o", "--output-calls",
+    "-o",
+    "--output-calls",
     help="Specify output file name where to store"
     " the results of dot-calling, in a BEDPE format."
     " Pre-processed dots are stored in that file."
     " Post-processed dots are stored in the .postproc one.",
     type=str,
 )
-@click.option(
-    "-s", "--output-scores",
-    help="At the moment it is a redundant option that"
-    " does nothing. Reserve it for a better dump"
-    " of convolved scores.",
-    type=str,
-    required=False,
-)
 ### Unused options commented out. TODO: remove them or implement
+# @click.option(
+#     "-s", "--output-scores",
+#     help="At the moment it is a redundant option that"
+#     " does nothing. Reserve it for a better dump"
+#     " of convolved scores.",
+#     type=str,
+#     required=False,
+# )
 # @click.option(
 #     "--output-hists",
 #     help="Specify output file name to store"
@@ -176,6 +176,7 @@ from .. import dotfinder
 def call_dots(
     cool_path,
     expected_path,
+    regions,
     expected_name,
     weight_name,
     nproc,
@@ -218,18 +219,14 @@ def call_dots(
     clr = cooler.Cooler(cool_path)
 
     # preliminary SCHEMA for cis-expected
-    region_cols = ['region']
-    expected_columns = region_cols + ['diag', 'n_valid', expected_name]
+    region_column_name = "region"
+    expected_columns = [region_column_name, "diag", "n_valid", expected_name]
     expected_dtypes = {
-        'diag': np.int64,
-        'n_valid': np.int64,
-        expected_name: np.float64
+        region_column_name: np.str,
+        "diag": np.int64,
+        "n_valid": np.int64,
+        expected_name: np.float64,
     }
-    for _reg_col in region_cols:
-        expected_dtypes[_reg_col] = np.str
-    # end of SCHEMA for cis-expected
-    expected_index = region_cols + ["diag",]
-    expected.set_index(expected_index, inplace=True)
 
     try:
         expected = pd.read_table(
@@ -243,19 +240,25 @@ def call_dots(
         raise ValueError(
             "input expected does not match the schema\n"
             "tab-separated expected file must have a header as wel"
-            )
+        )
+    expected_index = [
+        region_column_name,
+        "diag",
+    ]
+    expected.set_index(expected_index, inplace=True)
+    # end of SCHEMA for cis-expected
 
     # Optional reading region table provided by the user:
-    if regions_path is None:
+    if regions is None:
         try:
-            uniq_regions = expected[region_cols].stack().unique()
-            region_table = bioframe.parse_regions(uniq_regions, clr.chromsizes)
-            regions_table["region"] = regions_table["chrom"]
+            uniq_regions = expected[region_column_name].unique()
+            regions_table = bioframe.parse_regions(uniq_regions, clr.chromsizes)
+            regions_table["name"] = regions_table["chrom"]
         except ValueError as e:
             raise ValueError(
                 "Cannot interpret regions from EXPECTED_PATH\n"
                 "specify regions definitions using --regions option."
-                )
+            )
     else:
         # Flexible reading of the regions table:
         regions_buf, names = util.sniff_for_header(regions)
@@ -269,42 +272,37 @@ def call_dots(
             regions_table = regions_table.rename(
                 columns={0: "chrom", 1: "start", 2: "end", 3: "name"}
             )
-            regions_table = parse_regions(regions_table)
+            regions_table = bioframe.parse_regions(regions_table)
         else:
-            regions_table = regions_table.rename(columns={0: "chrom", 1: "start", 2: "end"})
+            regions_table = regions_table.rename(
+                columns={0: "chrom", 1: "start", 2: "end"}
+            )
             regions_table["name"] = list(
                 regions_table.apply(lambda x: "{}:{}-{}".format(*x), axis=1)
             )
-            regions_table = parse_regions(regions_table)
+            regions_table = bioframe.parse_regions(regions_table)
 
-    regions_table.set_index("name", inplace=True)
+    # Verify appropriate columns order (required for heatmap_tiles_generator_diag):
+    regions_table = regions_table[["chrom", "start", "end", "name"]]
 
     # Input validation
     get_exp_regions = lambda df: df.index.get_level_values(region_column_name).unique()
     expected_regions = get_exp_regions(expected)
 
-    if region_column_name == "region":
-        # unique list of regions mentioned in expected_path
-        # are also in regions table
-        if not set(expected_regions).issubset(regions.index):
-            raise ValueError(
-                "Regions in {} must be subset of ".format(expected_path)
-                + f"regions in {'regions table'+regions_path if not regions_path is None else 'cooler'}"
-            )
-    else:  # region_column_name == "chrom":
-        # unique list of chroms mentioned in expected_path
-        # do simple column-name validation for now
-        if not set(expected_regions).issubset(clr.chromnames):
-            raise ValueError(
-                "Chromosomes in {} must be subset of ".format(expected_path)
-                + "chromosomes in cooler {}".format(cool_path)
-            )
+    # unique list of regions mentioned in expected_path
+    # are also in regions table
+    if not set(expected_regions).issubset(regions_table["name"]):
+        raise ValueError(
+            "Regions in {} must be subset of ".format(expected_path)
+            + f"regions in {'regions table'+regions_path if not regions_path is None else 'cooler'}"
+        )
+
     # check number of bins per region in cooler and expected table
     # compute # of bins by comparing matching indexes
     try:
         for region_name, group in expected.reset_index().groupby(region_column_name):
             n_diags = group.shape[0]
-            region = regions.loc[region_name]
+            region = regions_table.set_index("name").loc[region_name]
             lo, hi = clr.extent(region)
             assert n_diags == (hi - lo)
     except AssertionError:
@@ -337,9 +335,7 @@ def call_dots(
 
     if (kernel_width is None) or (kernel_peak is None):
         w, p = dotfinder.recommend_kernel_params(binsize)
-        print(
-            f"Using kernel parameters w={w}, p={p} recommended for binsize {binsize}"
-        )
+        print(f"Using kernel parameters w={w}, p={p} recommended for binsize {binsize}")
     else:
         w, p = kernel_width, kernel_peak
         # add some sanity check for w,p:
@@ -359,11 +355,7 @@ def call_dots(
     # list of tile coordinate ranges
     tiles = list(
         dotfinder.heatmap_tiles_generator_diag(
-            clr,
-            regions,
-            w,
-            tile_size_bins,
-            loci_separation_bins
+            clr, regions_table, w, tile_size_bins, loci_separation_bins
         )
     )
 
@@ -420,16 +412,14 @@ def call_dots(
         max_nans_tolerated,
         balance_factor,
         loci_separation_bins,
-        output_calls, # Writes simple tsv file
+        output_calls,  # Writes simple tsv file
         nproc,
         verbose,
     )
 
     # 4. Post-processing
     if verbose:
-        print(
-            f"Begin post-processing of {len(filtered_pixels)} filtered pixels"
-        )
+        print(f"Begin post-processing of {len(filtered_pixels)} filtered pixels")
         print("preparing to extract needed q-values ...")
 
     filtered_pixels_qvals = dotfinder.annotate_pixels_with_qvalues(
@@ -441,9 +431,7 @@ def call_dots(
     # why ? - because - clustering has to be done independently for every region!
     ########################################################################
     filtered_pixels_annotated = cooler.annotate(filtered_pixels_qvals, clr.bins()[:])
-    filtered_pixels_annotated = assign_regions(
-        filtered_pixels_annotated, regions.reset_index()
-    )
+    filtered_pixels_annotated = assign_regions(filtered_pixels_annotated, regions_table)
     centroids = dotfinder.clustering_step(
         filtered_pixels_annotated, expected_regions, dots_clustering_radius, verbose
     )

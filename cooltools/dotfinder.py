@@ -521,12 +521,9 @@ def heatmap_tiles_generator_diag(clr, regions, pad_size, tile_size, band_to_cove
     """
 
     for chrom, start, end, region_name in regions.itertuples(index=False):
-        region_begin, region_end = clr.extent(chrom)
+        region_begin, region_end = clr.extent(f"{chrom}:{start}-{end}")
         for tilei, tilej in square_matrix_tiling(
-            region_begin,
-            region_end,
-            tile_size,
-            pad_size
+            region_begin, region_end, tile_size, pad_size
         ):
             # check if a given tile intersects with
             # with the diagonal band of interest ...
@@ -1703,7 +1700,7 @@ def extraction_step(
 
 def clustering_step(
     scores_df,
-    expected_chroms,
+    expected_regions,
     dots_clustering_radius,
     verbose,
     obs_raw_name=observed_count_name,
@@ -1724,13 +1721,12 @@ def clustering_step(
     scores_df : pandas.DataFrame
         DataFrame that stores filtered pixels that are ready to be
         clustered, no more 'comply_fdr' column dependency.
-    expected_chroms : iterable
-        An iterable of chromosomes to be clustered.
+    expected_regions : iterable
+        An iterable of regions to be clustered.
     dots_clustering_radius : int
         Birch-clustering threshold.
     verbose : bool
         Enable verbose output.
-
     Returns
     -------
     centroids : pandas.DataFrame
@@ -1743,21 +1739,25 @@ def clustering_step(
     (to be tested).
 
     """
+    # Annotate regions, if needed:
+
+    scores_df = scores_df.copy()
+    if (
+        not "region" in scores_df.columns
+    ):  # If input scores are not annotated by regions:
+        scores_df["region"] = np.where(
+            scores_df["chr1"] == scores_df["chrom2"], scores_df["chrom1"], np.nan
+        )
     # using different bin12_id_names since all
     # pixels are annotated at this point.
     pixel_clust_list = []
-    for chrom in expected_chroms:
+    for region in expected_regions:
         # probably generate one big DataFrame with clustering
         # information only and then just merge it with the
         # existing 'scores_df'-DataFrame.
         # should we use groupby instead of 'scores_df['chrom12']==chrom' ?!
         # to be tested ...
-        df = scores_df[
-            (
-                (scores_df["chrom1"].astype(str) == str(chrom))
-                & (scores_df["chrom2"].astype(str) == str(chrom))
-            )
-        ]
+        df = scores_df[((scores_df["region"].astype(str) == str(region)))]
         if not len(df):
             continue
 
@@ -1780,11 +1780,11 @@ def clustering_step(
     df = pd.merge(
         scores_df, pixel_clust_df, how="left", left_index=True, right_index=True
     )
-    #prevents scores_df categorical values (all chroms, including chrM)
-    df['chrom1'] = df['chrom1'].astype(str)
-    df['chrom2'] = df['chrom2'].astype(str)
+    # prevents scores_df categorical values (all chroms, including chrM)
+    df["region1"] = df["region"].astype(str)
+    df["region2"] = df["region"].astype(str)
     # report only centroids with highest Observed:
-    chrom_clust_group = df.groupby(["chrom1", "chrom2", "c_label"])
+    chrom_clust_group = df.groupby(["region1", "region2", "c_label"])
     centroids = df.loc[chrom_clust_group[obs_raw_name].idxmax()]
     return centroids
 
