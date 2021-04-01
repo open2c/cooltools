@@ -14,8 +14,8 @@ from cooltools.dotfinder import get_adjusted_expected_tile_some_nans
 testdir = op.realpath(op.dirname(__file__))
 
 # mock input data location:
-mock_input = op.join(testdir, "data", "mock_inputs.npz")
-mock_result = op.join(testdir, "data", "mock_res.csv.gz")
+mock_input = op.join(testdir, "data", "dotfinder_mock_inputs.npz")
+mock_result = op.join(testdir, "data", "dotfinder_mock_res.csv.gz")
 
 # load mock results:
 mock_res = pd.read_csv(mock_result)

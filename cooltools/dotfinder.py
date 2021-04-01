@@ -491,7 +491,9 @@ def square_matrix_tiling(start, stop, step, edge, square=False, verbose=False):
             yield (lwx + start, rwx + start), (lwy + start, rwy + start)
 
 
-def heatmap_tiles_generator_diag(clr, chroms, pad_size, tile_size, band_to_cover):
+def heatmap_tiles_generator_diag(
+    clr, regions, pad_size, tile_size, band_to_cover, regions_table=None
+):
     """
     A generator yielding heatmap tiles that are needed to cover the requested
     band_to_cover around diagonal. Each tile is "padded" with pad_size edge to
@@ -501,8 +503,8 @@ def heatmap_tiles_generator_diag(clr, chroms, pad_size, tile_size, band_to_cover
     ----------
     clr : cooler
         Cooler object to use to extract chromosome extents.
-    chroms : iterable
-        Iterable of chromosomes to process
+    regions : iterable
+        Iterable of regions or chromosomes to process
     pad_size : int
         Size of padding around each tile. Typically the outer size of the
         kernel.
@@ -511,18 +513,23 @@ def heatmap_tiles_generator_diag(clr, chroms, pad_size, tile_size, band_to_cover
     band_to_cover : int
         Size of the diagonal band to be covered by the generated tiles.
         Typically correspond to the max_loci_separation for called dots.
-
+    regions_table : dataframe
+        BedFrame with regions annotation (indexed by region name).
+        Optional.
     Returns
     -------
     tile : tuple
         Generator of tuples of three, which contain
-        chromosome name, row index of the tile,
-        column index of the tile (chrom, tilei, tilej).
+        region name, row index of the tile,
+        column index of the tile (region, tilei, tilej).
 
     """
 
-    for chrom in chroms:
-        chr_start, chr_stop = clr.extent(chrom)
+    for region in regions:
+        if regions_table is not None:  # Parse regions from table if it is provided:
+            chr_start, chr_stop = clr.extent(regions_table.loc[region])
+        else:  # Works only if region can be digested by clr.extent
+            chr_start, chr_stop = clr.extent(region)
         for tilei, tilej in square_matrix_tiling(
             chr_start, chr_stop, tile_size, pad_size
         ):
@@ -536,7 +543,7 @@ def heatmap_tiles_generator_diag(clr, chroms, pad_size, tile_size, band_to_cover
             # we are using this >2*padding trick to exclude
             # tiles from the lower triangle from calculations ...
             if (min(band_to, diag_to) - max(band_from, diag_from)) > 2 * pad_size:
-                yield chrom, tilei, tilej
+                yield region, tilei, tilej
 
 
 ##################################
@@ -1701,7 +1708,7 @@ def extraction_step(
 
 def clustering_step(
     scores_df,
-    expected_chroms,
+    expected_regions,
     dots_clustering_radius,
     verbose,
     obs_raw_name=observed_count_name,
@@ -1722,13 +1729,12 @@ def clustering_step(
     scores_df : pandas.DataFrame
         DataFrame that stores filtered pixels that are ready to be
         clustered, no more 'comply_fdr' column dependency.
-    expected_chroms : iterable
-        An iterable of chromosomes to be clustered.
+    expected_regions : iterable
+        An iterable of regions to be clustered.
     dots_clustering_radius : int
         Birch-clustering threshold.
     verbose : bool
         Enable verbose output.
-
     Returns
     -------
     centroids : pandas.DataFrame
@@ -1741,21 +1747,23 @@ def clustering_step(
     (to be tested).
 
     """
+    # Annotate regions, if needed:
+
+    scores_df = scores_df.copy()
+    if not "region" in scores_df.columns:
+        scores_df["region"] = np.where(
+            scores_df["chr1"] == scores_df["chr2"], scores_df["chr1"], np.nan
+        )
     # using different bin12_id_names since all
     # pixels are annotated at this point.
     pixel_clust_list = []
-    for chrom in expected_chroms:
+    for region in expected_regions:
         # probably generate one big DataFrame with clustering
         # information only and then just merge it with the
         # existing 'scores_df'-DataFrame.
         # should we use groupby instead of 'scores_df['chrom12']==chrom' ?!
         # to be tested ...
-        df = scores_df[
-            (
-                (scores_df["chrom1"].astype(str) == str(chrom))
-                & (scores_df["chrom2"].astype(str) == str(chrom))
-            )
-        ]
+        df = scores_df[((scores_df["region"].astype(str) == str(region)))]
         if not len(df):
             continue
 
@@ -1778,11 +1786,11 @@ def clustering_step(
     df = pd.merge(
         scores_df, pixel_clust_df, how="left", left_index=True, right_index=True
     )
-    #prevents scores_df categorical values (all chroms, including chrM)
-    df['chrom1'] = df['chrom1'].astype(str)
-    df['chrom2'] = df['chrom2'].astype(str)
+    # prevents scores_df categorical values (all chroms, including chrM)
+    df["region1"] = df["region"].astype(str)
+    df["region2"] = df["region"].astype(str)
     # report only centroids with highest Observed:
-    chrom_clust_group = df.groupby(["chrom1", "chrom2", "c_label"])
+    chrom_clust_group = df.groupby(["region1", "region2", "c_label"])
     centroids = df.loc[chrom_clust_group[obs_raw_name].idxmax()]
     return centroids
 
