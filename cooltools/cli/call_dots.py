@@ -6,6 +6,7 @@ import bioframe
 
 import click
 from . import cli
+from ..lib.common import assign_regions
 from .. import dotfinder
 
 
@@ -126,21 +127,6 @@ from .. import dotfinder
     default=False
 )
 @click.option(
-    "-s", "--output-scores",
-    help="At the moment it is a redundant option that"
-    " does nothing. Reserve it for a better dump"
-    " of convolved scores.",
-    type=str,
-    required=False,
-)
-@click.option(
-    "--output-hists",
-    help="Specify output file name to store"
-    " lambda-chunked histograms. [Not implemented yet]",
-    type=str,
-    required=False,
-)
-@click.option(
     "-o", "--output-calls",
     help="Specify output file name where to store"
     " the results of dot-calling, in a BEDPE format."
@@ -149,28 +135,44 @@ from .. import dotfinder
     type=str,
 )
 @click.option(
-    "--score-dump-mode",
-    help="Specify file format for the dump of convolved scores."
-    " This dump is used for the downstream processing and"
-    " is read twice. Now 'parquet' is the only supported"
-    " format. 'cooler' and 'hdf' in the future.",
+    "-s", "--output-scores",
+    help="At the moment it is a redundant option that"
+    " does nothing. Reserve it for a better dump"
+    " of convolved scores.",
     type=str,
-    default="parquet",
-    show_default=True,
+    required=False,
 )
-@click.option(
-    "--temp-dir",
-    help="Create temporary files in specified directory.",
-    type=str,
-    default=".",
-    show_default=True,
-)
-@click.option(
-    "--no-delete-temp",
-    help="Do not delete temporary files when finished.",
-    is_flag=True,
-    default=False,
-)
+### Unused options commented out. TODO: remove them or implement
+# @click.option(
+#     "--output-hists",
+#     help="Specify output file name to store"
+#     " lambda-chunked histograms. [Not implemented yet]",
+#     type=str,
+#     required=False,
+# )
+# @click.option(
+#     "--score-dump-mode",
+#     help="Specify file format for the dump of convolved scores."
+#     " This dump is used for the downstream processing and"
+#     " is read twice. Now 'parquet' is the only supported"
+#     " format. 'cooler' and 'hdf' in the future.",
+#     type=str,
+#     default="parquet",
+#     show_default=True,
+# )
+# @click.option(
+#     "--temp-dir",
+#     help="Create temporary files in specified directory.",
+#     type=str,
+#     default=".",
+#     show_default=True,
+# )
+# @click.option(
+#     "--no-delete-temp",
+#     help="Do not delete temporary files when finished.",
+#     is_flag=True,
+#     default=False,
+# )
 def call_dots(
     cool_path,
     expected_path,
@@ -186,12 +188,12 @@ def call_dots(
     fdr,
     dots_clustering_radius,
     verbose,
-    output_scores,
-    output_hists,
     output_calls,
-    score_dump_mode,
-    temp_dir,
-    no_delete_temp,
+    # output_scores,
+    # output_hists,
+    # score_dump_mode,
+    # temp_dir,
+    # no_delete_temp,
 ):
     """
     Call dots on a Hi-C heatmap that are not larger than max_loci_separation.
@@ -215,14 +217,6 @@ def call_dots(
     """
     clr = cooler.Cooler(cool_path)
 
-    # read region table provided by the user
-    if regions is not None:
-        region_table = bioframe.read_table(regions, header=None)
-        region_table = bioframe.parse_regions(region_table)
-        # now regions_table should have column names chrom, start, end, name
-    else:
-        region_table = None
-
     # preliminary SCHEMA for cis-expected
     region_cols = ['region']
     expected_columns = region_cols + ['diag', 'n_valid', expected_name]
@@ -235,6 +229,7 @@ def call_dots(
         expected_dtypes[_reg_col] = np.str
     # end of SCHEMA for cis-expected
     expected_index = region_cols + ["diag",]
+    expected.set_index(expected_index, inplace=True)
 
     try:
         expected = pd.read_table(
@@ -250,36 +245,81 @@ def call_dots(
             "tab-separated expected file must have a header as wel"
             )
 
-    # check if regions in expected are compatible with regions
-    # or try to interpret regions from region_cols of expected 
-    if region_table is None:
+    # Optional reading region table provided by the user:
+    if regions_path is None:
         try:
             uniq_regions = expected[region_cols].stack().unique()
             region_table = bioframe.parse_regions(uniq_regions, clr.chromsizes)
+            regions_table["region"] = regions_table["chrom"]
         except ValueError as e:
             raise ValueError(
                 "Cannot interpret regions from EXPECTED_PATH\n"
                 "specify regions definitions using --regions option."
                 )
     else:
-        # uniq regions from EXPECTED_PATH must be contained within region_table
-        uniq_regions = expected[region_cols].stack().unique()
-        ### TODO redo this to check if uniq_regions are IN region_table ...
-        region_table = region_table[region_table["name"].isin(uniq_regions)]
+        # Flexible reading of the regions table:
+        regions_buf, names = util.sniff_for_header(regions)
+        regions_table = pd.read_csv(regions_buf, sep="\t", header=None)
+        if regions_table.shape[1] not in (3, 4):
+            raise ValueError(
+                "The region file does not have three or four tab-delimited columns."
+                "We expect a bed file with columns chrom, start, end, and optional name"
+            )
+        if regions_table.shape[1] == 4:
+            regions_table = regions_table.rename(
+                columns={0: "chrom", 1: "start", 2: "end", 3: "name"}
+            )
+            regions_table = parse_regions(regions_table)
+        else:
+            regions_table = regions_table.rename(columns={0: "chrom", 1: "start", 2: "end"})
+            regions_table["name"] = list(
+                regions_table.apply(lambda x: "{}:{}-{}".format(*x), axis=1)
+            )
+            regions_table = parse_regions(regions_table)
 
-    ### TODO:
-    # also need to check if binsize in EXPECTED_PATH and clr are matching
-    # maybe check number of entries in EXPECTED_PATH per region to make sure
-    # it is compatible with the binsize in cooler !
+    regions_table.set_index("name", inplace=True)
 
-    # after all the check are done, we can set
-    # expected_index from SCHEMA as such
-    expected.set_index(expected_index, inplace=True)
+    # Input validation
+    get_exp_regions = lambda df: df.index.get_level_values(region_column_name).unique()
+    expected_regions = get_exp_regions(expected)
 
-    if verbose:
-        print( # replace with logging
-            f"{cool_path}, {expected_path} and {regions} passed cross-compatibility checks."
+    if region_column_name == "region":
+        # unique list of regions mentioned in expected_path
+        # are also in regions table
+        if not set(expected_regions).issubset(regions.index):
+            raise ValueError(
+                "Regions in {} must be subset of ".format(expected_path)
+                + f"regions in {'regions table'+regions_path if not regions_path is None else 'cooler'}"
+            )
+    else:  # region_column_name == "chrom":
+        # unique list of chroms mentioned in expected_path
+        # do simple column-name validation for now
+        if not set(expected_regions).issubset(clr.chromnames):
+            raise ValueError(
+                "Chromosomes in {} must be subset of ".format(expected_path)
+                + "chromosomes in cooler {}".format(cool_path)
+            )
+    # check number of bins per region in cooler and expected table
+    # compute # of bins by comparing matching indexes
+    try:
+        for region_name, group in expected.reset_index().groupby(region_column_name):
+            n_diags = group.shape[0]
+            region = regions.loc[region_name]
+            lo, hi = clr.extent(region)
+            assert n_diags == (hi - lo)
+    except AssertionError:
+        raise ValueError(
+            "Region shape mismatch between expected and cooler. "
+            "Are they using the same resolution?"
         )
+    # All the checks have passed:
+    if verbose:
+        print(
+            "{} and {} passed cross-compatibility checks.".format(
+                cool_path, expected_path
+            )
+        )
+
     # by now we have a usable region_table and expected for most scenarios
 
     # Prepare some parameters.
@@ -318,9 +358,12 @@ def call_dots(
 
     # list of tile coordinate ranges
     tiles = list(
-        # heatmap_tiles_generator_diag is ready for arbitrary regions
         dotfinder.heatmap_tiles_generator_diag(
-            clr, expected_chroms, w, tile_size_bins, loci_separation_bins
+            clr,
+            regions,
+            w,
+            tile_size_bins,
+            loci_separation_bins
         )
     )
 
@@ -377,7 +420,7 @@ def call_dots(
         max_nans_tolerated,
         balance_factor,
         loci_separation_bins,
-        output_calls,
+        output_calls, # Writes simple tsv file
         nproc,
         verbose,
     )
@@ -398,8 +441,11 @@ def call_dots(
     # why ? - because - clustering has to be done independently for every region!
     ########################################################################
     filtered_pixels_annotated = cooler.annotate(filtered_pixels_qvals, clr.bins()[:])
+    filtered_pixels_annotated = assign_regions(
+        filtered_pixels_annotated, regions.reset_index()
+    )
     centroids = dotfinder.clustering_step(
-        filtered_pixels_annotated, expected_chroms, dots_clustering_radius, verbose
+        filtered_pixels_annotated, expected_regions, dots_clustering_radius, verbose
     )
 
     # 4b. filter by enrichment and qval

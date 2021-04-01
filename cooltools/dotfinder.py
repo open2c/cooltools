@@ -511,7 +511,6 @@ def heatmap_tiles_generator_diag(clr, regions, pad_size, tile_size, band_to_cove
     band_to_cover : int
         Size of the diagonal band to be covered by the generated tiles.
         Typically correspond to the max_loci_separation for called dots.
-
     Returns
     -------
     tile : tuple
