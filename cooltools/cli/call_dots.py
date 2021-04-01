@@ -251,10 +251,11 @@ def call_dots(
     # Optional reading region table provided by the user:
     if regions is None:
         try:
-            uniq_regions = expected[region_column_name].unique()
+            uniq_regions = expected.index.get_level_values(region_column_name).unique()
             regions_table = bioframe.parse_regions(uniq_regions, clr.chromsizes)
             regions_table["name"] = regions_table["chrom"]
         except ValueError as e:
+            print(e)
             raise ValueError(
                 "Cannot interpret regions from EXPECTED_PATH\n"
                 "specify regions definitions using --regions option."
