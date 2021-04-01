@@ -1773,6 +1773,16 @@ def clustering_step(
         print("Clustering is over!")
     # concatenate clustering results ...
     # indexing information persists here ...
+
+    if len(pixel_clust_list) == 0:
+        if verbose:
+            print("No clusters found! Output will be empty")
+        empty_output = pd.DataFrame(
+            [],
+            columns=list(scores_df.columns)
+            + ["region1", "region2", "c_label", "c_size", "cstart1", "cstart2"],
+        )
+        return empty_output  # Empty dataframe with the same columns as anticipated
     pixel_clust_df = pd.concat(pixel_clust_list, ignore_index=False)
 
     # now merge pixel_clust_df and scores_df DataFrame ...
