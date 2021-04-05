@@ -15,12 +15,7 @@ from . import util
 
 
 @cli.command()
-@click.argument(
-    "cool_path",
-    metavar="COOL_PATH",
-    type=str,
-    nargs=1
-)
+@click.argument("cool_path", metavar="COOL_PATH", type=str, nargs=1)
 @click.option(
     "--nproc", "-p",
     help="Number of processes to split the work between."
@@ -118,7 +113,6 @@ def compute_expected(
     COOL_PATH : The paths to a .cool file with a balanced Hi-C map.
 
     """
-
     if blacklist is not None:
         raise NotImplementedError(
             "Custom genomic regions for masking from calculation of expected"

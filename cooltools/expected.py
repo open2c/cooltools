@@ -1,4 +1,4 @@
-from itertools import chain, combinations
+from itertools import chain
 from collections import defaultdict
 from functools import partial
 
@@ -6,10 +6,10 @@ import warnings
 
 import numpy as np
 import pandas as pd
-from scipy.linalg import toeplitz
 from scipy.signal import fftconvolve
+from scipy.interpolate import interp1d
 
-from cooler.tools import split, partition
+from cooler.tools import partition
 import cooler
 import bioframe
 from .lib import assign_supports, numutils
@@ -920,12 +920,138 @@ def blocksum_asymm(
     )
 
 
+def diagsum_from_array(
+    A, counts=None, *, offset=0, ignore_diags=2, filter_counts=False, region_name=None
+):
+    """
+    Calculates Open2C-formatted expected for a dense submatrix of a whole
+    genome contact map.
+
+    Parameters
+    ----------
+    A : 2D array
+        Normalized submatrix to calculate expected (``balanced.sum``).
+    counts : 2D array or None, optional
+        Corresponding raw contacts to populate ``count.sum``.
+    offset : int or (int, int)
+        i- and j- bin offsets of A relative to the parent matrix. If a single
+        offset is provided it is applied to both axes.
+    ignore_diags : int, optional
+        Number of initial diagonals to ignore.
+    filter_counts : bool, optional
+        Apply the validity mask from balanced matrix to the raw one. Ignored
+        when counts is None.
+    region_name : str or (str, str), optional
+        A custom region name or pair of region names. If provided, region
+        columns will be included in the output.
+
+    Notes
+    -----
+    For regions that cross the main diagonal of the whole-genome contact map,
+    the lower triangle "overhang" is ignored.
+
+    Examples
+    --------
+    >>> A = clr.matrix()[:, :]  # whole genome balanced
+    >>> C = clr.matrix(balance=False)[:, :]  # whole genome raw
+
+    Using only balanced data:
+    >>> exp = diagsum_from_array(A)
+
+    Using balanced and raw counts:
+    >>> exp1 = diagsum_from_array(A, C)
+
+    Using an off-diagonal submatrix
+    >>> exp2 = diagsum_from_array(A[:50, 50:], offset=(0, 50))
+
+    """
+    if isinstance(offset, (list, tuple)):
+        offset1, offset2 = offset
+    else:
+        offset1, offset2 = offset, offset
+    if isinstance(region_name, (list, tuple)):
+        region1, region2 = region_name
+    elif region_name is not None:
+        region1, region2 = region_name, region_name
+    A = np.asarray(A, dtype=float)
+    if counts is not None:
+        counts = np.asarray(counts)
+        if counts.shape != A.shape:
+            raise ValueError("`counts` must have the same shape as `A`.")
+
+    # Compute validity mask for bins on each axis
+    A[~np.isfinite(A)] = 0
+    invalid_mask1 = np.sum(A, axis=1) == 0
+    invalid_mask2 = np.sum(A, axis=0) == 0
+
+    # Prepare an indicator matrix of "diagonals" (toeplitz) where the lower
+    # triangle diagonals wrt the parent matrix are negative.
+    # The "outer difference" operation below produces a toeplitz matrix.
+    lo1, hi1 = offset1, offset1 + A.shape[0]
+    lo2, hi2 = offset2, offset2 + A.shape[1]
+    ar1 = np.arange(lo1, hi1, dtype=np.int32)
+    ar2 = np.arange(lo2, hi2, dtype=np.int32)
+    diag_indicator = ar2[np.newaxis, :] - ar1[:, np.newaxis]
+    diag_lo = max(lo2 - hi1 + 1, 0)
+    diag_hi = hi2 - lo1
+
+    # Apply the validity mask to the indicator matrix.
+    # Both invalid and lower triangle pixels will now have negative indicator values.
+    D = diag_indicator.copy()
+    D[invalid_mask1, :] = -1
+    D[:, invalid_mask2] = -1
+    # Drop invalid and lower triangle pixels and flatten.
+    mask_per_pixel = D >= 0
+    A_flat = A[mask_per_pixel]
+    D_flat = D[mask_per_pixel]
+
+    # Group by diagonal and aggregate the number of valid pixels and pixel values.
+    diagonals = np.arange(diag_lo, diag_hi, dtype=int)
+    n_valid = np.bincount(D_flat, minlength=diag_hi - diag_hi)[diag_lo:]
+    balanced_sum = np.bincount(D_flat, weights=A_flat, minlength=diag_hi - diag_lo)[
+        diag_lo:
+    ]
+    # Mask to ignore initial diagonals.
+    mask_per_diag = diagonals >= ignore_diags
+
+    # Populate the output dataframe.
+    # Include region columns if region names are provided.
+    # Include raw pixel counts for each diag if counts is provided.
+    df = pd.DataFrame({"diag": diagonals, "n_valid": n_valid})
+
+    if region_name is not None:
+        df.insert(0, "region1", region1)
+        df.insert(1, "region2", region2)
+
+    if counts is not None:
+        # Either count everything or apply the same filtering as A.
+        if filter_counts:
+            C_flat = counts[mask_per_pixel]
+            count_sum = np.bincount(
+                D_flat, weights=C_flat, minlength=diag_hi - diag_lo
+            )[diag_lo:]
+        else:
+            mask_per_pixel = diag_indicator >= 0
+            D_flat = diag_indicator[mask_per_pixel]
+            C_flat = counts[mask_per_pixel]
+            count_sum = np.bincount(
+                D_flat, weights=C_flat, minlength=diag_hi - diag_lo
+            )[diag_lo:]
+        count_sum[~mask_per_diag] = np.nan
+        df["count.sum"] = count_sum
+
+    balanced_sum[~mask_per_diag] = np.nan
+    df["balanced.sum"] = balanced_sum
+
+    return df
+
+
 def logbin_expected(
     exp,
-    exp_summary_name="balanced.sum",
+    summary_name="balanced.sum",
     bins_per_order_magnitude=10,
     bin_layout="fixed",
-    der_smooth_function_by_reg=lambda x: numutils.robust_gauss_filter(x, 2),
+    smooth=lambda x: numutils.robust_gauss_filter(x, 2),
     min_nvalid=200,
     min_count=50,
 ):
@@ -937,11 +1063,11 @@ def logbin_expected(
     exp : DataFrame
         DataFrame produced by diagsum
 
-    exp_summary_name : str (optional)
+    summary_name : str, optional
         Name of the column of exp-DataFrame to use as a diagonal summary.
         Default is "balanced.sum".
 
-    bins_per_order_magnitude : int (optional)
+    bins_per_order_magnitude : int, optional
         How many bins per order of magnitude. Default of 10 has a ratio of
         neighboring bins of about 1.25
 
@@ -959,7 +1085,7 @@ def logbin_expected(
         value. Bins exceeding the size of the largest region will be simply
         ignored.
 
-    der_smooth_function_by_reg : callable
+    smooth : callable
         A smoothing function to be applied to log(P(s)) and log(x)
         before calculating P(s) slopes for by-region data
 
@@ -1017,8 +1143,8 @@ def logbin_expected(
     4MB. The center of mass of this trapezoid is at 36 + 14/9 = 37.55MB,
     and not at 38MB. So the last bin center is definitely mis-assigned, and
     the second-to-last bin center is off by some 25%. This would lead to a 25%
-    error of the P(s) slope estimated between the third-to-last and 
-    second-to-last bin. 
+    error of the P(s) slope estimated between the third-to-last and
+    second-to-last bin.
 
     In presence of missing bins, this all becomes more complex, but this kind
     of averaging should take care of everything. It follows a general
@@ -1057,35 +1183,34 @@ def logbin_expected(
     from cooltools.lib.numutils import logbins
 
     raw_summary_name = "count.sum"
-    exp_summary_base, *_ = exp_summary_name.split(".")
+    exp_summary_base, *_ = summary_name.split(".")
     Pc_name = f"{exp_summary_base}.avg"
     diag_name = "diag"
     diag_avg_name = f"{diag_name}.avg"
 
-    exp = exp[~pd.isna(exp[exp_summary_name])].copy()
-    exp[diag_avg_name] = exp.pop(diag_name) # "average" or weighted diagonals
+    exp = exp[~pd.isna(exp[summary_name])].copy()
+    exp[diag_avg_name] = exp.pop(diag_name)  # "average" or weighted diagonals
     diagmax = exp[diag_avg_name].max()
 
     # create diag_bins based on chosen layout:
     if bin_layout == "fixed":
         diag_bins = numutils.persistent_log_bins(
-            10,
-            bins_per_order_magnitude=bins_per_order_magnitude
+            10, bins_per_order_magnitude=bins_per_order_magnitude
         )
     elif bin_layout == "longest_region":
-        diag_bins = logbins(
-            1,
-            diagmax + 1,
-            ratio=10 ** (1 / bins_per_order_magnitude)
-        )
+        diag_bins = logbins(1, diagmax + 1, ratio=10 ** (1 / bins_per_order_magnitude))
     else:
         diag_bins = bin_layout
 
     if diag_bins[-1] < diagmax:
-        raise ValueError("Genomic separation bins end is less than the size of the largest region")
+        raise ValueError(
+            "Genomic separation bins end is less than the size of the largest region"
+        )
 
     # assign diagonals in exp DataFrame to diag_bins, i.e. give them ids:
-    exp["diag_bin_id"] = np.searchsorted(diag_bins, exp[diag_avg_name], side="right") - 1
+    exp["diag_bin_id"] = (
+        np.searchsorted(diag_bins, exp[diag_avg_name], side="right") - 1
+    )
     exp = exp[exp["diag_bin_id"] >= 0]
 
     # constructing expected grouped by region
@@ -1098,13 +1223,15 @@ def logbin_expected(
 
     byRegExp = byRegExp.reset_index()
     byRegExp = byRegExp[byRegExp["n_valid"] > min_nvalid]  # filtering by n_valid
-    byRegExp[Pc_name] = byRegExp[exp_summary_name] / byRegExp["n_valid"]
+    byRegExp[Pc_name] = byRegExp[summary_name] / byRegExp["n_valid"]
     byRegExp = byRegExp[byRegExp[Pc_name] > 0]  # drop diag_bins with 0 counts
     if min_count:
         if raw_summary_name in byRegExp:
             byRegExp = byRegExp[byRegExp[raw_summary_name] > min_count]
         else:
-            warnings.warn(RuntimeWarning(f"{raw_summary_name} not found in the input expected"))
+            warnings.warn(
+                RuntimeWarning(f"{raw_summary_name} not found in the input expected")
+            )
 
     byRegExp["diag_bin_start"] = diag_bins[byRegExp["diag_bin_id"].values]
     byRegExp["diag_bin_end"] = diag_bins[byRegExp["diag_bin_id"].values + 1] - 1
@@ -1113,9 +1240,12 @@ def logbin_expected(
     for reg, subdf in byRegExp.groupby("region"):
         subdf = subdf.sort_values("diag_bin_id")
         valid = np.minimum(subdf["n_valid"].values[:-1], subdf["n_valid"].values[1:])
-        mids = np.sqrt(subdf[diag_avg_name].values[:-1] * subdf[diag_avg_name].values[1:])
-        f = der_smooth_function_by_reg
-        slope = np.diff(f(np.log(subdf[Pc_name].values))) / np.diff(f(np.log(subdf[diag_avg_name].values)))
+        mids = np.sqrt(
+            subdf[diag_avg_name].values[:-1] * subdf[diag_avg_name].values[1:]
+        )
+        slope = np.diff(smooth(np.log(subdf[Pc_name].values))) / np.diff(
+            smooth(np.log(subdf[diag_avg_name].values))
+        )
         newdf = pd.DataFrame(
             {
                 diag_avg_name: mids,
@@ -1141,9 +1271,9 @@ def combine_binned_expected(
     concat_original=False,
 ):
     """
-    Combines by-region log-binned expected and slopes into genome-wide averages, 
-    handling small chromosomes and "corners" in an optimal fashion, robust to 
-    outliers. Calculates spread of by-chromosome P(s) and slopes, also in an optimal fashion. 
+    Combines by-region log-binned expected and slopes into genome-wide averages,
+    handling small chromosomes and "corners" in an optimal fashion, robust to
+    outliers. Calculates spread of by-chromosome P(s) and slopes, also in an optimal fashion.
 
     Parameters
     ----------
@@ -1153,14 +1283,14 @@ def combine_binned_expected(
     binned_exp_slope : dataframe or None
         If provided, estimates spread of slopes.
         Is necessary if concat_original is True
-        
+
     Pc_name : str
         Name of the column with the probability of contacts.
         Defaults to "balanced.avg".
 
     der_smooth_function_combined : callable
         A smoothing function for calculating slopes on combined data
-        
+
     spread_funcs: "minmax", "std", "logstd" or a function (see below)
         A way to estimate the spread of the P(s) curves between regions.
         * "minmax" - use the minimum/maximum of by-region P(s)
@@ -1179,10 +1309,10 @@ def combine_binned_expected(
 
     Notes
     -----
-    This function does not calculate errorbars. The spread is not the deviation of the mean, 
-    and rather is representative of variability between chromosomes. 
-    
-    
+    This function does not calculate errorbars. The spread is not the deviation of the mean,
+    and rather is representative of variability between chromosomes.
+
+
     Calculating errorbars/spread
 
     1. Take all by-region P(s)
@@ -1208,13 +1338,24 @@ def combine_binned_expected(
     pixel.
     """
     diag_avg_name = "diag.avg"
+    # combine pre-logbinned expecteds
     scal = numutils.weighted_groupby_mean(
-        binned_exp[[Pc_name, "diag_bin_id", "n_valid", diag_avg_name]],
+        binned_exp[
+            [
+                Pc_name,
+                "diag_bin_id",
+                "n_valid",
+                diag_avg_name,
+                "diag_bin_start",
+                "diag_bin_end",
+            ]
+        ],
         group_by="diag_bin_id",
         weigh_by="n_valid",
-        mode="mean"
+        mode="mean",
     )
 
+    # for every diagonal calculate the spread of expected
     if spread_funcs == "minmax":
         byRegVar = binned_exp.copy()
         byRegVar = byRegVar.loc[
@@ -1229,7 +1370,7 @@ def combine_binned_expected(
             binned_exp[[Pc_name, "diag_bin_id", "n_valid"]],
             group_by="diag_bin_id",
             weigh_by="n_valid",
-            mode="std"
+            mode="std",
         )[Pc_name]
         low_err = scal[Pc_name] - var
         high_err = scal[Pc_name] + var
@@ -1238,7 +1379,7 @@ def combine_binned_expected(
             binned_exp[[Pc_name, "diag_bin_id", "n_valid"]],
             group_by="diag_bin_id",
             weigh_by="n_valid",
-            mode="logstd"
+            mode="logstd",
         )[Pc_name]
         low_err = scal[Pc_name] / var
         high_err = scal[Pc_name] * var
@@ -1248,9 +1389,11 @@ def combine_binned_expected(
     scal["low_err"] = low_err
     scal["high_err"] = high_err
 
+    # re-calculate slope of the combined expected (log,smooth,diff)
     f = der_smooth_function_combined
-
-    slope = np.diff(f(np.log(scal[Pc_name].values))) / np.diff(f(np.log(scal[diag_avg_name].values)))
+    slope = np.diff(f(np.log(scal[Pc_name].values))) / np.diff(
+        f(np.log(scal[diag_avg_name].values))
+    )
     valid = np.minimum(scal["n_valid"].values[:-1], scal["n_valid"].values[1:])
     mids = np.sqrt(scal[diag_avg_name].values[:-1] * scal[diag_avg_name].values[1:])
     slope_df = pd.DataFrame(
@@ -1263,6 +1406,7 @@ def combine_binned_expected(
     )
     slope_df = slope_df.set_index("diag_bin_id")
 
+    # when pre-region slopes are provided, calculate spread of slopes
     if binned_exp_slope is not None:
         if spread_funcs_slope == "minmax":
             byRegDer = binned_exp_slope.copy()
@@ -1291,6 +1435,7 @@ def combine_binned_expected(
     slope_df = slope_df.reset_index()
     scal = scal.reset_index()
 
+    # append "combined" expected/slopes to the input DataFrames (not in-place)
     if concat_original:
         scal["region"] = "combined"
         slope_df["region"] = "combined"
@@ -1300,3 +1445,92 @@ def combine_binned_expected(
         )
 
     return scal, slope_df
+
+
+def interpolate_expected(
+    expected,
+    binned_expected,
+    columns=["balanced.avg"],
+    kind="quadratic",
+    by_region=True,
+    extrapolate_small_s=False,
+):
+    """
+    Interpolates expected to match binned_expected.
+    Basically, this function smoothes the original expected according to the logbinned expected.
+    It could either use by-region expected (each region will have different expected)
+    or use combined binned_expected (all regions will have the same expected after that)
+
+    Such a smoothed expected should be used to calculate observed/expected for downstream analysis.
+
+    Parameters
+    ----------
+    expected: pd.DataFrame
+        expected as returned by diagsum
+    binned_expected: pd.DataFrame
+        binned expected (combined or not)
+    columns: list[str] (optional)
+        Columns to interpolate. Must be present in binned_expected,
+        but not necessarily in expected.
+    kind: str (optional)
+        Interpolation type, according to scipy.interpolate.interp1d
+    by_region: bool or str (optional)
+        Whether to do interpolation by-region (default=True).
+        False means use one expected for all regions (use entire table).
+        If a region name is provided, expected for that region is used.
+
+    """
+
+    exp_int = expected.copy()
+    gr_exp = exp_int.groupby("region")  # groupby original expected by region
+
+    if by_region is not False and "region" not in binned_expected:
+        warnings.warn("Region column not found, assuming combined expected")
+        by_region = False
+
+    if by_region is True:
+        # groupby expected
+        gr_binned = binned_expected.groupby("region")
+    elif by_region is not False:
+        # extract a region that we want to use
+        binned_expected = binned_expected[binned_expected["region"] == by_region]
+
+    if by_region is not True:
+        # check that we have no duplicates in expected
+        assert len(binned_expected["diag_bin_id"].drop_duplicates()) == len(
+            binned_expected
+        )
+
+    interp_dfs = []
+
+    for reg, df_orig in gr_exp:
+        if by_region is True:  # use binned expected for this region
+            if reg not in gr_binned.groups:
+                continue
+            subdf = gr_binned.get_group(reg)
+        else:
+            subdf = binned_expected
+
+        diag_orig = df_orig["diag"].values
+        diag_mid = (subdf["diag_bin_start"] + subdf["diag_bin_end"]) / 2
+        interp_df = pd.DataFrame(
+            index=df_orig.index
+        )  # df to put interpolated values in
+        with np.errstate(invalid="ignore", divide="ignore"):
+            for colname in columns:  # interpolate each column
+                value_column = subdf[colname]
+                interp = interp1d(
+                    np.log(diag_mid),
+                    np.log(value_column),
+                    kind=kind,
+                    fill_value="extrapolate",
+                )
+                interp_df[colname] = np.exp(interp(np.log(diag_orig)))
+            if not extrapolate_small_s:
+                mask = diag_orig >= subdf["diag_bin_start"].min()
+                interp_df = interp_df.iloc[mask]
+        interp_dfs.append(interp_df)
+    interp_df = pd.concat(interp_dfs)
+    for i in interp_df.columns:
+        exp_int[i] = interp_df[i]
+    return exp_int
