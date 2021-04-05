@@ -1,6 +1,21 @@
 # Release notes
 
-## [Upcoming release](https://github.com/open2c/cooltools/compare/v0.3.2...HEAD)
+## [Upcoming release](https://github.com/open2c/cooltools/compare/v0.4.0...HEAD)
+
+## [v0.4.0](https://github.com/open2c/cooltools/compare/v0.3.2...v0.4.0)
+
+Date: 2021-04-05
+
+Maintenance
+* Make saddle strength work with NaNs
+* Add output option to diamond-insulation
+* Upgrade bioframe dependency
+* Parallelize random sampling
+* Various compatibility fixes to expected, saddle and snipping and elsewhere to work with standard formats for "expected" and "regions": https://github.com/open2c/cooltools/issues/217
+
+New features
+* New dataset download API
+* New functionality for smoothing P(s) and derivatives (API is not yet stable): `logbin_expected`, `interpolate_expected`
 
 ## [v0.3.2](https://github.com/open2c/cooltools/compare/v0.3.0...v0.3.2)
 
