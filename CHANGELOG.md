@@ -4,7 +4,7 @@
 
 ## [v0.4.0](https://github.com/open2c/cooltools/compare/v0.3.2...v0.4.0)
 
-Date: 2021-04-05
+Date: 2021-04-06
 
 Maintenance
 * Make saddle strength work with NaNs
