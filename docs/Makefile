@@ -18,8 +18,4 @@ help:
 # "make mode" option.  $(O) is meant as a shortcut for $(SPHINXOPTS).
 %: Makefile
 	@cd ..; python setup.py build_ext --inplace; cd docs
-	if test -d notebooks; \
-	then  cd notebooks && git pull; \
-	else git clone https://github.com/open2c/open2c_examples.git notebooks; \
-	fi	
 	@$(SPHINXBUILD) -M $@ "$(SOURCEDIR)" "$(BUILDDIR)" $(SPHINXOPTS) $(O)
