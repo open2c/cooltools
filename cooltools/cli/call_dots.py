@@ -15,7 +15,7 @@ from . import util
 @click.argument(
     "cool_path",
     metavar="COOL_PATH",
-    type=str,  # click.Path(exists=True, dir_okay=False),
+    type=str,
     nargs=1,
 )
 @click.argument(
@@ -134,45 +134,6 @@ from . import util
     " Post-processed dots are stored in the .postproc one.",
     type=str,
 )
-### Unused options commented out. TODO: remove them or implement
-# @click.option(
-#     "-s", "--output-scores",
-#     help="At the moment it is a redundant option that"
-#     " does nothing. Reserve it for a better dump"
-#     " of convolved scores.",
-#     type=str,
-#     required=False,
-# )
-# @click.option(
-#     "--output-hists",
-#     help="Specify output file name to store"
-#     " lambda-chunked histograms. [Not implemented yet]",
-#     type=str,
-#     required=False,
-# )
-# @click.option(
-#     "--score-dump-mode",
-#     help="Specify file format for the dump of convolved scores."
-#     " This dump is used for the downstream processing and"
-#     " is read twice. Now 'parquet' is the only supported"
-#     " format. 'cooler' and 'hdf' in the future.",
-#     type=str,
-#     default="parquet",
-#     show_default=True,
-# )
-# @click.option(
-#     "--temp-dir",
-#     help="Create temporary files in specified directory.",
-#     type=str,
-#     default=".",
-#     show_default=True,
-# )
-# @click.option(
-#     "--no-delete-temp",
-#     help="Do not delete temporary files when finished.",
-#     is_flag=True,
-#     default=False,
-# )
 def call_dots(
     cool_path,
     expected_path,
@@ -190,11 +151,6 @@ def call_dots(
     dots_clustering_radius,
     verbose,
     output_calls,
-    # output_scores,
-    # output_hists,
-    # score_dump_mode,
-    # temp_dir,
-    # no_delete_temp,
 ):
     """
     Call dots on a Hi-C heatmap that are not larger than max_loci_separation.
@@ -277,9 +233,6 @@ def call_dots(
         else:
             regions_table = regions_table.rename(
                 columns={0: "chrom", 1: "start", 2: "end"}
-            )
-            regions_table["name"] = list(
-                regions_table.apply(lambda x: "{}:{}-{}".format(*x), axis=1)
             )
             regions_table = bioframe.parse_regions(regions_table)
 
@@ -433,6 +386,7 @@ def call_dots(
     ########################################################################
     filtered_pixels_annotated = cooler.annotate(filtered_pixels_qvals, clr.bins()[:])
     filtered_pixels_annotated = assign_regions(filtered_pixels_annotated, regions_table)
+    # consider reseting index here
     centroids = dotfinder.clustering_step(
         filtered_pixels_annotated, expected_regions, dots_clustering_radius, verbose
     )

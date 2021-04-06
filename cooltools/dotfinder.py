@@ -521,7 +521,7 @@ def heatmap_tiles_generator_diag(clr, regions, pad_size, tile_size, band_to_cove
     """
 
     for chrom, start, end, region_name in regions.itertuples(index=False):
-        region_begin, region_end = clr.extent(f"{chrom}:{start}-{end}")
+        region_begin, region_end = clr.extent((chrom,start,end))
         for tilei, tilej in square_matrix_tiling(
             region_begin, region_end, tile_size, pad_size
         ):
