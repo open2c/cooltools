@@ -364,7 +364,7 @@ def make_diag_tables(clr, regions, regions2=None, weight_name="weight", bad_bins
     elif isinstance(weight_name, str):
         # using balacning weight to infer bad bins
         if weight_name not in clr.bins().columns:
-            raise KeyError("Balancing weight {weight_name} not found!")
+            raise KeyError(f"Balancing weight {weight_name} not found!")
         groups = dict(iter(bins.groupby("chrom")[weight_name]))
         bad_bin_dict = {
             chrom: np.array(groups[chrom].isnull()) for chrom in groups.keys()
@@ -484,7 +484,7 @@ def make_block_table(clr, regions1, regions2, weight_name="weight", bad_bins=Non
             bad_bins_y = len(by)
         elif isinstance(weight_name, str):
             if weight_name not in clr.bins().columns:
-                raise KeyError("Balancing weight {weight_name} not found!")
+                raise KeyError(f"Balancing weight {weight_name} not found!")
             else:
                 # extract "bad" bins filtered by balancing:
                 cb_bins_x = clr.bins()[weight_name][lo1:hi1].isnull().values
