@@ -121,3 +121,16 @@ html_static_path = ['_static']
 # Place CSS in _static directory
 # def setup(app):
 #     app.add_stylesheet('theme_overrides.css')
+
+
+# Pull jupyter notebooks from the open2c_examples repo
+def setup(app):
+    from subprocess import run
+
+    if os.path.isdir('notebooks'):
+        cmd = 'cd notebooks && git pull'
+    else:
+        cmd = 'git clone https://github.com/open2c/open2c_examples.git notebooks'
+
+    print("Updating Open2C examples...")
+    run(cmd, check=True, shell=True)

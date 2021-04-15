@@ -22,14 +22,10 @@ The tools for your *.cool*\ s
    :maxdepth: 2
    :caption: Tutorials
 
-   ./notebooks/01_scaling-curves.ipynb
-   ./notebooks/02_expected.ipynb
-   ./notebooks/03_eigendecomposition.ipynb
-   ./notebooks/04_saddle-plots.ipynb
-   ./notebooks/05_insulation-score.ipynb
-   ./notebooks/06_snipping-pileups.ipynb
-   ./notebooks/07_pileups2.ipynb
-   ./notebooks/08_dot-calling-internals.ipynb
+   ./notebooks/viz.ipynb
+   ./notebooks/contacts_vs_distance.ipynb
+   ./notebooks/insulation_and_boundaries.ipynb
+   ./notebooks/pileup_CTCF.ipynb
 
 
 .. toctree::

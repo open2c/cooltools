@@ -1,4 +1,5 @@
 import os.path as op
+
 # import pandas as pd
 
 import numpy as np
@@ -13,17 +14,15 @@ from cooltools.cli import cli
 
 from itertools import combinations
 
-# setup new testing infrasctructure for expected ...
 
 # rudimentary expected functions for dense matrices:
 
 
 def _diagsum_dense(matrix, ignore_diags=2, bad_bins=None):
     """
-    function returning a diagsum list
-    for a square symmetric and dense matrix
-    it starts from the main diagonal and goes
-    until the upper right element - the furthermost diagonal.
+    function returning a diagsum list for a square symmetric and dense matrix
+    it starts from the main diagonal and goes until the upper right element -
+    the furthermost diagonal.
     """
     mat = matrix.copy().astype(float)
     if bad_bins is not None:
@@ -41,13 +40,11 @@ def _diagsum_dense(matrix, ignore_diags=2, bad_bins=None):
 
 def _diagsum_asymm_dense(matrix, bad_bin_rows=None, bad_bin_cols=None):
     """
-    function returning a diagsum list
-    for an arbitrary dense matrix, with no
+    function returning a diagsum list for an arbitrary dense matrix, with no
     assumptions on symmetry.
 
-    it starts from the bottom left element, goes
-    through the "main" diagonal and to the upper
-    right element - the frther most diagonal.
+    it starts from the bottom left element, goes through the "main" diagonal
+    and to the upper right element - the frther most diagonal.
     """
     mat = matrix.copy().astype(float)
     if bad_bin_rows is not None:
@@ -67,9 +64,8 @@ def _diagsum_asymm_dense(matrix, bad_bin_rows=None, bad_bin_cols=None):
 
 def _blocksum_asymm_dense(matrix, bad_bin_rows=None, bad_bin_cols=None):
     """
-    function returning a blocksum-based average
-    for an arbitrary dense matrix, with no
-    assumptions on symmetry.
+    function returning a blocksum-based average for an arbitrary dense matrix,
+    with no assumptions on symmetry.
     """
     mat = matrix.copy().astype(float)
     if bad_bin_rows is not None:
@@ -78,9 +74,6 @@ def _blocksum_asymm_dense(matrix, bad_bin_rows=None, bad_bin_cols=None):
         mat[:, bad_bin_cols] = np.nan
 
     return np.nanmean(mat)
-
-
-# numpy.testing.assert_allclose(actual, desired, rtol=1e-07, atol=0, equal_nan=True, err_msg='', verbose=True)
 
 
 # common parameters:
@@ -203,12 +196,15 @@ def test_expected_cli(request, tmpdir):
     out_cis_expected = op.join(tmpdir, "cis.exp.tsv")
     runner = CliRunner()
     result = runner.invoke(
-        cli, [
-            'compute-expected',
-            '--weight-name', weight_name,
-            '-o', out_cis_expected,
+        cli,
+        [
+            "compute-expected",
+            "--weight-name",
+            weight_name,
+            "-o",
+            out_cis_expected,
             in_cool,
-        ]
+        ],
     )
     assert result.exit_code == 0
     clr = cooler.Cooler(in_cool)
@@ -234,13 +230,17 @@ def test_expected_regions_cli(request, tmpdir):
     out_cis_expected = op.join(tmpdir, "cis.regions.exp.tsv")
     runner = CliRunner()
     result = runner.invoke(
-        cli, [
-            'compute-expected',
-            '--weight-name', weight_name,
-            '--regions', in_regions,
-            '-o', out_cis_expected,
+        cli,
+        [
+            "compute-expected",
+            "--weight-name",
+            weight_name,
+            "--regions",
+            in_regions,
+            "-o",
+            out_cis_expected,
             in_cool,
-        ]
+        ],
     )
     assert result.exit_code == 0
     clr = cooler.Cooler(in_cool)
@@ -265,18 +265,25 @@ def test_trans_expected_regions_cli(request, tmpdir):
     # CLI compute expected for cis-data with arbitrary regions
     # which may overlap. But it is symmetrical cis-case.
     in_cool = op.join(request.fspath.dirname, "data/CN.mm9.1000kb.cool")
-    in_regions = op.join(request.fspath.dirname, "data/mm9.named_nonoverlap_regions.bed")
+    in_regions = op.join(
+        request.fspath.dirname, "data/mm9.named_nonoverlap_regions.bed"
+    )
     out_trans_expected = op.join(tmpdir, "cis.regions.exp.tsv")
     runner = CliRunner()
     result = runner.invoke(
-        cli, [
-            'compute-expected',
-            '--weight-name', weight_name,
-            '--regions', in_regions,
-            '--contact-type', 'trans',
-            '-o', out_trans_expected,
+        cli,
+        [
+            "compute-expected",
+            "--weight-name",
+            weight_name,
+            "--regions",
+            in_regions,
+            "--contact-type",
+            "trans",
+            "-o",
+            out_trans_expected,
             in_cool,
-        ]
+        ],
     )
     assert result.exit_code == 0
     clr = cooler.Cooler(in_cool)
@@ -311,12 +318,15 @@ def test_logbin_expected_cli(request, tmpdir):
     out_cis_expected = op.join(tmpdir, "cis.exp.tsv")
     runner = CliRunner()
     result = runner.invoke(
-        cli, [
-            'compute-expected',
-            '--weight-name', weight_name,
-            '-o', out_cis_expected,
+        cli,
+        [
+            "compute-expected",
+            "--weight-name",
+            weight_name,
+            "-o",
+            out_cis_expected,
             in_cool,
-        ]
+        ],
     )
     assert result.exit_code == 0
 
@@ -325,14 +335,122 @@ def test_logbin_expected_cli(request, tmpdir):
     logbin_prefix = op.join(tmpdir, "logbin_prefix")
     runner = CliRunner()
     result = runner.invoke(
-        cli, [
-            'logbin-expected',
-            '--resolution', binsize,
-            out_cis_expected,
-            logbin_prefix,
-        ]
+        cli,
+        ["logbin-expected", "--resolution", binsize, out_cis_expected, logbin_prefix],
     )
     assert result.exit_code == 0
     # make sure logbin output is generated:
     assert op.isfile(f"{logbin_prefix}.log.tsv")
     assert op.isfile(f"{logbin_prefix}.der.tsv")
+
+
+def test_logbin_interpolate_roundtrip():
+    from cooltools.expected import (
+        logbin_expected,
+        combine_binned_expected,
+        interpolate_expected,
+    )
+
+    N = [100, 300]
+    diag = np.concatenate([np.arange(i, dtype=int) for i in N])
+    region = np.concatenate([i * [j] for i, j in zip(N, ["chr1", "chr2"])])
+    prob = 1 / (diag + 1)
+    n_valid = prob * 0 + 300
+    count_sum = n_valid * prob * 100
+    balanced_sum = n_valid * prob
+    df = pd.DataFrame(
+        {
+            "region": region,
+            "diag": diag,
+            "n_valid": n_valid,
+            "count.sum": count_sum,
+            "balanced.sum": balanced_sum,
+        }
+    )
+    df2 = df.copy()
+    df2["balanced.sum"].values[: N[0]] *= 2  # chr2 is different  in df2
+
+    # simple roundtrip
+    exp1, der1, bins = logbin_expected(df2)
+    interp = interpolate_expected(df2, exp1)
+    max_dev = np.nanmax(
+        np.abs(
+            (interp["balanced.avg"] - df2["balanced.sum"] / df2["n_valid"])
+            / interp["balanced.avg"]
+        )
+    )
+    assert max_dev < 0.1  # maximum absolute deviation less than 10%
+
+    # using combined expected succeeds when chroms are same
+    exp1, der1, bins = logbin_expected(df)
+    comb, cder = combine_binned_expected(exp1, der1)
+    interp = interpolate_expected(df, comb, by_region=False)
+    max_dev = np.nanmax(
+        np.abs(
+            (interp["balanced.avg"] - df["balanced.sum"] / df["n_valid"])
+            / interp["balanced.avg"]
+        )
+    )
+    assert max_dev < 0.1  # maximum absolute deviation less than 10%
+
+    # using combined expected deemed to fail with df2
+    exp1, der1, bins = logbin_expected(df2)
+    comb, cder = combine_binned_expected(exp1, der1)
+    interp = interpolate_expected(df2, comb, by_region=False)
+    max_dev = np.nanmax(
+        np.abs(
+            (interp["balanced.avg"] - df2["balanced.sum"] / df2["n_valid"])
+            / interp["balanced.avg"]
+        )
+    )
+    assert max_dev > 0.1  # we are now different because we fed combined expected
+
+    # using chr2 for chr1 works if they are the same
+    interp = interpolate_expected(df, exp1, by_region="chr2")
+    max_dev = np.abs(
+        (interp["balanced.avg"] - df["balanced.sum"] / df["n_valid"])
+        / interp["balanced.avg"]
+    )
+    assert np.nanmax(max_dev) < 0.1  # maximum absolute deviation less than 10%
+
+    # using chr2 for chr1 fails if chroms are different
+    interp = interpolate_expected(df2, exp1, by_region="chr2")
+    max_dev = np.abs(
+        (interp["balanced.avg"] - df2["balanced.sum"] / df2["n_valid"])
+        / interp["balanced.avg"]
+    )
+    assert (
+        np.nanmax(max_dev[N[0] :]) < 0.1
+    )  # we are now correct for chr2 because we chose chr2
+    assert np.nanmax(max_dev[: N[0]]) > 0.5  # we are now different for chr1
+
+
+def test_diagsum_from_array():
+    from cooltools.expected import diagsum_from_array
+
+    # Toy data: create a uniform 1/s decay as input
+    ar = np.arange(100)
+    ar = np.abs(ar[:, None] - ar[None, :])  # like toeplitz(ar)
+    ar[ar == 0] = 1
+    ar = 1 / ar
+
+    # Simple symmetric case
+    exp = _diagsum_dense(ar, ignore_diags=0, bad_bins=None)
+    exp1 = diagsum_from_array(ar, ignore_diags=0)
+    exp1["balanced.avg"] = exp1["balanced.sum"] / exp1["n_valid"]
+    assert np.allclose(exp, exp1["balanced.avg"].values, equal_nan=True)
+
+    # Assymetric region
+    exp = _diagsum_asymm_dense(ar[:50, 50:], bad_bin_rows=None, bad_bin_cols=None)
+    exp1 = diagsum_from_array(ar[:50, 50:], ignore_diags=0, offset=(0, 50))
+    exp1["balanced.avg"] = exp1["balanced.sum"] / exp1["n_valid"]
+    assert np.allclose(exp, exp1["balanced.avg"].values, equal_nan=True)
+
+    # Add some "bad" bins. Should have same outcome for this synthetic dataset
+    # because input was homogenous decay.
+    ar[3:5] = 0
+    ar[:, 3:5] = 0
+    exp = _diagsum_dense(ar, ignore_diags=0, bad_bins=list(range(3, 5)))
+    exp1 = diagsum_from_array(ar, ignore_diags=0)
+    exp1["balanced.avg"] = exp1["balanced.sum"] / exp1["n_valid"]
+    assert np.allclose(exp, exp1["balanced.avg"].values, equal_nan=True)
