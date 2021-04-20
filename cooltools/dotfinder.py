@@ -1452,11 +1452,7 @@ def clustering_step(
     # pixels are annotated at this point.
     pixel_clust_list = []
     for region in expected_regions:
-        # probably generate one big DataFrame with clustering
-        # information only and then just merge it with the
-        # existing 'scores_df'-DataFrame.
-        # should we use groupby instead of 'scores_df['chrom12']==chrom' ?!
-        # to be tested ...
+        # Perform clustering for each region separately.
         df = scores_df[((scores_df["region"].astype(str) == str(region)))]
         if not len(df):
             continue
