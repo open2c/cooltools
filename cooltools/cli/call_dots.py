@@ -369,7 +369,13 @@ def call_dots(
         output_calls,  # Writes simple tsv file
         nproc,
         verbose,
+        bin1_id_name="bin1_id",
+        bin2_id_name="bin2_id",
     )
+    # downstream clustering may depend on the order of pixels
+    # pre-sort filtered_pixels to increase robustness:
+    filtered_pixels = filtered_pixels.sort_values(["bin1_id","bin2_id"]).reset_index(drop=True)
+
 
     # 4. Post-processing
     if verbose:
