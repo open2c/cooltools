@@ -1491,7 +1491,7 @@ def clustering_step(
     df["region2"] = df["region"].astype(str)
     # report only centroids with highest Observed:
     chrom_clust_group = df.groupby(["region1", "region2", "c_label"])
-    centroids = df.loc[chrom_clust_group[obs_raw_name].idxmax()]
+    centroids = df.loc[chrom_clust_group[obs_raw_name].idxmax()] # Select the brightest pixel in the cluster
     return centroids
 
 
