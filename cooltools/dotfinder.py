@@ -1446,7 +1446,7 @@ def clustering_step(
         not "region" in scores_df.columns
     ):  # If input scores are not annotated by regions:
         scores_df["region"] = np.where(
-            scores_df["chr1"] == scores_df["chrom2"], scores_df["chrom1"], np.nan
+            scores_df["chrom1"] == scores_df["chrom2"], scores_df["chrom1"], np.nan
         )
     # using different bin12_id_names since all
     # pixels are annotated at this point.
