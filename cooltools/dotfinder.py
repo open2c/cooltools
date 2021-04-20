@@ -1479,7 +1479,7 @@ def clustering_step(
             + ["region1", "region2", "c_label", "c_size", "cstart1", "cstart2"],
         )
         return empty_output  # Empty dataframe with the same columns as anticipated
-    pixel_clust_df = pd.concat(pixel_clust_list, ignore_index=False)
+    pixel_clust_df = pd.concat(pixel_clust_list, ignore_index=False) # Concatenate the clustering results for different regions
 
     # now merge pixel_clust_df and scores_df DataFrame ...
     # # and merge (index-wise) with the main DataFrame:
