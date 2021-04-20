@@ -1389,7 +1389,9 @@ def scoring_step(
         # ###########################################
         elif output_mode == "local":
             print("returning local copy of the dataframe ...")
-            return pd.concat(chunks)
+            # reset index is required, otherwise there will be duplicate
+            # indices in the output of this function
+            return pd.concat(chunks).reset_index(drop=True)
         else:
             raise ValueError("{} mode is not supported".format(output_mode))
     finally:
