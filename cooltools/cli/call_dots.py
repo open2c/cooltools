@@ -2,17 +2,20 @@ import os.path as op
 import pandas as pd
 import numpy as np
 import cooler
+import bioframe
 
 import click
 from . import cli
+from ..lib.common import assign_regions
 from .. import dotfinder
+from . import util
 
 
 @cli.command()
 @click.argument(
     "cool_path",
     metavar="COOL_PATH",
-    type=str,  # click.Path(exists=True, dir_okay=False),
+    type=str,
     nargs=1,
 )
 @click.argument(
@@ -20,6 +23,17 @@ from .. import dotfinder
     metavar="EXPECTED_PATH",
     type=click.Path(exists=True, dir_okay=False),
     nargs=1,
+)
+@click.option(
+    "--regions",
+    help="Path to a BED file with the definition of regions"
+    " used in the calculation of EXPECTED_PATH. Dot-calling will be"
+    " performed for these regions independently e.g. chromosome arms."
+    " When not provided regions will be interpreted from `region` column"
+    " of EXPECTED_PATH (UCSC formatted, or full chromosome names).",
+    type=click.Path(exists=False, dir_okay=False),
+    default=None,
+    show_default=True,
 )
 @click.option(
     "--expected-name",
@@ -36,7 +50,8 @@ from .. import dotfinder
     show_default=True,
 )
 @click.option(
-    "-p", "--nproc",
+    "-p",
+    "--nproc",
     help="Number of processes to split the work between."
     " [default: 1, i.e. no process pool]",
     default=1,
@@ -108,60 +123,21 @@ from .. import dotfinder
     show_default=True,
 )
 @click.option(
-    "-v", "--verbose",
-    help="Enable verbose output",
-    is_flag=True,
-    default=False
+    "-v", "--verbose", help="Enable verbose output", is_flag=True, default=False
 )
 @click.option(
-    "-s", "--output-scores",
-    help="At the moment it is a redundant option that"
-    " does nothing. Reserve it for a better dump"
-    " of convolved scores.",
-    type=str,
-    required=False,
-)
-@click.option(
-    "--output-hists",
-    help="Specify output file name to store"
-    " lambda-chunked histograms. [Not implemented yet]",
-    type=str,
-    required=False,
-)
-@click.option(
-    "-o", "--output-calls",
+    "-o",
+    "--output-calls",
     help="Specify output file name where to store"
     " the results of dot-calling, in a BEDPE format."
     " Pre-processed dots are stored in that file."
     " Post-processed dots are stored in the .postproc one.",
     type=str,
 )
-@click.option(
-    "--score-dump-mode",
-    help="Specify file format for the dump of convolved scores."
-    " This dump is used for the downstream processing and"
-    " is read twice. Now 'parquet' is the only supported"
-    " format. 'cooler' and 'hdf' in the future.",
-    type=str,
-    default="parquet",
-    show_default=True,
-)
-@click.option(
-    "--temp-dir",
-    help="Create temporary files in specified directory.",
-    type=str,
-    default=".",
-    show_default=True,
-)
-@click.option(
-    "--no-delete-temp",
-    help="Do not delete temporary files when finished.",
-    is_flag=True,
-    default=False,
-)
 def call_dots(
     cool_path,
     expected_path,
+    regions,
     expected_name,
     weight_name,
     nproc,
@@ -174,19 +150,14 @@ def call_dots(
     fdr,
     dots_clustering_radius,
     verbose,
-    output_scores,
-    output_hists,
     output_calls,
-    score_dump_mode,
-    temp_dir,
-    no_delete_temp,
 ):
     """
     Call dots on a Hi-C heatmap that are not larger than max_loci_separation.
 
     COOL_PATH : The paths to a .cool file with a balanced Hi-C map.
 
-    EXPECTED_PATH : The paths to a tsv-like file with expected signal.
+    EXPECTED_PATH : The paths to a tsv-like file with expected cis-expected.
 
     Analysis will be performed for chromosomes referred to in EXPECTED_PATH, and
     therefore these chromosomes must be a subset of chromosomes referred to in
@@ -197,59 +168,111 @@ def call_dots(
     COOL_PATH and EXPECTED_PATH must be binned at the same resolution.
 
     EXPECTED_PATH must contain at least the following columns for cis contacts:
-    'chrom', 'diag', 'n_valid', value_name. value_name is controlled using
+    'region', 'diag', 'n_valid', value_name. value_name is controlled using
     options. Header must be present in a file.
 
     """
     clr = cooler.Cooler(cool_path)
 
-    expected_columns = ["chrom", "diag", "n_valid", expected_name]
-    expected_index = ["chrom", "diag"]
+    # preliminary SCHEMA for cis-expected
+    region_column_name = "region"
+    expected_columns = [region_column_name, "diag", "n_valid", expected_name]
     expected_dtypes = {
-        "chrom": np.str,
+        region_column_name: np.str,
         "diag": np.int64,
         "n_valid": np.int64,
         expected_name: np.float64,
     }
-    expected = pd.read_table(
-        expected_path,
-        usecols=expected_columns,
-        dtype=expected_dtypes,
-        comment=None,
-        verbose=verbose,
-    )
+
+    try:
+        expected = pd.read_table(
+            expected_path,
+            usecols=expected_columns,
+            dtype=expected_dtypes,
+            comment=None,
+            verbose=verbose,
+        )
+    except ValueError as e:
+        raise ValueError(
+            "input expected does not match the schema\n"
+            "tab-separated expected file must have a header as wel"
+        )
+    expected_index = [
+        region_column_name,
+        "diag",
+    ]
     expected.set_index(expected_index, inplace=True)
+    # end of SCHEMA for cis-expected
+
+    # Optional reading region table provided by the user:
+    if regions is None:
+        try:
+            uniq_regions = expected.index.get_level_values(region_column_name).unique()
+            regions_table = bioframe.parse_regions(uniq_regions, clr.chromsizes)
+            regions_table["name"] = regions_table["chrom"]
+        except ValueError as e:
+            print(e)
+            raise ValueError(
+                "Cannot interpret regions from EXPECTED_PATH\n"
+                "specify regions definitions using --regions option."
+            )
+    else:
+        # Flexible reading of the regions table:
+        regions_buf, names = util.sniff_for_header(regions)
+        regions_table = pd.read_csv(regions_buf, sep="\t", header=None)
+        if regions_table.shape[1] not in (3, 4):
+            raise ValueError(
+                "The region file does not have three or four tab-delimited columns."
+                "We expect a bed file with columns chrom, start, end, and optional name"
+            )
+        if regions_table.shape[1] == 4:
+            regions_table = regions_table.rename(
+                columns={0: "chrom", 1: "start", 2: "end", 3: "name"}
+            )
+            regions_table = bioframe.parse_regions(regions_table)
+        else:
+            regions_table = regions_table.rename(
+                columns={0: "chrom", 1: "start", 2: "end"}
+            )
+            regions_table = bioframe.parse_regions(regions_table)
+
+    # Verify appropriate columns order (required for heatmap_tiles_generator_diag):
+    regions_table = regions_table[["chrom", "start", "end", "name"]]
 
     # Input validation
-    # unique list of chroms mentioned in expected_path
-    # do simple column-name validation for now
-    get_exp_chroms = lambda df: df.index.get_level_values("chrom").unique()
-    expected_chroms = get_exp_chroms(expected)
-    if not set(expected_chroms).issubset(clr.chromnames):
+    get_exp_regions = lambda df: df.index.get_level_values(region_column_name).unique()
+    expected_regions = get_exp_regions(expected)
+
+    # unique list of regions mentioned in expected_path
+    # are also in regions table
+    if not set(expected_regions).issubset(regions_table["name"]):
         raise ValueError(
-            "Chromosomes in {} must be subset of ".format(expected_path)
-            + "chromosomes in cooler {}".format(cool_path)
+            "Regions in {} must be subset of ".format(expected_path)
+            + f"regions in {'regions table'+regions_path if not regions_path is None else 'cooler'}"
         )
-    # check number of bins
+
+    # check number of bins per region in cooler and expected table
     # compute # of bins by comparing matching indexes
-    get_exp_bins = lambda df, ref_chroms: (
-        df.index.get_level_values("chrom").isin(ref_chroms).sum()
-    )
-    expected_bins = get_exp_bins(expected, expected_chroms)
-    cool_bins = clr.bins()[:]["chrom"].isin(expected_chroms).sum()
-    if not (expected_bins == cool_bins):
+    try:
+        for region_name, group in expected.reset_index().groupby(region_column_name):
+            n_diags = group.shape[0]
+            region = regions_table.set_index("name").loc[region_name]
+            lo, hi = clr.extent(region)
+            assert n_diags == (hi - lo)
+    except AssertionError:
         raise ValueError(
-            "Number of bins is not matching: ",
-            "{} in {}, and {} in {} for chromosomes {}".format(
-                expected_bins, expected_path, cool_bins, cool_path, expected_chroms
-            ),
+            "Region shape mismatch between expected and cooler. "
+            "Are they using the same resolution?"
         )
+    # All the checks have passed:
     if verbose:
         print(
             "{} and {} passed cross-compatibility checks.".format(
                 cool_path, expected_path
             )
         )
+
+    # by now we have a usable region_table and expected for most scenarios
 
     # Prepare some parameters.
     binsize = clr.binsize
@@ -266,16 +289,12 @@ def call_dots(
 
     if (kernel_width is None) or (kernel_peak is None):
         w, p = dotfinder.recommend_kernel_params(binsize)
-        print(
-            "Using kernel parameters w={}, p={} recommended for binsize {}".format(
-                w, p, binsize
-            )
-        )
+        print(f"Using kernel parameters w={w}, p={p} recommended for binsize {binsize}")
     else:
         w, p = kernel_width, kernel_peak
         # add some sanity check for w,p:
-        assert w > p, "Wrong inner/outer kernel parameters w={}, p={}".format(w, p)
-        print("Using kernel parameters w={}, p={} provided by user".format(w, p))
+        assert w > p, f"Wrong inner/outer kernel parameters w={w}, p={p}"
+        print(f"Using kernel parameters w={w}, p={p} provided by user")
 
     # once kernel parameters are setup check max_nans_tolerated
     # to make sure kernel footprints overlaping 1 side with the
@@ -290,7 +309,7 @@ def call_dots(
     # list of tile coordinate ranges
     tiles = list(
         dotfinder.heatmap_tiles_generator_diag(
-            clr, expected_chroms, w, tile_size_bins, loci_separation_bins
+            clr, regions_table, w, tile_size_bins, loci_separation_bins
         )
     )
 
@@ -347,16 +366,16 @@ def call_dots(
         max_nans_tolerated,
         balance_factor,
         loci_separation_bins,
-        output_calls,
+        output_calls,  # Writes simple tsv file
         nproc,
         verbose,
+        bin1_id_name="bin1_id",
+        bin2_id_name="bin2_id",
     )
 
     # 4. Post-processing
     if verbose:
-        print(
-            "Begin post-processing of {} filtered pixels".format(len(filtered_pixels))
-        )
+        print(f"Begin post-processing of {len(filtered_pixels)} filtered pixels")
         print("preparing to extract needed q-values ...")
 
     filtered_pixels_qvals = dotfinder.annotate_pixels_with_qvalues(
@@ -365,11 +384,13 @@ def call_dots(
     # 4a. clustering
     ########################################################################
     # Clustering has to be done using annotated DataFrame of filtered pixels
-    # why ? - because - clustering has to be done chromosome by chromosome !
+    # why ? - because - clustering has to be done independently for every region!
     ########################################################################
     filtered_pixels_annotated = cooler.annotate(filtered_pixels_qvals, clr.bins()[:])
+    filtered_pixels_annotated = assign_regions(filtered_pixels_annotated, regions_table)
+    # consider reseting index here
     centroids = dotfinder.clustering_step(
-        filtered_pixels_annotated, expected_chroms, dots_clustering_radius, verbose
+        filtered_pixels_annotated, expected_regions, dots_clustering_radius, verbose
     )
 
     # 4b. filter by enrichment and qval
