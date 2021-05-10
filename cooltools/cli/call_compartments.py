@@ -10,16 +10,19 @@ from . import cli
 
 
 @cli.command()
-@click.argument(
-    "cool_path",
-    metavar="COOL_PATH",
-    type=str
-)
+@click.argument("cool_path", metavar="COOL_PATH", type=str)
 @click.option(
     "--reference-track",
     help="Reference track for orienting and ranking eigenvectors",
     type=TabularFilePath(exists=True, default_column_index=3),
-    metavar="TRACK_PATH"
+    metavar="TRACK_PATH",
+)
+@click.option(
+    "--regions",
+    help="Path to a file which defines which regions of the chromosomes to use "
+    "(only implemented for cis contacts)",
+    default=None,
+    type=str,
 )
 @click.option(
     "--contact-type",
@@ -36,13 +39,11 @@ from . import cli
     show_default=True,
 )
 @click.option(
-    "-v", "--verbose",
-    help="Enable verbose output",
-    is_flag=True,
-    default=False
+    "-v", "--verbose", help="Enable verbose output", is_flag=True, default=False
 )
 @click.option(
-    "-o", "--out-prefix",
+    "-o",
+    "--out-prefix",
     help="Save compartment track as a BED-like file.",
     required=True,
 )
@@ -53,7 +54,14 @@ from . import cli
     default=False,
 )
 def call_compartments(
-    cool_path, reference_track, contact_type, n_eigs, verbose, out_prefix, bigwig
+    cool_path,
+    reference_track,
+    regions,
+    contact_type,
+    n_eigs,
+    verbose,
+    out_prefix,
+    bigwig,
 ):
     """
     Perform eigen value decomposition on a cooler matrix to calculate
@@ -68,7 +76,7 @@ def call_compartments(
 
     BedGraph-like format assumes tab-separated columns chrom, start, stop and
     track-name.
-
+    
     """
     clr = cooler.Cooler(cool_path)
 
@@ -145,12 +153,23 @@ def call_compartments(
         track = clr.bins()[["chrom", "start", "end"]][:]
         track_name = None
 
+    if regions is not None:
+        if contact_type == "trans":
+            raise NotImplementedError(
+                "Regions not yet supported with trans contact type"
+            )
+        regions = pd.read_csv(
+            regions, sep="\t", names=["chrom", "start", "end", "name"]
+        )
+    else:
+        regions = None
+
     # it's contact_type dependent:
     if contact_type == "cis":
         eigvals, eigvec_table = eigdecomp.cooler_cis_eig(
             clr=clr,
             bins=track,
-            regions=None,
+            regions=regions,
             n_eigs=n_eigs,
             phasing_track_col=track_name,
             clip_percentile=99.9,
