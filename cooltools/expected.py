@@ -13,7 +13,6 @@ from cooler.tools import partition
 import cooler
 import bioframe
 from .lib import assign_supports, numutils
-from .snipping import assign_regions
 
 where = np.flatnonzero
 concat = chain.from_iterable
@@ -520,21 +519,21 @@ def _diagsum_symm(clr, fields, transforms, regions, span):
     """
     lo, hi = span
     bins = clr.bins()[:]
-    bins = assign_regions(bins, regions)
     pixels = clr.pixels()[lo:hi]
     pixels = cooler.annotate(pixels, bins, replace=False)
-    pixels = pixels[pixels['region1']==pixels['region2']].drop(columns='region2').rename(columns={'region1':'region'})
 
     # this could further expanded to allow for custom groupings:
     pixels["dist"] = pixels["bin2_id"] - pixels["bin1_id"]
     for field, t in transforms.items():
         pixels[field] = t(pixels)
-    
-    pixels_grouped = pixels.groupby(['region', 'dist'])[fields].agg('sum').reset_index()
+
     diag_sums = {}
     # r define square symmetric block i:
-    for region in regions['name']:
-        diag_sums[region] = pixels_grouped[pixels_grouped['region']==region][['dist']+fields]
+    for i, r in enumerate(regions):
+        r1 = assign_supports(pixels, [r], suffix="1")
+        r2 = assign_supports(pixels, [r], suffix="2")
+        # calculate diag_sums on the spot to allow for overlapping blocks:
+        diag_sums[i] = pixels[(r1 == r2)].groupby("dist")[fields].sum()
 
     return diag_sums
 
@@ -620,10 +619,11 @@ def diagsum(
             agg_name = "{}.sum".format(field)
             dt[agg_name] = 0
 
-    job = partial(_diagsum_symm, clr, fields, transforms, regions)
+    job = partial(_diagsum_symm, clr, fields, transforms, regions.values)
     results = map(job, spans)
     for result in results:
-        for region, agg in result.items():
+        for i, agg in result.items():
+            region = regions.loc[i, "name"]
             for field in fields:
                 agg_name = "{}.sum".format(field)
                 dtables[region][agg_name] = dtables[region][agg_name].add(
