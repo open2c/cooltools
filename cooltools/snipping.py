@@ -228,6 +228,7 @@ class CoolerSnipper:
                 [(chrom, 0, l, chrom) for chrom, l in clr.chromsizes.items()],
                 columns=["chrom", "start", "end", "name"],
             )
+        regions = regions[regions['chrom'].isin(clr.chromnames)]
         self.regions = regions.set_index("name")
 
         self.clr = clr
@@ -327,6 +328,7 @@ class ObsExpSnipper:
                     "Please provide the regions table, if region names"
                     "are not simply chromosome names."
                 )
+        regions = regions[regions['chrom'].isin(clr.chromnames)]
         self.regions = regions.set_index("name")
 
         try:
@@ -442,6 +444,7 @@ class ExpectedSnipper:
                     "Please provide the regions table, if region names"
                     "are not simply chromosome names."
                 )
+        regions = regions[regions['chrom'].isin(clr.chromnames)]
         self.regions = regions.set_index("name")
 
         try:

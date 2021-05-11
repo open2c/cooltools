@@ -161,6 +161,7 @@ def call_compartments(
         regions = pd.read_csv(
             regions, sep="\t", names=["chrom", "start", "end", "name"]
         )
+        regions = regions[regions['chrom'].isin(clr.chromnames)]
     else:
         regions = None
 
