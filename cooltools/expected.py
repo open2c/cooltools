@@ -586,7 +586,7 @@ def diagsum(
     fields = ["count"] + list(transforms.keys())
 
     regions = bioframe.parse_regions(regions, clr.chromsizes)
-    regions = regions[regions['chrom'].isin(clr.chromnames)]
+    regions = regions[regions['chrom'].isin(clr.chromnames)].reset_index(drop=True)
 
     dtables = make_diag_tables(clr, regions, weight_name=weight_name, bad_bins=bad_bins)
 

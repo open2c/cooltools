@@ -240,7 +240,7 @@ def compute_saddle(
             regions = regions.rename(columns={0:"chrom",1:"start",2:"end"})
             regions["name"] = list(regions.apply(lambda x: "{}:{}-{}".format(*x), axis=1))
             regions = parse_regions(regions)
-    regions = regions[regions['chrom'].isin(clr.chromnames)]
+    regions = regions[regions['chrom'].isin(clr.chromnames)].reset_index(drop=True)
 
 
     if vmin <= 0 or vmax <= 0:
