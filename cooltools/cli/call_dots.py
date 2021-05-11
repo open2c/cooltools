@@ -13,10 +13,7 @@ from . import util
 
 @cli.command()
 @click.argument(
-    "cool_path",
-    metavar="COOL_PATH",
-    type=str,
-    nargs=1,
+    "cool_path", metavar="COOL_PATH", type=str, nargs=1,
 )
 @click.argument(
     "expected_path",
@@ -235,6 +232,9 @@ def call_dots(
                 columns={0: "chrom", 1: "start", 2: "end"}
             )
             regions_table = bioframe.parse_regions(regions_table)
+        regions_table = regions_table[
+            regions_table["chrom"].isin(clr.chromnames)
+        ].reset_index(drop=True)
 
     # Verify appropriate columns order (required for heatmap_tiles_generator_diag):
     regions_table = regions_table[["chrom", "start", "end", "name"]]
