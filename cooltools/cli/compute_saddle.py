@@ -383,7 +383,7 @@ def compute_saddle(
 
     if contact_type == "cis":
         getmatrix = saddle.make_cis_obsexp_fetcher(
-            clr, (expected, expected_name), weight_name=weight_name
+            clr, (expected, expected_name), regions, weight_name=weight_name
         )
     elif contact_type == "trans":
         getmatrix = saddle.make_trans_obsexp_fetcher(
