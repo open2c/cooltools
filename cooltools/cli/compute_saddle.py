@@ -212,7 +212,7 @@ def compute_saddle(
 
     if regions is None:
         # use full chromosomes available in the cooler :
-        regions = bioframe.parse_regions(clr.chromnames, clr.chromsizes)
+        regions = parse_regions(clr.chromnames, clr.chromsizes)
         regions["name"] = regions["chrom"]
     else:
         regions_buf, names = util.sniff_for_header(regions)
