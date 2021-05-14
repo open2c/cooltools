@@ -13,7 +13,10 @@ from . import util
 
 @cli.command()
 @click.argument(
-    "cool_path", metavar="COOL_PATH", type=str, nargs=1,
+    "cool_path",
+    metavar="COOL_PATH",
+    type=str,
+    nargs=1,
 )
 @click.argument(
     "expected_path",
@@ -124,12 +127,12 @@ from . import util
 )
 @click.option(
     "-o",
-    "--output-calls",
-    help="Specify output file name where to store"
-    " the results of dot-calling, in a BEDPE format."
-    " Pre-processed dots are stored in that file."
-    " Post-processed dots are stored in the .postproc one.",
+    "--out-prefix",
+    help="Specify prefix for the output file, to store results of dot-calling:"
+    " all enriched pixels as prefix + '.enriched.tsv',"
+    " and post-processed dots (clustered,filtered) as prefix + '.postproc.bedpe'",
     type=str,
+    required=True,
 )
 def call_dots(
     cool_path,
@@ -147,7 +150,7 @@ def call_dots(
     fdr,
     dots_clustering_radius,
     verbose,
-    output_calls,
+    out_prefix,
 ):
     """
     Call dots on a Hi-C heatmap that are not larger than max_loci_separation.
@@ -366,7 +369,7 @@ def call_dots(
         max_nans_tolerated,
         balance_factor,
         loci_separation_bins,
-        output_calls,  # Writes simple tsv file
+        op.join(op.dirname(out_prefix), op.basename(out_prefix) + ".enriched.tsv"),
         nproc,
         verbose,
         bin1_id_name="bin1_id",
@@ -397,10 +400,10 @@ def call_dots(
     postprocessed_calls = dotfinder.thresholding_step(centroids)
 
     # Final-postprocessed result
-    if output_calls is not None:
+    if out_prefix is not None:
 
         postprocessed_fname = op.join(
-            op.dirname(output_calls), op.basename(output_calls) + ".postproc"
+            op.dirname(out_prefix), op.basename(out_prefix) + ".postproc.bedpe"
         )
 
         postprocessed_calls.to_csv(

@@ -19,8 +19,8 @@ from . import cli
 )
 @click.option(
     "--regions",
-    help="Path to a file which defines which regions of the chromosomes to use "
-    "(only implemented for cis contacts)",
+    help="Path to a BED file which defines which regions of the chromosomes to use"
+    " (only implemented for cis contacts)",
     default=None,
     type=str,
 )
@@ -76,7 +76,7 @@ def call_compartments(
 
     BedGraph-like format assumes tab-separated columns chrom, start, stop and
     track-name.
-    
+
     """
     clr = cooler.Cooler(cool_path)
 
@@ -150,27 +150,52 @@ def call_compartments(
                 + "couldn't be merged with cooler-bins {}".format(cool_path)
             )
     else:
+        # use entire bin-table from cooler, when reference-track is not provided:
         track = clr.bins()[["chrom", "start", "end"]][:]
         track_name = None
 
-    if regions is not None:
+    # define regions for cis compartment-calling
+    # use input "regions" BED file or all chromosomes mentioned in "track":
+    if regions is None:
+        # use full chromosomes referred to in the track :
+        track_chroms = track["chrom"].unique()
+        cis_regions_table = bioframe.parse_regions(track_chroms, clr.chromsizes)
+        cis_regions_table["name"] = cis_regions_table["chrom"]
+    else:
         if contact_type == "trans":
             raise NotImplementedError(
                 "Regions not yet supported with trans contact type"
             )
-        regions = pd.read_csv(
-            regions, sep="\t", names=["chrom", "start", "end", "name"]
-        )
-        regions = regions[regions['chrom'].isin(clr.chromnames)].reset_index(drop=True)
-    else:
-        regions = None
+        # Flexible reading of the regions table:
+        regions_buf, names = sniff_for_header(regions)
+        cis_regions_table = pd.read_csv(regions_buf, sep="\t", header=None)
+        if cis_regions_table.shape[1] not in (3, 4):
+            raise ValueError(
+                "The region file does not have three or four tab-delimited columns."
+                "We expect a bed file with columns chrom, start, end, and optional name"
+            )
+        if cis_regions_table.shape[1] == 4:
+            cis_regions_table = cis_regions_table.rename(
+                columns={0: "chrom", 1: "start", 2: "end", 3: "name"}
+            )
+            cis_regions_table = bioframe.parse_regions(cis_regions_table)
+        else:
+            cis_regions_table = cis_regions_table.rename(
+                columns={0: "chrom", 1: "start", 2: "end"}
+            )
+            cis_regions_table = bioframe.parse_regions(cis_regions_table)
+        # make sure custom regions are compatible with the track:
+        track_chroms = track["chrom"].unique()
+        cis_regions_table = cis_regions_table[
+            cis_regions_table["chrom"].isin(track_chroms)
+        ].reset_index(drop=True)
 
     # it's contact_type dependent:
     if contact_type == "cis":
         eigvals, eigvec_table = eigdecomp.cooler_cis_eig(
             clr=clr,
             bins=track,
-            regions=regions,
+            regions=cis_regions_table,
             n_eigs=n_eigs,
             phasing_track_col=track_name,
             clip_percentile=99.9,
