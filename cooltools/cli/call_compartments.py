@@ -44,12 +44,15 @@ from . import cli
 @click.option(
     "-o",
     "--out-prefix",
-    help="Save compartment track as a BED-like file.",
+    help="Save compartment track as a BED-like file."
+    " Eigenvectors and corresponding eigenvalues are stored in"
+    " out_prefix.contact_type.vecs.tsv and out_prefix.contact_type.lam.txt",
     required=True,
 )
 @click.option(
     "--bigwig",
-    help="Also save compartment track as a bigWig file.",
+    help="Also save compartment track (E1) as a bigWig file"
+    " with the name out_prefix.contact_type.bw",
     is_flag=True,
     default=False,
 )
@@ -69,7 +72,8 @@ def call_compartments(
     phasing track.
 
 
-    COOL_PATH : the paths to a .cool file with a balanced Hi-C map.
+    COOL_PATH : the paths to a .cool file with a balanced Hi-C map. Use the
+    '::' syntax to specify a group path in a multicooler file.
 
     TRACK_PATH : the path to a BedGraph-like file that stores phasing track as
     track-name named column.
