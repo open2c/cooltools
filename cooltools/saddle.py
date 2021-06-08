@@ -118,7 +118,7 @@ def digitize_track(binedges, track, regions=None):
     return digitized, hist
 
 
-def make_cis_obsexp_fetcher(clr, expected, weight_name="weight"):
+def make_cis_obsexp_fetcher(clr, expected, regions, weight_name="weight"):
     """
     Construct a function that returns intra-chromosomal OBS/EXP for symmetrical regions.
 
@@ -139,9 +139,12 @@ def make_cis_obsexp_fetcher(clr, expected, weight_name="weight"):
     """
     expected, expected_name = expected
     expected = {k: x.values for k, x in expected.groupby("region")[expected_name]}
+    regions = regions.set_index('name')
 
     def _fetch_cis_oe(reg1, reg2):
-        obs_mat = clr.matrix(balance=weight_name).fetch(reg1)
+        reg1_coords = tuple(regions.loc[reg1])
+        reg2_coords = tuple(regions.loc[reg2])
+        obs_mat = clr.matrix(balance=weight_name).fetch(reg1_coords)
         exp_mat = toeplitz(expected[reg1][: obs_mat.shape[0]])
         return obs_mat / exp_mat
 

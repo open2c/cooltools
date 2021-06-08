@@ -27,10 +27,13 @@ def test_call_dots_cli(request, tmpdir):
             60_000_000,
             "--max-loci-separation",
             100_000_000,
-            "--output-calls",
+            "--out-prefix",
             out_dots,
             in_cool,
             in_exp,
         ],
     )
     assert result.exit_code == 0
+    # make sure output is generated:
+    assert op.isfile(f"{out_dots}.enriched.tsv")
+    assert op.isfile(f"{out_dots}.postproc.bedpe")

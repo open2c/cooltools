@@ -18,9 +18,7 @@ from . import cli
 
 @cli.command()
 @click.argument(
-    "cool_path",
-    metavar="COOL_PATH",
-    type=str
+    "cool_path", metavar="COOL_PATH", type=str
 )  # click.Path(exists=True, dir_okay=False),)
 @click.argument(
     "track_path",
@@ -35,7 +33,8 @@ from . import cli
     callback=partial(validate_csv, default_column="balanced.avg"),
 )
 @click.option(
-    "-t", "--contact-type",
+    "-t",
+    "--contact-type",
     help="Type of the contacts to aggregate",
     type=click.Choice(["cis", "trans"]),
     default="cis",
@@ -58,7 +57,8 @@ from . import cli
     show_default=True,
 )
 @click.option(
-    "-n", "--n-bins",
+    "-n",
+    "--n-bins",
     help="Number of bins for digitizing track values.",
     type=int,
     default=50,
@@ -115,7 +115,8 @@ from . import cli
     required=False,
 )
 @click.option(
-    "-o", "--out-prefix",
+    "-o",
+    "--out-prefix",
     help="Dump 'saddledata', 'binedges' and 'hist' arrays in a numpy-specific "
     ".npz container. Use numpy.load to load these arrays into a "
     "dict-like object. The digitized signal values are saved to a "
@@ -138,10 +139,7 @@ from . import cli
     show_default=True,
 )
 @click.option(
-    "--cmap",
-    help="Name of matplotlib colormap",
-    default="coolwarm",
-    show_default=True
+    "--cmap", help="Name of matplotlib colormap", default="coolwarm", show_default=True
 )
 @click.option(
     "--vmin",
@@ -152,20 +150,11 @@ from . import cli
     default=0.5,
 )
 @click.option(
-    "--vmax",
-    help="High value of the saddleplot colorbar",
-    type=float,
-    default=2
+    "--vmax", help="High value of the saddleplot colorbar", type=float, default=2
 )
+@click.option("--hist-color", help="Face color of histogram bar chart")
 @click.option(
-    "--hist-color",
-    help="Face color of histogram bar chart"
-)
-@click.option(
-    "-v", "--verbose",
-    help="Enable verbose output",
-    is_flag=True,
-    default=False
+    "-v", "--verbose", help="Enable verbose output", is_flag=True, default=False
 )
 def compute_saddle(
     cool_path,
@@ -222,9 +211,9 @@ def compute_saddle(
     track_path, track_name = track_path
 
     if regions is None:
-        regions = [(chrom, 0, clr.chromsizes[chrom]) for chrom in clr.chromnames]
-        regions = parse_regions(regions)
-        regions["name"] = clr.chromnames
+        # use full chromosomes available in the cooler :
+        regions = parse_regions(clr.chromnames, clr.chromsizes)
+        regions["name"] = regions["chrom"]
     else:
         regions_buf, names = util.sniff_for_header(regions)
         regions = pd.read_csv(regions_buf, sep="\t", header=None)
@@ -234,13 +223,15 @@ def compute_saddle(
                 "We expect a bed file with columns chrom, start, end, and optional name"
             )
         if regions.shape[1] == 4:
-            regions = regions.rename(columns={0:"chrom",1:"start",2:"end",3:"name"})
+            regions = regions.rename(
+                columns={0: "chrom", 1: "start", 2: "end", 3: "name"}
+            )
             regions = parse_regions(regions)
         else:
-            regions = regions.rename(columns={0:"chrom",1:"start",2:"end"})
-            regions["name"] = list(regions.apply(lambda x: "{}:{}-{}".format(*x), axis=1))
+            regions = regions.rename(columns={0: "chrom", 1: "start", 2: "end"})
             regions = parse_regions(regions)
-
+        # make sure custom regions are compatible with the track:
+        regions = regions[regions["chrom"].isin(clr.chromnames)].reset_index(drop=True)
 
     if vmin <= 0 or vmax <= 0:
         raise ValueError(
@@ -382,7 +373,7 @@ def compute_saddle(
 
     if contact_type == "cis":
         getmatrix = saddle.make_cis_obsexp_fetcher(
-            clr, (expected, expected_name), weight_name=weight_name
+            clr, (expected, expected_name), regions, weight_name=weight_name
         )
     elif contact_type == "trans":
         getmatrix = saddle.make_trans_obsexp_fetcher(
@@ -474,7 +465,7 @@ def compute_saddle(
             xlabel=track_label,
             ylabel=track_label,
             clabel=clabel,
-            cmap=cmap
+            cmap=cmap,
         )
 
         for ext in fig:

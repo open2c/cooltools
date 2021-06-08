@@ -10,16 +10,19 @@ from . import cli
 
 
 @cli.command()
-@click.argument(
-    "cool_path",
-    metavar="COOL_PATH",
-    type=str
-)
+@click.argument("cool_path", metavar="COOL_PATH", type=str)
 @click.option(
     "--reference-track",
     help="Reference track for orienting and ranking eigenvectors",
     type=TabularFilePath(exists=True, default_column_index=3),
-    metavar="TRACK_PATH"
+    metavar="TRACK_PATH",
+)
+@click.option(
+    "--regions",
+    help="Path to a BED file which defines which regions of the chromosomes to use"
+    " (only implemented for cis contacts)",
+    default=None,
+    type=str,
 )
 @click.option(
     "--contact-type",
@@ -36,24 +39,32 @@ from . import cli
     show_default=True,
 )
 @click.option(
-    "-v", "--verbose",
-    help="Enable verbose output",
-    is_flag=True,
-    default=False
+    "-v", "--verbose", help="Enable verbose output", is_flag=True, default=False
 )
 @click.option(
-    "-o", "--out-prefix",
-    help="Save compartment track as a BED-like file.",
+    "-o",
+    "--out-prefix",
+    help="Save compartment track as a BED-like file."
+    " Eigenvectors and corresponding eigenvalues are stored in"
+    " out_prefix.contact_type.vecs.tsv and out_prefix.contact_type.lam.txt",
     required=True,
 )
 @click.option(
     "--bigwig",
-    help="Also save compartment track as a bigWig file.",
+    help="Also save compartment track (E1) as a bigWig file"
+    " with the name out_prefix.contact_type.bw",
     is_flag=True,
     default=False,
 )
 def call_compartments(
-    cool_path, reference_track, contact_type, n_eigs, verbose, out_prefix, bigwig
+    cool_path,
+    reference_track,
+    regions,
+    contact_type,
+    n_eigs,
+    verbose,
+    out_prefix,
+    bigwig,
 ):
     """
     Perform eigen value decomposition on a cooler matrix to calculate
@@ -61,7 +72,8 @@ def call_compartments(
     phasing track.
 
 
-    COOL_PATH : the paths to a .cool file with a balanced Hi-C map.
+    COOL_PATH : the paths to a .cool file with a balanced Hi-C map. Use the
+    '::' syntax to specify a group path in a multicooler file.
 
     TRACK_PATH : the path to a BedGraph-like file that stores phasing track as
     track-name named column.
@@ -142,15 +154,52 @@ def call_compartments(
                 + "couldn't be merged with cooler-bins {}".format(cool_path)
             )
     else:
+        # use entire bin-table from cooler, when reference-track is not provided:
         track = clr.bins()[["chrom", "start", "end"]][:]
         track_name = None
+
+    # define regions for cis compartment-calling
+    # use input "regions" BED file or all chromosomes mentioned in "track":
+    if regions is None:
+        # use full chromosomes referred to in the track :
+        track_chroms = track["chrom"].unique()
+        cis_regions_table = bioframe.parse_regions(track_chroms, clr.chromsizes)
+        cis_regions_table["name"] = cis_regions_table["chrom"]
+    else:
+        if contact_type == "trans":
+            raise NotImplementedError(
+                "Regions not yet supported with trans contact type"
+            )
+        # Flexible reading of the regions table:
+        regions_buf, names = sniff_for_header(regions)
+        cis_regions_table = pd.read_csv(regions_buf, sep="\t", header=None)
+        if cis_regions_table.shape[1] not in (3, 4):
+            raise ValueError(
+                "The region file does not have three or four tab-delimited columns."
+                "We expect a bed file with columns chrom, start, end, and optional name"
+            )
+        if cis_regions_table.shape[1] == 4:
+            cis_regions_table = cis_regions_table.rename(
+                columns={0: "chrom", 1: "start", 2: "end", 3: "name"}
+            )
+            cis_regions_table = bioframe.parse_regions(cis_regions_table)
+        else:
+            cis_regions_table = cis_regions_table.rename(
+                columns={0: "chrom", 1: "start", 2: "end"}
+            )
+            cis_regions_table = bioframe.parse_regions(cis_regions_table)
+        # make sure custom regions are compatible with the track:
+        track_chroms = track["chrom"].unique()
+        cis_regions_table = cis_regions_table[
+            cis_regions_table["chrom"].isin(track_chroms)
+        ].reset_index(drop=True)
 
     # it's contact_type dependent:
     if contact_type == "cis":
         eigvals, eigvec_table = eigdecomp.cooler_cis_eig(
             clr=clr,
             bins=track,
-            regions=None,
+            regions=cis_regions_table,
             n_eigs=n_eigs,
             phasing_track_col=track_name,
             clip_percentile=99.9,
