@@ -31,14 +31,14 @@ def assign_regions(features, supports):
             keep_order=True,
             return_overlap=True,
         )
-        overlap_columns = overlap.columns  # To filter out duplicates later
+        overlap_columns = ["chrom_1", "start_1", "end_1"]  # To filter out duplicates later
         overlap["overlap_length"] = overlap["overlap_end"] - overlap["overlap_start"]
         # Filter out overlaps with multiple regions:
         overlap = (
             overlap.sort_values("overlap_length", ascending=False)
             .drop_duplicates(overlap_columns, keep="first")
             .sort_index()
-        )
+        ).reset_index(drop=True)
         # Copy single column with overlapping region name:
         features["region"] = overlap["name_2"]
 
@@ -53,7 +53,7 @@ def assign_regions(features, supports):
                 keep_order=True,
                 return_overlap=True,
             )
-            overlap_columns = overlap.columns  # To filter out duplicates later
+            overlap_columns =  [f"chrom{idx}_1", f"start{idx}_1", f"end{idx}_1"]  # To filter out duplicates later
             overlap[f"overlap_length{idx}"] = (
                 overlap[f"overlap_end{idx}"] - overlap[f"overlap_start{idx}"]
             )
@@ -62,7 +62,7 @@ def assign_regions(features, supports):
                 overlap.sort_values(f"overlap_length{idx}", ascending=False)
                 .drop_duplicates(overlap_columns, keep="first")
                 .sort_index()
-            )
+            ).reset_index(drop=True)
             # Copy single column with overlapping region name:
             features[f"region{idx}"] = overlap["name_2"]
 
