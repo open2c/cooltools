@@ -9,11 +9,13 @@ import pandas as pd
 
 def test_assign_regions_with_multiple_supports(request):
     """
-        Tests assigning features to supports where one of the
-        features spans a support boundary.
+    Tests assigning features to supports where one of the
+    features spans a support boundary.
     """
     # load window centers
-    bed_file = pd.read_csv(op.join(request.fspath.dirname, "data/multiple_support_regions.csv"))
+    bed_file = pd.read_csv(
+        op.join(request.fspath.dirname, "data/multiple_support_regions.csv")
+    )
     # load chromosomal arms
     arms = pd.read_csv(op.join(request.fspath.dirname, "data/hg19_arms.csv"))
     # create snipping windows
@@ -21,9 +23,14 @@ def test_assign_regions_with_multiple_supports(request):
         20000, bed_file["chrom"].values, bed_file["pos"].values, 1000000
     )
     # assign supports
-    result = cooltools.snipping.assign_regions(snipping_windows, bioframe.parse_regions(arms))
-    expected_assignment = pd.read_csv(op.join(request.fspath.dirname, "data/multiple_support_regions_result.csv"))
+    result = cooltools.snipping.assign_regions(
+        snipping_windows, bioframe.parse_regions(arms)
+    )
+    expected_assignment = pd.read_csv(
+        op.join(request.fspath.dirname, "data/multiple_support_regions_result.csv")
+    )
     pd.testing.assert_series_equal(result["region"], expected_assignment["region"])
+
 
 def test_ondiag_pileups_with_expected(request):
     """
