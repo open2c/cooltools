@@ -1008,7 +1008,7 @@ def diagsum_from_array(
 
     # Group by diagonal and aggregate the number of valid pixels and pixel values.
     diagonals = np.arange(diag_lo, diag_hi, dtype=int)
-    n_valid = np.bincount(D_flat, minlength=diag_hi - diag_hi)[diag_lo:]
+    n_valid = np.bincount(D_flat, minlength=diag_hi - diag_lo)[diag_lo:]
     balanced_sum = np.bincount(D_flat, weights=A_flat, minlength=diag_hi - diag_lo)[
         diag_lo:
     ]
