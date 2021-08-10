@@ -2,7 +2,7 @@ import multiprocess as mp
 import pandas as pd
 from itertools import combinations
 import cooler
-from bioframe import parse_regions
+from bioframe import make_viewframe
 from .. import expected
 
 import click
@@ -122,25 +122,7 @@ def compute_expected(
         # https://github.com/mirnylab/cooler/blob/843dadca5ef58e3b794dbaf23430082c9a634532/cooler/cli/balance.py#L175
 
     clr = cooler.Cooler(cool_path)
-    if regions is None:
-        regions = [(chrom, 0, clr.chromsizes[chrom]) for chrom in clr.chromnames]
-        regions = parse_regions(regions)
-        regions["name"] = clr.chromnames
-    else:
-        regions_buf, names = util.sniff_for_header(regions)
-        regions = pd.read_csv(regions_buf, sep="\t", header=None)
-        if regions.shape[1] not in (3, 4):
-            raise ValueError(
-                "The region file does not have three or four tab-delimited columns."
-                "We expect a bed file with columns chrom, start, end, and optional name"
-            )
-        if regions.shape[1] == 4:
-            regions = regions.rename(columns={0:"chrom",1:"start",2:"end",3:"name"})
-            regions = parse_regions(regions)
-        else:
-            regions = regions.rename(columns={0:"chrom",1:"start",2:"end"})
-            regions["name"] = list(regions.apply(lambda x: "{}:{}-{}".format(*x), axis=1))
-            regions = parse_regions(regions)
+    regions = make_viewframe(regions, view_names_as_ucsc=True, check_bounds=clr.chromsizes)
 
     # define transofrms - balanced and raw ('count') for now
     if balance:

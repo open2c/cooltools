@@ -7,7 +7,7 @@ import sys
 import pandas as pd
 import numpy as np
 import cooler
-from bioframe import parse_regions
+from bioframe import make_viewframe
 from .. import saddle
 
 import click
@@ -210,34 +210,7 @@ def compute_saddle(
     expected_path, expected_name = expected_path
     track_path, track_name = track_path
 
-    if regions is None:
-        # use full chromosomes available in the cooler :
-        regions = parse_regions(clr.chromnames, clr.chromsizes)
-        regions["name"] = regions["chrom"]
-    else:
-        regions_buf, names = util.sniff_for_header(regions)
-        regions = pd.read_csv(regions_buf, sep="\t", header=None)
-        if regions.shape[1] not in (3, 4):
-            raise ValueError(
-                "The region file does not have three or four tab-delimited columns."
-                "We expect a bed file with columns chrom, start, end, and optional name"
-            )
-        if regions.shape[1] == 4:
-            regions = regions.rename(
-                columns={0: "chrom", 1: "start", 2: "end", 3: "name"}
-            )
-            regions = parse_regions(regions)
-        else:
-            regions = regions.rename(columns={0: "chrom", 1: "start", 2: "end"})
-            regions = parse_regions(regions)
-        # make sure custom regions are compatible with the track:
-        regions = regions[regions["chrom"].isin(clr.chromnames)].reset_index(drop=True)
-
-    if vmin <= 0 or vmax <= 0:
-        raise ValueError(
-            "vmin and vmax values are in original units irrespective "
-            "of used scale, and therefore should be positive"
-        )
+    regions = bioframe.make_viewframe(regions, view_names_as_ucsc=True, check_bounds=clr.chromsizes)
 
     # read expected and make preparations for validation,
     # it's contact_type dependent:
