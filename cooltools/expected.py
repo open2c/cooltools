@@ -350,9 +350,9 @@ def make_diag_tables(clr, regions, regions2=None, weight_name="weight", bad_bins
         dictionary with DataFrames of relevant diagonals for every support.
     """
 
-    regions = bioframe.make_viewframe(regions, view_names_as_ucsc=True, check_bounds=clr.chromsizes).values
+    regions = bioframe.make_viewframe(regions, check_bounds=clr.chromsizes).values
     if regions2 is not None:
-        regions2 = bioframe.make_viewframe(regions2, view_names_as_ucsc=True, check_bounds=clr.chromsizes).values
+        regions2 = bioframe.make_viewframe(regions2, check_bounds=clr.chromsizes).values
 
     bins = clr.bins()[:]
     if weight_name is None:
@@ -459,8 +459,8 @@ def make_block_table(clr, regions1, regions2, weight_name="weight", bad_bins=Non
     else:
         bad_bins = np.asarray(bad_bins).astype(int)
 
-    regions1 = bioframe.make_viewframe(regions1, view_names_as_ucsc=True, check_bounds=clr.chromsizes).values
-    regions2 = bioframe.make_viewframe(regions2, view_names_as_ucsc=True, check_bounds=clr.chromsizes).values
+    regions1 = bioframe.make_viewframe(regions1, check_bounds=clr.chromsizes).values
+    regions2 = bioframe.make_viewframe(regions2, check_bounds=clr.chromsizes).values
 
     # should we check for nestedness here, or that each region1 is < region2 ?
 
@@ -585,7 +585,7 @@ def diagsum(
     spans = partition(0, len(clr.pixels()), chunksize)
     fields = ["count"] + list(transforms.keys())
 
-    regions = bioframe.make_viewframe(regions, view_names_as_ucsc=True, check_bounds=clr.chromsizes)
+    regions = bioframe.make_viewframe(regions, check_bounds=clr.chromsizes)
     regions = regions[regions['chrom'].isin(clr.chromnames)].reset_index(drop=True)
 
     dtables = make_diag_tables(clr, regions, weight_name=weight_name, bad_bins=bad_bins)
@@ -729,8 +729,8 @@ def diagsum_asymm(
     """
     spans = partition(0, len(clr.pixels()), chunksize)
     fields = ["count"] + list(transforms.keys())
-    regions1 = bioframe.make_viewframe(regions1, view_names_as_ucsc=True, check_bounds=clr.chromsizes)
-    regions2 = bioframe.make_viewframe(regions2, view_names_as_ucsc=True, check_bounds=clr.chromsizes)
+    regions1 = bioframe.make_viewframe(regions1, check_bounds=clr.chromsizes)
+    regions2 = bioframe.make_viewframe(regions2, check_bounds=clr.chromsizes)
 
     dtables = make_diag_tables(
         clr, regions1, regions2, weight_name=weight_name, bad_bins=bad_bins
@@ -862,8 +862,8 @@ def blocksum_asymm(
 
     """
 
-    regions1 = bioframe.make_viewframe(regions1, view_names_as_ucsc=True, check_bounds=clr.chromsizes)
-    regions2 = bioframe.make_viewframe(regions2, view_names_as_ucsc=True, check_bounds=clr.chromsizes)
+    regions1 = bioframe.make_viewframe(regions1, check_bounds=clr.chromsizes)
+    regions2 = bioframe.make_viewframe(regions2, check_bounds=clr.chromsizes)
 
     spans = partition(0, len(clr.pixels()), chunksize)
     fields = ["count"] + list(transforms.keys())
