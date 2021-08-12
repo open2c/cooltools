@@ -122,7 +122,10 @@ def compute_expected(
         # https://github.com/mirnylab/cooler/blob/843dadca5ef58e3b794dbaf23430082c9a634532/cooler/cli/balance.py#L175
 
     clr = cooler.Cooler(cool_path)
-    regions = make_viewframe(regions, view_names_as_ucsc=True, check_bounds=clr.chromsizes)
+    if not regions is None:
+        regions = make_viewframe(regions, view_names_as_ucsc=True, check_bounds=clr.chromsizes)
+    else:
+        regions = make_viewframe([(chrom, 0, clr.chromsizes[chrom]) for chrom in clr.chromnames])
 
     # define transofrms - balanced and raw ('count') for now
     if balance:
