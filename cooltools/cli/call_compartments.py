@@ -163,7 +163,7 @@ def call_compartments(
     if regions is None:
         # use full chromosomes referred to in the track :
         track_chroms = track["chrom"].unique()
-        cis_regions_table = bioframe.parse_regions(track_chroms, clr.chromsizes)
+        cis_regions_table = bioframe.make_viewframe([(chrom, 0, clr.chromsizes[chrom]) for chrom in clr.chromnames])
         cis_regions_table["name"] = cis_regions_table["chrom"]
     else:
         if contact_type == "trans":
@@ -173,26 +173,8 @@ def call_compartments(
         # Flexible reading of the regions table:
         regions_buf, names = sniff_for_header(regions)
         cis_regions_table = pd.read_csv(regions_buf, sep="\t", header=None)
-        if cis_regions_table.shape[1] not in (3, 4):
-            raise ValueError(
-                "The region file does not have three or four tab-delimited columns."
-                "We expect a bed file with columns chrom, start, end, and optional name"
-            )
-        if cis_regions_table.shape[1] == 4:
-            cis_regions_table = cis_regions_table.rename(
-                columns={0: "chrom", 1: "start", 2: "end", 3: "name"}
-            )
-            cis_regions_table = bioframe.parse_regions(cis_regions_table)
-        else:
-            cis_regions_table = cis_regions_table.rename(
-                columns={0: "chrom", 1: "start", 2: "end"}
-            )
-            cis_regions_table = bioframe.parse_regions(cis_regions_table)
-        # make sure custom regions are compatible with the track:
-        track_chroms = track["chrom"].unique()
-        cis_regions_table = cis_regions_table[
-            cis_regions_table["chrom"].isin(track_chroms)
-        ].reset_index(drop=True)
+        cis_regions_table.columns = names
+        cis_regions_table = bioframe.make_viewframe(regions, check_bounds=clr.chromsizes)
 
     # it's contact_type dependent:
     if contact_type == "cis":

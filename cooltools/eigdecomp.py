@@ -369,7 +369,7 @@ def cooler_cis_eig(
         raise ValueError(f'No column "{phasing_track_col}" in the bin table')
 
     # regions to dataframe
-    regions = bioframe.parse_regions(regions, clr.chromsizes)
+    regions = bioframe.make_viewframe(regions, check_bounds=clr.chromsizes)
 
     # ignore diags as in cooler inless specified
     ignore_diags = (
