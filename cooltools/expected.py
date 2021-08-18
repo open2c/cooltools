@@ -459,8 +459,9 @@ def make_block_table(clr, regions1, regions2, weight_name="weight", bad_bins=Non
     else:
         bad_bins = np.asarray(bad_bins).astype(int)
 
-    regions1 = bioframe.make_viewframe(regions1, check_bounds=clr.chromsizes).values
-    regions2 = bioframe.make_viewframe(regions2, check_bounds=clr.chromsizes).values
+    # TODO: Make_viewframe cannot input repeated regions, so we cannot construct it here...
+    # regions1 = bioframe.make_viewframe(regions1, check_bounds=clr.chromsizes).values
+    # regions2 = bioframe.make_viewframe(regions2, check_bounds=clr.chromsizes).values
 
     # should we check for nestedness here, or that each region1 is < region2 ?
 
@@ -556,7 +557,7 @@ def diagsum(
     ----------
     clr : cooler.Cooler
         Cooler object
-    regions : sequence of genomic range tuples
+    regions : viewframe or sequence of genomic range tuples
         Support regions for intra-chromosomal diagonal summation
     transforms : dict of str -> callable, optional
         Transformations to apply to pixels. The result will be assigned to
@@ -585,8 +586,11 @@ def diagsum(
     spans = partition(0, len(clr.pixels()), chunksize)
     fields = ["count"] + list(transforms.keys())
 
-    regions = bioframe.make_viewframe(regions, check_bounds=clr.chromsizes)
-    regions = regions[regions['chrom'].isin(clr.chromnames)].reset_index(drop=True)
+    # appropriate viewframe checks:
+    assert bioframe.is_viewframe(regions), "Regions table is not a valid viewframe."
+    assert bioframe.is_contained(
+        regions, bioframe.make_viewframe(clr.chromsizes)
+    ), "Regions table is out of the bounds of chromosomes in cooler."
 
     dtables = make_diag_tables(clr, regions, weight_name=weight_name, bad_bins=bad_bins)
 
@@ -729,8 +733,8 @@ def diagsum_asymm(
     """
     spans = partition(0, len(clr.pixels()), chunksize)
     fields = ["count"] + list(transforms.keys())
-    regions1 = bioframe.make_viewframe(regions1, check_bounds=clr.chromsizes)
-    regions2 = bioframe.make_viewframe(regions2, check_bounds=clr.chromsizes)
+    regions1 = bioframe.make_viewframe(list(regions1), check_bounds=clr.chromsizes)
+    regions2 = bioframe.make_viewframe(list(regions2), check_bounds=clr.chromsizes)
 
     dtables = make_diag_tables(
         clr, regions1, regions2, weight_name=weight_name, bad_bins=bad_bins
@@ -862,8 +866,9 @@ def blocksum_asymm(
 
     """
 
-    regions1 = bioframe.make_viewframe(regions1, check_bounds=clr.chromsizes)
-    regions2 = bioframe.make_viewframe(regions2, check_bounds=clr.chromsizes)
+    # TODO: Make_viewframe cannot input repeated regions, so we cannot construct it here...
+    regions1 = bioframe.make_viewframe(list(regions1), check_bounds=clr.chromsizes).values
+    regions2 = bioframe.make_viewframe(list(regions2), check_bounds=clr.chromsizes).values
 
     spans = partition(0, len(clr.pixels()), chunksize)
     fields = ["count"] + list(transforms.keys())

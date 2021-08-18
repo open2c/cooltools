@@ -73,7 +73,7 @@ def digitize_track(binedges, track, regions=None):
         edges. See encoding details in Notes.
     track : tuple of (DataFrame, str)
         bedGraph-like dataframe along with the name of the value column.
-    regions: sequence of str or tuples
+    regions: viewframe, sequence of str or tuples
         List of genomic regions to include. Each can be a chromosome, a
         UCSC-style genomic region string or a tuple.
 
@@ -102,9 +102,9 @@ def digitize_track(binedges, track, regions=None):
 
     # subset and re-order chromosome groups
     if regions is not None:
-        regions = [bioframe.parse_region(reg) for reg in regions]
+        regions = bioframe.make_viewframe(regions)
         track = pd.concat(
-            bioframe.select(track, region) for region in regions
+            bioframe.select(track, region) for i, region in regions.iterrows()
         )
 
     # histogram the signal
@@ -129,6 +129,9 @@ def make_cis_obsexp_fetcher(clr, expected, regions, weight_name="weight"):
     expected : tuple of (DataFrame, str)
         Diagonal summary statistics for each chromosome, and name of the column
         with the values of expected to use.
+    regions: viewframe
+        Viewframe with genomic regions.
+
     weight_name : str
         Name of the column in the clr.bins to use as balancing weights
 
@@ -139,6 +142,13 @@ def make_cis_obsexp_fetcher(clr, expected, regions, weight_name="weight"):
     """
     expected, expected_name = expected
     expected = {k: x.values for k, x in expected.groupby("region")[expected_name]}
+
+    # appropriate viewframe checks:
+    assert bioframe.is_viewframe(regions), "Regions table is not a valid viewframe."
+    assert bioframe.is_contained(
+        regions, bioframe.make_viewframe(clr.chromsizes)
+    ), "Regions table is out of the bounds of chromosomes in cooler."
+
     regions = regions.set_index('name')
 
     def _fetch_cis_oe(reg1, reg2):
@@ -273,7 +283,7 @@ def make_saddle(
     contact_type : str
         If 'cis' then only cis interactions are used to build the matrix.
         If 'trans', only trans interactions are used.
-    regions : sequence of str or tuple, optional
+    regions : viewframe, sequence of str or tuple, optional
         A list of genomic regions to use. Each can be a chromosome, a
         UCSC-style genomic region string or a tuple.
     min_diag : int
@@ -300,13 +310,15 @@ def make_saddle(
     digitized_df, name = digitized
     digitized_df = digitized_df[["chrom", "start", "end", name]]
 
+    # get chromosomes from bins, if regions not specified:
     if regions is None:
-        regions = [
-            (chrom, df.start.min(), df.end.max())
-            for chrom, df in digitized_df.groupby("chrom")
-        ]
-
-    regions = bioframe.parse_regions(regions)
+        regions = bioframe.make_viewframe(
+            [
+                (chrom, df.start.min(), df.end.max())
+                for chrom, df in digitized_df.groupby("chrom")
+            ]
+        )
+    # TODO: Add some check here?
 
     digitized_tracks = {}
     for reg in regions.values:

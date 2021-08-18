@@ -1,7 +1,4 @@
 import os.path as op
-
-# import pandas as pd
-
 import numpy as np
 import pandas as pd
 from numpy import testing
@@ -15,9 +12,7 @@ from cooltools.cli import cli
 from itertools import combinations
 
 
-# rudimentary expected functions for dense matrices:
-
-
+### Test rudimentary expected functions for dense matrices:
 def _diagsum_dense(matrix, ignore_diags=2, bad_bins=None):
     """
     function returning a diagsum list for a square symmetric and dense matrix
@@ -76,6 +71,7 @@ def _blocksum_asymm_dense(matrix, bad_bin_rows=None, bad_bin_cols=None):
     return np.nanmean(mat)
 
 
+### Test API:
 # common parameters:
 ignore_diags = 2
 weight_name = "weight"
@@ -101,13 +97,15 @@ for i in range(4):
     common_regions.append(reg1)
     common_regions.append(reg2)
 
+regions_df = bioframe.make_viewframe(common_regions)
+
 
 def test_diagsum(request):
     # perform test:
     clr = cooler.Cooler(op.join(request.fspath.dirname, "data/CN.mm9.1000kb.cool"))
     res = cooltools.expected.diagsum(
         clr,
-        regions=common_regions,
+        regions=regions_df,
         transforms=transforms,
         weight_name=weight_name,
         bad_bins=bad_bins,
@@ -160,6 +158,9 @@ def test_diagsum_asymm(request):
         )
 
 
+# TODO fix:
+#  FAILED test_expected.py::test_blocksum - ValueError: Invalid view: entries in region_df[view_name_col] must be unique
+#  FAILED test_expected.py::test_trans_expected_regions_cli - AssertionError: assert 1 == 0
 def test_blocksum(request):
     # perform test:
     clr = cooler.Cooler(op.join(request.fspath.dirname, "data/CN.mm9.1000kb.cool"))
@@ -190,6 +191,7 @@ def test_blocksum(request):
         )
 
 
+### Test CLI:
 def test_expected_cli(request, tmpdir):
     # CLI compute-expected for chrom-wide cis-data
     in_cool = op.join(request.fspath.dirname, "data/CN.mm9.1000kb.cool")
@@ -224,9 +226,9 @@ def test_expected_cli(request, tmpdir):
 
 def test_expected_regions_cli(request, tmpdir):
     # CLI compute expected for cis-data with arbitrary regions
-    # which may overlap. But it is symmetrical cis-case.
+    # which cannot overlap. But it is symmetrical cis-case.
     in_cool = op.join(request.fspath.dirname, "data/CN.mm9.1000kb.cool")
-    in_regions = op.join(request.fspath.dirname, "data/mm9.named_overlap_regions.bed")
+    in_regions = op.join(request.fspath.dirname, "data/mm9.named_nonoverlap_regions.bed")
     out_cis_expected = op.join(tmpdir, "cis.regions.exp.tsv")
     runner = CliRunner()
     result = runner.invoke(
@@ -263,7 +265,7 @@ def test_expected_regions_cli(request, tmpdir):
 
 def test_trans_expected_regions_cli(request, tmpdir):
     # CLI compute expected for cis-data with arbitrary regions
-    # which may overlap. But it is symmetrical cis-case.
+    # which cannot overlap. But it is symmetrical cis-case.
     in_cool = op.join(request.fspath.dirname, "data/CN.mm9.1000kb.cool")
     in_regions = op.join(
         request.fspath.dirname, "data/mm9.named_nonoverlap_regions.bed"
@@ -290,7 +292,7 @@ def test_trans_expected_regions_cli(request, tmpdir):
     trans_expected = pd.read_csv(out_trans_expected, sep="\t")
     # grouped = trans_expected.groupby("region1","region2")
     trans_expected = trans_expected.set_index(["region1", "region2"])
-    # deal with named and overlapping regions here:
+    # deal with named regions here:
     regions_df = pd.read_csv(in_regions, sep="\t", header=None)
     # prepare pairwise combinations of regions for trans-expected (blocksum):
     regions_pairwise = combinations(regions_df.itertuples(index=False), 2)

@@ -223,12 +223,18 @@ def pair_sites(sites, separation, slop):
 class CoolerSnipper:
     def __init__(self, clr, cooler_opts=None, regions=None):
 
+        # get chromosomes from bins, if regions not specified:
         if regions is None:
-            regions = pd.DataFrame(
-                [(chrom, 0, l, chrom) for chrom, l in clr.chromsizes.items()],
-                columns=["chrom", "start", "end", "name"],
+            regions = bioframe.make_viewframe(
+                [(chrom, 0, l, chrom) for chrom, l in clr.chromsizes.items()]
             )
-        regions = regions[regions['chrom'].isin(clr.chromnames)].reset_index(drop=True)
+        else:
+            # appropriate viewframe checks:
+            assert bioframe.is_viewframe(regions), "Regions table is not a valid viewframe."
+            assert bioframe.is_contained(
+                regions, bioframe.make_viewframe(clr.chromsizes)
+            ), "Regions table is out of the bounds of chromosomes in cooler."
+
         self.regions = regions.set_index("name")
 
         self.clr = clr
@@ -317,18 +323,19 @@ class ObsExpSnipper:
                 raise ValueError(
                     "Please check the expected dataframe, it has no `region` column"
                 )
+
+        # get chromosomes from bins, if regions not specified:
         if regions is None:
-            if set(self.expected["region"]).issubset(clr.chromnames):
-                regions = pd.DataFrame(
-                    [(chrom, 0, l, chrom) for chrom, l in clr.chromsizes.items()],
-                    columns=["chrom", "start", "end", "name"],
-                )
-            else:
-                raise ValueError(
-                    "Please provide the regions table, if region names"
-                    "are not simply chromosome names."
-                )
-        regions = regions[regions['chrom'].isin(clr.chromnames)].reset_index(drop=True)
+            regions = bioframe.make_viewframe(
+                [(chrom, 0, l, chrom) for chrom, l in clr.chromsizes.items()]
+            )
+        else:
+            # appropriate viewframe checks:
+            assert bioframe.is_viewframe(regions), "Regions table is not a valid viewframe."
+            assert bioframe.is_contained(
+                regions, bioframe.make_viewframe(clr.chromsizes)
+            ), "Regions table is out of the bounds of chromosomes in cooler."
+
         self.regions = regions.set_index("name")
 
         try:
@@ -433,18 +440,18 @@ class ExpectedSnipper:
                 raise ValueError(
                     "Please check the expected dataframe, it has no `region` column"
                 )
+
+        # get chromosomes from bins, if regions not specified:
         if regions is None:
-            if set(self.expected["region"]).issubset(clr.chromnames):
-                regions = pd.DataFrame(
-                    [(chrom, 0, l, chrom) for chrom, l in clr.chromsizes.items()],
-                    columns=["chrom", "start", "end", "name"],
-                )
-            else:
-                raise ValueError(
-                    "Please provide the regions table, if region names"
-                    "are not simply chromosome names."
-                )
-        regions = regions[regions['chrom'].isin(clr.chromnames)].reset_index(drop=True)
+            regions = bioframe.make_viewframe(
+                [(chrom, 0, l, chrom) for chrom, l in clr.chromsizes.items()]
+            )
+        else:
+            # appropriate viewframe checks:
+            assert bioframe.is_viewframe(regions), "Regions table is not a valid viewframe."
+            assert bioframe.is_contained(
+                regions, bioframe.make_viewframe(clr.chromsizes)
+            ), "Regions table is out of the bounds of chromosomes in cooler."
         self.regions = regions.set_index("name")
 
         try:

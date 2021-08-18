@@ -13,10 +13,7 @@ from . import util
 
 @cli.command()
 @click.argument(
-    "cool_path",
-    metavar="COOL_PATH",
-    type=str,
-    nargs=1,
+    "cool_path", metavar="COOL_PATH", type=str, nargs=1,
 )
 @click.argument(
     "expected_path",
@@ -25,12 +22,14 @@ from . import util
     nargs=1,
 )
 @click.option(
+    "--view",
     "--regions",
-    help="Path to a BED file with the definition of regions"
+    help="Path to a BED file with the definition of viewframe (regions)"
     " used in the calculation of EXPECTED_PATH. Dot-calling will be"
     " performed for these regions independently e.g. chromosome arms."
     " When not provided regions will be interpreted from `region` column"
-    " of EXPECTED_PATH (UCSC formatted, or full chromosome names).",
+    " of EXPECTED_PATH (UCSC formatted, or full chromosome names)."
+    " Note that '--regions' is the deprecated name of the option. Use '--view' instead. ",
     type=click.Path(exists=False, dir_okay=False),
     default=None,
     show_default=True,
@@ -137,7 +136,7 @@ from . import util
 def call_dots(
     cool_path,
     expected_path,
-    regions,
+    view,
     expected_name,
     weight_name,
     nproc,
@@ -195,7 +194,7 @@ def call_dots(
     except ValueError as e:
         raise ValueError(
             "input expected does not match the schema\n"
-            "tab-separated expected file must have a header as wel"
+            "tab-separated expected file must have a header as well"
         )
     expected_index = [
         region_column_name,
@@ -204,62 +203,56 @@ def call_dots(
     expected.set_index(expected_index, inplace=True)
     # end of SCHEMA for cis-expected
 
-    # Optional reading region table provided by the user:
-    if regions is None:
-        try:
-            uniq_regions = expected.index.get_level_values(region_column_name).unique()
-            regions_table = bioframe.parse_regions(uniq_regions, clr.chromsizes)
-            regions_table["name"] = regions_table["chrom"]
-        except ValueError as e:
-            print(e)
-            raise ValueError(
-                "Cannot interpret regions from EXPECTED_PATH\n"
-                "specify regions definitions using --regions option."
-            )
-    else:
-        # Flexible reading of the regions table:
-        regions_buf, names = util.sniff_for_header(regions)
-        regions_table = pd.read_csv(regions_buf, sep="\t", header=None)
-        if regions_table.shape[1] not in (3, 4):
-            raise ValueError(
-                "The region file does not have three or four tab-delimited columns."
-                "We expect a bed file with columns chrom, start, end, and optional name"
-            )
-        if regions_table.shape[1] == 4:
-            regions_table = regions_table.rename(
-                columns={0: "chrom", 1: "start", 2: "end", 3: "name"}
-            )
-            regions_table = bioframe.parse_regions(regions_table)
-        else:
-            regions_table = regions_table.rename(
-                columns={0: "chrom", 1: "start", 2: "end"}
-            )
-            regions_table = bioframe.parse_regions(regions_table)
-        regions_table = regions_table[
-            regions_table["chrom"].isin(clr.chromnames)
-        ].reset_index(drop=True)
-
-    # Verify appropriate columns order (required for heatmap_tiles_generator_diag):
-    regions_table = regions_table[["chrom", "start", "end", "name"]]
-
-    # Input validation
-    get_exp_regions = lambda df: df.index.get_level_values(region_column_name).unique()
-    expected_regions = get_exp_regions(expected)
-
-    # unique list of regions mentioned in expected_path
-    # are also in regions table
-    if not set(expected_regions).issubset(regions_table["name"]):
-        raise ValueError(
-            "Regions in {} must be subset of ".format(expected_path)
-            + f"regions in {'regions table'+regions_path if not regions_path is None else 'cooler'}"
+    # Create a viewframe from regions in expected table:
+    try:
+        # Construct DataFrame of names of expected that will be parsed
+        # by bioframe.from_ucsc_string_list:
+        uniq_regions = pd.DataFrame(
+            {"name": expected.index.get_level_values(region_column_name).unique()}
         )
+        expected_regions_df = bioframe.make_viewframe(
+            uniq_regions, check_bounds=clr.chromsizes
+        )
+    except ValueError as e:
+        print(e)
+        raise ValueError(
+            "Cannot interpret regions from EXPECTED_PATH\n"
+            "specify regions definitions using --view option."
+        )
+
+    # Create regions_df,
+    # use expected regions by default:
+    if view is None:
+        regions_df = expected_regions_df
+    # or use custom regions if file provided:
+    else:
+        # Read regions dataframe:
+        try:
+            regions_df = bioframe.read_table(view, schema="bed4", index_col=False)
+        except Exception:
+            regions_df = bioframe.read_table(view, schema="bed3", index_col=False)
+        # Convert regions dataframe to viewframe:
+        try:
+            regions_df = bioframe.make_viewframe(
+                regions_df, check_bounds=clr.chromsizes
+            )
+        except ValueError as e:
+            raise RuntimeError(
+                "View table is incorrect, please, comply with the format. "
+            ) from e
+
+        assert bioframe.is_contained(
+            regions_df, expected_regions_df
+        ), "View and expected are for different regions"
+    # Verify appropriate columns order (required for heatmap_tiles_generator_diag):
+    regions_df = regions_df[["chrom", "start", "end", "name"]]
 
     # check number of bins per region in cooler and expected table
     # compute # of bins by comparing matching indexes
     try:
         for region_name, group in expected.reset_index().groupby(region_column_name):
             n_diags = group.shape[0]
-            region = regions_table.set_index("name").loc[region_name]
+            region = regions_df.set_index("name").loc[region_name]
             lo, hi = clr.extent(region)
             assert n_diags == (hi - lo)
     except AssertionError:
@@ -312,7 +305,7 @@ def call_dots(
     # list of tile coordinate ranges
     tiles = list(
         dotfinder.heatmap_tiles_generator_diag(
-            clr, regions_table, w, tile_size_bins, loci_separation_bins
+            clr, regions_df, w, tile_size_bins, loci_separation_bins
         )
     )
 
@@ -390,10 +383,13 @@ def call_dots(
     # why ? - because - clustering has to be done independently for every region!
     ########################################################################
     filtered_pixels_annotated = cooler.annotate(filtered_pixels_qvals, clr.bins()[:])
-    filtered_pixels_annotated = assign_regions(filtered_pixels_annotated, regions_table)
+    filtered_pixels_annotated = assign_regions(filtered_pixels_annotated, regions_df)
     # consider reseting index here
     centroids = dotfinder.clustering_step(
-        filtered_pixels_annotated, expected_regions, dots_clustering_radius, verbose
+        filtered_pixels_annotated,
+        expected_regions_df["name"],
+        dots_clustering_radius,
+        verbose,
     )
 
     # 4b. filter by enrichment and qval

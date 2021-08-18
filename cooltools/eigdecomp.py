@@ -362,14 +362,19 @@ def cooler_cis_eig(
 
     # get chromosomes from bins, if regions not specified:
     if regions is None:
-        regions = list(bins["chrom"].unique()) # parse_regions fill in the rest
+        regions = bioframe.make_viewframe(
+            [(chrom, 0, clr.chromsizes[chrom]) for chrom in clr.chromnames]
+        )
+    else:
+        # appropriate viewframe checks:
+        assert bioframe.is_viewframe(regions), "Regions table is not a valid viewframe."
+        assert bioframe.is_contained(
+            regions, bioframe.make_viewframe(clr.chromsizes)
+        ), "Regions table is out of the bounds of chromosomes in cooler."
 
     # make sure phasing_track_col is in bins, if phasing is requested
     if phasing_track_col and (phasing_track_col not in bins):
         raise ValueError(f'No column "{phasing_track_col}" in the bin table')
-
-    # regions to dataframe
-    regions = bioframe.make_viewframe(regions, check_bounds=clr.chromsizes)
 
     # ignore diags as in cooler inless specified
     ignore_diags = (
@@ -404,19 +409,19 @@ def cooler_cis_eig(
         _region, eigvals, eigvecs -> ndarrays
             array of eigenvalues and an array eigenvectors
         """
-        _region = region[:3] # take only (chrom, start, end)
+        _region = region[:3]  # take only (chrom, start, end)
         A = clr.matrix(balance=balance).fetch(_region)
 
         # filter bad_bins relevant for the _region from A
         if bad_bins is not None:
             # filter bad_bins for the _region and turn relative:
             lo, hi = clr.extent(_region)
-            bad_bins_region = bad_bins[(bad_bins>=lo)&(bad_bins<hi)]
+            bad_bins_region = bad_bins[(bad_bins >= lo) & (bad_bins < hi)]
             bad_bins_region -= lo
             if len(bad_bins_region) > 0:
                 # apply bad bins to symmetric matrix A:
-                A[:,bad_bins_region] = np.nan
-                A[bad_bins_region,:] = np.nan
+                A[:, bad_bins_region] = np.nan
+                A[bad_bins_region, :] = np.nan
 
         # extract phasing track relevant for the _region
         phasing_track = (
@@ -448,7 +453,6 @@ def cooler_cis_eig(
         idx = bioframe.select(eigvals_table, _region).index
         eigvals_table.at[idx, eigval_columns] = _eigvals
 
-
     return eigvals_table, eigvec_table
 
 
@@ -460,7 +464,7 @@ def cooler_trans_eig(
     phasing_track_col="GC",
     balance="weight",
     sort_metric=None,
-    **kwargs
+    **kwargs,
 ):
 
     if partition is None:
@@ -487,7 +491,7 @@ def cooler_trans_eig(
         n_eigs=n_eigs,
         phasing_track=phasing_track,
         sort_metric=sort_metric,
-        **kwargs
+        **kwargs,
     )
 
     eigvec_table = bins.copy()
