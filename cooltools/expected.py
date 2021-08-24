@@ -541,7 +541,7 @@ def _diagsum_symm(clr, fields, transforms, regions, span):
 
 def diagsum(
     clr,
-    regions,
+    view_df,
     transforms={},
     weight_name="weight",
     bad_bins=None,
@@ -557,8 +557,8 @@ def diagsum(
     ----------
     clr : cooler.Cooler
         Cooler object
-    regions : viewframe or sequence of genomic range tuples
-        Support regions for intra-chromosomal diagonal summation
+    view_df : viewframe or sequence of genomic range tuples
+        Support view_df for intra-chromosomal diagonal summation
     transforms : dict of str -> callable, optional
         Transformations to apply to pixels. The result will be assigned to
         a temporary column with the name given by the key. Callables take
@@ -580,19 +580,19 @@ def diagsum(
 
     Returns
     -------
-    Dataframe of diagonal statistics for all regions
+    Dataframe of diagonal statistics for all regions in thew view
 
     """
     spans = partition(0, len(clr.pixels()), chunksize)
     fields = ["count"] + list(transforms.keys())
 
     # appropriate viewframe checks:
-    assert bioframe.is_viewframe(regions), "Regions table is not a valid viewframe."
+    assert bioframe.is_viewframe(view_df), "view_df is not a valid viewframe."
     assert bioframe.is_contained(
-        regions, bioframe.make_viewframe(clr.chromsizes)
-    ), "Regions table is out of the bounds of chromosomes in cooler."
+        view_df, bioframe.make_viewframe(clr.chromsizes)
+    ), "View table is out of the bounds of chromosomes in cooler."
 
-    dtables = make_diag_tables(clr, regions, weight_name=weight_name, bad_bins=bad_bins)
+    dtables = make_diag_tables(clr, view_df, weight_name=weight_name, bad_bins=bad_bins)
 
     # combine masking with existing transforms and add a "count" transform:
     if bad_bins is not None:
@@ -624,11 +624,11 @@ def diagsum(
             agg_name = "{}.sum".format(field)
             dt[agg_name] = 0
 
-    job = partial(_diagsum_symm, clr, fields, transforms, regions.values)
+    job = partial(_diagsum_symm, clr, fields, transforms, view_df.values)
     results = map(job, spans)
     for result in results:
         for i, agg in result.items():
-            region = regions.loc[i, "name"]
+            region = view_df.loc[i, "name"]
             for field in fields:
                 agg_name = "{}.sum".format(field)
                 dtables[region][agg_name] = dtables[region][agg_name].add(

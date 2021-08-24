@@ -130,20 +130,20 @@ def compute_expected(
     clr = cooler.Cooler(cool_path)
     if view is None:
         # Generate viewframe from clr.chromsizes:
-        regions_df = bioframe.make_viewframe(
+        view_df = bioframe.make_viewframe(
             [(chrom, 0, clr.chromsizes[chrom]) for chrom in clr.chromnames]
         )
     else:
         # Make viewframe out of table:
-        # Read regions dataframe:
+        # Read view_df dataframe:
         try:
-            regions_df = bioframe.read_table(view, schema="bed4", index_col=False)
+            view_df = bioframe.read_table(view, schema="bed4", index_col=False)
         except Exception:
-            regions_df = bioframe.read_table(view, schema="bed3", index_col=False)
-        # Convert regions dataframe to viewframe:
+            view_df = bioframe.read_table(view, schema="bed3", index_col=False)
+        # Convert view dataframe to viewframe:
         try:
-            regions_df = bioframe.make_viewframe(
-                regions_df, check_bounds=clr.chromsizes
+            view_df = bioframe.make_viewframe(
+                view_df, check_bounds=clr.chromsizes
             )
         except ValueError as e:
             raise RuntimeError(
@@ -172,7 +172,7 @@ def compute_expected(
         if contact_type == "cis":
             result = expected.diagsum(
                 clr,
-                regions_df,
+                view_df,
                 transforms=transforms,
                 weight_name=weight_name,
                 bad_bins=None,
@@ -182,7 +182,7 @@ def compute_expected(
             )
         elif contact_type == "trans":
             # prepare pairwise combinations of regions for trans-expected (blocksum):
-            regions_pairwise = combinations(regions_df.itertuples(index=False), 2)
+            regions_pairwise = combinations(view_df.itertuples(index=False), 2)
             regions1, regions2 = zip(*regions_pairwise)
             result = expected.blocksum_asymm(
                 clr,

@@ -289,7 +289,7 @@ def trans_eig(
 def cooler_cis_eig(
     clr,
     bins,
-    regions=None,
+    view_df=None,
     n_eigs=3,
     phasing_track_col="GC",
     balance="weight",
@@ -301,7 +301,8 @@ def cooler_cis_eig(
 ):
     """
     Compute compartment eigenvector for a given cooler `clr` in a number of
-    symmetric intra chromosomal regions (cis-regions), or for each chromosome.
+    symmetric intra chromosomal regions defined in view_df (cis-regions), or for each
+    chromosome.
     Note that the amplitude of compartment eigenvectors is weighted by their
     corresponding eigenvalue
     Parameters
@@ -310,8 +311,8 @@ def cooler_cis_eig(
         cooler object to fetch data from
     bins : DataFrame
         table of bins derived from clr with phasing track added
-    regions : iterable or DataFrame, optional
-        if provided, eigenvectors are calculated for the regions only,
+    view_df : iterable or DataFrame, optional
+        if provided, eigenvectors are calculated for the regions of the view only,
         otherwise chromosome-wide eigenvectors are computed, for chromosomes
         specified in bins.
     n_eigs : int
@@ -356,21 +357,21 @@ def cooler_cis_eig(
     .. note:: ALWAYS check your EVs by eye. The first one occasionally does
               not reflect the compartment structure, but instead describes
               chromosomal arms or translocation blowouts. Possible mitigations:
-              employ `regions` (e.g. arms) to avoid issues with chromosomal arms,
+              employ `view_df` (e.g. arms) to avoid issues with chromosomal arms,
               use `bad_bins` to ignore small transolcations.
     """
 
-    # get chromosomes from bins, if regions not specified:
-    if regions is None:
-        regions = bioframe.make_viewframe(
+    # get chromosomes from cooler, if view_df not specified:
+    if view_df is None:
+        view_df = bioframe.make_viewframe(
             [(chrom, 0, clr.chromsizes[chrom]) for chrom in clr.chromnames]
         )
     else:
         # appropriate viewframe checks:
-        assert bioframe.is_viewframe(regions), "Regions table is not a valid viewframe."
+        assert bioframe.is_viewframe(view_df), "view_df is not a valid viewframe."
         assert bioframe.is_contained(
-            regions, bioframe.make_viewframe(clr.chromsizes)
-        ), "Regions table is out of the bounds of chromosomes in cooler."
+            view_df, bioframe.make_viewframe(clr.chromsizes)
+        ), "view_df is out of the bounds of chromosomes in cooler."
 
     # make sure phasing_track_col is in bins, if phasing is requested
     if phasing_track_col and (phasing_track_col not in bins):
@@ -390,7 +391,7 @@ def cooler_cis_eig(
         eigvec_table[ev_col] = np.nan
 
     # prepare output table for eigenvalues
-    eigvals_table = regions.copy()
+    eigvals_table = view_df.copy()
     eigval_columns = [f"eigval{i + 1}" for i in range(n_eigs)]
     for eval_col in eigval_columns:
         eigvals_table[eval_col] = np.nan
@@ -443,7 +444,7 @@ def cooler_cis_eig(
 
     # eigendecompose matrix per region (can be multiprocessed)
     # output assumes that the order of results matches regions
-    results = map(_each, regions.values)
+    results = map(_each, view_df.values)
 
     # go through eigendecomposition results and fill in
     # output table eigvec_table and eigvals_table

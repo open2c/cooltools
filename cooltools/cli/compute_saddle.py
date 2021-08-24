@@ -213,25 +213,25 @@ def compute_saddle(
     track_path, track_name = track_path
 
     # Generate viewframe from clr.chromsizes:
-    cooler_regions_df = bioframe.make_viewframe(
+    cooler_view_df = bioframe.make_viewframe(
         [(chrom, 0, clr.chromsizes[chrom]) for chrom in clr.chromnames]
     )
 
-    # define regions for calculating saddles
-    # use input "regions" BED file or all chromosomes mentioned in "track":
+    # define view for calculating saddles
+    # use input "view" BED file or all chromosomes mentioned in "track":
     if view is None:
-        regions_df = cooler_regions_df
+        view_df = cooler_view_df
     else:
         # Make viewframe out of table:
-        # Read regions dataframe:
+        # Read view dataframe:
         try:
-            regions_df = bioframe.read_table(view, schema="bed4", index_col=False)
+            view_df = bioframe.read_table(view, schema="bed4", index_col=False)
         except Exception:
-            regions_df = bioframe.read_table(view, schema="bed3", index_col=False)
-        # Convert regions dataframe to viewframe:
+            view_df = bioframe.read_table(view, schema="bed3", index_col=False)
+        # Convert view dataframe to viewframe:
         try:
-            regions_df = bioframe.make_viewframe(
-                regions_df, check_bounds=clr.chromsizes
+            view_df = bioframe.make_viewframe(
+                view_df, check_bounds=clr.chromsizes
             )
         except ValueError as e:
             raise RuntimeError(
@@ -327,10 +327,10 @@ def compute_saddle(
     #############################################
 
     # Generate viewframe from track table:
-    track_regions_df = bioframe.make_viewframe(
+    track_view_df = bioframe.make_viewframe(
         [(group.chrom.iloc[0], np.nanmin(group.start), np.nanmax(group.end)) for i, group in track.reset_index().groupby('chrom')]
     )
-    assert bioframe.is_contained(track_regions_df, cooler_regions_df), "Track regions are not contatined in cooler chromsizes bounds"
+    assert bioframe.is_contained(track_view_df, cooler_view_df), "Track regions are not contatined in cooler chromsizes bounds"
     # Create a viewframe from regions in expected table
     # Expected table should have "region" column that encodes UCSC region
     # (same as in call-compartments)
@@ -341,7 +341,7 @@ def compute_saddle(
         uniq_regions = pd.DataFrame(
             {"name": expected.index.get_level_values(region_column_name).unique()}
         )
-        expected_regions_df = bioframe.make_viewframe(
+        expected_view_df = bioframe.make_viewframe(
             uniq_regions, check_bounds=clr.chromsizes
         )
     except ValueError as e:
@@ -350,8 +350,8 @@ def compute_saddle(
             "Cannot interpret regions from EXPECTED_PATH\n"
             "specify regions definitions using --view option."
         )
-    assert bioframe.is_contained(expected_regions_df, cooler_regions_df), "Expected regions are not contatined in cooler chromsizes bounds"
-    assert bioframe.is_contained(track_regions_df, expected_regions_df), "Track regions are not contatined in track regions bounds"
+    assert bioframe.is_contained(expected_view_df, cooler_view_df), "Expected regions are not contatined in cooler chromsizes bounds"
+    assert bioframe.is_contained(track_view_df, expected_view_df), "Track regions are not contatined in track regions bounds"
 
     # TRACK vs COOLER:
     track_chroms = track["chrom"].unique()
@@ -394,7 +394,7 @@ def compute_saddle(
 
     if contact_type == "cis":
         getmatrix = saddle.make_cis_obsexp_fetcher(
-            clr, (expected, expected_name), regions_df, weight_name=weight_name
+            clr, (expected, expected_name), view_df, weight_name=weight_name
         )
     elif contact_type == "trans":
         getmatrix = saddle.make_trans_obsexp_fetcher(
@@ -420,7 +420,7 @@ def compute_saddle(
         binedges = np.linspace(lo, hi, n_bins)
 
     digitized, hist = saddle.digitize_track(
-        binedges, track=(track, track_name), regions=track_regions_df
+        binedges, track=(track, track_name), view_df=track_view_df
     )
 
     S, C = saddle.make_saddle(
@@ -428,7 +428,7 @@ def compute_saddle(
         binedges,
         (digitized, track_name + ".d"),
         contact_type=contact_type,
-        regions=regions_df,
+        view_df=view_df,
         min_diag=min_diag,
         max_diag=max_diag,
     )
