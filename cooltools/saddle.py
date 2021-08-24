@@ -5,6 +5,7 @@ from cytoolz import merge
 import numpy as np
 import pandas as pd
 from .lib import numutils
+import warnings
 
 import bioframe
 
@@ -100,11 +101,24 @@ def digitize_track(binedges, track, view_df=None):
         raise ValueError("``track`` should be a tuple of (dataframe, column_name)")
     track, name = track
 
-    # subset and re-order chromosome groups
+    # subset and re-order chromosome groups, TODO: remove make_viewframe in the next cooltools version
     if view_df is not None:
-        # appropriate viewframe checks:
-        assert bioframe.is_viewframe(view_df), "view_df is not a valid viewframe."
-        # Any other checks possible?
+        # appropriate viewframe checks
+        try:
+            assert bioframe.is_viewframe(
+                view_df, raise_errors=True
+            ), "view_df is not a valid viewframe."
+            assert bioframe.is_contained(
+                view_df, bioframe.make_viewframe(clr.chromsizes)
+            ), "View table is out of the bounds of chromosomes in cooler."
+        except Exception as e:  # AssertionError or ValueError, see https://github.com/gfudenberg/bioframe/blob/main/bioframe/core/checks.py#L177
+            warnings.warn(
+                "view_df has to be a proper viewframe from next release",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            view_df = bioframe.make_viewframe(view_df)
+        # Select the track regions from view_df:
         track = pd.concat(
             bioframe.select(track, region) for i, region in view_df.iterrows()
         )
@@ -152,7 +166,7 @@ def make_cis_obsexp_fetcher(clr, expected, view_df, weight_name="weight"):
         view_df, bioframe.make_viewframe(clr.chromsizes)
     ), "View table is out of the bounds of chromosomes in cooler."
 
-    view_df = view_df.set_index('name')
+    view_df = view_df.set_index("name")
 
     def _fetch_cis_oe(reg1, reg2):
         reg1_coords = tuple(view_df.loc[reg1])
@@ -198,7 +212,8 @@ def make_trans_obsexp_fetcher(clr, expected, weight_name="weight"):
             raise ValueError("Name of data column not provided.")
 
         expected = {
-            k: x.values for k, x in expected.groupby(["region1", "region2"])[expected_name]
+            k: x.values
+            for k, x in expected.groupby(["region1", "region2"])[expected_name]
         }
 
         def _fetch_trans_exp(region1, region2):
@@ -321,10 +336,22 @@ def make_saddle(
                 for chrom, df in digitized_df.groupby("chrom")
             ]
         )
-    else:    
-        # appropriate viewframe checks:
-        assert bioframe.is_viewframe(view_df), "view_df is not a valid viewframe."
-        # Any other checks possible?
+    else:
+        # appropriate viewframe checks, TODO: remove make_viewframe in the next cooltools version
+        try:
+            assert bioframe.is_viewframe(
+                view_df, raise_errors=True
+            ), "view_df is not a valid viewframe."
+            assert bioframe.is_contained(
+                view_df, bioframe.make_viewframe(clr.chromsizes)
+            ), "View table is out of the bounds of chromosomes in cooler."
+        except Exception as e:  # AssertionError or ValueError, see https://github.com/gfudenberg/bioframe/blob/main/bioframe/core/checks.py#L177
+            warnings.warn(
+                "view_df has to be a proper viewframe from next release",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            view_df = bioframe.make_viewframe(view_df)
 
     digitized_tracks = {}
     for reg in view_df.values:

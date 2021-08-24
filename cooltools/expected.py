@@ -557,7 +557,7 @@ def diagsum(
     ----------
     clr : cooler.Cooler
         Cooler object
-    view_df : viewframe or sequence of genomic range tuples
+    view_df : viewframe (or depreated: sequence of genomic range tuples)
         Support view_df for intra-chromosomal diagonal summation
     transforms : dict of str -> callable, optional
         Transformations to apply to pixels. The result will be assigned to
@@ -586,11 +586,21 @@ def diagsum(
     spans = partition(0, len(clr.pixels()), chunksize)
     fields = ["count"] + list(transforms.keys())
 
-    # appropriate viewframe checks:
-    assert bioframe.is_viewframe(view_df), "view_df is not a valid viewframe."
-    assert bioframe.is_contained(
-        view_df, bioframe.make_viewframe(clr.chromsizes)
-    ), "View table is out of the bounds of chromosomes in cooler."
+    # appropriate viewframe checks, TODO: remove make_viewframe in the next cooltools version
+    try:
+        assert bioframe.is_viewframe(
+            view_df, raise_errors=True
+        ), "view_df is not a valid viewframe."
+        assert bioframe.is_contained(
+            view_df, bioframe.make_viewframe(clr.chromsizes)
+        ), "View table is out of the bounds of chromosomes in cooler."
+    except Exception as e:  # AssertionError or ValueError, see https://github.com/gfudenberg/bioframe/blob/main/bioframe/core/checks.py#L177
+        warnings.warn(
+            "view_df has to be a proper viewframe from next release",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        view_df = bioframe.make_viewframe(view_df)
 
     dtables = make_diag_tables(clr, view_df, weight_name=weight_name, bad_bins=bad_bins)
 
@@ -867,8 +877,12 @@ def blocksum_asymm(
     """
 
     # TODO: Make_viewframe cannot input repeated regions, so we cannot construct it here...
-    regions1 = bioframe.make_viewframe(list(regions1), check_bounds=clr.chromsizes).values
-    regions2 = bioframe.make_viewframe(list(regions2), check_bounds=clr.chromsizes).values
+    regions1 = bioframe.make_viewframe(
+        list(regions1), check_bounds=clr.chromsizes
+    ).values
+    regions2 = bioframe.make_viewframe(
+        list(regions2), check_bounds=clr.chromsizes
+    ).values
 
     spans = partition(0, len(clr.pixels()), chunksize)
     fields = ["count"] + list(transforms.keys())

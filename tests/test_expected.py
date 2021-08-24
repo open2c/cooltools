@@ -11,6 +11,8 @@ from cooltools.cli import cli
 
 from itertools import combinations
 
+import pytest  # for capturing deprecation warnings
+
 
 ### Test rudimentary expected functions for dense matrices:
 def _diagsum_dense(matrix, ignore_diags=2, bad_bins=None):
@@ -112,6 +114,36 @@ def test_diagsum(request):
         ignore_diags=ignore_diags,
         chunksize=chunksize,
     )
+    # calculate average:
+    res["balanced.avg"] = res["balanced.sum"] / res["n_valid"]
+    # check results for every "region"
+    grouped = res.groupby("region")
+    for name, group in grouped:
+        matrix = clr.matrix(balance=weight_name).fetch(name)
+        testing.assert_allclose(
+            actual=group["balanced.avg"].values,
+            desired=_diagsum_dense(matrix, ignore_diags=2),
+            # rtol=1e-07,
+            # atol=0,
+            equal_nan=True,
+        )
+
+
+def test_diagsum_deprecated_view(request):
+    # TODO: remove it when the support of non-view regions is removed completely
+    clr = cooler.Cooler(op.join(request.fspath.dirname, "data/CN.mm9.1000kb.cool"))
+
+    # Check that deprecation warning is generated:
+    with pytest.deprecated_call():
+        res = cooltools.expected.diagsum(
+            clr,
+            view_df=common_regions,
+            transforms=transforms,
+            weight_name=weight_name,
+            bad_bins=bad_bins,
+            ignore_diags=ignore_diags,
+            chunksize=chunksize,
+        )
     # calculate average:
     res["balanced.avg"] = res["balanced.sum"] / res["n_valid"]
     # check results for every "region"
@@ -267,9 +299,7 @@ def test_trans_expected_view_cli(request, tmpdir):
     # CLI compute expected for cis-data with arbitrary view
     # which cannot overlap. But it is symmetrical cis-case.
     in_cool = op.join(request.fspath.dirname, "data/CN.mm9.1000kb.cool")
-    in_view = op.join(
-        request.fspath.dirname, "data/mm9.named_nonoverlap_regions.bed"
-    )
+    in_view = op.join(request.fspath.dirname, "data/mm9.named_nonoverlap_regions.bed")
     out_trans_expected = op.join(tmpdir, "cis.regions.exp.tsv")
     runner = CliRunner()
     result = runner.invoke(
