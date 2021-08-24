@@ -491,7 +491,7 @@ def square_matrix_tiling(start, stop, step, edge, square=False, verbose=False):
             yield (lwx + start, rwx + start), (lwy + start, rwy + start)
 
 
-def heatmap_tiles_generator_diag(clr, regions, pad_size, tile_size, band_to_cover):
+def heatmap_tiles_generator_diag(clr, view_df, pad_size, tile_size, band_to_cover):
     """
     A generator yielding heatmap tiles that are needed to cover the requested
     band_to_cover around diagonal. Each tile is "padded" with pad_size edge to
@@ -501,8 +501,8 @@ def heatmap_tiles_generator_diag(clr, regions, pad_size, tile_size, band_to_cove
     ----------
     clr : cooler
         Cooler object to use to extract chromosome extents.
-    regions : pd.DataFrame
-        Dataframe of genomic regions to process, chrom, start, end, name.
+    view_df : viewframe
+        Viewframe with genomic regions to process, chrom, start, end, name.
     pad_size : int
         Size of padding around each tile. Typically the outer size of the
         kernel.
@@ -520,7 +520,7 @@ def heatmap_tiles_generator_diag(clr, regions, pad_size, tile_size, band_to_cove
 
     """
 
-    for chrom, start, end, region_name in regions.itertuples(index=False):
+    for chrom, start, end, region_name in view_df.itertuples(index=False):
         region_begin, region_end = clr.extent((chrom,start,end))
         for tilei, tilej in square_matrix_tiling(
             region_begin, region_end, tile_size, pad_size

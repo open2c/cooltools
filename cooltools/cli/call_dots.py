@@ -220,21 +220,21 @@ def call_dots(
             "specify regions definitions using --view option."
         )
 
-    # Create regions_df,
+    # Create view_df,
     # use expected regions by default:
     if view is None:
-        regions_df = expected_regions_df
-    # or use custom regions if file provided:
+        view_df = expected_regions_df
+    # or use custom view if file provided:
     else:
-        # Read regions dataframe:
+        # Read view dataframe:
         try:
-            regions_df = bioframe.read_table(view, schema="bed4", index_col=False)
+            view_df = bioframe.read_table(view, schema="bed4", index_col=False)
         except Exception:
-            regions_df = bioframe.read_table(view, schema="bed3", index_col=False)
-        # Convert regions dataframe to viewframe:
+            view_df = bioframe.read_table(view, schema="bed3", index_col=False)
+        # Convert view dataframe to viewframe:
         try:
-            regions_df = bioframe.make_viewframe(
-                regions_df, check_bounds=clr.chromsizes
+            view_df = bioframe.make_viewframe(
+                view_df, check_bounds=clr.chromsizes
             )
         except ValueError as e:
             raise RuntimeError(
@@ -242,17 +242,17 @@ def call_dots(
             ) from e
 
         assert bioframe.is_contained(
-            regions_df, expected_regions_df
+            view_df, expected_regions_df
         ), "View and expected are for different regions"
     # Verify appropriate columns order (required for heatmap_tiles_generator_diag):
-    regions_df = regions_df[["chrom", "start", "end", "name"]]
+    view_df = view_df[["chrom", "start", "end", "name"]]
 
     # check number of bins per region in cooler and expected table
     # compute # of bins by comparing matching indexes
     try:
         for region_name, group in expected.reset_index().groupby(region_column_name):
             n_diags = group.shape[0]
-            region = regions_df.set_index("name").loc[region_name]
+            region = view_df.set_index("name").loc[region_name]
             lo, hi = clr.extent(region)
             assert n_diags == (hi - lo)
     except AssertionError:
@@ -305,7 +305,7 @@ def call_dots(
     # list of tile coordinate ranges
     tiles = list(
         dotfinder.heatmap_tiles_generator_diag(
-            clr, regions_df, w, tile_size_bins, loci_separation_bins
+            clr, view_df, w, tile_size_bins, loci_separation_bins
         )
     )
 
@@ -383,7 +383,7 @@ def call_dots(
     # why ? - because - clustering has to be done independently for every region!
     ########################################################################
     filtered_pixels_annotated = cooler.annotate(filtered_pixels_qvals, clr.bins()[:])
-    filtered_pixels_annotated = assign_regions(filtered_pixels_annotated, regions_df)
+    filtered_pixels_annotated = assign_regions(filtered_pixels_annotated, view_df)
     # consider reseting index here
     centroids = dotfinder.clustering_step(
         filtered_pixels_annotated,

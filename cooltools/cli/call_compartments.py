@@ -160,38 +160,38 @@ def call_compartments(
         track = clr.bins()[["chrom", "start", "end"]][:]
         track_name = None
 
-    # define regions for cis compartment-calling
-    # use input "regions" BED file or all chromosomes mentioned in "track":
+    # define view for cis compartment-calling
+    # use input "view" BED file or all chromosomes mentioned in "track":
     if view is None:
         # Generate viewframe from clr.chromsizes:
-        regions_df = bioframe.make_viewframe(
+        view_df = bioframe.make_viewframe(
             [(chrom, 0, clr.chromsizes[chrom]) for chrom in clr.chromnames]
         )
     else:
         # Make viewframe out of table:
-        # Read regions dataframe:
+        # Read view_df:
         try:
-            regions_df = bioframe.read_table(view, schema="bed4", index_col=False)
+            view_df = bioframe.read_table(view, schema="bed4", index_col=False)
         except Exception:
-            regions_df = bioframe.read_table(view, schema="bed3", index_col=False)
-        # Convert regions dataframe to viewframe:
+            view_df = bioframe.read_table(view, schema="bed3", index_col=False)
+        # Convert view_df to viewframe:
         try:
-            regions_df = bioframe.make_viewframe(
-                regions_df, check_bounds=clr.chromsizes
+            view_df = bioframe.make_viewframe(
+                view_df, check_bounds=clr.chromsizes
             )
         except ValueError as e:
             raise RuntimeError(
                 "View table is incorrect, please, comply with the format. "
             ) from e
 
-    # TODO: Add check that regions_df has the same bins as track
+    # TODO: Add check that view_df has the same bins as track
 
     # it's contact_type dependent:
     if contact_type == "cis":
         eigvals, eigvec_table = eigdecomp.cooler_cis_eig(
             clr=clr,
             bins=track,
-            regions=regions_df,
+            view_df=view_df,
             n_eigs=n_eigs,
             phasing_track_col=track_name,
             clip_percentile=99.9,

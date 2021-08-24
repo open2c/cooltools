@@ -62,7 +62,7 @@ def mask_bad_bins(track, bintable):
     return track
 
 
-def digitize_track(binedges, track, regions=None):
+def digitize_track(binedges, track, view_df=None):
     """
     Digitize genomic signal tracks into integers between `1` and `n`.
 
@@ -73,7 +73,7 @@ def digitize_track(binedges, track, regions=None):
         edges. See encoding details in Notes.
     track : tuple of (DataFrame, str)
         bedGraph-like dataframe along with the name of the value column.
-    regions: viewframe, sequence of str or tuples
+    view_df: viewframe, sequence of str or tuples
         List of genomic regions to include. Each can be a chromosome, a
         UCSC-style genomic region string or a tuple.
 
@@ -101,10 +101,12 @@ def digitize_track(binedges, track, regions=None):
     track, name = track
 
     # subset and re-order chromosome groups
-    if regions is not None:
-        regions = bioframe.make_viewframe(regions)
+    if view_df is not None:
+        # appropriate viewframe checks:
+        assert bioframe.is_viewframe(view_df), "view_df is not a valid viewframe."
+        # Any other checks possible?
         track = pd.concat(
-            bioframe.select(track, region) for i, region in regions.iterrows()
+            bioframe.select(track, region) for i, region in view_df.iterrows()
         )
 
     # histogram the signal
@@ -118,9 +120,10 @@ def digitize_track(binedges, track, regions=None):
     return digitized, hist
 
 
-def make_cis_obsexp_fetcher(clr, expected, regions, weight_name="weight"):
+def make_cis_obsexp_fetcher(clr, expected, view_df, weight_name="weight"):
     """
-    Construct a function that returns intra-chromosomal OBS/EXP for symmetrical regions.
+    Construct a function that returns intra-chromosomal OBS/EXP for symmetrical regions
+    defined in view_df.
 
     Parameters
     ----------
@@ -129,7 +132,7 @@ def make_cis_obsexp_fetcher(clr, expected, regions, weight_name="weight"):
     expected : tuple of (DataFrame, str)
         Diagonal summary statistics for each chromosome, and name of the column
         with the values of expected to use.
-    regions: viewframe
+    view_df: viewframe
         Viewframe with genomic regions.
 
     weight_name : str
@@ -144,16 +147,16 @@ def make_cis_obsexp_fetcher(clr, expected, regions, weight_name="weight"):
     expected = {k: x.values for k, x in expected.groupby("region")[expected_name]}
 
     # appropriate viewframe checks:
-    assert bioframe.is_viewframe(regions), "Regions table is not a valid viewframe."
+    assert bioframe.is_viewframe(view_df), "View table is not a valid viewframe."
     assert bioframe.is_contained(
-        regions, bioframe.make_viewframe(clr.chromsizes)
-    ), "Regions table is out of the bounds of chromosomes in cooler."
+        view_df, bioframe.make_viewframe(clr.chromsizes)
+    ), "View table is out of the bounds of chromosomes in cooler."
 
-    regions = regions.set_index('name')
+    view_df = view_df.set_index('name')
 
     def _fetch_cis_oe(reg1, reg2):
-        reg1_coords = tuple(regions.loc[reg1])
-        reg2_coords = tuple(regions.loc[reg2])
+        reg1_coords = tuple(view_df.loc[reg1])
+        reg2_coords = tuple(view_df.loc[reg2])
         obs_mat = clr.matrix(balance=weight_name).fetch(reg1_coords)
         exp_mat = toeplitz(expected[reg1][: obs_mat.shape[0]])
         return obs_mat / exp_mat
@@ -258,7 +261,7 @@ def make_saddle(
     binedges,
     digitized,
     contact_type,
-    regions=None,
+    view_df=None,
     min_diag=3,
     max_diag=-1,
     trim_outliers=False,
@@ -283,7 +286,7 @@ def make_saddle(
     contact_type : str
         If 'cis' then only cis interactions are used to build the matrix.
         If 'trans', only trans interactions are used.
-    regions : viewframe, sequence of str or tuple, optional
+    view_df : viewframe, sequence of str or tuple, optional
         A list of genomic regions to use. Each can be a chromosome, a
         UCSC-style genomic region string or a tuple.
     min_diag : int
@@ -311,24 +314,27 @@ def make_saddle(
     digitized_df = digitized_df[["chrom", "start", "end", name]]
 
     # get chromosomes from bins, if regions not specified:
-    if regions is None:
-        regions = bioframe.make_viewframe(
+    if view_df is None:
+        view_df = bioframe.make_viewframe(
             [
                 (chrom, df.start.min(), df.end.max())
                 for chrom, df in digitized_df.groupby("chrom")
             ]
         )
-    # TODO: Add some check here?
+    else:    
+        # appropriate viewframe checks:
+        assert bioframe.is_viewframe(view_df), "view_df is not a valid viewframe."
+        # Any other checks possible?
 
     digitized_tracks = {}
-    for reg in regions.values:
+    for reg in view_df.values:
         track = bioframe.select(digitized_df, reg)
         digitized_tracks[reg[3]] = track[name]  # 3 = name
 
     if contact_type == "cis":
-        supports = list(zip(regions["name"], regions["name"]))
+        supports = list(zip(view_df["name"], view_df["name"]))
     elif contact_type == "trans":
-        supports = list(combinations(regions["name"], 2))
+        supports = list(combinations(view_df["name"], 2))
     else:
         raise ValueError(
             "The allowed values for the contact_type " "argument are 'cis' or 'trans'."
