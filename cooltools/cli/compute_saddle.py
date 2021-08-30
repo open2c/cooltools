@@ -208,38 +208,12 @@ def compute_saddle(
     using options. Header must be present in a file.
 
     """
+    #### Read inputs: ####
     clr = cooler.Cooler(cool_path)
     expected_path, expected_name = expected_path
     track_path, track_name = track_path
 
-    # Generate viewframe from clr.chromsizes:
-    cooler_view_df = bioframe.make_viewframe(
-        [(chrom, 0, clr.chromsizes[chrom]) for chrom in clr.chromnames]
-    )
-
-    # define view for calculating saddles
-    # use input "view" BED file or all chromosomes mentioned in "track":
-    if view is None:
-        view_df = cooler_view_df
-    else:
-        # Make viewframe out of table:
-        # Read view dataframe:
-        try:
-            view_df = bioframe.read_table(view, schema="bed4", index_col=False)
-        except Exception:
-            view_df = bioframe.read_table(view, schema="bed3", index_col=False)
-        # Convert view dataframe to viewframe:
-        try:
-            view_df = bioframe.make_viewframe(
-                view_df, check_bounds=clr.chromsizes
-            )
-        except ValueError as e:
-            raise RuntimeError(
-                "View table is incorrect, please, comply with the format. "
-            ) from e
-
-    # read expected and make preparations for validation,
-    # it's contact_type dependent:
+    #### Read expected: ####
     if contact_type == "cis":
         # that's what we expect as column names:
         expected_columns = ["region", "diag", "n_valid", expected_name]
@@ -305,6 +279,7 @@ def compute_saddle(
         verbose=verbose,
     )
 
+    #### Read track: ####
     # read bedGraph-file :
     track_columns = ["chrom", "start", "end", track_name]
     # specify dtype as a rudimentary form of validation:
@@ -322,70 +297,66 @@ def compute_saddle(
         verbose=verbose,
     )
 
+    #### Generate viewframes ####
+    # 1:cooler_view_df. Generate viewframe from clr.chromsizes:
+    cooler_view_df = bioframe.make_viewframe(
+        [(chrom, 0, clr.chromsizes[chrom]) for chrom in clr.chromnames]
+    )
+
+    # 2:view_df. Define global view for calculating saddles
+    # use input "view" BED file or all chromosomes mentioned in "track":
+    if view is None:
+        view_df = cooler_view_df
+    else:
+        # Make viewframe out of table:
+        # Read view dataframe:
+        try:
+            view_df = bioframe.read_table(view, schema="bed4", index_col=False)
+        except Exception:
+            view_df = bioframe.read_table(view, schema="bed3", index_col=False)
+        # Convert view dataframe to viewframe:
+        try:
+            view_df = bioframe.make_viewframe(view_df, check_bounds=clr.chromsizes)
+        except ValueError as e:
+            raise RuntimeError(
+                "View table is incorrect, please, comply with the format. "
+            ) from e
+
+    # 3:track_view_df. Generate viewframe from track table:
+    track_view_df = bioframe.make_viewframe(
+        [
+            (group.chrom.iloc[0], np.nanmin(group.start), np.nanmax(group.end))
+            for i, group in track.reset_index().groupby("chrom")
+        ]
+    )
+
     #############################################
     # CROSS-VALIDATE viewframes of COOLER, TRACK and EXPECTED:
+    # Scheme: view <= {track_view, expected} <= cooler_view
     #############################################
 
-    # Generate viewframe from track table:
-    track_view_df = bioframe.make_viewframe(
-        [(group.chrom.iloc[0], np.nanmin(group.start), np.nanmax(group.end)) for i, group in track.reset_index().groupby('chrom')]
-    )
-    assert bioframe.is_contained(track_view_df, cooler_view_df), "Track regions are not contatined in cooler chromsizes bounds"
-    # Create a viewframe from regions in expected table
-    # Expected table should have "region" column that encodes UCSC region
-    # (same as in call-compartments)
-    region_column_name = 'region'
-    try:
-        # Construct DataFrame of names of expected that will be parsed
-        # by bioframe.from_ucsc_string_list:
-        uniq_regions = pd.DataFrame(
-            {"name": expected.index.get_level_values(region_column_name).unique()}
-        )
-        expected_view_df = bioframe.make_viewframe(
-            uniq_regions, check_bounds=clr.chromsizes
-        )
-    except ValueError as e:
-        print(e)
-        raise ValueError(
-            "Cannot interpret regions from EXPECTED_PATH\n"
-            "specify regions definitions using --view option."
-        )
-    assert bioframe.is_contained(expected_view_df, cooler_view_df), "Expected regions are not contatined in cooler chromsizes bounds"
-    assert bioframe.is_contained(track_view_df, expected_view_df), "Track regions are not contatined in track regions bounds"
+    # Track is contained in cooler bounds, but not vice versa (because cooler may have more regions):
+    assert bioframe.is_contained(
+        track_view_df, cooler_view_df
+    ), "Track regions are not contained in cooler chromsizes bounds"
 
-    # TRACK vs COOLER:
-    track_chroms = track["chrom"].unique()
-    # check number of bins:
-    track_bins = len(track)
-    cool_bins = clr.bins()[:]["chrom"].isin(track_chroms).sum()
-    if not (track_bins == cool_bins):
-        raise ValueError(
-            "Number of bins is not matching: ",
-            "{} in {}, and {} in {} for chromosomes {}".format(
-                track_bins, track_path, cool_bins, cool_path, track_chroms
-            ),
-        )
+    # View is contained in track bounds, but not vice versa (because track may have more regions):
+    assert bioframe.is_contained(
+        view_df, track_view_df
+    ), "View table does not have some regions annotated in the track"
 
-    # TODO: should we remove the code below?
-    # # EXPECTED vs TRACK:
-    # # validate expected a bit as well:
-    # expected_chroms = get_exp_chroms(expected)
-    # # do simple column-name validation for now:
-    # if not set(track_chroms).issubset(expected_chroms):
-    #     raise ValueError(
-    #         "Chromosomes in {} must be subset of ".format(track_path)
-    #         + "chromosomes in expected {}".format(expected_path)
-    #     )
-    # # and again bins are supposed to match up:
-    # # only for cis though ...
-    # expected_bins = get_exp_bins(expected, track_chroms, track_bins)
-    # if not (track_bins == expected_bins):
-    #     raise ValueError(
-    #         "Number of bins is not matching: ",
-    #         "{} in {}, and {} in {} for chromosomes {}".format(
-    #             track_bins, track_path, expected_bins, expected_path, track_chroms
-    #         ),
-    #     )
+    # View regions are named as in expected table, necessary for querying expected:
+    if contact_type == "cis":
+        # Check region names:
+        assert bioframe.is_cataloged(
+            view_df, expected.reset_index(), df_view_col="name", view_name_col="region"
+        ), "View regions are not in the expected table. Provide expected table for the same regions"
+    elif contact_type == "trans":
+        # Check region names:
+        assert np.all(
+            view_df["name"].isin(expected.index.values.flatten())
+        ), "View regions are not in the expected table. Provide expected table for the same regions"
+
     #############################################
     # CROSS-VALIDATION IS COMPLETE.
     #############################################
