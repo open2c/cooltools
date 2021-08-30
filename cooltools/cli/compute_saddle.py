@@ -357,9 +357,11 @@ def compute_saddle(
         ), "View regions are not in the expected table. Provide expected table for the same regions"
     elif contact_type == "trans":
         # Check region names:
+        all_expected_regions = expected.reset_index()[['region1', 'region2']].values.flatten()
         assert np.all(
-            view_df["name"].isin(expected.index.values.flatten())
+            view_df["name"].isin(all_expected_regions)
         ), "View regions are not in the expected table. Provide expected table for the same regions"
+        del all_expected_regions
 
     #############################################
     # CROSS-VALIDATION IS COMPLETE.
@@ -373,7 +375,7 @@ def compute_saddle(
         )
     elif contact_type == "trans":
         getmatrix = saddle.make_trans_obsexp_fetcher(
-            clr, (expected, expected_name), weight_name=weight_name
+            clr, (expected, expected_name), view_df, weight_name=weight_name
         )
 
     if quantiles:

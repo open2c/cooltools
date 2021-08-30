@@ -170,7 +170,7 @@ def make_cis_obsexp_fetcher(clr, expected, view_df, weight_name="weight"):
 
     def _fetch_cis_oe(reg1, reg2):
         reg1_coords = tuple(view_df.loc[reg1])
-        reg2_coords = tuple(view_df.loc[reg2])
+        #reg2_coords = tuple(view_df.loc[reg2])
         obs_mat = clr.matrix(balance=weight_name).fetch(reg1_coords)
         exp_mat = toeplitz(expected[reg1][: obs_mat.shape[0]])
         return obs_mat / exp_mat
@@ -178,7 +178,7 @@ def make_cis_obsexp_fetcher(clr, expected, view_df, weight_name="weight"):
     return _fetch_cis_oe
 
 
-def make_trans_obsexp_fetcher(clr, expected, weight_name="weight"):
+def make_trans_obsexp_fetcher(clr, expected, view_df, weight_name="weight"):
     """
     Construct a function that returns OBS/EXP for any pair of chromosomes.
 
@@ -191,6 +191,8 @@ def make_trans_obsexp_fetcher(clr, expected, weight_name="weight"):
         expected value. If a tuple of (dataframe, name), the dataframe must
         have a MultiIndex with 'region1' and 'region2' and must also have a column
         labeled ``name``, with the values of expected.
+    view_df: viewframe
+        Viewframe with genomic regions.
     weight_name : str
         Name of the column in the clr.bins to use as balancing weights
 
@@ -231,12 +233,7 @@ def make_trans_obsexp_fetcher(clr, expected, weight_name="weight"):
                 )
 
         def _fetch_trans_oe(reg1, reg2):
-            reg1 = bioframe.parse_region(reg1)
-            reg2 = bioframe.parse_region(reg2)
-
-            return clr.matrix(balance=weight_name).fetch(reg1, reg2) / _fetch_trans_exp(
-                reg1[0], reg2[0]
-            )
+            return clr.matrix(balance=weight_name).fetch(reg1, reg2) / _fetch_trans_exp(reg1, reg2)
 
         return _fetch_trans_oe
 
