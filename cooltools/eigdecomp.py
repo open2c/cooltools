@@ -298,6 +298,8 @@ def cooler_cis_eig(
     clip_percentile=99.9,
     sort_metric=None,
     smooth=False,
+    cutoff = 3,
+    max_levels = 8,
     map=map,
 ):
     """
@@ -350,6 +352,10 @@ def cooler_cis_eig(
         Off by default.
     smooth : boolean, optional
         This option lets you coarsegrain the matrix prior to calling eigendecomposition.
+    cutoff: int, optional
+        Cutoff to pass to adaptive_coarsegrain's cutoff argument
+    max_levels: int, optional
+        Max level to pass to adaptive_coarsegrain's max_levels argument
     map : callable, optional
         Map functor implementation.
     Returns
@@ -411,7 +417,12 @@ def cooler_cis_eig(
         _region = region[:3] # take only (chrom, start, end)
 
         if smooth:
-            print("Do something")
+            A = numutils.adaptive_coarsegrain(
+                clr.matrix(balance=True).fetch(_region),
+                clr.matrix(balance=False).fetch(_region),
+                cutoff=cutoff,
+                max_levels=max_levels)
+
         else:
             A = clr.matrix(balance=balance).fetch(_region)
 
