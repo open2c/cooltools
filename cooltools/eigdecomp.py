@@ -60,7 +60,8 @@ def _phase_eigs(eigvals, eigvecs, phasing_track, sort_metric=None):
 
 
 def cis_eig(
-    A, n_eigs=3, phasing_track=None, ignore_diags=2, clip_percentile=0, sort_metric=None
+    A, n_eigs=3, phasing_track=None, ignore_diags=2, clip_percentile=0, sort_metric=None,
+    OE_log=False
 ):
     """
     Compute compartment eigenvector on a dense cis matrix.
@@ -98,6 +99,11 @@ def cis_eig(
         translocations. In reality, however, sometimes it shows poor
         performance and may lead to reporting of non-informative eigenvectors.
         Off by default.
+    
+    OE_log: boolean, optional
+
+        If provided, it will take the log2 instead of performing OE = OE - 1 to center around zero.
+        This works assuming matrix does not have zeros (eg. After calling smoothing functions)
 
 
     Returns
@@ -129,8 +135,12 @@ def cis_eig(
     if clip_percentile and clip_percentile < 100:
         OE = np.clip(OE, 0, np.percentile(OE[mask, :][:, mask], clip_percentile))
 
-    # subtract 1.0
-    OE -= 1.0
+    if OE_log:
+        mask2D = np.outer(mask, mask)
+        OE[mask2D] = np.log2(OE[mask2D])
+    else:
+        # subtract 1.0
+        OE -= 1.0
 
     # empty invalid rows, so that get_eig can find them
     OE[~mask, :] = 0
@@ -300,6 +310,7 @@ def cooler_cis_eig(
     smooth=False,
     cutoff = 3,
     max_levels = 8,
+    OE_log=False,
     map=map,
 ):
     """
@@ -356,6 +367,9 @@ def cooler_cis_eig(
         Cutoff to pass to adaptive_coarsegrain's cutoff argument
     max_levels: int, optional
         Max level to pass to adaptive_coarsegrain's max_levels argument
+    OE_log: boolean, optional
+        Pass OE_log to cis_eig's OE_log argument.
+        This works only if matrix does not contain zeroes (eg. after using adaptive_coarsegrain)
     map : callable, optional
         Map functor implementation.
     Returns
@@ -415,6 +429,7 @@ def cooler_cis_eig(
             array of eigenvalues and an array eigenvectors
         """
         _region = region[:3] # take only (chrom, start, end)
+        print("now doing region:", _region)
 
         if smooth:
             A = numutils.adaptive_coarsegrain(
@@ -451,6 +466,7 @@ def cooler_cis_eig(
             phasing_track=phasing_track,
             clip_percentile=clip_percentile,
             sort_metric=sort_metric,
+            OE_log=OE_log
         )
 
         return _region, eigvals, eigvecs
