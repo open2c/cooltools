@@ -13,7 +13,10 @@ from . import util
 
 @cli.command()
 @click.argument(
-    "cool_path", metavar="COOL_PATH", type=str, nargs=1,
+    "cool_path",
+    metavar="COOL_PATH",
+    type=str,
+    nargs=1,
 )
 @click.argument(
     "expected_path",
@@ -27,8 +30,6 @@ from . import util
     help="Path to a BED file with the definition of viewframe (regions)"
     " used in the calculation of EXPECTED_PATH. Dot-calling will be"
     " performed for these regions independently e.g. chromosome arms."
-    " When not provided regions will be interpreted from `region` column"
-    " of EXPECTED_PATH (UCSC formatted, or full chromosome names)."
     " Note that '--regions' is the deprecated name of the option. Use '--view' instead. ",
     type=click.Path(exists=False, dir_okay=False),
     default=None,
@@ -203,47 +204,42 @@ def call_dots(
     expected.set_index(expected_index, inplace=True)
     # end of SCHEMA for cis-expected
 
-    # Create a viewframe from regions in expected table:
-    try:
-        # Construct DataFrame of names of expected that will be parsed
-        # by bioframe.from_ucsc_string_list:
-        uniq_regions = pd.DataFrame(
-            {"name": expected.index.get_level_values(region_column_name).unique()}
-        )
-        expected_regions_df = bioframe.make_viewframe(
-            uniq_regions, check_bounds=clr.chromsizes
-        )
-    except ValueError as e:
-        print(e)
-        raise ValueError(
-            "Cannot interpret regions from EXPECTED_PATH\n"
-            "specify regions definitions using --view option."
-        )
+    #### Generate viewframes ####
+    # 1:cooler_view_df. Generate viewframe from clr.chromsizes:
+    cooler_view_df = bioframe.make_viewframe(
+        [(chrom, 0, clr.chromsizes[chrom]) for chrom in clr.chromnames]
+    )
 
-    # Create view_df,
-    # use expected regions by default:
+    # 2:view_df. Define global view for calculating saddles
+    # use input "view" BED file or all chromosomes mentioned in "track":
     if view is None:
-        view_df = expected_regions_df
-    # or use custom view if file provided:
+        view_df = cooler_view_df
     else:
-        # Read view dataframe:
+        # Make viewframe out of table, read view dataframe:
         try:
             view_df = bioframe.read_table(view, schema="bed4", index_col=False)
         except Exception:
             view_df = bioframe.read_table(view, schema="bed3", index_col=False)
         # Convert view dataframe to viewframe:
         try:
-            view_df = bioframe.make_viewframe(
-                view_df, check_bounds=clr.chromsizes
-            )
+            view_df = bioframe.make_viewframe(view_df, check_bounds=clr.chromsizes)
         except ValueError as e:
             raise RuntimeError(
                 "View table is incorrect, please, comply with the format. "
             ) from e
 
+        # Check that input view is contained in cooler bounds, but not vice versa (because cooler may have more regions):
         assert bioframe.is_contained(
-            view_df, expected_regions_df
-        ), "View and expected are for different regions"
+            view_df, cooler_view_df
+        ), "View regions are not contained in cooler chromsizes bounds"
+
+    # Check that view regions are named as in expected table.
+    # Note that since cooltools v0.5 we do not support parsing region names:
+    # https://github.com/open2c/cooltools/issues/262
+    assert bioframe.is_cataloged(
+        view_df, expected.reset_index(), df_view_col="name", view_name_col=region_column_name
+    ), "View regions are not in the expected table. Provide expected table for the same regions"
+
     # Verify appropriate columns order (required for heatmap_tiles_generator_diag):
     view_df = view_df[["chrom", "start", "end", "name"]]
 
@@ -387,7 +383,7 @@ def call_dots(
     # consider reseting index here
     centroids = dotfinder.clustering_step(
         filtered_pixels_annotated,
-        expected_regions_df["name"],
+        view_df["name"],
         dots_clustering_radius,
         verbose,
     )

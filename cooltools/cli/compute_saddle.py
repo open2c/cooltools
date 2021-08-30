@@ -308,8 +308,7 @@ def compute_saddle(
     if view is None:
         view_df = cooler_view_df
     else:
-        # Make viewframe out of table:
-        # Read view dataframe:
+        # Make viewframe out of table, read view dataframe:
         try:
             view_df = bioframe.read_table(view, schema="bed4", index_col=False)
         except Exception:
@@ -321,6 +320,11 @@ def compute_saddle(
             raise RuntimeError(
                 "View table is incorrect, please, comply with the format. "
             ) from e
+
+        # Check that input view is contained in cooler bounds, but not vice versa (because cooler may have more regions):
+        assert bioframe.is_contained(
+            view_df, cooler_view_df
+        ), "View regions are not contained in cooler chromsizes bounds"
 
     # 3:track_view_df. Generate viewframe from track table:
     track_view_df = bioframe.make_viewframe(
@@ -345,7 +349,7 @@ def compute_saddle(
         view_df, track_view_df
     ), "View table does not have some regions annotated in the track"
 
-    # View regions are named as in expected table, necessary for querying expected:
+    # Check that view regions are named as in expected table, necessary for querying expected:
     if contact_type == "cis":
         # Check region names:
         assert bioframe.is_cataloged(
