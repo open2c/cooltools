@@ -44,8 +44,6 @@ def _get_chunk_coverage(chunk, pixel_weight_key="count"):
     covs[1] += np.bincount(pixels["bin1_id"], weights=pixel_weights, minlength=n_bins)
     covs[1] += np.bincount(pixels["bin2_id"], weights=pixel_weights, minlength=n_bins)
 
-    covs = covs / 2
-
     return covs
 
 
@@ -109,6 +107,9 @@ def get_coverage(
 
     n_bins = clr.info["nbins"]
     covs = chunks.pipe(_get_chunk_coverage).reduce(np.add, np.zeros((2, n_bins)))
+
+    if clr.storage_mode=="square":
+       covs = covs/2
 
     if store:
         with clr.open("r+") as grp:
