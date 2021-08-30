@@ -297,6 +297,7 @@ def cooler_cis_eig(
     bad_bins=None,
     clip_percentile=99.9,
     sort_metric=None,
+    smooth=False,
     map=map,
 ):
     """
@@ -347,6 +348,8 @@ def cooler_cis_eig(
         translocations. In reality, however, sometimes it shows poor
         performance and may lead to reporting of non-informative eigenvectors.
         Off by default.
+    smooth : boolean, optional
+        This option lets you coarsegrain the matrix prior to calling eigendecomposition.
     map : callable, optional
         Map functor implementation.
     Returns
@@ -369,7 +372,8 @@ def cooler_cis_eig(
         raise ValueError(f'No column "{phasing_track_col}" in the bin table')
 
     # regions to dataframe
-    regions = bioframe.parse_regions(regions, clr.chromsizes)
+    # regions = bioframe.parse_regions(regions, clr.chromsizes)
+    regions = bioframe.make_viewframe(regions)
 
     # ignore diags as in cooler inless specified
     ignore_diags = (
@@ -405,7 +409,11 @@ def cooler_cis_eig(
             array of eigenvalues and an array eigenvectors
         """
         _region = region[:3] # take only (chrom, start, end)
-        A = clr.matrix(balance=balance).fetch(_region)
+
+        if smooth:
+            print("Do something")
+        else:
+            A = clr.matrix(balance=balance).fetch(_region)
 
         # filter bad_bins relevant for the _region from A
         if bad_bins is not None:
