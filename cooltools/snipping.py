@@ -230,10 +230,14 @@ class CoolerSnipper:
             )
         else:
             # appropriate viewframe checks:
-            assert bioframe.is_viewframe(view_df), "view_df is not a valid viewframe."
-            assert bioframe.is_contained(
+            if not bioframe.is_viewframe(view_df):
+                raise ValueError("view_df is not a valid viewframe.")
+            if not bioframe.is_contained(
                 view_df, bioframe.make_viewframe(clr.chromsizes)
-            ), "view_df is out of the bounds of chromosomes in cooler."
+            ):
+                raise ValueError(
+                    "view_df is out of the bounds of chromosomes in cooler."
+                )
 
         self.view_df = view_df.set_index("name")
 
@@ -331,10 +335,14 @@ class ObsExpSnipper:
             )
         else:
             # appropriate viewframe checks:
-            assert bioframe.is_viewframe(view_df), "view_df is not a valid viewframe."
-            assert bioframe.is_contained(
+            if not bioframe.is_viewframe(view_df):
+                raise ValueError("view_df is not a valid viewframe.")
+            if not bioframe.is_contained(
                 view_df, bioframe.make_viewframe(clr.chromsizes)
-            ), "view_df is out of the bounds of chromosomes in cooler."
+            ):
+                raise ValueError(
+                    "view_df is out of the bounds of chromosomes in cooler."
+                )
 
         self.view_df = view_df.set_index("name")
 
@@ -357,7 +365,8 @@ class ObsExpSnipper:
         self.cooler_opts.setdefault("sparse", True)
 
     def select(self, region1, region2):
-        assert region1 == region2, "ObsExpSnipper is implemented for cis contacts only."
+        if not region1 == region2:
+            raise ValueError("ObsExpSnipper is implemented for cis contacts only.")
         region1_coords = self.view_df.loc[region1]
         region2_coords = self.view_df.loc[region2]
         self.offsets[region1] = self.clr.offset(region1_coords) - self.clr.offset(
@@ -448,10 +457,14 @@ class ExpectedSnipper:
             )
         else:
             # appropriate viewframe checks:
-            assert bioframe.is_viewframe(view_df), "view_df is not a valid viewframe."
-            assert bioframe.is_contained(
+            if not bioframe.is_viewframe(view_df):
+                raise ValueError("view_df is not a valid viewframe.")
+            if not bioframe.is_contained(
                 view_df, bioframe.make_viewframe(clr.chromsizes)
-            ), "view_df is out of the bounds of chromosomes in cooler."
+            ):
+                raise ValueError(
+                    "view_df is out of the bounds of chromosomes in cooler."
+                )
         self.view_df = view_df.set_index("name")
 
         try:
@@ -470,9 +483,8 @@ class ExpectedSnipper:
         self.offsets = {}
 
     def select(self, region1, region2):
-        assert (
-            region1 == region2
-        ), "ExpectedSnipper is implemented for cis contacts only."
+        if not region1 == region2:
+            raise ValueError("ExpectedSnipper is implemented for cis contacts only.")
         region1_coords = self.view_df.loc[region1]
         region2_coords = self.view_df.loc[region2]
         self.offsets[region1] = self.clr.offset(region1_coords) - self.clr.offset(

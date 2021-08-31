@@ -105,12 +105,14 @@ def digitize_track(binedges, track, view_df=None):
     if view_df is not None:
         # appropriate viewframe checks
         try:
-            assert bioframe.is_viewframe(
-                view_df, raise_errors=True
-            ), "view_df is not a valid viewframe."
-            assert bioframe.is_contained(
+            if not bioframe.is_viewframe(view_df, raise_errors=True):
+                raise ValueError("view_df is not a valid viewframe.")
+            if not bioframe.is_contained(
                 view_df, bioframe.make_viewframe(clr.chromsizes)
-            ), "View table is out of the bounds of chromosomes in cooler."
+            ):
+                raise ValueError(
+                    "View table is out of the bounds of chromosomes in cooler."
+                )
         except Exception as e:  # AssertionError or ValueError, see https://github.com/gfudenberg/bioframe/blob/main/bioframe/core/checks.py#L177
             warnings.warn(
                 "view_df has to be a proper viewframe from next release",
@@ -161,16 +163,16 @@ def make_cis_obsexp_fetcher(clr, expected, view_df, weight_name="weight"):
     expected = {k: x.values for k, x in expected.groupby("region")[expected_name]}
 
     # appropriate viewframe checks:
-    assert bioframe.is_viewframe(view_df), "View table is not a valid viewframe."
-    assert bioframe.is_contained(
-        view_df, bioframe.make_viewframe(clr.chromsizes)
-    ), "View table is out of the bounds of chromosomes in cooler."
+    if not bioframe.is_viewframe(view_df):
+        raise ValueError("View table is not a valid viewframe.")
+    if not bioframe.is_contained(view_df, bioframe.make_viewframe(clr.chromsizes)):
+        raise ValueError("View table is out of the bounds of chromosomes in cooler.")
 
     view_df = view_df.set_index("name")
 
     def _fetch_cis_oe(reg1, reg2):
         reg1_coords = tuple(view_df.loc[reg1])
-        #reg2_coords = tuple(view_df.loc[reg2])
+        # reg2_coords = tuple(view_df.loc[reg2])
         obs_mat = clr.matrix(balance=weight_name).fetch(reg1_coords)
         exp_mat = toeplitz(expected[reg1][: obs_mat.shape[0]])
         return obs_mat / exp_mat
@@ -233,7 +235,9 @@ def make_trans_obsexp_fetcher(clr, expected, view_df, weight_name="weight"):
                 )
 
         def _fetch_trans_oe(reg1, reg2):
-            return clr.matrix(balance=weight_name).fetch(reg1, reg2) / _fetch_trans_exp(reg1, reg2)
+            return clr.matrix(balance=weight_name).fetch(reg1, reg2) / _fetch_trans_exp(
+                reg1, reg2
+            )
 
         return _fetch_trans_oe
 
@@ -336,12 +340,14 @@ def make_saddle(
     else:
         # appropriate viewframe checks, TODO: remove make_viewframe in the next cooltools version
         try:
-            assert bioframe.is_viewframe(
-                view_df, raise_errors=True
-            ), "view_df is not a valid viewframe."
-            assert bioframe.is_contained(
+            if not bioframe.is_viewframe(view_df, raise_errors=True):
+                raise ValueError("view_df is not a valid viewframe.")
+            if not bioframe.is_contained(
                 view_df, bioframe.make_viewframe(clr.chromsizes)
-            ), "View table is out of the bounds of chromosomes in cooler."
+            ):
+                raise ValueError(
+                    "View table is out of the bounds of chromosomes in cooler."
+                )
         except Exception as e:  # AssertionError or ValueError, see https://github.com/gfudenberg/bioframe/blob/main/bioframe/core/checks.py#L177
             warnings.warn(
                 "view_df has to be a proper viewframe from next release",

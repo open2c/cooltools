@@ -13,17 +13,17 @@ def _zero_diags(chunk, n_diags):
 def _get_chunk_coverage(chunk, pixel_weight_key="count"):
     """
     Compute cis and total coverages of a cooler chunk.
-    
+
     Parameters
     ----------
     chunk : dict of dict/pd.DataFrame
         A cooler chunk produced by the cooler split-apply-combine pipeline.
     pixel_weight_key: str
         The key of a pixel chunk to retrieve pixel weights.
-    
+
     Returns
     -------
-    covs : np.array 2 x n_bins    
+    covs : np.array 2 x n_bins
         A numpy array with cis (the first row) and total (the 4nd) coverages.
     """
 
@@ -58,8 +58,8 @@ def get_coverage(
 ):
 
     """
-    Calculate the sums of cis and genome-wide contacts (aka coverage aka marginals) for 
-    a sparse Hi-C contact map in Cooler HDF5 format. 
+    Calculate the sums of cis and genome-wide contacts (aka coverage aka marginals) for
+    a sparse Hi-C contact map in Cooler HDF5 format.
 
     Parameters
     ----------
@@ -75,13 +75,13 @@ def get_coverage(
         implementations from a multiprocessing pool.
     ignore_diags : int, optional
         Drop elements occurring on the first ``ignore_diags`` diagonals of the
-        matrix (including the main diagonal). 
+        matrix (including the main diagonal).
         If None, equals the number of diagonals ignored during IC balancing.
     store : bool, optional
         If True, store the results in the file when finished. Default is False.
     store_names : list, optional
-        Names of the columns of the bin table to save cis and total coverages. 
-    
+        Names of the columns of the bin table to save cis and total coverages.
+
     Returns
     -------
     cis_cov : 1D array, whose shape is the number of bins in ``h5``. Vector of bin sums in cis.
@@ -108,8 +108,8 @@ def get_coverage(
     n_bins = clr.info["nbins"]
     covs = chunks.pipe(_get_chunk_coverage).reduce(np.add, np.zeros((2, n_bins)))
 
-    if clr.storage_mode=="square":
-       covs = covs/2
+    if clr.storage_mode == "square":
+        covs = covs / 2
 
     if store:
         with clr.open("r+") as grp:

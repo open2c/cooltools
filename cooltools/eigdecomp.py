@@ -368,10 +368,10 @@ def cooler_cis_eig(
         )
     else:
         # appropriate viewframe checks:
-        assert bioframe.is_viewframe(view_df), "view_df is not a valid viewframe."
-        assert bioframe.is_contained(
-            view_df, bioframe.make_viewframe(clr.chromsizes)
-        ), "view_df is out of the bounds of chromosomes in cooler."
+        if not bioframe.is_viewframe(view_df):
+            raise ValueError("view_df is not a valid viewframe.")
+        if not bioframe.is_contained(view_df, bioframe.make_viewframe(clr.chromsizes)):
+            raise ValueError("view_df is out of the bounds of chromosomes in cooler.")
 
     # make sure phasing_track_col is in bins, if phasing is requested
     if phasing_track_col and (phasing_track_col not in bins):

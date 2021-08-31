@@ -38,9 +38,7 @@ def test_call_dots_view_cli(request, tmpdir):
     # Note that call-dots requires ucsc named expected and view
     in_cool = op.join(request.fspath.dirname, "data/CN.mm9.1000kb.cool")
     in_exp = op.join(request.fspath.dirname, "data/CN.mm9.toy_expected.tsv")
-    in_regions = op.join(
-        request.fspath.dirname, "data/CN.mm9.toy_regions.bed"
-    )
+    in_regions = op.join(request.fspath.dirname, "data/CN.mm9.toy_regions.bed")
     out_dots = op.join(tmpdir, "test.dots")
 
     runner = CliRunner()
@@ -77,9 +75,7 @@ def test_call_dots_regions_deprecated_cli(request, tmpdir):
     # Note that call-dots requires ucsc named expected and view
     in_cool = op.join(request.fspath.dirname, "data/CN.mm9.1000kb.cool")
     in_exp = op.join(request.fspath.dirname, "data/CN.mm9.toy_expected.tsv")
-    in_regions = op.join(
-        request.fspath.dirname, "data/CN.mm9.toy_regions.bed"
-    )
+    in_regions = op.join(request.fspath.dirname, "data/CN.mm9.toy_regions.bed")
     out_dots = op.join(tmpdir, "test.dots")
 
     runner = CliRunner()

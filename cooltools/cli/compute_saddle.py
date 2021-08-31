@@ -322,9 +322,10 @@ def compute_saddle(
             ) from e
 
         # Check that input view is contained in cooler bounds, but not vice versa (because cooler may have more regions):
-        assert bioframe.is_contained(
-            view_df, cooler_view_df
-        ), "View regions are not contained in cooler chromsizes bounds"
+        if not bioframe.is_contained(view_df, cooler_view_df):
+            raise ValueError(
+                "View regions are not contained in cooler chromsizes bounds"
+            )
 
     # 3:track_view_df. Generate viewframe from track table:
     track_view_df = bioframe.make_viewframe(
@@ -340,27 +341,31 @@ def compute_saddle(
     #############################################
 
     # Track is contained in cooler bounds, but not vice versa (because cooler may have more regions):
-    assert bioframe.is_contained(
-        track_view_df, cooler_view_df
-    ), "Track regions are not contained in cooler chromsizes bounds"
+    if not bioframe.is_contained(track_view_df, cooler_view_df):
+        raise ValueError("Track regions are not contained in cooler chromsizes bounds")
 
     # View is contained in track bounds, but not vice versa (because track may have more regions):
-    assert bioframe.is_contained(
-        view_df, track_view_df
-    ), "View table does not have some regions annotated in the track"
+    if not bioframe.is_contained(view_df, track_view_df):
+        raise ValueError("View table does not have some regions annotated in the track")
 
     # Check that view regions are named as in expected table, necessary for querying expected:
     if contact_type == "cis":
         # Check region names:
-        assert bioframe.is_cataloged(
+        if not bioframe.is_cataloged(
             view_df, expected.reset_index(), df_view_col="name", view_name_col="region"
-        ), "View regions are not in the expected table. Provide expected table for the same regions"
+        ):
+            raise ValueError(
+                "View regions are not in the expected table. Provide expected table for the same regions"
+            )
     elif contact_type == "trans":
         # Check region names:
-        all_expected_regions = expected.reset_index()[['region1', 'region2']].values.flatten()
-        assert np.all(
-            view_df["name"].isin(all_expected_regions)
-        ), "View regions are not in the expected table. Provide expected table for the same regions"
+        all_expected_regions = expected.reset_index()[
+            ["region1", "region2"]
+        ].values.flatten()
+        if not np.all(view_df["name"].isin(all_expected_regions)):
+            raise ValueError(
+                "View regions are not in the expected table. Provide expected table for the same regions"
+            )
         del all_expected_regions
 
     #############################################

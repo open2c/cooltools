@@ -6,18 +6,8 @@ from .. import insulation
 
 
 @cli.command()
-@click.argument(
-    "in_path",
-    metavar="IN_PATH",
-    type=str,
-    nargs=1
-)
-@click.argument(
-    "window",
-    nargs=-1,
-    metavar="WINDOW",
-    type=int
-)
+@click.argument("in_path", metavar="IN_PATH", type=str, nargs=1)
+@click.argument("window", nargs=-1, metavar="WINDOW", type=int)
 @click.option(
     "--output",
     "-o",
@@ -60,18 +50,8 @@ from .. import insulation
     "to the output table.",
     is_flag=True,
 )
-@click.option(
-    "--chunksize",
-    help="",
-    type=int,
-    default=20000000,
-    show_default=True
-)
-@click.option(
-    "--verbose",
-    help="Report real-time progress.",
-    is_flag=True
-)
+@click.option("--chunksize", help="", type=int, default=20000000, show_default=True)
+@click.option("--verbose", help="Report real-time progress.", is_flag=True)
 def diamond_insulation(
     in_path,
     window,

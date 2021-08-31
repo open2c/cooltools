@@ -36,7 +36,8 @@ from .. import sample
     is_flag=True,
 )
 @click.option(
-    "--nproc", "-p",
+    "--nproc",
+    "-p",
     help="Number of processes to split the work between."
     "[default: 1, i.e. no process pool]",
     default=1,
@@ -54,9 +55,9 @@ def random_sample(in_path, out_path, count, frac, exact, nproc, chunksize):
     Pick a random sample of contacts from a Hi-C map, w/o replacement.
 
     IN_PATH : Input cooler path or URI.
-    
+
     OUT_PATH : Output cooler path or URI.
-    
+
     Specify the target sample size with either --count or --frac.
 
     """
@@ -75,7 +76,7 @@ def random_sample(in_path, out_path, count, frac, exact, nproc, chunksize):
             frac=frac,
             exact=exact,
             chunksize=chunksize,
-            map_func=map_
+            map_func=map_,
         )
     finally:
         if nproc > 1:

@@ -350,15 +350,25 @@ def make_diag_tables(clr, regions, regions2=None, weight_name="weight", bad_bins
         dictionary with DataFrames of relevant diagonals for every support.
     """
 
-    try: # Run regular viewframe conversion:
+    try:  # Run regular viewframe conversion:
         regions = bioframe.make_viewframe(regions, check_bounds=clr.chromsizes).values
         if regions2 is not None:
-            regions2 = bioframe.make_viewframe(regions2, check_bounds=clr.chromsizes).values
-    except ValueError: # If there are non-unique entries in regions1/2, possible only for asymmetric expected:
-        regions = pd.concat([bioframe.make_viewframe([region], check_bounds=clr.chromsizes) \
-                              for i, region in regions.iterrows()]).reset_index(drop=True)
-        regions2 = pd.concat([bioframe.make_viewframe([region], check_bounds=clr.chromsizes) \
-                              for i, region in regions2.iterrows()]).reset_index(drop=True)
+            regions2 = bioframe.make_viewframe(
+                regions2, check_bounds=clr.chromsizes
+            ).values
+    except ValueError:  # If there are non-unique entries in regions1/2, possible only for asymmetric expected:
+        regions = pd.concat(
+            [
+                bioframe.make_viewframe([region], check_bounds=clr.chromsizes)
+                for i, region in regions.iterrows()
+            ]
+        ).reset_index(drop=True)
+        regions2 = pd.concat(
+            [
+                bioframe.make_viewframe([region], check_bounds=clr.chromsizes)
+                for i, region in regions2.iterrows()
+            ]
+        ).reset_index(drop=True)
 
     bins = clr.bins()[:]
     if weight_name is None:
@@ -465,14 +475,22 @@ def make_block_table(clr, regions1, regions2, weight_name="weight", bad_bins=Non
     else:
         bad_bins = np.asarray(bad_bins).astype(int)
 
-    try: # Run regular viewframe conversion:
+    try:  # Run regular viewframe conversion:
         regions1 = bioframe.make_viewframe(regions1, check_bounds=clr.chromsizes).values
         regions2 = bioframe.make_viewframe(regions2, check_bounds=clr.chromsizes).values
-    except ValueError: # Might be non-unique entries in regions:
-        regions1 = pd.concat([bioframe.make_viewframe([region], check_bounds=clr.chromsizes) \
-                              for i, region in regions1.iterrows()]).values
-        regions2 = pd.concat([bioframe.make_viewframe([region], check_bounds=clr.chromsizes) \
-                              for i, region in regions2.iterrows()]).values
+    except ValueError:  # Might be non-unique entries in regions:
+        regions1 = pd.concat(
+            [
+                bioframe.make_viewframe([region], check_bounds=clr.chromsizes)
+                for i, region in regions1.iterrows()
+            ]
+        ).values
+        regions2 = pd.concat(
+            [
+                bioframe.make_viewframe([region], check_bounds=clr.chromsizes)
+                for i, region in regions2.iterrows()
+            ]
+        ).values
 
     # should we check for nestedness here, or that each region1 is < region2 ?
 
@@ -597,14 +615,14 @@ def diagsum(
     spans = partition(0, len(clr.pixels()), chunksize)
     fields = ["count"] + list(transforms.keys())
 
-    # appropriate viewframe checks, TODO: remove make_viewframe in the next cooltools version
+    # appropriate viewframe checks
     try:
-        assert bioframe.is_viewframe(
-            view_df, raise_errors=True
-        ), "view_df is not a valid viewframe."
-        assert bioframe.is_contained(
-            view_df, bioframe.make_viewframe(clr.chromsizes)
-        ), "View table is out of the bounds of chromosomes in cooler."
+        if not bioframe.is_viewframe(view_df, raise_errors=True):
+            raise ValueError("view_df is not a valid viewframe.")
+        if not bioframe.is_contained(view_df, bioframe.make_viewframe(clr.chromsizes)):
+            raise ValueError(
+                "View table is out of the bounds of chromosomes in cooler."
+            )
     except Exception as e:  # AssertionError or ValueError, see https://github.com/gfudenberg/bioframe/blob/main/bioframe/core/checks.py#L177
         warnings.warn(
             "view_df has to be a proper viewframe from next release",
@@ -756,10 +774,18 @@ def diagsum_asymm(
     fields = ["count"] + list(transforms.keys())
 
     # Because regions1/2 may contain repeated entries, convert them to viewframes line-by-line:
-    regions1 = pd.concat([bioframe.make_viewframe([region], check_bounds=clr.chromsizes) \
-                          for region in regions1]).reset_index(drop=True)
-    regions2 = pd.concat([bioframe.make_viewframe([region], check_bounds=clr.chromsizes) \
-                          for region in regions2]).reset_index(drop=True)
+    regions1 = pd.concat(
+        [
+            bioframe.make_viewframe([region], check_bounds=clr.chromsizes)
+            for region in regions1
+        ]
+    ).reset_index(drop=True)
+    regions2 = pd.concat(
+        [
+            bioframe.make_viewframe([region], check_bounds=clr.chromsizes)
+            for region in regions2
+        ]
+    ).reset_index(drop=True)
     # Now regions1/2 contain viewframe-like dataframes that might contain repeated entries.
 
     dtables = make_diag_tables(
@@ -892,11 +918,18 @@ def blocksum_asymm(
 
     """
 
-    regions1 = pd.concat([bioframe.make_viewframe([region], check_bounds=clr.chromsizes) \
-                          for region in regions1]).reset_index(drop=True)
-    regions2 = pd.concat([bioframe.make_viewframe([region], check_bounds=clr.chromsizes) \
-                          for region in regions2]).reset_index(drop=True)
-
+    regions1 = pd.concat(
+        [
+            bioframe.make_viewframe([region], check_bounds=clr.chromsizes)
+            for region in regions1
+        ]
+    ).reset_index(drop=True)
+    regions2 = pd.concat(
+        [
+            bioframe.make_viewframe([region], check_bounds=clr.chromsizes)
+            for region in regions2
+        ]
+    ).reset_index(drop=True)
 
     spans = partition(0, len(clr.pixels()), chunksize)
     fields = ["count"] + list(transforms.keys())

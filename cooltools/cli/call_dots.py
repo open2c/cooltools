@@ -229,16 +229,23 @@ def call_dots(
             ) from e
 
         # Check that input view is contained in cooler bounds, but not vice versa (because cooler may have more regions):
-        assert bioframe.is_contained(
-            view_df, cooler_view_df
-        ), "View regions are not contained in cooler chromsizes bounds"
+        if not bioframe.is_contained(view_df, cooler_view_df):
+            raise ValueError(
+                "View regions are not contained in cooler chromsizes bounds"
+            )
 
     # Check that view regions are named as in expected table.
     # Note that since cooltools v0.5 we do not support parsing region names:
     # https://github.com/open2c/cooltools/issues/262
-    assert bioframe.is_cataloged(
-        view_df, expected.reset_index(), df_view_col="name", view_name_col=region_column_name
-    ), "View regions are not in the expected table. Provide expected table for the same regions"
+    if not bioframe.is_cataloged(
+        view_df,
+        expected.reset_index(),
+        df_view_col="name",
+        view_name_col=region_column_name,
+    ):
+        raise ValueError(
+            "View regions are not in the expected table. Provide expected table for the same regions"
+        )
 
     # Verify appropriate columns order (required for heatmap_tiles_generator_diag):
     view_df = view_df[["chrom", "start", "end", "name"]]
@@ -285,14 +292,16 @@ def call_dots(
     else:
         w, p = kernel_width, kernel_peak
         # add some sanity check for w,p:
-        assert w > p, f"Wrong inner/outer kernel parameters w={w}, p={p}"
+        if not w > p:
+            raise ValueError(f"Wrong inner/outer kernel parameters w={w}, p={p}")
         print(f"Using kernel parameters w={w}, p={p} provided by user")
 
     # once kernel parameters are setup check max_nans_tolerated
     # to make sure kernel footprints overlaping 1 side with the
     # NaNs filled row/column are not "allowed"
     # this requires dynamic adjustment for the "shrinking donut"
-    assert max_nans_tolerated <= 2 * w, "Too many NaNs allowed!"
+    if not max_nans_tolerated <= 2 * w:
+        raise ValueError("Too many NaNs allowed!")
     # may lead to scoring the same pixel twice, - i.e. duplicates.
 
     # generate standard kernels - consider providing custom ones
@@ -306,7 +315,8 @@ def call_dots(
     )
 
     # lambda-chunking edges ...
-    assert dotfinder.HiCCUPS_W1_MAX_INDX <= num_lambda_chunks <= 50
+    if not dotfinder.HiCCUPS_W1_MAX_INDX <= num_lambda_chunks <= 50:
+        raise ValueError("Incompatible num_lambda_chunks")
     base = 2 ** (1 / 3)
     ledges = np.concatenate(
         (

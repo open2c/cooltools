@@ -142,9 +142,7 @@ def compute_expected(
             view_df = bioframe.read_table(view, schema="bed3", index_col=False)
         # Convert view dataframe to viewframe:
         try:
-            view_df = bioframe.make_viewframe(
-                view_df, check_bounds=clr.chromsizes
-            )
+            view_df = bioframe.make_viewframe(view_df, check_bounds=clr.chromsizes)
         except ValueError as e:
             raise RuntimeError(
                 "View table is incorrect, please, comply with the format. "
