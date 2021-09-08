@@ -179,8 +179,8 @@ def logbin_expected(
         index=False,
         na_rep="nan",
     )
-    lb_cvd_agg.to_csv(
-        f"{output_prefix}.der.tsv",
+    lb_slopes_agg.to_csv(
+        f'{output_prefix}.der.tsv',
         sep="\t",
         index=False,
         na_rep="nan",
