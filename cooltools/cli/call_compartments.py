@@ -178,7 +178,7 @@ def call_compartments(
         try:
             view_df = bioframe.make_viewframe(view_df, check_bounds=clr.chromsizes)
         except ValueError as e:
-            raise RuntimeError(
+            raise ValueError(
                 "View table is incorrect, please, comply with the format. "
             ) from e
 
