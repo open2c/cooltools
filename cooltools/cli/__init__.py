@@ -16,17 +16,9 @@ CONTEXT_SETTINGS = {
 
 @click.version_option(__version__, "-V", "--version")
 @click.group(context_settings=CONTEXT_SETTINGS)
+@click.option("-v", "--verbose", help="Verbose logging", is_flag=True, default=False)
 @click.option(
-    "-v", "--verbose",
-    help="Verbose logging",
-    is_flag=True,
-    default=False
-)
-@click.option(
-    "-d", "--debug",
-    help="Post mortem debugging",
-    is_flag=True,
-    default=False
+    "-d", "--debug", help="Post mortem debugging", is_flag=True, default=False
 )
 def cli(verbose, debug):
     """

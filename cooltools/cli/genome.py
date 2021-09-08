@@ -25,13 +25,15 @@ def fetch_chromsizes(db):
 @click.argument("binsize", type=int)
 @click.option(
     "--all-names",
-    help="Parse all chromosome names from file, not only default r\"^chr[0-9]+$\", r\"^chr[XY]$\", r\"^chrM$\". ",
-    is_flag=True
+    help='Parse all chromosome names from file, not only default r"^chr[0-9]+$", r"^chr[XY]$", r"^chrM$". ',
+    is_flag=True,
 )
 def binnify(chromsizes_path, binsize, all_names):
     import bioframe
 
-    chromsizes = bioframe.read_chromsizes(chromsizes_path, filter_chroms=not(all_names))
+    chromsizes = bioframe.read_chromsizes(
+        chromsizes_path, filter_chroms=not (all_names)
+    )
     bins = bioframe.binnify(chromsizes, binsize)
     print(bins.to_csv(sep="\t", index=False))
 
@@ -82,7 +84,7 @@ def gc(bins_path, fasta_path, mapped_only):
 def genecov(bins_path, db):
     """
     BINS_PATH is the path to bintable.
-    
+
     DB is the name of the genome assembly.
     The gene locations will be automatically downloaded from teh UCSC goldenPath.
     """

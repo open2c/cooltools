@@ -18,9 +18,11 @@ from . import cli
     metavar="TRACK_PATH",
 )
 @click.option(
+    "--view",
     "--regions",
     help="Path to a BED file which defines which regions of the chromosomes to use"
-    " (only implemented for cis contacts)",
+    " (only implemented for cis contacts)"
+    " Note that '--regions' is the deprecated name of the option. Use '--view' instead. ",
     default=None,
     type=str,
 )
@@ -59,7 +61,7 @@ from . import cli
 def call_compartments(
     cool_path,
     reference_track,
-    regions,
+    view,
     contact_type,
     n_eigs,
     verbose,
@@ -158,48 +160,36 @@ def call_compartments(
         track = clr.bins()[["chrom", "start", "end"]][:]
         track_name = None
 
-    # define regions for cis compartment-calling
-    # use input "regions" BED file or all chromosomes mentioned in "track":
-    if regions is None:
-        # use full chromosomes referred to in the track :
-        track_chroms = track["chrom"].unique()
-        cis_regions_table = bioframe.parse_regions(track_chroms, clr.chromsizes)
-        cis_regions_table["name"] = cis_regions_table["chrom"]
+    # define view for cis compartment-calling
+    # use input "view" BED file or all chromosomes mentioned in "track":
+    if view is None:
+        # Generate viewframe from clr.chromsizes:
+        view_df = bioframe.make_viewframe(
+            [(chrom, 0, clr.chromsizes[chrom]) for chrom in clr.chromnames]
+        )
     else:
-        if contact_type == "trans":
-            raise NotImplementedError(
-                "Regions not yet supported with trans contact type"
-            )
-        # Flexible reading of the regions table:
-        regions_buf, names = sniff_for_header(regions)
-        cis_regions_table = pd.read_csv(regions_buf, sep="\t", header=None)
-        if cis_regions_table.shape[1] not in (3, 4):
+        # Make viewframe out of table:
+        # Read view_df:
+        try:
+            view_df = bioframe.read_table(view, schema="bed4", index_col=False)
+        except Exception:
+            view_df = bioframe.read_table(view, schema="bed3", index_col=False)
+        # Convert view_df to viewframe:
+        try:
+            view_df = bioframe.make_viewframe(view_df, check_bounds=clr.chromsizes)
+        except ValueError as e:
             raise ValueError(
-                "The region file does not have three or four tab-delimited columns."
-                "We expect a bed file with columns chrom, start, end, and optional name"
-            )
-        if cis_regions_table.shape[1] == 4:
-            cis_regions_table = cis_regions_table.rename(
-                columns={0: "chrom", 1: "start", 2: "end", 3: "name"}
-            )
-            cis_regions_table = bioframe.parse_regions(cis_regions_table)
-        else:
-            cis_regions_table = cis_regions_table.rename(
-                columns={0: "chrom", 1: "start", 2: "end"}
-            )
-            cis_regions_table = bioframe.parse_regions(cis_regions_table)
-        # make sure custom regions are compatible with the track:
-        track_chroms = track["chrom"].unique()
-        cis_regions_table = cis_regions_table[
-            cis_regions_table["chrom"].isin(track_chroms)
-        ].reset_index(drop=True)
+                "View table is incorrect, please, comply with the format. "
+            ) from e
+
+    # TODO: Add check that view_df has the same bins as track
 
     # it's contact_type dependent:
     if contact_type == "cis":
         eigvals, eigvec_table = eigdecomp.cooler_cis_eig(
             clr=clr,
             bins=track,
-            regions=cis_regions_table,
+            view_df=view_df,
             n_eigs=n_eigs,
             phasing_track_col=track_name,
             clip_percentile=99.9,

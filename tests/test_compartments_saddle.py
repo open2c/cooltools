@@ -12,13 +12,7 @@ def test_compartment_cli(request, tmpdir):
     in_cool = op.join(request.fspath.dirname, "data/sin_eigs_mat.cool")
     out_eig_prefix = op.join(tmpdir, "test.eigs")
     runner = CliRunner()
-    result = runner.invoke(
-        cli, [
-            'call-compartments',
-            '-o', out_eig_prefix,
-            in_cool,
-        ]
-    )
+    result = runner.invoke(cli, ["call-compartments", "-o", out_eig_prefix, in_cool])
     assert result.exit_code == 0
     test_eigs = pd.read_table(out_eig_prefix + ".cis.vecs.tsv", sep="\t")
     gb = test_eigs.groupby("chrom")
@@ -39,13 +33,7 @@ def test_saddle_cli(request, tmpdir):
     out_saddle_prefix = op.join(tmpdir, "test.saddle")
 
     runner = CliRunner()
-    result = runner.invoke(
-        cli, [
-            'call-compartments',
-            '-o', out_eig_prefix,
-            in_cool
-        ]
-    )
+    result = runner.invoke(cli, ["call-compartments", "-o", out_eig_prefix, in_cool])
     assert result.exit_code == 0
 
     try:
@@ -60,16 +48,22 @@ def test_saddle_cli(request, tmpdir):
 
     runner = CliRunner()
     result = runner.invoke(
-        cli, [
+        cli,
+        [
             "compute-saddle",
-            "-o", out_saddle_prefix,
-            "--range", "-0.5", "0.5",
-            "--n-bins", "30",
-            "--scale", "log",
+            "-o",
+            out_saddle_prefix,
+            "--range",
+            "-0.5",
+            "0.5",
+            "--n-bins",
+            "30",
+            "--scale",
+            "log",
             in_cool,
             f"{out_eig_prefix}.cis.vecs.tsv",
-            out_expected
-        ]
+            out_expected,
+        ],
     )
     assert result.exit_code == 0
 
@@ -95,12 +89,15 @@ def test_trans_compartment_cli(request, tmpdir):
     out_eig_prefix = op.join(tmpdir, "test.eigs")
     runner = CliRunner()
     result = runner.invoke(
-        cli, [
-            'call-compartments',
-            '--contact-type', "trans",
-            '-o', out_eig_prefix,
+        cli,
+        [
+            "call-compartments",
+            "--contact-type",
+            "trans",
+            "-o",
+            out_eig_prefix,
             in_cool,
-        ]
+        ],
     )
     assert result.exit_code == 0
     test_trans_eigs = pd.read_table(out_eig_prefix + ".trans.vecs.tsv", sep="\t")
@@ -120,12 +117,8 @@ def test_trans_saddle_cli(request, tmpdir):
 
     runner = CliRunner()
     result = runner.invoke(
-        cli, [
-            'call-compartments',
-            '--contact-type', "trans",
-            '-o', out_eig_prefix,
-            in_cool
-        ]
+        cli,
+        ["call-compartments", "--contact-type", "trans", "-o", out_eig_prefix, in_cool],
     )
     assert result.exit_code == 0
 
@@ -141,17 +134,24 @@ def test_trans_saddle_cli(request, tmpdir):
 
     runner = CliRunner()
     result = runner.invoke(
-        cli, [
+        cli,
+        [
             "compute-saddle",
-            "-o", out_saddle_prefix,
-            "--contact-type", "trans",
-            "--range", "-0.5", "0.5",
-            "--n-bins", "30",
-            "--scale", "log",
+            "-o",
+            out_saddle_prefix,
+            "--contact-type",
+            "trans",
+            "--range",
+            "-0.5",
+            "0.5",
+            "--n-bins",
+            "30",
+            "--scale",
+            "log",
             in_cool,
             f"{out_eig_prefix}.trans.vecs.tsv",
-            out_expected
-        ]
+            out_expected,
+        ],
     )
     assert result.exit_code == 0
 
