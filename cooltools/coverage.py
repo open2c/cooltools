@@ -13,6 +13,8 @@ def _zero_diags(chunk, n_diags):
 def _get_chunk_coverage(chunk, pixel_weight_key="count"):
     """
     Compute cis and total coverages of a cooler chunk.
+    Every interaction is contributing to the "coverage" twice:
+    at its row coordinate bin1_id, and at its column coordinate bin2_id
 
     Parameters
     ----------
@@ -60,6 +62,8 @@ def get_coverage(
     """
     Calculate the sums of cis and genome-wide contacts (aka coverage aka marginals) for
     a sparse Hi-C contact map in Cooler HDF5 format.
+    Note that the sum(tot_cov) from this function is two times the number of reads
+    contributing to the cooler, as each side contributes to the coverage.
 
     Parameters
     ----------
@@ -107,9 +111,6 @@ def get_coverage(
 
     n_bins = clr.info["nbins"]
     covs = chunks.pipe(_get_chunk_coverage).reduce(np.add, np.zeros((2, n_bins)))
-
-    if clr.storage_mode == "square":
-        covs = covs / 2
 
     if store:
         with clr.open("r+") as grp:
