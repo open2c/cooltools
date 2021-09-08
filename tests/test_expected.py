@@ -190,9 +190,6 @@ def test_diagsum_asymm(request):
         )
 
 
-# TODO fix:
-#  FAILED test_expected.py::test_blocksum - ValueError: Invalid view: entries in region_df[view_name_col] must be unique
-#  FAILED test_expected.py::test_trans_expected_regions_cli - AssertionError: assert 1 == 0
 def test_blocksum(request):
     # perform test:
     clr = cooler.Cooler(op.join(request.fspath.dirname, "data/CN.mm9.1000kb.cool"))
