@@ -152,13 +152,13 @@ def pileup(features, data_select, data_snip, map=map):
     """
     if features.region.isnull().any():
         warnings.warn(
-            "Some features do not have regions assigned! Some snips will be empty."
+            "Some features do not have view regions assigned! Some snips will be empty."
         )
 
     features = features.copy()
     features["region"] = features.region.fillna(
         ""
-    )  # fill in unanotated regions with empty string
+    )  # fill in unanotated view regions with empty string
     features["_rank"] = range(len(features))
 
     # cumul_stack = []
@@ -221,15 +221,25 @@ def pair_sites(sites, separation, slop):
 
 
 class CoolerSnipper:
-    def __init__(self, clr, cooler_opts=None, regions=None):
+    def __init__(self, clr, cooler_opts=None, view_df=None):
 
-        if regions is None:
-            regions = pd.DataFrame(
-                [(chrom, 0, l, chrom) for chrom, l in clr.chromsizes.items()],
-                columns=["chrom", "start", "end", "name"],
+        # get chromosomes from bins, if view_df not specified:
+        if view_df is None:
+            view_df = bioframe.make_viewframe(
+                [(chrom, 0, l, chrom) for chrom, l in clr.chromsizes.items()]
             )
-        regions = regions[regions['chrom'].isin(clr.chromnames)].reset_index(drop=True)
-        self.regions = regions.set_index("name")
+        else:
+            # appropriate viewframe checks:
+            if not bioframe.is_viewframe(view_df):
+                raise ValueError("view_df is not a valid viewframe.")
+            if not bioframe.is_contained(
+                view_df, bioframe.make_viewframe(clr.chromsizes)
+            ):
+                raise ValueError(
+                    "view_df is out of the bounds of chromosomes in cooler."
+                )
+
+        self.view_df = view_df.set_index("name")
 
         self.clr = clr
         self.binsize = self.clr.binsize
@@ -239,8 +249,8 @@ class CoolerSnipper:
         self.cooler_opts.setdefault("sparse", True)
 
     def select(self, region1, region2):
-        region1_coords = self.regions.loc[region1]
-        region2_coords = self.regions.loc[region2]
+        region1_coords = self.view_df.loc[region1]
+        region2_coords = self.view_df.loc[region2]
         self.offsets[region1] = self.clr.offset(region1_coords) - self.clr.offset(
             region1_coords[0]
         )
@@ -299,7 +309,7 @@ class CoolerSnipper:
 
 
 class ObsExpSnipper:
-    def __init__(self, clr, expected, cooler_opts=None, regions=None):
+    def __init__(self, clr, expected, cooler_opts=None, view_df=None):
         self.clr = clr
         self.expected = expected
 
@@ -317,24 +327,29 @@ class ObsExpSnipper:
                 raise ValueError(
                     "Please check the expected dataframe, it has no `region` column"
                 )
-        if regions is None:
-            if set(self.expected["region"]).issubset(clr.chromnames):
-                regions = pd.DataFrame(
-                    [(chrom, 0, l, chrom) for chrom, l in clr.chromsizes.items()],
-                    columns=["chrom", "start", "end", "name"],
-                )
-            else:
+
+        # get chromosomes from cooler, if view_df not specified:
+        if view_df is None:
+            view_df = bioframe.make_viewframe(
+                [(chrom, 0, l, chrom) for chrom, l in clr.chromsizes.items()]
+            )
+        else:
+            # appropriate viewframe checks:
+            if not bioframe.is_viewframe(view_df):
+                raise ValueError("view_df is not a valid viewframe.")
+            if not bioframe.is_contained(
+                view_df, bioframe.make_viewframe(clr.chromsizes)
+            ):
                 raise ValueError(
-                    "Please provide the regions table, if region names"
-                    "are not simply chromosome names."
+                    "view_df is out of the bounds of chromosomes in cooler."
                 )
-        regions = regions[regions['chrom'].isin(clr.chromnames)].reset_index(drop=True)
-        self.regions = regions.set_index("name")
+
+        self.view_df = view_df.set_index("name")
 
         try:
             for region_name, group in self.expected.groupby("region"):
                 n_diags = group.shape[0]
-                region = self.regions.loc[region_name]
+                region = self.view_df.loc[region_name]
                 lo, hi = self.clr.extent(region)
                 assert n_diags == (hi - lo)
         except AssertionError:
@@ -350,9 +365,10 @@ class ObsExpSnipper:
         self.cooler_opts.setdefault("sparse", True)
 
     def select(self, region1, region2):
-        assert region1 == region2, "ObsExpSnipper is implemented for cis contacts only."
-        region1_coords = self.regions.loc[region1]
-        region2_coords = self.regions.loc[region2]
+        if not region1 == region2:
+            raise ValueError("ObsExpSnipper is implemented for cis contacts only.")
+        region1_coords = self.view_df.loc[region1]
+        region2_coords = self.view_df.loc[region2]
         self.offsets[region1] = self.clr.offset(region1_coords) - self.clr.offset(
             region1_coords[0]
         )
@@ -416,7 +432,7 @@ class ObsExpSnipper:
 
 
 class ExpectedSnipper:
-    def __init__(self, clr, expected, regions=None):
+    def __init__(self, clr, expected, view_df=None):
         self.clr = clr
         self.expected = expected
         # Detecting the columns for the detection of regions
@@ -433,24 +449,28 @@ class ExpectedSnipper:
                 raise ValueError(
                     "Please check the expected dataframe, it has no `region` column"
                 )
-        if regions is None:
-            if set(self.expected["region"]).issubset(clr.chromnames):
-                regions = pd.DataFrame(
-                    [(chrom, 0, l, chrom) for chrom, l in clr.chromsizes.items()],
-                    columns=["chrom", "start", "end", "name"],
-                )
-            else:
+
+        # get chromosomes from cooler, if view_df not specified:
+        if view_df is None:
+            view_df = bioframe.make_viewframe(
+                [(chrom, 0, l, chrom) for chrom, l in clr.chromsizes.items()]
+            )
+        else:
+            # appropriate viewframe checks:
+            if not bioframe.is_viewframe(view_df):
+                raise ValueError("view_df is not a valid viewframe.")
+            if not bioframe.is_contained(
+                view_df, bioframe.make_viewframe(clr.chromsizes)
+            ):
                 raise ValueError(
-                    "Please provide the regions table, if region names"
-                    "are not simply chromosome names."
+                    "view_df is out of the bounds of chromosomes in cooler."
                 )
-        regions = regions[regions['chrom'].isin(clr.chromnames)].reset_index(drop=True)
-        self.regions = regions.set_index("name")
+        self.view_df = view_df.set_index("name")
 
         try:
             for region_name, group in self.expected.groupby("region"):
                 n_diags = group.shape[0]
-                region = self.regions.loc[region_name]
+                region = self.view_df.loc[region_name]
                 lo, hi = self.clr.extent(region)
                 assert n_diags == (hi - lo)
         except AssertionError:
@@ -463,11 +483,10 @@ class ExpectedSnipper:
         self.offsets = {}
 
     def select(self, region1, region2):
-        assert (
-            region1 == region2
-        ), "ExpectedSnipper is implemented for cis contacts only."
-        region1_coords = self.regions.loc[region1]
-        region2_coords = self.regions.loc[region2]
+        if not region1 == region2:
+            raise ValueError("ExpectedSnipper is implemented for cis contacts only.")
+        region1_coords = self.view_df.loc[region1]
+        region2_coords = self.view_df.loc[region2]
         self.offsets[region1] = self.clr.offset(region1_coords) - self.clr.offset(
             region1_coords[0]
         )

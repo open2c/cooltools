@@ -25,12 +25,12 @@ from . import util
     nargs=1,
 )
 @click.option(
+    "--view",
     "--regions",
-    help="Path to a BED file with the definition of regions"
+    help="Path to a BED file with the definition of viewframe (regions)"
     " used in the calculation of EXPECTED_PATH. Dot-calling will be"
     " performed for these regions independently e.g. chromosome arms."
-    " When not provided regions will be interpreted from `region` column"
-    " of EXPECTED_PATH (UCSC formatted, or full chromosome names).",
+    " Note that '--regions' is the deprecated name of the option. Use '--view' instead. ",
     type=click.Path(exists=False, dir_okay=False),
     default=None,
     show_default=True,
@@ -137,7 +137,7 @@ from . import util
 def call_dots(
     cool_path,
     expected_path,
-    regions,
+    view,
     expected_name,
     weight_name,
     nproc,
@@ -195,7 +195,7 @@ def call_dots(
     except ValueError as e:
         raise ValueError(
             "input expected does not match the schema\n"
-            "tab-separated expected file must have a header as wel"
+            "tab-separated expected file must have a header as well"
         )
     expected_index = [
         region_column_name,
@@ -204,62 +204,58 @@ def call_dots(
     expected.set_index(expected_index, inplace=True)
     # end of SCHEMA for cis-expected
 
-    # Optional reading region table provided by the user:
-    if regions is None:
-        try:
-            uniq_regions = expected.index.get_level_values(region_column_name).unique()
-            regions_table = bioframe.parse_regions(uniq_regions, clr.chromsizes)
-            regions_table["name"] = regions_table["chrom"]
-        except ValueError as e:
-            print(e)
-            raise ValueError(
-                "Cannot interpret regions from EXPECTED_PATH\n"
-                "specify regions definitions using --regions option."
-            )
+    #### Generate viewframes ####
+    # 1:cooler_view_df. Generate viewframe from clr.chromsizes:
+    cooler_view_df = bioframe.make_viewframe(
+        [(chrom, 0, clr.chromsizes[chrom]) for chrom in clr.chromnames]
+    )
+
+    # 2:view_df. Define global view for calculating saddles
+    # use input "view" BED file or all chromosomes mentioned in "track":
+    if view is None:
+        view_df = cooler_view_df
     else:
-        # Flexible reading of the regions table:
-        regions_buf, names = util.sniff_for_header(regions)
-        regions_table = pd.read_csv(regions_buf, sep="\t", header=None)
-        if regions_table.shape[1] not in (3, 4):
+        # Make viewframe out of table, read view dataframe:
+        try:
+            view_df = bioframe.read_table(view, schema="bed4", index_col=False)
+        except Exception:
+            view_df = bioframe.read_table(view, schema="bed3", index_col=False)
+        # Convert view dataframe to viewframe:
+        try:
+            view_df = bioframe.make_viewframe(view_df, check_bounds=clr.chromsizes)
+        except ValueError as e:
             raise ValueError(
-                "The region file does not have three or four tab-delimited columns."
-                "We expect a bed file with columns chrom, start, end, and optional name"
+                "View table is incorrect, please, comply with the format. "
+            ) from e
+
+        # Check that input view is contained in cooler bounds, but not vice versa (because cooler may have more regions):
+        if not bioframe.is_contained(view_df, cooler_view_df):
+            raise ValueError(
+                "View regions are not contained in cooler chromsizes bounds"
             )
-        if regions_table.shape[1] == 4:
-            regions_table = regions_table.rename(
-                columns={0: "chrom", 1: "start", 2: "end", 3: "name"}
-            )
-            regions_table = bioframe.parse_regions(regions_table)
-        else:
-            regions_table = regions_table.rename(
-                columns={0: "chrom", 1: "start", 2: "end"}
-            )
-            regions_table = bioframe.parse_regions(regions_table)
-        regions_table = regions_table[
-            regions_table["chrom"].isin(clr.chromnames)
-        ].reset_index(drop=True)
+
+    # Check that view regions are named as in expected table.
+    # Note that since cooltools v0.5 we do not support parsing region names:
+    # https://github.com/open2c/cooltools/issues/262
+    if not bioframe.is_cataloged(
+        view_df,
+        expected.reset_index(),
+        df_view_col="name",
+        view_name_col=region_column_name,
+    ):
+        raise ValueError(
+            "View regions are not in the expected table. Provide expected table for the same regions"
+        )
 
     # Verify appropriate columns order (required for heatmap_tiles_generator_diag):
-    regions_table = regions_table[["chrom", "start", "end", "name"]]
-
-    # Input validation
-    get_exp_regions = lambda df: df.index.get_level_values(region_column_name).unique()
-    expected_regions = get_exp_regions(expected)
-
-    # unique list of regions mentioned in expected_path
-    # are also in regions table
-    if not set(expected_regions).issubset(regions_table["name"]):
-        raise ValueError(
-            "Regions in {} must be subset of ".format(expected_path)
-            + f"regions in {'regions table'+regions_path if not regions_path is None else 'cooler'}"
-        )
+    view_df = view_df[["chrom", "start", "end", "name"]]
 
     # check number of bins per region in cooler and expected table
     # compute # of bins by comparing matching indexes
     try:
         for region_name, group in expected.reset_index().groupby(region_column_name):
             n_diags = group.shape[0]
-            region = regions_table.set_index("name").loc[region_name]
+            region = view_df.set_index("name").loc[region_name]
             lo, hi = clr.extent(region)
             assert n_diags == (hi - lo)
     except AssertionError:
@@ -296,14 +292,16 @@ def call_dots(
     else:
         w, p = kernel_width, kernel_peak
         # add some sanity check for w,p:
-        assert w > p, f"Wrong inner/outer kernel parameters w={w}, p={p}"
+        if not w > p:
+            raise ValueError(f"Wrong inner/outer kernel parameters w={w}, p={p}")
         print(f"Using kernel parameters w={w}, p={p} provided by user")
 
     # once kernel parameters are setup check max_nans_tolerated
     # to make sure kernel footprints overlaping 1 side with the
     # NaNs filled row/column are not "allowed"
     # this requires dynamic adjustment for the "shrinking donut"
-    assert max_nans_tolerated <= 2 * w, "Too many NaNs allowed!"
+    if not max_nans_tolerated <= 2 * w:
+        raise ValueError("Too many NaNs allowed!")
     # may lead to scoring the same pixel twice, - i.e. duplicates.
 
     # generate standard kernels - consider providing custom ones
@@ -312,12 +310,13 @@ def call_dots(
     # list of tile coordinate ranges
     tiles = list(
         dotfinder.heatmap_tiles_generator_diag(
-            clr, regions_table, w, tile_size_bins, loci_separation_bins
+            clr, view_df, w, tile_size_bins, loci_separation_bins
         )
     )
 
     # lambda-chunking edges ...
-    assert dotfinder.HiCCUPS_W1_MAX_INDX <= num_lambda_chunks <= 50
+    if not dotfinder.HiCCUPS_W1_MAX_INDX <= num_lambda_chunks <= 50:
+        raise ValueError("Incompatible num_lambda_chunks")
     base = 2 ** (1 / 3)
     ledges = np.concatenate(
         (
@@ -390,10 +389,13 @@ def call_dots(
     # why ? - because - clustering has to be done independently for every region!
     ########################################################################
     filtered_pixels_annotated = cooler.annotate(filtered_pixels_qvals, clr.bins()[:])
-    filtered_pixels_annotated = assign_regions(filtered_pixels_annotated, regions_table)
+    filtered_pixels_annotated = assign_regions(filtered_pixels_annotated, view_df)
     # consider reseting index here
     centroids = dotfinder.clustering_step(
-        filtered_pixels_annotated, expected_regions, dots_clustering_radius, verbose
+        filtered_pixels_annotated,
+        view_df["name"],
+        dots_clustering_radius,
+        verbose,
     )
 
     # 4b. filter by enrichment and qval
