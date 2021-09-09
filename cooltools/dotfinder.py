@@ -491,7 +491,7 @@ def square_matrix_tiling(start, stop, step, edge, square=False, verbose=False):
             yield (lwx + start, rwx + start), (lwy + start, rwy + start)
 
 
-def heatmap_tiles_generator_diag(clr, regions, pad_size, tile_size, band_to_cover):
+def heatmap_tiles_generator_diag(clr, view_df, pad_size, tile_size, band_to_cover):
     """
     A generator yielding heatmap tiles that are needed to cover the requested
     band_to_cover around diagonal. Each tile is "padded" with pad_size edge to
@@ -501,8 +501,8 @@ def heatmap_tiles_generator_diag(clr, regions, pad_size, tile_size, band_to_cove
     ----------
     clr : cooler
         Cooler object to use to extract chromosome extents.
-    regions : pd.DataFrame
-        Dataframe of genomic regions to process, chrom, start, end, name.
+    view_df : viewframe
+        Viewframe with genomic regions to process, chrom, start, end, name.
     pad_size : int
         Size of padding around each tile. Typically the outer size of the
         kernel.
@@ -520,8 +520,8 @@ def heatmap_tiles_generator_diag(clr, regions, pad_size, tile_size, band_to_cove
 
     """
 
-    for chrom, start, end, region_name in regions.itertuples(index=False):
-        region_begin, region_end = clr.extent((chrom,start,end))
+    for chrom, start, end, region_name in view_df.itertuples(index=False):
+        region_begin, region_end = clr.extent((chrom, start, end))
         for tilei, tilej in square_matrix_tiling(
             region_begin, region_end, tile_size, pad_size
         ):
@@ -1250,6 +1250,7 @@ def extract_scored_pixels(
 # basically - the dot-calling steps - ONE PASS DOT-CALLING:
 ##################################
 
+
 def scoring_step(
     clr,
     expected,
@@ -1341,7 +1342,9 @@ def scoring_step(
             # "create_cooler" API needs more consistency:
             # https://github.com/mirnylab/cooler/issues/149
             #  manually describing "data"-columns (except for bin_ids).
-            columns = ["count",] + ["la_exp." + k + ".value" for k in kernels]
+            columns = [
+                "count",
+            ] + ["la_exp." + k + ".value" for k in kernels]
             # # dtype them just in case as well:
             # dtypes = {"la_exp."+k+".value":np.float64 for k in kernels}
             # dtypes["count"] = np.int32
@@ -1479,7 +1482,9 @@ def clustering_step(
             + ["region1", "region2", "c_label", "c_size", "cstart1", "cstart2"],
         )
         return empty_output  # Empty dataframe with the same columns as anticipated
-    pixel_clust_df = pd.concat(pixel_clust_list, ignore_index=False) # Concatenate the clustering results for different regions
+    pixel_clust_df = pd.concat(
+        pixel_clust_list, ignore_index=False
+    )  # Concatenate the clustering results for different regions
 
     # now merge pixel_clust_df and scores_df DataFrame ...
     # # and merge (index-wise) with the main DataFrame:
@@ -1491,7 +1496,9 @@ def clustering_step(
     df["region2"] = df["region"].astype(str)
     # report only centroids with highest Observed:
     chrom_clust_group = df.groupby(["region1", "region2", "c_label"])
-    centroids = df.loc[chrom_clust_group[obs_raw_name].idxmax()] # Select the brightest pixel in the cluster
+    centroids = df.loc[
+        chrom_clust_group[obs_raw_name].idxmax()
+    ]  # Select the brightest pixel in the cluster
     return centroids
 
 

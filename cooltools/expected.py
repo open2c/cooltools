@@ -329,10 +329,10 @@ def make_diag_tables(clr, regions, regions2=None, weight_name="weight", bad_bins
     ----------
     clr : cooler.Cooler
         Input cooler
-    regions : list
-        a list of genomic support regions
-    regions2 : list
-        a list of genomic support regions for asymmetric regions
+    regions : viewframe or viewframe-like dataframe
+        viewframe without repeated entries or viewframe-like dataframe with repeated entries
+    regions2 : viewframe or viewframe-like dataframe
+        viewframe without repeated entries or viewframe-like dataframe with repeated entries
     weight_name : str
         name of the weight vector in the "bins" table,
         if weight_name is None returns 0 for each block.
@@ -350,9 +350,25 @@ def make_diag_tables(clr, regions, regions2=None, weight_name="weight", bad_bins
         dictionary with DataFrames of relevant diagonals for every support.
     """
 
-    regions = bioframe.parse_regions(regions, clr.chromsizes).values
-    if regions2 is not None:
-        regions2 = bioframe.parse_regions(regions2, clr.chromsizes).values
+    try:  # Run regular viewframe conversion:
+        regions = bioframe.make_viewframe(regions, check_bounds=clr.chromsizes).values
+        if regions2 is not None:
+            regions2 = bioframe.make_viewframe(
+                regions2, check_bounds=clr.chromsizes
+            ).values
+    except ValueError:  # If there are non-unique entries in regions1/2, possible only for asymmetric expected:
+        regions = pd.concat(
+            [
+                bioframe.make_viewframe([region], check_bounds=clr.chromsizes)
+                for i, region in regions.iterrows()
+            ]
+        ).reset_index(drop=True)
+        regions2 = pd.concat(
+            [
+                bioframe.make_viewframe([region], check_bounds=clr.chromsizes)
+                for i, region in regions2.iterrows()
+            ]
+        ).reset_index(drop=True)
 
     bins = clr.bins()[:]
     if weight_name is None:
@@ -434,10 +450,10 @@ def make_block_table(clr, regions1, regions2, weight_name="weight", bad_bins=Non
     ----------
     clr : cooler.Cooler
         Input cooler
-    regions1 : iterable
-        a collection of genomic regions
-    regions2 : iterable
-        a collection of genomic regions
+    regions1 : viewframe or viewframe-like dataframe
+        a viewframe without repeated entries or viewframe-like dataframe with repeated entries
+    regions2 : viewframe or viewframe-like dataframe
+        a viewframe without repeated entries or viewframe-like dataframe with repeated entries
     weight_name : str
         name of the weight vector in the "bins" table,
         if weight_name is None returns 0 for each block.
@@ -459,8 +475,22 @@ def make_block_table(clr, regions1, regions2, weight_name="weight", bad_bins=Non
     else:
         bad_bins = np.asarray(bad_bins).astype(int)
 
-    regions1 = bioframe.parse_regions(regions1, clr.chromsizes).values
-    regions2 = bioframe.parse_regions(regions2, clr.chromsizes).values
+    try:  # Run regular viewframe conversion:
+        regions1 = bioframe.make_viewframe(regions1, check_bounds=clr.chromsizes).values
+        regions2 = bioframe.make_viewframe(regions2, check_bounds=clr.chromsizes).values
+    except ValueError:  # Might be non-unique entries in regions:
+        regions1 = pd.concat(
+            [
+                bioframe.make_viewframe([region], check_bounds=clr.chromsizes)
+                for i, region in regions1.iterrows()
+            ]
+        ).values
+        regions2 = pd.concat(
+            [
+                bioframe.make_viewframe([region], check_bounds=clr.chromsizes)
+                for i, region in regions2.iterrows()
+            ]
+        ).values
 
     # should we check for nestedness here, or that each region1 is < region2 ?
 
@@ -540,7 +570,7 @@ def _diagsum_symm(clr, fields, transforms, regions, span):
 
 def diagsum(
     clr,
-    regions,
+    view_df,
     transforms={},
     weight_name="weight",
     bad_bins=None,
@@ -556,8 +586,8 @@ def diagsum(
     ----------
     clr : cooler.Cooler
         Cooler object
-    regions : sequence of genomic range tuples
-        Support regions for intra-chromosomal diagonal summation
+    view_df : viewframe (or depreated: sequence of genomic range tuples)
+        Support view_df for intra-chromosomal diagonal summation
     transforms : dict of str -> callable, optional
         Transformations to apply to pixels. The result will be assigned to
         a temporary column with the name given by the key. Callables take
@@ -579,16 +609,29 @@ def diagsum(
 
     Returns
     -------
-    Dataframe of diagonal statistics for all regions
+    Dataframe of diagonal statistics for all regions in thew view
 
     """
     spans = partition(0, len(clr.pixels()), chunksize)
     fields = ["count"] + list(transforms.keys())
 
-    regions = bioframe.parse_regions(regions, clr.chromsizes)
-    regions = regions[regions['chrom'].isin(clr.chromnames)].reset_index(drop=True)
+    # appropriate viewframe checks
+    try:
+        if not bioframe.is_viewframe(view_df, raise_errors=True):
+            raise ValueError("view_df is not a valid viewframe.")
+        if not bioframe.is_contained(view_df, bioframe.make_viewframe(clr.chromsizes)):
+            raise ValueError(
+                "View table is out of the bounds of chromosomes in cooler."
+            )
+    except Exception as e:  # AssertionError or ValueError, see https://github.com/gfudenberg/bioframe/blob/main/bioframe/core/checks.py#L177
+        warnings.warn(
+            "view_df has to be a proper viewframe from next release",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        view_df = bioframe.make_viewframe(view_df)
 
-    dtables = make_diag_tables(clr, regions, weight_name=weight_name, bad_bins=bad_bins)
+    dtables = make_diag_tables(clr, view_df, weight_name=weight_name, bad_bins=bad_bins)
 
     # combine masking with existing transforms and add a "count" transform:
     if bad_bins is not None:
@@ -620,11 +663,11 @@ def diagsum(
             agg_name = "{}.sum".format(field)
             dt[agg_name] = 0
 
-    job = partial(_diagsum_symm, clr, fields, transforms, regions.values)
+    job = partial(_diagsum_symm, clr, fields, transforms, view_df.values)
     results = map(job, spans)
     for result in results:
         for i, agg in result.items():
-            region = regions.loc[i, "name"]
+            region = view_df.loc[i, "name"]
             for field in fields:
                 agg_name = "{}.sum".format(field)
                 dtables[region][agg_name] = dtables[region][agg_name].add(
@@ -700,9 +743,9 @@ def diagsum_asymm(
     ----------
     clr : cooler.Cooler
         Cooler object
-    regions1 : sequence of genomic range tuples
+    regions1 : sequence of genomic range tuples, with repeated entries or not
         "left"-side support regions for diagonal summation
-    regions2 : sequence of genomic range tuples
+    regions2 : sequence of genomic range tuples, with repeated entries or not
         "right"-side support regions for diagonal summation
     transforms : dict of str -> callable, optional
         Transformations to apply to pixels. The result will be assigned to
@@ -729,8 +772,21 @@ def diagsum_asymm(
     """
     spans = partition(0, len(clr.pixels()), chunksize)
     fields = ["count"] + list(transforms.keys())
-    regions1 = bioframe.parse_regions(regions1, clr.chromsizes)
-    regions2 = bioframe.parse_regions(regions2, clr.chromsizes)
+
+    # Because regions1/2 may contain repeated entries, convert them to viewframes line-by-line:
+    regions1 = pd.concat(
+        [
+            bioframe.make_viewframe([region], check_bounds=clr.chromsizes)
+            for region in regions1
+        ]
+    ).reset_index(drop=True)
+    regions2 = pd.concat(
+        [
+            bioframe.make_viewframe([region], check_bounds=clr.chromsizes)
+            for region in regions2
+        ]
+    ).reset_index(drop=True)
+    # Now regions1/2 contain viewframe-like dataframes that might contain repeated entries.
 
     dtables = make_diag_tables(
         clr, regions1, regions2, weight_name=weight_name, bad_bins=bad_bins
@@ -862,8 +918,18 @@ def blocksum_asymm(
 
     """
 
-    regions1 = bioframe.parse_regions(regions1, clr.chromsizes)
-    regions2 = bioframe.parse_regions(regions2, clr.chromsizes)
+    regions1 = pd.concat(
+        [
+            bioframe.make_viewframe([region], check_bounds=clr.chromsizes)
+            for region in regions1
+        ]
+    ).reset_index(drop=True)
+    regions2 = pd.concat(
+        [
+            bioframe.make_viewframe([region], check_bounds=clr.chromsizes)
+            for region in regions2
+        ]
+    ).reset_index(drop=True)
 
     spans = partition(0, len(clr.pixels()), chunksize)
     fields = ["count"] + list(transforms.keys())
@@ -1008,7 +1074,7 @@ def diagsum_from_array(
 
     # Group by diagonal and aggregate the number of valid pixels and pixel values.
     diagonals = np.arange(diag_lo, diag_hi, dtype=int)
-    n_valid = np.bincount(D_flat, minlength=diag_hi - diag_hi)[diag_lo:]
+    n_valid = np.bincount(D_flat, minlength=diag_hi - diag_lo)[diag_lo:]
     balanced_sum = np.bincount(D_flat, weights=A_flat, minlength=diag_hi - diag_lo)[
         diag_lo:
     ]

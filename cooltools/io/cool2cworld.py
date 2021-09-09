@@ -118,7 +118,8 @@ def dump_cworld(
 
 
 def dump_cworld_tar(
-    cooler_paths, out_path,
+    cooler_paths,
+    out_path,
 ):
     """
     Makes a CWorld .tar archive with binned contact maps at multiple resolutions

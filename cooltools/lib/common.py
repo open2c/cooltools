@@ -11,6 +11,7 @@ URL_DATA = "https://raw.githubusercontent.com/open2c/cooltools/master/datasets/e
 
 def assign_regions(features, supports):
     """
+    DEPRECATED. Will be removed in the future versions and replaced with bioframe.overlap()
     For each feature in features dataframe assign the genomic region (support)
     that overlaps with it. In case if feature overlaps multiple supports, the
     region with largest overlap will be reported.
@@ -18,7 +19,9 @@ def assign_regions(features, supports):
 
     index_name = features.index.name  # Store the name of index
     features = (
-        features.copy().reset_index()
+        features.copy().reset_index().rename({
+            'index' if index_name is None else index_name: 'native_order'
+        }, axis=1)
     )  # Store the original features' order as a column with original index
 
     if "chrom" in features.columns:
@@ -30,6 +33,7 @@ def assign_regions(features, supports):
             cols2=["chrom", "start", "end"],
             keep_order=True,
             return_overlap=True,
+            suffixes=('_1', '_2')
         )
         overlap_columns = overlap.columns  # To filter out duplicates later
         overlap["overlap_length"] = overlap["overlap_end"] - overlap["overlap_start"]
@@ -52,6 +56,7 @@ def assign_regions(features, supports):
                 cols2=[f"chrom", f"start", f"end"],
                 keep_order=True,
                 return_overlap=True,
+                suffixes=('_1', '_2')
             )
             overlap_columns = overlap.columns  # To filter out duplicates later
             overlap[f"overlap_length{idx}"] = (
@@ -74,9 +79,7 @@ def assign_regions(features, supports):
             ["region1", "region2"], axis=1
         )  # Remove unnecessary columns
 
-    features = features.set_index(
-        index_name if not index_name is None else "index"
-    )  # Restore the original index
+    features = features.set_index('native_order')  # Restore the original index
     features.index.name = index_name  # Restore original index title
     return features
 

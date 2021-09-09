@@ -2,7 +2,7 @@ import multiprocess as mp
 import pandas as pd
 from itertools import combinations
 import cooler
-from bioframe import parse_regions
+import bioframe
 from .. import expected
 
 import click
@@ -17,21 +17,24 @@ from . import util
 @cli.command()
 @click.argument("cool_path", metavar="COOL_PATH", type=str, nargs=1)
 @click.option(
-    "--nproc", "-p",
+    "--nproc",
+    "-p",
     help="Number of processes to split the work between."
     "[default: 1, i.e. no process pool]",
     default=1,
     type=int,
 )
 @click.option(
-    "--chunksize", "-c",
+    "--chunksize",
+    "-c",
     help="Control the number of pixels handled by each worker process at a time.",
     type=int,
     default=int(10e6),
     show_default=True,
 )
 @click.option(
-    "--output", "-o",
+    "--output",
+    "-o",
     help="Specify output file name to store the expected in a tsv format.",
     type=str,
     required=False,
@@ -44,7 +47,8 @@ from . import util
     default=False,
 )
 @click.option(
-    "--contact-type", "-t",
+    "--contact-type",
+    "-t",
     help="compute expected for cis or trans region of a Hi-C map."
     "trans-expected is calculated for pairwise combinations of specified regions.",
     type=click.Choice(["cis", "trans"]),
@@ -52,11 +56,13 @@ from . import util
     show_default=True,
 )
 @click.option(
+    "--view",
     "--regions",
     help="Path to a BED file containing genomic regions "
-    "for which expected will be calculated. Region names can"
+    "for which expected will be calculated. Region names can "
     "be provided in a 4th column, otherwise UCSC notaion is used."
-    "When not specified, expected is calculated for all chromosomes",
+    "When not specified, expected is calculated for all chromosomes."
+    " Note that '--regions' is the deprecated name of the option. Use '--view' instead. ",
     type=click.Path(exists=True),
     required=False,
 )
@@ -97,7 +103,7 @@ def compute_expected(
     output,
     hdf,
     contact_type,
-    regions,
+    view,
     balance,
     weight_name,
     blacklist,
@@ -122,25 +128,25 @@ def compute_expected(
         # https://github.com/mirnylab/cooler/blob/843dadca5ef58e3b794dbaf23430082c9a634532/cooler/cli/balance.py#L175
 
     clr = cooler.Cooler(cool_path)
-    if regions is None:
-        regions = [(chrom, 0, clr.chromsizes[chrom]) for chrom in clr.chromnames]
-        regions = parse_regions(regions)
-        regions["name"] = clr.chromnames
+    if view is None:
+        # Generate viewframe from clr.chromsizes:
+        view_df = bioframe.make_viewframe(
+            [(chrom, 0, clr.chromsizes[chrom]) for chrom in clr.chromnames]
+        )
     else:
-        regions_buf, names = util.sniff_for_header(regions)
-        regions = pd.read_csv(regions_buf, sep="\t", header=None)
-        if regions.shape[1] not in (3, 4):
+        # Make viewframe out of table:
+        # Read view_df dataframe:
+        try:
+            view_df = bioframe.read_table(view, schema="bed4", index_col=False)
+        except Exception:
+            view_df = bioframe.read_table(view, schema="bed3", index_col=False)
+        # Convert view dataframe to viewframe:
+        try:
+            view_df = bioframe.make_viewframe(view_df, check_bounds=clr.chromsizes)
+        except ValueError as e:
             raise ValueError(
-                "The region file does not have three or four tab-delimited columns."
-                "We expect a bed file with columns chrom, start, end, and optional name"
-            )
-        if regions.shape[1] == 4:
-            regions = regions.rename(columns={0:"chrom",1:"start",2:"end",3:"name"})
-            regions = parse_regions(regions)
-        else:
-            regions = regions.rename(columns={0:"chrom",1:"start",2:"end"})
-            regions["name"] = list(regions.apply(lambda x: "{}:{}-{}".format(*x), axis=1))
-            regions = parse_regions(regions)
+                "View table is incorrect, please, comply with the format. "
+            ) from e
 
     # define transofrms - balanced and raw ('count') for now
     if balance:
@@ -164,7 +170,7 @@ def compute_expected(
         if contact_type == "cis":
             result = expected.diagsum(
                 clr,
-                regions,
+                view_df,
                 transforms=transforms,
                 weight_name=weight_name,
                 bad_bins=None,
@@ -174,12 +180,12 @@ def compute_expected(
             )
         elif contact_type == "trans":
             # prepare pairwise combinations of regions for trans-expected (blocksum):
-            regions_pairwise = combinations(regions.itertuples(index=False), 2)
+            regions_pairwise = combinations(view_df.itertuples(index=False), 2)
             regions1, regions2 = zip(*regions_pairwise)
             result = expected.blocksum_asymm(
                 clr,
-                regions1 = pd.DataFrame(regions1),
-                regions2 = pd.DataFrame(regions2),
+                regions1=regions1,
+                regions2=regions2,
                 transforms=transforms,
                 weight_name=weight_name,
                 bad_bins=None,

@@ -1,7 +1,4 @@
 import os.path as op
-
-# import pandas as pd
-
 import numpy as np
 import pandas as pd
 from numpy import testing
@@ -14,10 +11,10 @@ from cooltools.cli import cli
 
 from itertools import combinations
 
+import pytest  # for capturing deprecation warnings
 
-# rudimentary expected functions for dense matrices:
 
-
+### Test rudimentary expected functions for dense matrices:
 def _diagsum_dense(matrix, ignore_diags=2, bad_bins=None):
     """
     function returning a diagsum list for a square symmetric and dense matrix
@@ -76,6 +73,7 @@ def _blocksum_asymm_dense(matrix, bad_bin_rows=None, bad_bin_cols=None):
     return np.nanmean(mat)
 
 
+### Test API:
 # common parameters:
 ignore_diags = 2
 weight_name = "weight"
@@ -101,19 +99,51 @@ for i in range(4):
     common_regions.append(reg1)
     common_regions.append(reg2)
 
+view_df = bioframe.make_viewframe(common_regions)
+
 
 def test_diagsum(request):
     # perform test:
     clr = cooler.Cooler(op.join(request.fspath.dirname, "data/CN.mm9.1000kb.cool"))
     res = cooltools.expected.diagsum(
         clr,
-        regions=common_regions,
+        view_df=view_df,
         transforms=transforms,
         weight_name=weight_name,
         bad_bins=bad_bins,
         ignore_diags=ignore_diags,
         chunksize=chunksize,
     )
+    # calculate average:
+    res["balanced.avg"] = res["balanced.sum"] / res["n_valid"]
+    # check results for every "region"
+    grouped = res.groupby("region")
+    for name, group in grouped:
+        matrix = clr.matrix(balance=weight_name).fetch(name)
+        testing.assert_allclose(
+            actual=group["balanced.avg"].values,
+            desired=_diagsum_dense(matrix, ignore_diags=2),
+            # rtol=1e-07,
+            # atol=0,
+            equal_nan=True,
+        )
+
+
+def test_diagsum_deprecated_view(request):
+    # TODO: remove it when the support of non-view regions is removed completely
+    clr = cooler.Cooler(op.join(request.fspath.dirname, "data/CN.mm9.1000kb.cool"))
+
+    # Check that deprecation warning is generated:
+    with pytest.deprecated_call():
+        res = cooltools.expected.diagsum(
+            clr,
+            view_df=common_regions,
+            transforms=transforms,
+            weight_name=weight_name,
+            bad_bins=bad_bins,
+            ignore_diags=ignore_diags,
+            chunksize=chunksize,
+        )
     # calculate average:
     res["balanced.avg"] = res["balanced.sum"] / res["n_valid"]
     # check results for every "region"
@@ -190,6 +220,7 @@ def test_blocksum(request):
         )
 
 
+### Test CLI:
 def test_expected_cli(request, tmpdir):
     # CLI compute-expected for chrom-wide cis-data
     in_cool = op.join(request.fspath.dirname, "data/CN.mm9.1000kb.cool")
@@ -222,11 +253,11 @@ def test_expected_cli(request, tmpdir):
         )
 
 
-def test_expected_regions_cli(request, tmpdir):
+def test_expected_view_cli(request, tmpdir):
     # CLI compute expected for cis-data with arbitrary regions
-    # which may overlap. But it is symmetrical cis-case.
+    # which cannot overlap. But it is symmetrical cis-case.
     in_cool = op.join(request.fspath.dirname, "data/CN.mm9.1000kb.cool")
-    in_regions = op.join(request.fspath.dirname, "data/mm9.named_overlap_regions.bed")
+    in_view = op.join(request.fspath.dirname, "data/mm9.named_nonoverlap_regions.bed")
     out_cis_expected = op.join(tmpdir, "cis.regions.exp.tsv")
     runner = CliRunner()
     result = runner.invoke(
@@ -235,8 +266,8 @@ def test_expected_regions_cli(request, tmpdir):
             "compute-expected",
             "--weight-name",
             weight_name,
-            "--regions",
-            in_regions,
+            "--view",
+            in_view,
             "-o",
             out_cis_expected,
             in_cool,
@@ -247,10 +278,10 @@ def test_expected_regions_cli(request, tmpdir):
     cis_expected = pd.read_csv(out_cis_expected, sep="\t")
     grouped = cis_expected.groupby("region")
     # deal with named and overlapping regions here:
-    regions_df = pd.read_csv(in_regions, sep="\t", header=None)
-    regions_df = regions_df.set_index(3)
+    view_df = pd.read_csv(in_view, sep="\t", header=None)
+    view_df = view_df.set_index(3)
     for region_name, group in grouped:
-        ucsc_region = regions_df.loc[region_name].to_list()
+        ucsc_region = view_df.loc[region_name].to_list()
         matrix = clr.matrix(balance=weight_name).fetch(ucsc_region)
         testing.assert_allclose(
             actual=group["balanced.avg"].values,
@@ -261,13 +292,11 @@ def test_expected_regions_cli(request, tmpdir):
         )
 
 
-def test_trans_expected_regions_cli(request, tmpdir):
-    # CLI compute expected for cis-data with arbitrary regions
-    # which may overlap. But it is symmetrical cis-case.
+def test_trans_expected_view_cli(request, tmpdir):
+    # CLI compute expected for cis-data with arbitrary view
+    # which cannot overlap. But it is symmetrical cis-case.
     in_cool = op.join(request.fspath.dirname, "data/CN.mm9.1000kb.cool")
-    in_regions = op.join(
-        request.fspath.dirname, "data/mm9.named_nonoverlap_regions.bed"
-    )
+    in_view = op.join(request.fspath.dirname, "data/mm9.named_nonoverlap_regions.bed")
     out_trans_expected = op.join(tmpdir, "cis.regions.exp.tsv")
     runner = CliRunner()
     result = runner.invoke(
@@ -276,8 +305,8 @@ def test_trans_expected_regions_cli(request, tmpdir):
             "compute-expected",
             "--weight-name",
             weight_name,
-            "--regions",
-            in_regions,
+            "--view",
+            in_view,
             "--contact-type",
             "trans",
             "-o",
@@ -290,10 +319,10 @@ def test_trans_expected_regions_cli(request, tmpdir):
     trans_expected = pd.read_csv(out_trans_expected, sep="\t")
     # grouped = trans_expected.groupby("region1","region2")
     trans_expected = trans_expected.set_index(["region1", "region2"])
-    # deal with named and overlapping regions here:
-    regions_df = pd.read_csv(in_regions, sep="\t", header=None)
+    # deal with named regions here:
+    view_df = pd.read_csv(in_view, sep="\t", header=None)
     # prepare pairwise combinations of regions for trans-expected (blocksum):
-    regions_pairwise = combinations(regions_df.itertuples(index=False), 2)
+    regions_pairwise = combinations(view_df.itertuples(index=False), 2)
     regions1, regions2 = zip(*regions_pairwise)
     regions1 = pd.DataFrame(regions1)
     regions2 = pd.DataFrame(regions2)
