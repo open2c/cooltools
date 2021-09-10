@@ -64,6 +64,8 @@ def mask_bad_bins(track, bintable):
     """
     Mask (set to NaN) values in track where bin is masked in bintable.
 
+    Currently used in `cli.get_saddle()`. TODO: determine if this should be moved to cooltools.core.
+
     Parameters
     ----------
     track : tuple of (DataFrame, str)
@@ -76,7 +78,7 @@ def mask_bad_bins(track, bintable):
     track : DataFrame
         New bedGraph-like dataframe with bad bins masked in the value column
     """
-    #TODO: update to new track format
+    # TODO: update to new track format
 
     track, name = track
 
@@ -90,6 +92,7 @@ def mask_bad_bins(track, bintable):
 
     return track
 
+
 def _make_cis_obsexp_fetcher(
     clr,
     expected,
@@ -102,13 +105,14 @@ def _make_cis_obsexp_fetcher(
     Construct a function that returns intra-chromosomal OBS/EXP for symmetrical regions
     defined in view_df.
 
+    Used in `get_saddle()`.
+
     Parameters
     ----------
     clr : cooler.Cooler
         Observed matrix.
-    expected : tuple of (DataFrame, str)
-        Diagonal summary statistics for each chromosome, and name of the column
-        with the values of expected to use.
+    expected : DataFrame
+        Diagonal summary statistics for each chromosome.
     view_df: viewframe
         Viewframe with genomic regions.
     clr_weight_name : str
@@ -148,11 +152,13 @@ def _make_trans_obsexp_fetcher(
     """
     Construct a function that returns OBS/EXP for any pair of chromosomes.
 
+    Used in `get_saddle()`.
+
     Parameters
     ----------
     clr : cooler.Cooler
         Observed matrix.
-    expected : (DataFrame, name) or scalar
+    expected : DataFrame or scalar
         Average trans values. If a scalar, it is assumed to be a global trans
         expected value. If a tuple of (dataframe, name), the dataframe must
         have a MultiIndex with 'region1' and 'region2' and must also have a column
@@ -161,6 +167,10 @@ def _make_trans_obsexp_fetcher(
         Viewframe with genomic regions.
     clr_weight_name : str
         Name of the column in the clr.bins to use as balancing weights
+    expected_value_col : str
+        Name of the column in expected used for normalizing.
+    view_name_col : str
+        Name of column in view_df with region names.
 
     Returns
     -----
@@ -208,6 +218,13 @@ def _make_trans_obsexp_fetcher(
 def _accumulate(
     S, C, getmatrix, digitized, reg1, reg2, min_diag=3, max_diag=-1, verbose=False
 ):
+    """
+    Helper function to aggregate across region pairs.
+    If regions are identical, also masks returned matrices below min_diag and above max_diag.
+
+    Used in `get_saddle()`.
+    """
+
     n_bins = S.shape[0]
     matrix = getmatrix(reg1, reg2)
 
@@ -234,8 +251,12 @@ def _accumulate(
             C[i, j] += float(len(data))
 
 
-def _make_binedges(track_values, n_bins, quantiles=False,
-    range_=None,  qrange=(0.0, 1.0)):
+def _make_binedges(
+    track_values, n_bins, quantiles=False, range_=None, qrange=(0.0, 1.0)
+):
+    """
+    helper function for get_digitized
+    """
     if quantiles:
         if range_ is not None:
             qlo, qhi = _ecdf(track_values, range_)
@@ -243,7 +264,7 @@ def _make_binedges(track_values, n_bins, quantiles=False,
             qlo, qhi = qrange
         else:
             qlo, qhi = 0.0, 1.0
-        q_edges = np.linspace(qlo, qhi, n_bins+1)
+        q_edges = np.linspace(qlo, qhi, n_bins + 1)
         binedges = _quantile(track_values, q_edges)
         return binedges, qlo, qhi
     else:
@@ -253,8 +274,9 @@ def _make_binedges(track_values, n_bins, quantiles=False,
             lo, hi = _quantile(track_values, qrange)
         else:
             lo, hi = np.nanmin(track_values), np.nanmax(track_values)
-        binedges = np.linspace(lo, hi, n_bins+1)
+        binedges = np.linspace(lo, hi, n_bins + 1)
         return binedges, lo, hi
+
 
 def get_digitized(
     track,
@@ -267,27 +289,29 @@ def get_digitized(
     """
     Digitize genomic signal tracks into integers between `1` and `n`.
 
+
+
     Parameters
     ----------
     track : 4-column DataFrame
         bedGraph-like dataframe with columns understood as (chrom,start,end,value).
-    
+
     n_bins : int
         number of bins for signal quantization.
 
     quantiles : bool
         Whether to digitize by quantiles.
 
-    range_ : tuple 
-        Low and high values used for binning genome-wide track values, e.g. 
+    range_ : tuple
+        Low and high values used for binning genome-wide track values, e.g.
         if `range`=(-0.05, 0.05), `n-bins` equidistant bins would be generated.
 
     qrange : tuple
-        The fraction of the genome-wide range of the track values used to 
-        generate bins. E.g., if `qrange`=(0.02, 0.98) the lower bin would 
-        start at the 2nd percentile and the upper bin would end at the 98th 
+        The fraction of the genome-wide range of the track values used to
+        generate bins. E.g., if `qrange`=(0.02, 0.98) the lower bin would
+        start at the 2nd percentile and the upper bin would end at the 98th
         percentile of the genome-wide signal. Use to exclude extreme track
-        values for making saddles. 
+        values for making saddles.
 
     digitized_suffix : str
         suffix to append to fourth column name
@@ -297,6 +321,7 @@ def get_digitized(
     digitized : DataFrame
         New bedGraph-like dataframe with value column and an additional
         digitized value column with name suffixed by '.d'
+        The digized column is returned as a categorical.
     binedges : 1D array (length n + 1)
         Bin edges used in quantization of track. For `n` bins, there are `n + 1`
         edges. See encoding details in Notes.
@@ -316,13 +341,19 @@ def get_digitized(
 
     digitized = track.copy()
     track_value_col = track.columns[3]
-    track_values = track[track_value_col].values
+
+    track_values = track[track_value_col]
+    track_values.loc[track_values.isnull()] = np.nan
+    track_values = track_values.values
+
     digitized_col = track_value_col + digitized_suffix
 
-    binedges, lo, hi = _make_binedges(track_values ,n_bins, quantiles=quantiles,range_=range_, qrange=qrange)
+    binedges, lo, hi = _make_binedges(
+        track_values, n_bins, quantiles=quantiles, range_=range_, qrange=qrange
+    )
 
     digitized[digitized_col] = np.digitize(track_values, binedges, right=False)
-    
+
     mask = track[track_value_col].isnull()
     digitized.loc[mask, digitized_col] = -1
 
@@ -334,6 +365,7 @@ def get_digitized(
     # return a 4-column digitized track
     digitized = digitized[list(track.columns[:3]) + [digitized_col]]
     return digitized, binedges
+
 
 def get_saddle(
     clr,
@@ -349,14 +381,64 @@ def get_saddle(
     trim_outliers=False,
     verbose=False,
 ):
+    """
+    Get a matrix of average interactions between genomic bin
+    pairs as a function of a specified genomic track.
 
-    ### TODO add input validation for: track, expeced, 
+    The provided genomic track must a dataframe with a categorical
+    column, as generated by `get_digitized()`.
+
+    Parameters
+    ----------
+    clr : cooler.Cooler
+        Observed matrix.
+    expected : DataFrame in expected format
+        Diagonal summary statistics for each chromosome, and name of the column
+        with the values of expected to use.
+    contact_type : str
+        If 'cis' then only cis interactions are used to build the matrix.
+        If 'trans', only trans interactions are used.
+    digitized_track : DataFrame with digitized value column
+        A track, i.e. BedGraph-like dataframe, of digitized signal.
+        The value column specifies a category for every position in the track.
+        Generated by get_digitzed() from track.
+    view_df: viewframe
+        Viewframe with genomic regions. If none, generate from track chromosomes.
+    clr_weight_name : str
+        Name of the column in the clr.bins to use as balancing weights.
+    expected_value_col : str
+        Name of the column in expected used for normalizing.
+    view_name_col : str
+        Name of column in view_df with region names.
+    min_diag : int
+        Smallest diagonal to include in computation. Ignored with
+        contact_type=trans.
+    max_diag : int
+        Biggest diagonal to include in computation. Ignored with
+        contact_type=trans.
+    trim_outliers : bool, optional
+        Remove first and last row and column from the output matrix.
+    verbose : bool, optional
+        If True then reports progress.
+    Returns
+    -------
+    interaction_sum : 2D array
+        The matrix of summed interaction probability between two genomic bins
+        given their values of the provided genomic track.
+    interaction_count : 2D array
+        The matrix of the number of genomic bin pairs that contributed to the
+        corresponding pixel of ``interaction_sum``.
+    """
+
+    ### TODO add input validation for: track, expeced,
     if type(digitized_track.dtypes[3]) is not pd.core.dtypes.dtypes.CategoricalDtype:
-        raise ValueError("a digitized track, where the value column is a"+
-            "pandas categorical must be provided as input. see get_digitized().")
+        raise ValueError(
+            "a digitized track, where the value column is a"
+            + "pandas categorical must be provided as input. see get_digitized()."
+        )
     digitized_col = digitized_track.columns[3]
     cats = digitized_track[digitized_col].dtype.categories.values
-    n_bins = len(cats[cats > -1]) -2 
+    n_bins = len(cats[cats > -1]) - 2
 
     if view_df is None:
         view_df = _view_from_track(digitized_track)
@@ -394,8 +476,7 @@ def get_saddle(
             clr_weight_name=clr_weight_name,
         )
     else:
-        raise ValueError(
-            "Allowed values for contact_type are 'cis' or 'trans'.")
+        raise ValueError("Allowed values for contact_type are 'cis' or 'trans'.")
 
     # n_bins here includes 2 open bins for values <lo and >hi.
     interaction_sum = np.zeros((n_bins + 2, n_bins + 2))
@@ -453,7 +534,7 @@ def saddleplot(
     Parameters
     ----------
     track : pd.DataFrame
-        See get_digitized() for details. 
+        See get_digitized() for details.
     saddledata : 2D array-like
         Saddle matrix produced by `make_saddle`. It will include 2 flanking
         rows/columns for outlier signal values, thus the shape should be
@@ -503,16 +584,19 @@ def saddleplot(
     track_value_col = track.columns[3]
     track_values = track[track_value_col].values
 
-    digitized_track, binedges = get_digitized(track,n_bins,quantiles=quantiles, 
-                            range_=range_, qrange=qrange)
+    digitized_track, binedges = get_digitized(
+        track, n_bins, quantiles=quantiles, range_=range_, qrange=qrange
+    )
     x = digitized_track[digitized_track.columns[3]].values.astype(int).copy()
     x = x[(x > 0) & (x < len(binedges) + 1)]
     hist = np.bincount(x, minlength=len(binedges) + 1)
 
-    n_edges = len(binedges)
-    n_bins = n_edges - 1
-    binedges, lo, hi = _make_binedges(track_values,n_bins,quantiles=quantiles, 
-                            range_=range_, qrange=qrange)
+    if quantiles:
+        binedges, lo, hi = _make_binedges(
+            track_values, n_bins, quantiles=quantiles, range_=range_, qrange=qrange
+        )
+        binedges = np.linspace(lo, hi, n_bins + 1)
+
     # Histogram and saddledata are flanked by outlier bins
     n = saddledata.shape[0]
     X, Y = np.meshgrid(binedges, binedges)
@@ -559,7 +643,6 @@ def saddleplot(
     # Margins
     margin_kws_default = dict(edgecolor="k", facecolor=color, linewidth=1)
     margin_kws = merge(margin_kws_default, margin_kws if margin_kws is not None else {})
-    
     # left margin hist
     grid["ax_margin_y"] = plt.subplot(gs[3], sharey=grid["ax_heatmap"])
     plt.barh(
@@ -571,7 +654,6 @@ def saddleplot(
     plt.gca().spines["bottom"].set_visible(False)
     plt.gca().spines["left"].set_visible(False)
     plt.gca().xaxis.set_visible(False)
-
     # top margin hist
     grid["ax_margin_x"] = plt.subplot(gs[1], sharex=grid["ax_heatmap"])
     plt.bar(

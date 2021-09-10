@@ -275,7 +275,7 @@ def compute_saddle(
     expected = pd.read_table(
         expected_path,
         usecols=expected_columns,
-        #index_col=expected_index,
+        # index_col=expected_index,
         dtype=expected_dtype,
         comment=None,
         verbose=verbose,
@@ -375,23 +375,26 @@ def compute_saddle(
     #############################################
 
     track = saddle.mask_bad_bins((track, track_name), (clr.bins()[:], clr_weight_name))
+    if len(range_) == 0:
+        range_ = None
 
     digitized, binedges = saddle.get_digitized(
-                                        track[['chrom','start','end',track_name]],
-                                        n_bins,
-                                        quantiles=quantiles,
-                                        range_=range_,
-                                        qrange=qrange,
-                                        digitized_suffix='.d')
+        track[["chrom", "start", "end", track_name]],
+        n_bins,
+        quantiles=quantiles,
+        range_=range_,
+        qrange=qrange,
+        digitized_suffix=".d",
+    )
     S, C = saddle.get_saddle(
         clr,
         expected,
-        digitized[['chrom','start','end',track_name+'.d']],
+        digitized[["chrom", "start", "end", track_name + ".d"]],
         contact_type,
-        view_df = view_df,
-        clr_weight_name='weight',
-        expected_value_col='balanced.avg',
-        view_name_col = 'name',
+        view_df=view_df,
+        clr_weight_name="weight",
+        expected_value_col="balanced.avg",
+        view_name_col="name",
         min_diag=min_diag,
         max_diag=max_diag,
         verbose=verbose,

@@ -7,6 +7,9 @@ import pandas as pd
 from click.testing import CliRunner
 from cooltools.cli import cli
 
+import cooltools.saddle as saddle
+import pytest
+
 
 def test_compartment_cli(request, tmpdir):
     in_cool = op.join(request.fspath.dirname, "data/sin_eigs_mat.cool")
@@ -170,17 +173,94 @@ def test_trans_saddle_cli(request, tmpdir):
     assert cc > 0.9
 
 
-# def test_digitize_track(request):
-#     pass
+def test_get_digitized():
+    # np.nan and pd.NA get digitized to -1, suffix should be added
+    df = pd.DataFrame(
+        [["chr1", 0, 10, np.nan]],
+        columns=["chrom", "start", "end", "value"],
+    )
+    digitized = saddle.get_digitized(df, 10, range_=(-1, 1), digitized_suffix=".test")[
+        0
+    ]
+    assert -1 == digitized["value.test"].values
+
+    df = pd.DataFrame(
+        [["chr1", 0, 10, pd.NA]],
+        columns=["chrom", "start", "end", "value"],
+    )
+    digitized = saddle.get_digitized(df, 10, range_=(-1, 1), digitized_suffix=".test")[
+        0
+    ]
+    assert -1 == digitized["value.test"].values
+
+    n_bins = 10
+    digitized = saddle.get_digitized(df, n_bins, range_=(-1, 1))[0]
+    # the dtype of the returned column should be a categorical
+    assert type(digitized["value.d"].dtype) is pd.core.dtypes.dtypes.CategoricalDtype
+
+    # the number of categories should be equal to the number of bins +3
+    assert (n_bins + 3) == digitized["value.d"].dtype.categories.shape[0]
+
+    df = pd.DataFrame(
+        [
+            ["chr1", 0, 10, -0.5],
+            ["chr1", 10, 20, 0.5],
+        ],
+        columns=["chrom", "start", "end", "value"],
+    )
+
+    # values out of the range should be in the 0 and n+1 bins
+    digitized = saddle.get_digitized(df, n_bins, range_=(-0.1, 0.1))[0]
+    assert 0 == digitized["value.d"].values[0]
+    assert (n_bins + 1) == digitized["value.d"].values[1]
+
+    # for an input dataframe of ten elements between -1 and 1,
+    # and 5 bins, each bin should have 2 digitized values
+    # this test will need an update after input checking
+    x = saddle.get_digitized(
+        pd.DataFrame(
+            (np.linspace(-1, 1, 10) * np.ones((4,))[:, None]).T,
+            columns=["chrom", "start", "end", "value"],
+        ),
+        5,
+        range_=(-1, 1.001),
+    )[0]["value.d"]
+    assert (2 == np.histogram(x, np.arange(1, 7))[0]).all()
+
+    # if the bottom and top quantiles are 25 and 75 with 3 bins, then
+    # the low outlier and high outlier bins should each have 3 values
+    x = saddle.get_digitized(
+        pd.DataFrame(
+            (np.linspace(-1, 1, 10) * np.ones((4,))[:, None]).T,
+            columns=["chrom", "start", "end", "value"],
+        ),
+        1,
+        qrange=(0.25, 0.75),
+    )[0]["value.d"]
+    assert 3 == np.sum(x == 0)
+    assert 3 == np.sum(x == 2)
 
 
-# def test_make_saddle(request):
-#     pass
+def test_get_saddle(request):
 
+    import cooler
 
-# def test_saddleplot(request):
-#     pass
+    clr = cooler.Cooler(op.join(request.fspath.dirname, "data/sin_eigs_mat.cool"))
 
+    track = pd.read_csv(
+        op.join(request.fspath.dirname, "test.eigs.cis.vecs.tsv"), sep="\t"
+    )[["chrom", "start", "end", "E1"]]
 
-# def test_saddlestrength(request):
-#     pass
+    expected = pd.read_csv(op.join(request.fspath.dirname, "test.expected"), sep="\t")
+
+    # non-digitized track should raise an error
+    with pytest.raises(ValueError):
+        saddle.get_saddle(clr, expected, track, "cis")
+
+    # contact_type that is not cis or trans should raise an error
+    with pytest.raises(ValueError):
+        saddle.get_saddle(clr, expected, track, "unknown")
+
+    # TODO: tests after adding input agreement, e.g.
+    # asserting saddle.get_saddle(clr, cis-type-expected, track, "trans")
+    # throws an error
