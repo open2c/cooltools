@@ -1,4 +1,4 @@
-from itertools import chain
+from itertools import chain, combinations
 from collections import defaultdict
 from functools import partial
 
@@ -855,6 +855,177 @@ def diagsum_asymm(
         dtable.insert(1, "region2", j)
         result.append(dtable)
     return pd.concat(result).reset_index(drop=True)
+
+
+def _blocksum_pairwise(clr, fields, transforms, regions, span):
+    """
+    calculates block summary for a collection of
+    rectangular regions defined as combinations of
+    regions1 and regions2.
+    returns a dictionary of with block sums as values,
+    and 0-based indexes of rectangular genomic regions
+    as keys.
+    """
+    lo, hi = span
+    bins = clr.bins()[:]
+    pixels = clr.pixels()[lo:hi]
+    pixels = cooler.annotate(pixels, bins, replace=False)
+
+    r1 = assign_supports(pixels, regions, suffix="1")
+    r2 = assign_supports(pixels, regions, suffix="2")
+    # pre-filter assymetric pixels only
+    asymm_mask = (r1 != r2)
+    pixels = pixels.loc[ asymm_mask ]
+    r1 = r1[ asymm_mask ]
+    r2 = r2[ asymm_mask ]
+
+    for field, t in transforms.items():
+        pixels[field] = t(pixels)
+
+    block_sums = {}
+    # r1 and r2 define rectangular block i, j:
+    for i,_ in enumerate(regions):
+        i_mask = np.isclose(r1, i)
+        for j,_ in enumerate(regions):
+            # survey upper-triangle only
+            # IMPORTANT ASSUMPTION: regions sorted same way as cooler
+            if (j > i):
+                j_mask = np.isclose(r2, j)
+                # sum-up if there are any pixels from ij-block
+                ij_mask = i_mask & j_mask
+                if np.any(ij_mask):
+                    block_sums[(i,j)] = pixels.loc[ i_mask & j_mask ][fields].sum(skipna=True)
+
+    return block_sums
+
+
+def blocksum_pairwise(
+    clr,
+    view_df,
+    transforms={},
+    weight_name="weight",
+    bad_bins=None,
+    chunksize=1000000,
+    map=map,
+):
+    """
+    Summary statistics on rectangular blocks of all (trans-)pairwise combinations
+    of genomic regions in the view_df (aka trans-expected).
+
+    Parameters
+    ----------
+    clr : cooler.Cooler
+        Cooler object
+    view_df : viewframe (or depreated: sequence of genomic range tuples)
+        Support view_df for intra-chromosomal diagonal summation
+    transforms : dict of str -> callable, optional
+        Transformations to apply to pixels. The result will be assigned to
+        a temporary column with the name given by the key. Callables take
+        one argument: the current chunk of the (annotated) pixel dataframe.
+    weight_name : str
+        name of the balancing weight vector used to count
+        "bad"(masked) pixels per block.
+        Use `None` to avoid masking "bad" pixels.
+    bad_bins : array-like
+        a list of bins to ignore per support region.
+        Combines with the list of bad bins from balacning
+        weight.
+    chunksize : int, optional
+        Size of pixel table chunks to process
+    map : callable, optional
+        Map functor implementation.
+
+    Returns
+    -------
+    DataFrame with entries for each blocks: region1, region2, n_valid, count.sum
+
+    """
+
+    # appropriate viewframe checks
+    try:
+        if not bioframe.is_viewframe(view_df, raise_errors=True):
+            raise ValueError("view_df is not a valid viewframe.")
+        if not bioframe.is_contained(view_df, bioframe.make_viewframe(clr.chromsizes)):
+            raise ValueError(
+                "View table is out of the bounds of chromosomes in cooler."
+            )
+    except Exception as e:  # AssertionError or ValueError, see https://github.com/gfudenberg/bioframe/blob/main/bioframe/core/checks.py#L177
+        warnings.warn(
+            "view_df has to be a proper viewframe from next release",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        view_df = bioframe.make_viewframe(view_df)
+
+    spans = partition(0, len(clr.pixels()), chunksize)
+    fields = ["count"] + list(transforms.keys())
+
+    # !!! consider pre-sorting regions in view_df to make pairwise precictable
+    # clr.chromnames
+    #bioframe.is_sorted(view_df)
+
+    # create pairwise combinations of regions from view_df using
+    # the standard zip(*bunch_of_tuples) unzipping procedure:
+    regions1, regions2 = zip(*combinations(view_df.itertuples(index=False),2))
+    regions1 = pd.DataFrame( regions1 )
+    regions2 = pd.DataFrame( regions2 )
+    # similar with diagonal summations, pre-generate a block_table listing
+    # all of the rectangular blocks and "n_valid" number of pixels per each block:
+    records = make_block_table(
+        clr, regions1, regions2, weight_name=weight_name, bad_bins=bad_bins
+    )
+
+    # combine masking with existing transforms and add a "count" transform:
+    if bad_bins is not None:
+        # turn bad_bins into a mask of size clr.bins:
+        mask_size = len(clr.bins())
+        bad_bins_mask = np.ones(mask_size, dtype=int)
+        bad_bins_mask[bad_bins] = 0
+        #
+        masked_transforms = {}
+        bin1 = "bin1_id"
+        bin2 = "bin2_id"
+        for field in fields:
+            if field in transforms:
+                # combine masking and transform, minding the scope:
+                t = transforms[field]
+                masked_transforms[field] = (
+                    lambda p, t=t, m=bad_bins_mask: t(p) * m[p[bin1]] * m[p[bin2]]
+                )
+            else:
+                # presumably field == "count", mind the scope as well:
+                masked_transforms[field] = (
+                    lambda p, f=field, m=bad_bins_mask: p[f] * m[p[bin1]] * m[p[bin2]]
+                )
+        # substitute transforms to the masked_transforms:
+        transforms = masked_transforms
+
+    job = partial(
+        _blocksum_pairwise, clr, fields, transforms, view_df.values
+    )
+    results = map(job, spans)
+    for result in results:
+        for (i,j), agg in result.items():
+            for field in fields:
+                agg_name = "{}.sum".format(field)
+                s = agg[field].item()
+                if not np.isnan(s):
+                    ni = view_df.loc[i, "name"]
+                    nj = view_df.loc[j, "name"]
+                    records[ni, nj][agg_name] += s
+    print(records)
+    # returning a dataframe for API consistency:
+    x = pd.DataFrame(
+        [{"region1": n1, "region2": n2, **rec} for (n1, n2), rec in records.items()],
+        columns=["region1", "region2", "n_valid", "count.sum"]
+        + [k + ".sum" for k in transforms.keys()],
+    )
+    print(x)
+    return pd.DataFrame(
+        [{"region1": n1, "region2": n2, **rec} for (n1, n2), rec in records.items()],
+        columns=["region1", "region2", "n_valid", "count.sum"]
+        + [k + ".sum" for k in transforms.keys()],
+    )
 
 
 def _blocksum_asymm(clr, fields, transforms, regions1, regions2, span):

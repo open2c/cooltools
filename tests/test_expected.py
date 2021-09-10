@@ -191,6 +191,31 @@ def test_diagsum_asymm(request):
             equal_nan=True,
         )
 
+def test_blocksum_pairwise(request):
+    # perform test:
+    clr = cooler.Cooler(op.join(request.fspath.dirname, "data/CN.mm9.1000kb.cool"))
+    res = cooltools.expected.blocksum_pairwise(
+        clr,
+        view_df=view_df,
+        transforms=transforms,
+        weight_name=weight_name,
+        bad_bins=bad_bins,
+        chunksize=chunksize,
+    )
+    # calculate average:
+    res["balanced.avg"] = res["balanced.sum"] / res["n_valid"]
+    # check results for every block , defined as region1/2
+    # should be simplified as there is 1 number per block only
+    grouped = res.groupby(["region1", "region2"])
+    for (name1, name2), group in grouped:
+        matrix = clr.matrix(balance=weight_name).fetch(name1, name2)
+        testing.assert_allclose(
+            actual=group["balanced.avg"].values,
+            desired=_blocksum_asymm_dense(matrix),
+            # rtol=1e-07,
+            # atol=0,
+            equal_nan=True,
+        )
 
 def test_blocksum(request):
     # perform test:
