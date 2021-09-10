@@ -411,7 +411,8 @@ def make_diag_tables(clr, regions, regions2=None, weight_name="weight", bad_bins
         if regions2 is not None:
             chrom2, start2, end2, name2 = regions2[i]
             # cis-only for now:
-            assert chrom2 == chrom
+            if not (chrom2 == chrom):
+                raise ValueError("regions/2 have to be on the same chrom to generate diag_tables")
         else:
             start2, end2 = start1, end1
 
@@ -551,19 +552,29 @@ def _diagsum_symm(clr, fields, transforms, regions, span):
     bins = clr.bins()[:]
     pixels = clr.pixels()[lo:hi]
     pixels = cooler.annotate(pixels, bins, replace=False)
+    # pre-filter cis-only pixels to speed up calculations
+    pixels = pixels[ pixels["chrom1"] == pixels["chrom2"] ].copy()
+
+    # annotate pixels with regions at once
+    # book-ended regions still get reannotated
+    r1 = assign_supports(pixels, regions, suffix="1")
+    r2 = assign_supports(pixels, regions, suffix="2")
+    # select symmetric pixels and region annotations only
+    symm_mask = ( r1==r2 )
+    pixels = pixels.loc[ symm_mask ].copy()
+    r_symm = r1[ symm_mask ]
 
     # this could further expanded to allow for custom groupings:
     pixels["dist"] = pixels["bin2_id"] - pixels["bin1_id"]
     for field, t in transforms.items():
         pixels[field] = t(pixels)
 
+    # calculate summary for every regions
     diag_sums = {}
-    # r define square symmetric block i:
-    for i, r in enumerate(regions):
-        r1 = assign_supports(pixels, [r], suffix="1")
-        r2 = assign_supports(pixels, [r], suffix="2")
-        # calculate diag_sums on the spot to allow for overlapping blocks:
-        diag_sums[i] = pixels[(r1 == r2)].groupby("dist")[fields].sum()
+    for i,_ in enumerate(regions):
+        # i-th symmetric region mask
+        ith_region_mask = np.isclose(r_symm,i)
+        diag_sums[i] = pixels.loc[ ith_region_mask ].groupby("dist")[fields].sum()
 
     return diag_sums
 
@@ -609,7 +620,7 @@ def diagsum(
 
     Returns
     -------
-    Dataframe of diagonal statistics for all regions in thew view
+    Dataframe of diagonal statistics for all regions in the view
 
     """
     spans = partition(0, len(clr.pixels()), chunksize)

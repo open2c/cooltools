@@ -82,7 +82,7 @@ chunksize = 10_000  # keep it small to engage chunking
 weight1 = weight_name + "1"
 weight2 = weight_name + "2"
 transforms = {"balanced": lambda p: p["count"] * p[weight1] * p[weight2]}
-
+assumed_binsize = 1_000_000
 
 chromsizes = bioframe.fetch_chromsizes("mm9")
 chromosomes = list(chromsizes.index)
@@ -94,6 +94,8 @@ common_regions = []
 for i in range(4):
     chrom = chromosomes[i]
     halfway_chrom = int(chromsizes[chrom] / 2)
+    # make halfway_chrom point "bin-aligned" according to anticipated binsize
+    halfway_chrom = round(halfway_chrom / assumed_binsize) * assumed_binsize
     reg1 = (chrom, 0, halfway_chrom)
     reg2 = (chrom, halfway_chrom, chromsizes[chrom])
     common_regions.append(reg1)
