@@ -10,7 +10,33 @@ import warnings
 import bioframe
 
 
-def ecdf(x, v, side="left"):
+def _make_cooler_view(view_df, clr):
+    try:
+        if not bioframe.is_viewframe(view_df, raise_errors=True):
+            raise ValueError("view_df is not a valid viewframe.")
+    except Exception as e:  # AssertionError or ValueError, see https://github.com/gfudenberg/bioframe/blob/main/bioframe/core/checks.py#L177
+        warnings.warn(
+            "view_df has to be a proper viewframe from next release",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        view_df = bioframe.make_viewframe(view_df)
+    if not bioframe.is_contained(view_df, bioframe.make_viewframe(clr.chromsizes)):
+        raise ValueError("View table is out of the bounds of chromosomes in cooler.")
+    return view_df
+
+
+def _view_from_track(track_df):
+    bioframe.core.checks._verify_columns(track_df, ["chrom", "start", "end"])
+    return bioframe.make_viewframe(
+        [
+            (chrom, df.start.min(), df.end.max())
+            for chrom, df in track_df.groupby("chrom")
+        ]
+    )
+
+
+def _ecdf(x, v, side="left"):
     """
     Return array `x`'s empirical CDF value(s) at the points in `v`.
     This is based on the :func:`statsmodels.distributions.ECDF` step function.
@@ -23,7 +49,7 @@ def ecdf(x, v, side="left"):
     return y[ind]
 
 
-def quantile(x, q, **kwargs):
+def _quantile(x, q, **kwargs):
     """
     Return the values of the quantile cut points specified by fractions `q` of
     a sequence of data given by `x`.
@@ -50,93 +76,28 @@ def mask_bad_bins(track, bintable):
     track : DataFrame
         New bedGraph-like dataframe with bad bins masked in the value column
     """
+    #TODO: update to new track format
+
     track, name = track
 
-    bintable, weight_name = bintable
+    bintable, clr_weight_name = bintable
 
     track = pd.merge(
         track[["chrom", "start", "end", name]], bintable, on=["chrom", "start", "end"]
     )
-    track.loc[~np.isfinite(track[weight_name]), name] = np.nan
+    track.loc[~np.isfinite(track[clr_weight_name]), name] = np.nan
     track = track[["chrom", "start", "end", name]]
 
     return track
 
-
-def digitize_track(binedges, track, view_df=None):
-    """
-    Digitize genomic signal tracks into integers between `1` and `n`.
-
-    Parameters
-    ----------
-    binedges : 1D array (length n + 1)
-        Bin edges for quantization of signal. For `n` bins, there are `n + 1`
-        edges. See encoding details in Notes.
-    track : tuple of (DataFrame, str)
-        bedGraph-like dataframe along with the name of the value column.
-    view_df: viewframe, sequence of str or tuples
-        List of genomic regions to include. Each can be a chromosome, a
-        UCSC-style genomic region string or a tuple.
-
-    Returns
-    -------
-    digitized : DataFrame
-        New bedGraph-like dataframe with value column and an additional
-        digitized value column with name suffixed by '.d'
-    hist : 1D array (length n + 2)
-        Histogram of digitized signal values. Its length is `n + 2` because
-        the first and last elements correspond to outliers. See notes.
-
-    Notes
-    -----
-    The digital encoding is as follows:
-
-    - `1..n` <-> values assigned to histogram bins
-    - `0` <-> left outlier values
-    - `n+1` <-> right outlier values
-    - `-1` <-> missing data (NaNs)
-
-    """
-    if not isinstance(track, tuple):
-        raise ValueError("``track`` should be a tuple of (dataframe, column_name)")
-    track, name = track
-
-    # subset and re-order chromosome groups, TODO: remove make_viewframe in the next cooltools version
-    if view_df is not None:
-        # appropriate viewframe checks
-        try:
-            if not bioframe.is_viewframe(view_df, raise_errors=True):
-                raise ValueError("view_df is not a valid viewframe.")
-            if not bioframe.is_contained(
-                view_df, bioframe.make_viewframe(clr.chromsizes)
-            ):
-                raise ValueError(
-                    "View table is out of the bounds of chromosomes in cooler."
-                )
-        except Exception as e:  # AssertionError or ValueError, see https://github.com/gfudenberg/bioframe/blob/main/bioframe/core/checks.py#L177
-            warnings.warn(
-                "view_df has to be a proper viewframe from next release",
-                DeprecationWarning,
-                stacklevel=2,
-            )
-            view_df = bioframe.make_viewframe(view_df)
-        # Select the track regions from view_df:
-        track = pd.concat(
-            bioframe.select(track, region) for i, region in view_df.iterrows()
-        )
-
-    # histogram the signal
-    digitized = track.copy()
-    digitized[name + ".d"] = np.digitize(track[name].values, binedges, right=False)
-    mask = track[name].isnull()
-    digitized.loc[mask, name + ".d"] = -1
-    x = digitized[name + ".d"].values.copy()
-    x = x[(x > 0) & (x < len(binedges) + 1)]
-    hist = np.bincount(x, minlength=len(binedges) + 1)
-    return digitized, hist
-
-
-def make_cis_obsexp_fetcher(clr, expected, view_df, weight_name="weight"):
+def _make_cis_obsexp_fetcher(
+    clr,
+    expected,
+    view_df,
+    clr_weight_name="weight",
+    expected_value_col="balanced.avg",
+    view_name_col="name",
+):
     """
     Construct a function that returns intra-chromosomal OBS/EXP for symmetrical regions
     defined in view_df.
@@ -150,37 +111,40 @@ def make_cis_obsexp_fetcher(clr, expected, view_df, weight_name="weight"):
         with the values of expected to use.
     view_df: viewframe
         Viewframe with genomic regions.
-
-    weight_name : str
-        Name of the column in the clr.bins to use as balancing weights
+    clr_weight_name : str
+        Name of the column in the clr.bins to use as balancing weights.
+    expected_value_col : str
+        Name of the column in expected used for normalizing.
+    view_name_col : str
+        Name of column in view_df with region names.
 
     Returns
     -------
     getexpected(reg, _). 2nd arg is ignored.
 
     """
-    expected, expected_name = expected
-    expected = {k: x.values for k, x in expected.groupby("region")[expected_name]}
-
-    # appropriate viewframe checks:
-    if not bioframe.is_viewframe(view_df):
-        raise ValueError("View table is not a valid viewframe.")
-    if not bioframe.is_contained(view_df, bioframe.make_viewframe(clr.chromsizes)):
-        raise ValueError("View table is out of the bounds of chromosomes in cooler.")
-
-    view_df = view_df.set_index("name")
+    expected = {k: x.values for k, x in expected.groupby("region")[expected_value_col]}
+    view_df = view_df.set_index(view_name_col)
 
     def _fetch_cis_oe(reg1, reg2):
         reg1_coords = tuple(view_df.loc[reg1])
         # reg2_coords = tuple(view_df.loc[reg2])
-        obs_mat = clr.matrix(balance=weight_name).fetch(reg1_coords)
+        obs_mat = clr.matrix(balance=clr_weight_name).fetch(reg1_coords)
         exp_mat = toeplitz(expected[reg1][: obs_mat.shape[0]])
         return obs_mat / exp_mat
 
     return _fetch_cis_oe
 
 
-def make_trans_obsexp_fetcher(clr, expected, view_df, weight_name="weight"):
+def _make_trans_obsexp_fetcher(
+    clr,
+    expected,
+    view_df,
+    clr_weight_name="weight",
+    expected_value_col="balanced.avg",
+    view_name_col="name",
+):
+
     """
     Construct a function that returns OBS/EXP for any pair of chromosomes.
 
@@ -195,7 +159,7 @@ def make_trans_obsexp_fetcher(clr, expected, view_df, weight_name="weight"):
         labeled ``name``, with the values of expected.
     view_df: viewframe
         Viewframe with genomic regions.
-    weight_name : str
+    clr_weight_name : str
         Name of the column in the clr.bins to use as balancing weights
 
     Returns
@@ -206,18 +170,14 @@ def make_trans_obsexp_fetcher(clr, expected, view_df, weight_name="weight"):
 
     if np.isscalar(expected):
         return lambda reg1, reg2: (
-            clr.matrix(balance=weight_name).fetch(reg1, reg2) / expected
+            clr.matrix(balance=clr_weight_name).fetch(reg1, reg2) / expected
         )
 
-    elif isinstance(expected, (tuple, list)):
-        expected, expected_name = expected
-
-        if not expected_name:
-            raise ValueError("Name of data column not provided.")
+    elif type(expected) is pd.core.frame.DataFrame:
 
         expected = {
             k: x.values
-            for k, x in expected.groupby(["region1", "region2"])[expected_name]
+            for k, x in expected.groupby(["region1", "region2"])[expected_value_col]
         }
 
         def _fetch_trans_exp(region1, region2):
@@ -235,9 +195,9 @@ def make_trans_obsexp_fetcher(clr, expected, view_df, weight_name="weight"):
                 )
 
         def _fetch_trans_oe(reg1, reg2):
-            return clr.matrix(balance=weight_name).fetch(reg1, reg2) / _fetch_trans_exp(
+            return clr.matrix(balance=clr_weight_name).fetch(
                 reg1, reg2
-            )
+            ) / _fetch_trans_exp(reg1, reg2)
 
         return _fetch_trans_oe
 
@@ -245,11 +205,13 @@ def make_trans_obsexp_fetcher(clr, expected, view_df, weight_name="weight"):
         raise ValueError("Unknown type of expected")
 
 
-def _accumulate(S, C, getmatrix, digitized, reg1, reg2, min_diag, max_diag, verbose):
+def _accumulate(
+    S, C, getmatrix, digitized, reg1, reg2, min_diag=3, max_diag=-1, verbose=False
+):
     n_bins = S.shape[0]
     matrix = getmatrix(reg1, reg2)
 
-    if reg1[0] == reg2[0]:
+    if reg1 == reg2:
         for d in np.arange(-min_diag + 1, min_diag):
             numutils.set_diag(matrix, np.nan, d)
         if max_diag >= 0:
@@ -272,109 +234,172 @@ def _accumulate(S, C, getmatrix, digitized, reg1, reg2, min_diag, max_diag, verb
             C[i, j] += float(len(data))
 
 
-def make_saddle(
-    getmatrix,
-    binedges,
-    digitized,
+def _make_binedges(track_values, n_bins, quantiles=False,
+    range_=None,  qrange=(0.0, 1.0)):
+    if quantiles:
+        if range_ is not None:
+            qlo, qhi = _ecdf(track_values, range_)
+        elif len(qrange):
+            qlo, qhi = qrange
+        else:
+            qlo, qhi = 0.0, 1.0
+        q_edges = np.linspace(qlo, qhi, n_bins+1)
+        binedges = _quantile(track_values, q_edges)
+        return binedges, qlo, qhi
+    else:
+        if range_ is not None:
+            lo, hi = range_
+        elif len(qrange):
+            lo, hi = _quantile(track_values, qrange)
+        else:
+            lo, hi = np.nanmin(track_values), np.nanmax(track_values)
+        binedges = np.linspace(lo, hi, n_bins+1)
+        return binedges, lo, hi
+
+def get_digitized(
+    track,
+    n_bins,
+    quantiles=False,
+    range_=None,
+    qrange=(0.0, 1.0),
+    digitized_suffix=".d",
+):
+    """
+    Digitize genomic signal tracks into integers between `1` and `n`.
+
+    Parameters
+    ----------
+    track : 4-column DataFrame
+        bedGraph-like dataframe with columns understood as (chrom,start,end,value).
+    
+    n_bins : int
+        number of bins for signal quantization.
+
+    quantiles : bool
+        Whether to digitize by quantiles.
+
+    range_ : tuple 
+        Low and high values used for binning genome-wide track values, e.g. 
+        if `range`=(-0.05, 0.05), `n-bins` equidistant bins would be generated.
+
+    qrange : tuple
+        The fraction of the genome-wide range of the track values used to 
+        generate bins. E.g., if `qrange`=(0.02, 0.98) the lower bin would 
+        start at the 2nd percentile and the upper bin would end at the 98th 
+        percentile of the genome-wide signal. Use to exclude extreme track
+        values for making saddles. 
+
+    digitized_suffix : str
+        suffix to append to fourth column name
+
+    Returns
+    -------
+    digitized : DataFrame
+        New bedGraph-like dataframe with value column and an additional
+        digitized value column with name suffixed by '.d'
+    binedges : 1D array (length n + 1)
+        Bin edges used in quantization of track. For `n` bins, there are `n + 1`
+        edges. See encoding details in Notes.
+
+    Notes
+    -----
+    The digital encoding is as follows:
+
+    - `1..n` <-> values assigned to histogram bins
+    - `0` <-> left outlier values
+    - `n+1` <-> right outlier values
+    - `-1` <-> missing data (NaNs)
+
+    """
+
+    ###TODO add input check for track, qrange, range_
+
+    digitized = track.copy()
+    track_value_col = track.columns[3]
+    track_values = track[track_value_col].values
+    digitized_col = track_value_col + digitized_suffix
+
+    binedges, lo, hi = _make_binedges(track_values ,n_bins, quantiles=quantiles,range_=range_, qrange=qrange)
+
+    digitized[digitized_col] = np.digitize(track_values, binedges, right=False)
+    
+    mask = track[track_value_col].isnull()
+    digitized.loc[mask, digitized_col] = -1
+
+    digitized_cats = pd.CategoricalDtype(
+        categories=np.arange(-1, n_bins + 2), ordered=True
+    )
+    digitized = digitized.astype({digitized_col: digitized_cats})
+
+    # return a 4-column digitized track
+    digitized = digitized[list(track.columns[:3]) + [digitized_col]]
+    return digitized, binedges
+
+def get_saddle(
+    clr,
+    expected,
+    digitized_track,
     contact_type,
     view_df=None,
+    clr_weight_name="weight",
+    expected_value_col="balanced.avg",
+    view_name_col="name",
     min_diag=3,
     max_diag=-1,
     trim_outliers=False,
     verbose=False,
 ):
-    """
-    Make a matrix of average interaction probabilities between genomic bin
-    pairs as a function of a specified genomic track. The provided genomic
-    track must be pre-quantized as integers (i.e. digitized).
 
-    Parameters
-    ----------
-    getmatrix : function
-        A function returning a matrix of interaction between two chromosomes
-        given their names/indicies.
-    binedges : 1D array (length n + 1)
-        Bin edges of the digitized signal. For `n` bins, there are `n + 1`
-        edges. See :func:`digitize_track`.
-    digitized : tuple of (DataFrame, str)
-        BedGraph-like dataframe of digitized signal along with the name of
-        the digitized value column.
-    contact_type : str
-        If 'cis' then only cis interactions are used to build the matrix.
-        If 'trans', only trans interactions are used.
-    view_df : viewframe, sequence of str or tuple, optional
-        A list of genomic regions to use. Each can be a chromosome, a
-        UCSC-style genomic region string or a tuple.
-    min_diag : int
-        Smallest diagonal to include in computation. Ignored with
-        contact_type=trans.
-    max_diag : int
-        Biggest diagonal to include in computation. Ignored with
-        contact_type=trans.
-    trim_outliers : bool, optional
-        Remove first and last row and column from the output matrix.
-    verbose : bool, optional
-        If True then reports progress.
+    ### TODO add input validation for: track, expeced, 
+    if type(digitized_track.dtypes[3]) is not pd.core.dtypes.dtypes.CategoricalDtype:
+        raise ValueError("a digitized track, where the value column is a"+
+            "pandas categorical must be provided as input. see get_digitized().")
+    digitized_col = digitized_track.columns[3]
+    cats = digitized_track[digitized_col].dtype.categories.values
+    n_bins = len(cats[cats > -1]) -2 
 
-    Returns
-    -------
-    interaction_sum : 2D array
-        The matrix of summed interaction probability between two genomic bins
-        given their values of the provided genomic track.
-    interaction_count : 2D array
-        The matrix of the number of genomic bin pairs that contributed to the
-        corresponding pixel of ``interaction_sum``.
-
-    """
-    digitized_df, name = digitized
-    digitized_df = digitized_df[["chrom", "start", "end", name]]
-
-    # get chromosomes from bins, if regions not specified:
     if view_df is None:
-        view_df = bioframe.make_viewframe(
-            [
-                (chrom, df.start.min(), df.end.max())
-                for chrom, df in digitized_df.groupby("chrom")
-            ]
-        )
+        view_df = _view_from_track(digitized_track)
     else:
-        # appropriate viewframe checks, TODO: remove make_viewframe in the next cooltools version
-        try:
-            if not bioframe.is_viewframe(view_df, raise_errors=True):
-                raise ValueError("view_df is not a valid viewframe.")
-            if not bioframe.is_contained(
-                view_df, bioframe.make_viewframe(clr.chromsizes)
-            ):
-                raise ValueError(
-                    "View table is out of the bounds of chromosomes in cooler."
-                )
-        except Exception as e:  # AssertionError or ValueError, see https://github.com/gfudenberg/bioframe/blob/main/bioframe/core/checks.py#L177
-            warnings.warn(
-                "view_df has to be a proper viewframe from next release",
-                DeprecationWarning,
-                stacklevel=2,
-            )
-            view_df = bioframe.make_viewframe(view_df)
+        view_df = _make_cooler_view(view_df, clr)
 
     digitized_tracks = {}
-    for reg in view_df.values:
-        track = bioframe.select(digitized_df, reg)
-        digitized_tracks[reg[3]] = track[name]  # 3 = name
+    for num, reg in view_df.iterrows():
+        digitized_reg = bioframe.select(digitized_track, reg)
+        digitized_tracks[reg[view_name_col]] = digitized_reg[digitized_col]
 
+    ### set "cis" or "trans" for supports (regions to iterate over) and matrix fetcher
     if contact_type == "cis":
-        supports = list(zip(view_df["name"], view_df["name"]))
+        supports = list(zip(view_df[view_name_col], view_df[view_name_col]))
+        if not bioframe.is_cataloged(
+            expected, view_df, df_view_col="region", view_name_col=view_name_col
+        ):
+            raise ValueError("Region names in expected are not cataloged in view_df.")
+        getmatrix = _make_cis_obsexp_fetcher(
+            clr,
+            expected,
+            view_df,
+            view_name_col=view_name_col,
+            expected_value_col=expected_value_col,
+            clr_weight_name=clr_weight_name,
+        )
     elif contact_type == "trans":
-        supports = list(combinations(view_df["name"], 2))
+        supports = list(combinations(view_df[view_name_col], 2))
+        getmatrix = _make_trans_obsexp_fetcher(
+            clr,
+            expected,
+            view_df,
+            view_name_col=view_name_col,
+            expected_value_col=expected_value_col,
+            clr_weight_name=clr_weight_name,
+        )
     else:
         raise ValueError(
-            "The allowed values for the contact_type " "argument are 'cis' or 'trans'."
-        )
+            "Allowed values for contact_type are 'cis' or 'trans'.")
 
-    # n_bins here includes 2 open bins
-    # for values <lo and >hi.
-    n_bins = len(binedges) + 1
-    interaction_sum = np.zeros((n_bins, n_bins))
-    interaction_count = np.zeros((n_bins, n_bins))
+    # n_bins here includes 2 open bins for values <lo and >hi.
+    interaction_sum = np.zeros((n_bins + 2, n_bins + 2))
+    interaction_count = np.zeros((n_bins + 2, n_bins + 2))
 
     for reg1, reg2 in supports:
         _accumulate(
@@ -384,9 +409,9 @@ def make_saddle(
             digitized_tracks,
             reg1,
             reg2,
-            min_diag,
-            max_diag,
-            verbose,
+            min_diag=min_diag,
+            max_diag=max_diag,
+            verbose=verbose,
         )
 
     interaction_sum += interaction_sum.T
@@ -400,9 +425,12 @@ def make_saddle(
 
 
 def saddleplot(
-    binedges,
-    counts,
+    track,
     saddledata,
+    n_bins,
+    quantiles=False,
+    range_=None,
+    qrange=(0.0, 1.0),
     cmap="coolwarm",
     scale="log",
     vmin=0.5,
@@ -424,12 +452,8 @@ def saddleplot(
 
     Parameters
     ----------
-    binedges : 1D array-like
-        For `n` bins, there should be `n + 1` bin edges
-    counts : 1D array-like
-        Signal track histogram produced by `digitize_track`. It will include
-        2 flanking elements for outlier values, thus the length should be
-        `n + 2`.
+    track : pd.DataFrame
+        See get_digitized() for details. 
     saddledata : 2D array-like
         Saddle matrix produced by `make_saddle`. It will include 2 flanking
         rows/columns for outlier signal values, thus the shape should be
@@ -476,15 +500,23 @@ def saddleplot(
             else:
                 return "{x:g}".format(x=x)
 
+    track_value_col = track.columns[3]
+    track_values = track[track_value_col].values
+
+    digitized_track, binedges = get_digitized(track,n_bins,quantiles=quantiles, 
+                            range_=range_, qrange=qrange)
+    x = digitized_track[digitized_track.columns[3]].values.astype(int).copy()
+    x = x[(x > 0) & (x < len(binedges) + 1)]
+    hist = np.bincount(x, minlength=len(binedges) + 1)
+
     n_edges = len(binedges)
     n_bins = n_edges - 1
-    lo, hi = binedges[0], binedges[-1]
-
+    binedges, lo, hi = _make_binedges(track_values,n_bins,quantiles=quantiles, 
+                            range_=range_, qrange=qrange)
     # Histogram and saddledata are flanked by outlier bins
     n = saddledata.shape[0]
     X, Y = np.meshgrid(binedges, binedges)
     C = saddledata
-    hist = counts
     if (n - n_bins) == 2:
         C = C[1:-1, 1:-1]
         hist = hist[1:-1]
@@ -527,6 +559,7 @@ def saddleplot(
     # Margins
     margin_kws_default = dict(edgecolor="k", facecolor=color, linewidth=1)
     margin_kws = merge(margin_kws_default, margin_kws if margin_kws is not None else {})
+    
     # left margin hist
     grid["ax_margin_y"] = plt.subplot(gs[3], sharey=grid["ax_heatmap"])
     plt.barh(
@@ -538,6 +571,7 @@ def saddleplot(
     plt.gca().spines["bottom"].set_visible(False)
     plt.gca().spines["left"].set_visible(False)
     plt.gca().xaxis.set_visible(False)
+
     # top margin hist
     grid["ax_margin_x"] = plt.subplot(gs[1], sharex=grid["ax_heatmap"])
     plt.bar(

@@ -93,7 +93,7 @@ from . import cli
     show_default=True,
 )
 @click.option(
-    "--weight-name",
+    "--clr-weight-name",
     help="Use balancing weight with this name.",
     type=str,
     default="weight",
@@ -169,7 +169,7 @@ def compute_saddle(
     quantiles,
     range_,
     qrange,
-    weight_name,
+    clr_weight_name,
     strength,
     view,
     out_prefix,
@@ -209,6 +209,8 @@ def compute_saddle(
 
     """
     #### Read inputs: ####
+
+    print(cool_path)
     clr = cooler.Cooler(cool_path)
     expected_path, expected_name = expected_path
     track_path, track_name = track_path
@@ -273,7 +275,7 @@ def compute_saddle(
     expected = pd.read_table(
         expected_path,
         usecols=expected_columns,
-        index_col=expected_index,
+        #index_col=expected_index,
         dtype=expected_dtype,
         comment=None,
         verbose=verbose,
@@ -352,7 +354,7 @@ def compute_saddle(
     if contact_type == "cis":
         # Check region names:
         if not bioframe.is_cataloged(
-            view_df, expected.reset_index(), df_view_col="name", view_name_col="region"
+            view_df, expected, df_view_col="name", view_name_col="region"
         ):
             raise ValueError(
                 "View regions are not in the expected table. Provide expected table for the same regions"
@@ -372,52 +374,31 @@ def compute_saddle(
     # CROSS-VALIDATION IS COMPLETE.
     #############################################
 
-    track = saddle.mask_bad_bins((track, track_name), (clr.bins()[:], weight_name))
+    track = saddle.mask_bad_bins((track, track_name), (clr.bins()[:], clr_weight_name))
 
-    if contact_type == "cis":
-        getmatrix = saddle.make_cis_obsexp_fetcher(
-            clr, (expected, expected_name), view_df, weight_name=weight_name
-        )
-    elif contact_type == "trans":
-        getmatrix = saddle.make_trans_obsexp_fetcher(
-            clr, (expected, expected_name), view_df, weight_name=weight_name
-        )
-
-    if quantiles:
-        if len(range_):
-            qlo, qhi = saddle.ecdf(track[track_name], range_)
-        elif len(qrange):
-            qlo, qhi = qrange
-        else:
-            qlo, qhi = 0.0, 1.0
-        q_edges = np.linspace(qlo, qhi, n_bins)
-        binedges = saddle.quantile(track[track_name], q_edges)
-    else:
-        if len(range_):
-            lo, hi = range_
-        elif len(qrange):
-            lo, hi = saddle.quantile(track[track_name], qrange)
-        else:
-            lo, hi = track[track_name].min(), track[track_name].max()
-        binedges = np.linspace(lo, hi, n_bins)
-
-    digitized, hist = saddle.digitize_track(
-        binedges, track=(track, track_name), view_df=track_view_df
-    )
-
-    S, C = saddle.make_saddle(
-        getmatrix,
-        binedges,
-        (digitized, track_name + ".d"),
-        contact_type=contact_type,
-        view_df=view_df,
+    digitized, binedges = saddle.get_digitized(
+                                        track[['chrom','start','end',track_name]],
+                                        n_bins,
+                                        quantiles=quantiles,
+                                        range_=range_,
+                                        qrange=qrange,
+                                        digitized_suffix='.d')
+    S, C = saddle.get_saddle(
+        clr,
+        expected,
+        digitized[['chrom','start','end',track_name+'.d']],
+        contact_type,
+        view_df = view_df,
+        clr_weight_name='weight',
+        expected_value_col='balanced.avg',
+        view_name_col = 'name',
         min_diag=min_diag,
         max_diag=max_diag,
+        verbose=verbose,
     )
-
     saddledata = S / C
 
-    to_save = dict(saddledata=saddledata, binedges=binedges, hist=hist)
+    to_save = dict(saddledata=saddledata, binedges=binedges, digitized=digitized)
 
     if strength:
         ratios = saddle.saddle_strength(S, C)
@@ -449,17 +430,19 @@ def compute_saddle(
             color = mpl.colors.colorConverter.to_rgb(hist_color)
         title = op.basename(cool_path) + " ({})".format(contact_type)
         if quantiles:
-            edges = q_edges
             track_label = track_name + " quantiles"
         else:
-            edges = binedges
             track_label = track_name
+
         clabel = "(contact frequency / expected)"
 
         saddle.saddleplot(
-            edges,
-            hist,
+            track,
             saddledata,
+            n_bins,
+            quantiles=quantiles,
+            range_=range_,
+            qrange=qrange,
             scale=scale,
             vmin=vmin,
             vmax=vmax,
