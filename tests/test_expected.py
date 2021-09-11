@@ -191,6 +191,7 @@ def test_diagsum_asymm(request):
             equal_nan=True,
         )
 
+
 def test_blocksum_pairwise(request):
     # perform test:
     clr = cooler.Cooler(op.join(request.fspath.dirname, "data/CN.mm9.1000kb.cool"))
@@ -216,6 +217,7 @@ def test_blocksum_pairwise(request):
             # atol=0,
             equal_nan=True,
         )
+
 
 def test_blocksum(request):
     # perform test:

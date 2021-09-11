@@ -179,13 +179,11 @@ def compute_expected(
                 map=map_,
             )
         elif contact_type == "trans":
-            # prepare pairwise combinations of regions for trans-expected (blocksum):
-            regions_pairwise = combinations(view_df.itertuples(index=False), 2)
-            regions1, regions2 = zip(*regions_pairwise)
-            result = expected.blocksum_asymm(
+            # trans-expected is calculated on an assymetric pairwise combinations
+            # of regions in view_df (special-case for faster calculations):
+            result = expected.blocksum_pairwise(
                 clr,
-                regions1=regions1,
-                regions2=regions2,
+                view_df=view_df,
                 transforms=transforms,
                 weight_name=weight_name,
                 bad_bins=None,
