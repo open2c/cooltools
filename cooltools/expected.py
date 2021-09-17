@@ -799,9 +799,6 @@ def diagsum_asymm(
     ).reset_index(drop=True)
     # Now regions1/2 contain viewframe-like dataframes that might contain repeated entries.
 
-    print(regions1)
-    print(regions2)
-
     # blocks defined by regions1/2 are not very restrictive, but they have to be
     # in the upper triangle of the contact matrix, i.e. do not cross diagonal and
     # be "sorted" regions1[i] < regions2[i] (according to the cooler's order):
