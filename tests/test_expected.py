@@ -259,7 +259,7 @@ def test_expected_cli(request, tmpdir):
         cli,
         [
             "compute-expected",
-            "--weight-name",
+            "--clr-weight-name",
             weight_name,
             "-o",
             out_cis_expected,
@@ -293,7 +293,7 @@ def test_expected_view_cli(request, tmpdir):
         cli,
         [
             "compute-expected",
-            "--weight-name",
+            "--clr-weight-name",
             weight_name,
             "--view",
             in_view,
@@ -332,7 +332,7 @@ def test_trans_expected_view_cli(request, tmpdir):
         cli,
         [
             "compute-expected",
-            "--weight-name",
+            "--clr-weight-name",
             weight_name,
             "--view",
             in_view,
@@ -379,7 +379,7 @@ def test_logbin_expected_cli(request, tmpdir):
         cli,
         [
             "compute-expected",
-            "--weight-name",
+            "--clr-weight-name",
             weight_name,
             "-o",
             out_cis_expected,

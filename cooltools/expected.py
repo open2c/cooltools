@@ -542,10 +542,12 @@ def make_block_table(clr, regions1, regions2, weight_name="weight", bad_bins=Non
 
 def _diagsum_symm(clr, fields, transforms, regions, span):
     """
-    calculates diagonal summary for a collection of
-    square symmteric regions defined by regions.
-    returns a dictionary of DataFrames with diagonal
-    sums as values, and 0-based indexes of square
+    calculates diagonal/distance summary for a collection of
+    square symmetric blocks defined by the "regions".
+
+    Return:
+    dictionary of DataFrames with diagonal/distance
+    sums for the "fields", and 0-based indexes of square
     genomic regions as keys.
     """
     lo, hi = span
@@ -557,26 +559,18 @@ def _diagsum_symm(clr, fields, transforms, regions, span):
 
     # annotate pixels with regions at once
     # book-ended regions still get reannotated
-    r1 = assign_supports(pixels, regions, suffix="1")
-    r2 = assign_supports(pixels, regions, suffix="2")
+    pixels["r1"] = assign_supports(pixels, regions, suffix="1")
+    pixels["r2"] = assign_supports(pixels, regions, suffix="2")
     # select symmetric pixels and region annotations only
-    symm_mask = ( r1==r2 )
-    pixels = pixels.loc[ symm_mask ].copy()
-    r_symm = r1[ symm_mask ]
+    pixels = pixels[ pixels["r1"] == pixels["r2"] ]
 
     # this could further expanded to allow for custom groupings:
     pixels["dist"] = pixels["bin2_id"] - pixels["bin1_id"]
     for field, t in transforms.items():
         pixels[field] = t(pixels)
 
-    # calculate summary for every regions
-    diag_sums = {}
-    for i,_ in enumerate(regions):
-        # i-th symmetric region mask
-        ith_region_mask = np.isclose(r_symm,i)
-        diag_sums[i] = pixels.loc[ ith_region_mask ].groupby("dist")[fields].sum()
-
-    return diag_sums
+    symm_blocks = pixels.groupby("r1")
+    return {int(i): block.groupby("dist")[fields].sum() for i, block in symm_blocks}
 
 
 def diagsum(
@@ -748,7 +742,13 @@ def diagsum_asymm(
     Matchings elements of `regions1` and  `regions2` define
     asymmetric rectangular blocks for calculating diagonal
     summary statistics.
-    Only intra-chromosomal blocks are supported.
+    Only intra-chromosomal blocks that reside in the upper
+    part of the contact matrix are supported.
+
+    Note
+    ----
+    This functions is flexible with respect to regions, but
+    is very inefficient, slow.
 
     Parameters
     ----------
@@ -798,6 +798,20 @@ def diagsum_asymm(
         ]
     ).reset_index(drop=True)
     # Now regions1/2 contain viewframe-like dataframes that might contain repeated entries.
+
+    print(regions1)
+    print(regions2)
+
+    # blocks defined by regions1/2 are not very restrictive, but they have to be
+    # in the upper triangle of the contact matrix, i.e. do not cross diagonal and
+    # be "sorted" regions1[i] < regions2[i] (according to the cooler's order):
+    for region1, region2 in zip(regions1.itertuples(), regions2.itertuples()):
+        block12 = pd.DataFrame([region1, region2])
+        _block_cross_diagonal = bioframe.is_overlapping(block12)
+        _block_in_upper =  bioframe.is_sorted(block12, clr.chromsizes, df_view_col=None)
+        if _block_cross_diagonal or not _block_in_upper:
+            raise ValueError("assymetric blocks should reside in the upper triangle of the contact matrix")
+
 
     dtables = make_diag_tables(
         clr, regions1, regions2, weight_name=weight_name, bad_bins=bad_bins
@@ -860,43 +874,38 @@ def diagsum_asymm(
 def _blocksum_pairwise(clr, fields, transforms, regions, span):
     """
     calculates block summary for a collection of
-    rectangular regions defined as combinations of
-    regions1 and regions2.
-    returns a dictionary of with block sums as values,
-    and 0-based indexes of rectangular genomic regions
-    as keys.
+    rectangular regions defined as pairwise combinations
+    of all regions.
+
+    Return:
+    a dictionary of block-wide sums for all "fields":
+    keys are (i,j)-like, where i and j are 0-based indexes of
+    "regions", and a combination of (i,j) defines rectangular block.
+
+    Note:
+    Input pixels are assumed to be "symmetric-upper", and "regions"
+    to be sorted according to the order of chromosomes in "clr", thus
+    i < j.
+
     """
     lo, hi = span
     bins = clr.bins()[:]
     pixels = clr.pixels()[lo:hi]
     pixels = cooler.annotate(pixels, bins, replace=False)
 
-    r1 = assign_supports(pixels, regions, suffix="1")
-    r2 = assign_supports(pixels, regions, suffix="2")
-    # pre-filter assymetric pixels only
-    asymm_mask = (r1 != r2)
-    pixels = pixels.loc[ asymm_mask ]
-    r1 = r1[ asymm_mask ]
-    r2 = r2[ asymm_mask ]
+    pixels["r1"] = assign_supports(pixels, regions, suffix="1")
+    pixels["r2"] = assign_supports(pixels, regions, suffix="2")
+    # pre-filter asymetric pixels only
+    pixels = pixels.dropna(subset=["r1","r2"])
+    pixels = pixels[ pixels["r1"] != pixels["r2"] ]
 
+    # apply transforms, e.g. balancing etc
     for field, t in transforms.items():
         pixels[field] = t(pixels)
 
-    block_sums = {}
-    # r1 and r2 define rectangular block i, j:
-    for i,_ in enumerate(regions):
-        i_mask = np.isclose(r1, i)
-        for j,_ in enumerate(regions):
-            # survey upper-triangle only
-            # IMPORTANT ASSUMPTION: regions sorted same way as cooler
-            if (j > i):
-                j_mask = np.isclose(r2, j)
-                # sum-up if there are any pixels from ij-block
-                ij_mask = i_mask & j_mask
-                if np.any(ij_mask):
-                    block_sums[(i,j)] = pixels.loc[ i_mask & j_mask ][fields].sum(skipna=True)
-
-    return block_sums
+    # pairwise-combinations of regions define asymetric pixels-blocks
+    pixel_groups = pixels.groupby(["r1","r2"])
+    return {(int(i), int(j)): group[fields].sum() for (i,j), group in pixel_groups}
 
 
 def blocksum_pairwise(
@@ -912,12 +921,19 @@ def blocksum_pairwise(
     Summary statistics on rectangular blocks of all (trans-)pairwise combinations
     of genomic regions in the view_df (aka trans-expected).
 
+    Note
+    ----
+    This is a special case of asymmetric block-level summary stats, that can be
+    calculated very efficiently. Regions in view_df are assigned to pixels only
+    once and pixels falling into a given asymmetric block i != j are summed up.
+
     Parameters
     ----------
     clr : cooler.Cooler
         Cooler object
     view_df : viewframe (or depreated: sequence of genomic range tuples)
-        Support view_df for intra-chromosomal diagonal summation
+        Support view_df defining blocks for summary calculations,
+        has to be sorted according to the order of chromosomes in clr.
     transforms : dict of str -> callable, optional
         Transformations to apply to pixels. The result will be assigned to
         a temporary column with the name given by the key. Callables take
@@ -960,9 +976,11 @@ def blocksum_pairwise(
     spans = partition(0, len(clr.pixels()), chunksize)
     fields = ["count"] + list(transforms.keys())
 
-    # !!! consider pre-sorting regions in view_df to make pairwise precictable
-    # clr.chromnames
-    #bioframe.is_sorted(view_df)
+    # view_df must be sorted, so that blocks resulting from pairwise combinations
+    # are all in the upper part of the contact matrix, otherwise conflicts with pixels
+    if not bioframe.is_sorted(view_df, clr.chromsizes, df_view_col = None):
+        raise ValueError("""regions in the view_df must be sorted by coordinate
+            and chromosomes, order of chromosomes as in cooler""")
 
     # create pairwise combinations of regions from view_df using
     # the standard zip(*bunch_of_tuples) unzipping procedure:
@@ -1013,14 +1031,8 @@ def blocksum_pairwise(
                     ni = view_df.loc[i, "name"]
                     nj = view_df.loc[j, "name"]
                     records[ni, nj][agg_name] += s
-    print(records)
+
     # returning a dataframe for API consistency:
-    x = pd.DataFrame(
-        [{"region1": n1, "region2": n2, **rec} for (n1, n2), rec in records.items()],
-        columns=["region1", "region2", "n_valid", "count.sum"]
-        + [k + ".sum" for k in transforms.keys()],
-    )
-    print(x)
     return pd.DataFrame(
         [{"region1": n1, "region2": n2, **rec} for (n1, n2), rec in records.items()],
         columns=["region1", "region2", "n_valid", "count.sum"]
@@ -1068,6 +1080,13 @@ def blocksum_asymm(
 ):
     """
     Summary statistics on rectangular blocks of genomic regions.
+    Blocks defined by regions1/regions2 must reside in the upper
+    part of the contact matrix.
+
+    Note
+    ----
+    This functions is flexible with respect to regions, but
+    is very inefficient, slow.
 
     Parameters
     ----------
@@ -1112,6 +1131,16 @@ def blocksum_asymm(
             for region in regions2
         ]
     ).reset_index(drop=True)
+
+    # blocks defined by regions1/2 are not very restrictive, but they have to be
+    # in the upper triangle of the contact matrix, i.e. do not cross diagonal and
+    # be "sorted" regions1[i] < regions2[i] (according to the cooler's order):
+    for region1, region2 in zip(regions1.itertuples(), regions2.itertuples()):
+        block12 = pd.DataFrame([region1, region2])
+        _block_cross_diagonal = bioframe.is_overlapping(block12)
+        _block_in_upper =  bioframe.is_sorted(block12, clr.chromsizes, df_view_col=None)
+        if _block_cross_diagonal or not _block_in_upper:
+            raise ValueError("assymetric blocks should reside in the upper triangle of the contact matrix")
 
     spans = partition(0, len(clr.pixels()), chunksize)
     fields = ["count"] + list(transforms.keys())
