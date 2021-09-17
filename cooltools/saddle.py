@@ -10,6 +10,13 @@ import warnings
 import bioframe
 
 
+def _is_track(track):
+    if not bioframe.is_bedframe(track, cols=track.columns[:3]):
+        raise ValueError("track must have bedFrame-like interval columns")
+    if not pd.core.dtypes.common.is_numeric_dtype(track[track.columns[3]]):
+        raise ValueError("track signal column must be numeric")
+
+
 def _make_cooler_view(view_df, clr):
     try:
         if not bioframe.is_viewframe(view_df, raise_errors=True):
@@ -251,45 +258,48 @@ def _accumulate(
             C[i, j] += float(len(data))
 
 
-def _make_binedges(
-    track_values, n_bins, quantiles=False, range_=None, qrange=(0.0, 1.0)
-):
+def _make_binedges(track_values, n_bins, vrange=None, qrange=None):
     """
-    helper function for get_digitized
+    Helper function to make bins for `get_digitized()`.
+
+    Nakes binedges in real space from value limits provided by vrange,
+    or in quantile space from quantile limits provided by qrange.
+
     """
-    if quantiles:
-        if range_ is not None:
-            qlo, qhi = _ecdf(track_values, range_)
-        elif len(qrange):
-            qlo, qhi = qrange
-        else:
-            qlo, qhi = 0.0, 1.0
+
+    if qrange is not None and vrange is not None:
+        raise ValueError("only one of vrange or qrange can be supplied")
+
+    elif vrange is not None:
+        lo, hi = vrange
+        if lo > hi:
+            raise ValueError("vrange does not satisfy vrange[0]<vrange[1]")
+        binedges = np.linspace(lo, hi, n_bins + 1)
+        return binedges, lo, hi
+
+    elif qrange is not None:
+        qlo, qhi = qrange
+        if qlo < 0.0 or qhi > 1.0:
+            raise ValueError("qrange must specify quantiles in (0.0,1.0)")
+        if qlo > qhi:
+            raise ValueError("qrange does not satisfy qrange[0]<qrange[1]")
         q_edges = np.linspace(qlo, qhi, n_bins + 1)
         binedges = _quantile(track_values, q_edges)
         return binedges, qlo, qhi
+
     else:
-        if range_ is not None:
-            lo, hi = range_
-        elif len(qrange):
-            lo, hi = _quantile(track_values, qrange)
-        else:
-            lo, hi = np.nanmin(track_values), np.nanmax(track_values)
-        binedges = np.linspace(lo, hi, n_bins + 1)
-        return binedges, lo, hi
+        raise ValueError("either vrange or qrange must be supplied")
 
 
 def get_digitized(
     track,
     n_bins,
-    quantiles=False,
-    range_=None,
-    qrange=(0.0, 1.0),
+    vrange=None,
+    qrange=None,
     digitized_suffix=".d",
 ):
     """
     Digitize genomic signal tracks into integers between `1` and `n`.
-
-
 
     Parameters
     ----------
@@ -299,27 +309,25 @@ def get_digitized(
     n_bins : int
         number of bins for signal quantization.
 
-    quantiles : bool
-        Whether to digitize by quantiles.
-
-    range_ : tuple
-        Low and high values used for binning genome-wide track values, e.g.
-        if `range`=(-0.05, 0.05), `n-bins` equidistant bins would be generated.
+    vrange : tuple
+        Low and high values used for binning track values.
+        E.g. if `vrange`=(-0.05, 0.05), equal width bins would be generated
+        between the value -0.05 and 0.05.
 
     qrange : tuple
-        The fraction of the genome-wide range of the track values used to
-        generate bins. E.g., if `qrange`=(0.02, 0.98) the lower bin would
+        Low and high values for quantile binning track values.
+        E.g., if `qrange`=(0.02, 0.98) the lower bin would
         start at the 2nd percentile and the upper bin would end at the 98th
-        percentile of the genome-wide signal. Use to exclude extreme track
-        values for making saddles.
+        percentile of the track value range.
+        Low must be 0.0 or more, high must be 1.0 or less.
 
     digitized_suffix : str
-        suffix to append to fourth column name
+        suffix to append to the track value name in the fourth column.
 
     Returns
     -------
     digitized : DataFrame
-        New bedGraph-like dataframe with value column and an additional
+        New track dataframe (bedGraph-like) with
         digitized value column with name suffixed by '.d'
         The digized column is returned as a categorical.
     binedges : 1D array (length n + 1)
@@ -330,29 +338,32 @@ def get_digitized(
     -----
     The digital encoding is as follows:
 
-    - `1..n` <-> values assigned to histogram bins
+    - `1..n` <-> values assigned to bins defined by vrange or qrange
     - `0` <-> left outlier values
     - `n+1` <-> right outlier values
     - `-1` <-> missing data (NaNs)
 
     """
 
-    ###TODO add input check for track, qrange, range_
+    if type(n_bins) is not int:
+        raise ValueError("n_bins must be provided as an int")
+    _is_track(track)
 
     digitized = track.copy()
     track_value_col = track.columns[3]
-
-    track_values = track[track_value_col]
-    track_values.loc[track_values.isnull()] = np.nan
-    track_values = track_values.values
-
     digitized_col = track_value_col + digitized_suffix
 
-    binedges, lo, hi = _make_binedges(
-        track_values, n_bins, quantiles=quantiles, range_=range_, qrange=qrange
-    )
+    track_values = track[track_value_col].copy()
+    track_values = track_values.astype({track_value_col: np.float}).values
 
+    binedges, lo, hi = _make_binedges(
+        track_values, n_bins, vrange=vrange, qrange=qrange
+    )
     digitized[digitized_col] = np.digitize(track_values, binedges, right=False)
+    # re-assign values equal to the max value to bin n
+    digitized.loc[
+        digitized[track_value_col] == np.max(binedges), track_value_col
+    ] = n_bins
 
     mask = track[track_value_col].isnull()
     digitized.loc[mask, digitized_col] = -1
@@ -467,6 +478,15 @@ def get_saddle(
         )
     elif contact_type == "trans":
         supports = list(combinations(view_df[view_name_col], 2))
+        supports = [
+            i
+            for i in supports
+            if (
+                view_df["chrom"].loc[view_df[view_name_col] == i[0]].values
+                != view_df["chrom"].loc[view_df[view_name_col] == i[1]].values
+            )
+        ]
+
         getmatrix = _make_trans_obsexp_fetcher(
             clr,
             expected,
@@ -509,8 +529,7 @@ def saddleplot(
     track,
     saddledata,
     n_bins,
-    quantiles=False,
-    range_=None,
+    vrange=None,
     qrange=(0.0, 1.0),
     cmap="coolwarm",
     scale="log",
@@ -566,6 +585,13 @@ def saddleplot(
     Dictionary of axes objects.
 
     """
+
+    warnings.warn(
+        "Generating a saddleplot will be deprecated in future versions, "
+        + "please see https://github.com/open2c_examples for examples on how to plot saddles.",
+        DeprecationWarning,
+    )
+
     from matplotlib.gridspec import GridSpec, GridSpecFromSubplotSpec
     from matplotlib.colors import Normalize, LogNorm
     from matplotlib import ticker
@@ -585,16 +611,13 @@ def saddleplot(
     track_values = track[track_value_col].values
 
     digitized_track, binedges = get_digitized(
-        track, n_bins, quantiles=quantiles, range_=range_, qrange=qrange
+        track, n_bins, vrange=vrange, qrange=qrange
     )
     x = digitized_track[digitized_track.columns[3]].values.astype(int).copy()
-    x = x[(x > 0) & (x < len(binedges) + 1)]
+    x = x[(x > -1) & (x < len(binedges) + 1)]
     hist = np.bincount(x, minlength=len(binedges) + 1)
-
-    if quantiles:
-        binedges, lo, hi = _make_binedges(
-            track_values, n_bins, quantiles=quantiles, range_=range_, qrange=qrange
-        )
+    if qrange is not None:
+        lo, hi = qrange
         binedges = np.linspace(lo, hi, n_bins + 1)
 
     # Histogram and saddledata are flanked by outlier bins

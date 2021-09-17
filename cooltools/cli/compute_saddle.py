@@ -65,31 +65,26 @@ from . import cli
     show_default=True,
 )
 @click.option(
-    "--quantiles",
-    help="Bin the signal track into quantiles rather than by value.",
-    is_flag=True,
-    default=False,
-)
-@click.option(
-    "--range",
-    "range_",
+    "--vrange",
+    "vrange",
     help="Low and high values used for binning genome-wide track values, e.g. "
     "if `range`=(-0.05, 0.05), `n-bins` equidistant bins would be generated. "
-    "Use to prevent the extreme track values from exploding the bin range and "
+    "Use to prevent extreme track values from exploding the bin range and "
     "to ensure consistent bins across several runs of `compute_saddle` command "
     "using different track files.",
+    type=(float, float),
+    default=(None, None),
     nargs=2,
-    type=float,
 )
 @click.option(
     "--qrange",
-    help="The fraction of the genome-wide range of the track values used to "
-    "generate bins. E.g., if `qrange`=(0.02, 0.98) the lower bin would "
+    help="Low and high values used for quantile bins of genome-wide track values,"
+    "e.g. if `qrange`=(0.02, 0.98) the lower bin would "
     "start at the 2nd percentile and the upper bin would end at the 98th "
     "percentile of the genome-wide signal. "
     "Use to prevent the extreme track values from exploding the bin range.",
     type=(float, float),
-    default=(0.0, 1.0),
+    default=(None, None),
     show_default=True,
 )
 @click.option(
@@ -166,8 +161,7 @@ def compute_saddle(
     min_dist,
     max_dist,
     n_bins,
-    quantiles,
-    range_,
+    vrange,
     qrange,
     clr_weight_name,
     strength,
@@ -209,16 +203,15 @@ def compute_saddle(
 
     """
     #### Read inputs: ####
-
     print(cool_path)
     clr = cooler.Cooler(cool_path)
-    expected_path, expected_name = expected_path
+    expected_path, expected_value_col = expected_path
     track_path, track_name = track_path
 
     #### Read expected: ####
     if contact_type == "cis":
         # that's what we expect as column names:
-        expected_columns = ["region", "diag", "n_valid", expected_name]
+        expected_columns = ["region", "diag", "n_valid", expected_value_col]
         # what would become a MultiIndex:
         expected_index = ["region", "diag"]
         # expected dtype as a rudimentary form of validation:
@@ -226,7 +219,7 @@ def compute_saddle(
             "region": np.str,
             "diag": np.int64,
             "n_valid": np.int64,
-            expected_name: np.float64,
+            expected_value_col: np.float64,
         }
         # # unique list of chroms mentioned in expected_path:
         # get_exp_chroms = lambda df: df.index.get_level_values("region").unique()
@@ -236,7 +229,7 @@ def compute_saddle(
         # )
     elif contact_type == "trans":
         # that's what we expect as column names:
-        expected_columns = ["region1", "region2", "n_valid", expected_name]
+        expected_columns = ["region1", "region2", "n_valid", expected_value_col]
         # what would become a MultiIndex:
         expected_index = ["region1", "region2"]
         # expected dtype as a rudimentary form of validation:
@@ -244,7 +237,7 @@ def compute_saddle(
             "region1": np.str,
             "region2": np.str,
             "n_valid": np.int64,
-            expected_name: np.float64,
+            expected_value_col: np.float64,
         }
         # # unique list of chroms mentioned in expected_path:
         # get_exp_chroms = lambda df: np.union1d(
@@ -375,14 +368,15 @@ def compute_saddle(
     #############################################
 
     track = saddle.mask_bad_bins((track, track_name), (clr.bins()[:], clr_weight_name))
-    if len(range_) == 0:
-        range_ = None
+    if vrange[0] is None:
+        vrange = None
+    if qrange[0] is None:
+        qrange = None
 
     digitized, binedges = saddle.get_digitized(
         track[["chrom", "start", "end", track_name]],
         n_bins,
-        quantiles=quantiles,
-        range_=range_,
+        vrange=vrange,
         qrange=qrange,
         digitized_suffix=".d",
     )
@@ -392,8 +386,8 @@ def compute_saddle(
         digitized[["chrom", "start", "end", track_name + ".d"]],
         contact_type,
         view_df=view_df,
-        clr_weight_name="weight",
-        expected_value_col="balanced.avg",
+        clr_weight_name=clr_weight_name,
+        expected_value_col=expected_value_col,
         view_name_col="name",
         min_diag=min_diag,
         max_diag=max_diag,
@@ -401,7 +395,9 @@ def compute_saddle(
     )
     saddledata = S / C
 
-    to_save = dict(saddledata=saddledata, binedges=binedges, digitized=digitized)
+    to_save = dict(
+        saddledata=saddledata, binedges=binedges, digitized=digitized, saddlecounts=C
+    )
 
     if strength:
         ratios = saddle.saddle_strength(S, C)
@@ -432,7 +428,8 @@ def compute_saddle(
         else:
             color = mpl.colors.colorConverter.to_rgb(hist_color)
         title = op.basename(cool_path) + " ({})".format(contact_type)
-        if quantiles:
+
+        if qrange is not None:
             track_label = track_name + " quantiles"
         else:
             track_label = track_name
@@ -443,8 +440,7 @@ def compute_saddle(
             track,
             saddledata,
             n_bins,
-            quantiles=quantiles,
-            range_=range_,
+            vrange=vrange,
             qrange=qrange,
             scale=scale,
             vmin=vmin,

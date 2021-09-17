@@ -11,6 +11,14 @@ import cooltools.saddle as saddle
 import pytest
 
 
+### TODO tests for non-covered click arguments:
+# clr-weight-name
+# expected_path with '::' syntax to specify expected_value_col column name.
+# max-dist
+# min-dist
+#
+
+
 def test_compartment_cli(request, tmpdir):
     in_cool = op.join(request.fspath.dirname, "data/sin_eigs_mat.cool")
     out_eig_prefix = op.join(tmpdir, "test.eigs")
@@ -56,7 +64,7 @@ def test_saddle_cli(request, tmpdir):
             "compute-saddle",
             "-o",
             out_saddle_prefix,
-            "--range",
+            "--vrange",
             "-0.5",
             "0.5",
             "--n-bins",
@@ -144,7 +152,7 @@ def test_trans_saddle_cli(request, tmpdir):
             out_saddle_prefix,
             "--contact-type",
             "trans",
-            "--range",
+            "--vrange",
             "-0.5",
             "0.5",
             "--n-bins",
@@ -179,7 +187,7 @@ def test_get_digitized():
         [["chr1", 0, 10, np.nan]],
         columns=["chrom", "start", "end", "value"],
     )
-    digitized = saddle.get_digitized(df, 10, range_=(-1, 1), digitized_suffix=".test")[
+    digitized = saddle.get_digitized(df, 10, vrange=(-1, 1), digitized_suffix=".test")[
         0
     ]
     assert -1 == digitized["value.test"].values
@@ -187,14 +195,14 @@ def test_get_digitized():
     df = pd.DataFrame(
         [["chr1", 0, 10, pd.NA]],
         columns=["chrom", "start", "end", "value"],
-    )
-    digitized = saddle.get_digitized(df, 10, range_=(-1, 1), digitized_suffix=".test")[
+    ).astype({"value": pd.Float64Dtype()})
+    digitized = saddle.get_digitized(df, 10, vrange=(-1, 1), digitized_suffix=".test")[
         0
     ]
     assert -1 == digitized["value.test"].values
 
     n_bins = 10
-    digitized = saddle.get_digitized(df, n_bins, range_=(-1, 1))[0]
+    digitized = saddle.get_digitized(df, n_bins, vrange=(-1, 1))[0]
     # the dtype of the returned column should be a categorical
     assert type(digitized["value.d"].dtype) is pd.core.dtypes.dtypes.CategoricalDtype
 
@@ -210,35 +218,69 @@ def test_get_digitized():
     )
 
     # values out of the range should be in the 0 and n+1 bins
-    digitized = saddle.get_digitized(df, n_bins, range_=(-0.1, 0.1))[0]
+    digitized = saddle.get_digitized(df, n_bins, vrange=(-0.1, 0.1))[0]
     assert 0 == digitized["value.d"].values[0]
     assert (n_bins + 1) == digitized["value.d"].values[1]
 
     # for an input dataframe of ten elements between -1 and 1,
     # and 5 bins, each bin should have 2 digitized values
     # this test will need an update after input checking
-    x = saddle.get_digitized(
-        pd.DataFrame(
-            (np.linspace(-1, 1, 10) * np.ones((4,))[:, None]).T,
-            columns=["chrom", "start", "end", "value"],
-        ),
-        5,
-        range_=(-1, 1.001),
-    )[0]["value.d"]
+    df_linspace = pd.DataFrame(
+        (np.linspace(-1, 1, 10) * np.ones((4,))[:, None]).T,
+        columns=["chrom", "start", "end", "value"],
+    )
+    df_linspace["start"] += 1
+    df_linspace["start"] *= 10
+    df_linspace["end"] += 2
+    df_linspace["end"] *= 10
+    df_linspace["chrom"] = "chrX"
+    df_linspace = df_linspace.astype({"chrom": "str", "start": int, "end": int})
+
+    x = saddle.get_digitized(df_linspace, 5, vrange=(-1, 1.001),)[
+        0
+    ]["value.d"]
     assert (2 == np.histogram(x, np.arange(1, 7))[0]).all()
 
     # if the bottom and top quantiles are 25 and 75 with 3 bins, then
     # the low outlier and high outlier bins should each have 3 values
-    x = saddle.get_digitized(
-        pd.DataFrame(
-            (np.linspace(-1, 1, 10) * np.ones((4,))[:, None]).T,
-            columns=["chrom", "start", "end", "value"],
-        ),
-        1,
-        qrange=(0.25, 0.75),
-    )[0]["value.d"]
+    x = saddle.get_digitized(df_linspace, 1, qrange=(0.25, 0.75),)[
+        0
+    ]["value.d"]
     assert 3 == np.sum(x == 0)
     assert 3 == np.sum(x == 2)
+
+    # bins[-1] max value should remain in bin N,
+    # not get pushed to outlier bin.
+
+    # raises error if not provided with a track
+    # (i.e. bedframe with a numeric fourth column)
+    df_not_track = pd.DataFrame(
+        [["chr1", 20, 40, "non-numeric"]],
+        columns=["chrom", "start", "end", "value"],
+    )
+    with pytest.raises(ValueError):
+        saddle.get_digitized(df_not_track, n_bins, vrange=(0, 2))
+
+    df_not_track = pd.DataFrame(
+        [[0, 20, 40, 0]],
+        columns=["chrom", "start", "end", "value"],
+    )
+    with pytest.raises(ValueError):
+        saddle.get_digitized(df_not_track, n_bins, vrange=(0, 2))
+
+    # raises error if both or none of vrange, qrange provided
+    with pytest.raises(ValueError):
+        saddle.get_digitized(df, n_bins, vrange=(0, 2), qrange=(0.1, 0.9))
+    with pytest.raises(ValueError):
+        saddle.get_digitized(df, n_bins, vrange=None, qrange=None)
+
+    # raises error if vrange lo>hi, qrange lo >hi, or qrange out of (0,1)
+    with pytest.raises(ValueError):
+        saddle.get_digitized(df, n_bins, vrange=(2, 1))
+    with pytest.raises(ValueError):
+        saddle.get_digitized(df, n_bins, qrange=(0, 2.1))
+    with pytest.raises(ValueError):
+        saddle.get_digitized(df, n_bins, qrange=(0.5, 0.25))
 
 
 def test_get_saddle(request):
