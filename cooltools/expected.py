@@ -3,6 +3,8 @@ from collections import defaultdict
 from functools import partial
 
 import warnings
+import multiprocess as mp
+
 
 import numpy as np
 import pandas as pd
@@ -362,13 +364,13 @@ def make_diag_tables(clr, regions, regions2=None, weight_name="weight", bad_bins
                 bioframe.make_viewframe([region], check_bounds=clr.chromsizes)
                 for i, region in regions.iterrows()
             ]
-        ).reset_index(drop=True)
+        ).values
         regions2 = pd.concat(
             [
                 bioframe.make_viewframe([region], check_bounds=clr.chromsizes)
                 for i, region in regions2.iterrows()
             ]
-        ).reset_index(drop=True)
+        ).values
 
     bins = clr.bins()[:]
     if weight_name is None:
@@ -406,8 +408,8 @@ def make_diag_tables(clr, regions, regions2=None, weight_name="weight", bad_bins
             bad_bin_dict[chrom][bin_ids.values - co] = True
 
     diag_tables = {}
-    for i in range(len(regions)):
-        chrom, start1, end1, name1 = regions[i]
+    for i, region in enumerate(regions):
+        chrom, start1, end1, name1 = region
         if regions2 is not None:
             chrom2, start2, end2, name2 = regions2[i]
             # cis-only for now:
@@ -691,6 +693,186 @@ def diagsum(
     for i, dtable in dtables.items():
         dtable = dtable.reset_index()
         dtable.insert(0, "region", i)
+        result.append(dtable)
+    return pd.concat(result).reset_index(drop=True)
+
+
+def _diagsum_pairwise(clr, fields, transforms, regions, span):
+    """
+    calculates diagonal/distance summary for a collection of
+    square symmetric blocks defined by all pairwise combinations
+    of "regions" for intra-chromosomal interactions.
+
+    Return:
+    dictionary of DataFrames with diagonal/distance
+    sums for the "fields", and (i,j)-like indexes of rectangular
+    genomic regions as keys.
+    """
+    lo, hi = span
+    bins = clr.bins()[:]
+    pixels = clr.pixels()[lo:hi]
+    pixels = cooler.annotate(pixels, bins, replace=False)
+    # pre-filter cis-only pixels to speed up calculations
+    pixels = pixels[ pixels["chrom1"] == pixels["chrom2"] ].copy()
+
+    # annotate pixels with regions at once
+    # book-ended regions still get reannotated
+    pixels["r1"] = assign_supports(pixels, regions, suffix="1")
+    pixels["r2"] = assign_supports(pixels, regions, suffix="2")
+    # select asymmetric pixels and region annotations only
+    pixels = pixels.dropna(subset=["r1","r2"])
+    pixels = pixels[ pixels["r1"] != pixels["r2"] ]
+
+    # this could further expanded to allow for custom groupings:
+    pixels["dist"] = pixels["bin2_id"] - pixels["bin1_id"]
+    for field, t in transforms.items():
+        pixels[field] = t(pixels)
+
+    asymm_blocks = pixels.groupby(["r1","r2"])
+    return {(int(i), int(j)): block.groupby("dist")[fields].sum() for (i, j), block in asymm_blocks}
+
+
+def diagsum_pairwise(
+    clr,
+    view_df,
+    transforms={},
+    weight_name="weight",
+    bad_bins=None,
+    chunksize=10_000_000,
+    map=map,
+):
+    """
+
+    Intra-chromosomal diagonal summary statistics for asymmetric blocks of
+    contact matrix defined as pairwise combinations of regions in "view_df.
+
+    Note
+    ----
+    This is a special case of asymmetric diagonal summary statistic that is
+    efficient and covers the most important practical case of inter-chromosomal
+    arms "expected" calculation.
+
+    Parameters
+    ----------
+    clr : cooler.Cooler
+        Cooler object
+    view_df : viewframe (or depreated: sequence of genomic range tuples)
+        Support view_df for intra-chromosomal diagonal summation, has to
+        be sorted according to the order of chromosomes in cooler.
+    transforms : dict of str -> callable, optional
+        Transformations to apply to pixels. The result will be assigned to
+        a temporary column with the name given by the key. Callables take
+        one argument: the current chunk of the (annotated) pixel dataframe.
+    weight_name : str
+        name of the balancing weight vector used to count
+        "bad"(masked) pixels per diagonal.
+        Use `None` to avoid masking "bad" pixels.
+    bad_bins : array-like
+        a list of bins to ignore per support region.
+        Combines with the list of bad bins from balacning
+        weight.
+    chunksize : int, optional
+        Size of pixel table chunks to process
+    map : callable, optional
+        Map functor implementation.
+
+    Returns
+    -------
+    Dataframe of diagonal statistics for all intra-chromosomal blocks defined as
+    pairwise combinations of regions in the view
+
+    """
+    spans = partition(0, len(clr.pixels()), chunksize)
+    fields = ["count"] + list(transforms.keys())
+
+    # appropriate viewframe checks
+    try:
+        if not bioframe.is_viewframe(view_df, raise_errors=True):
+            raise ValueError("view_df is not a valid viewframe.")
+        if not bioframe.is_contained(view_df, bioframe.make_viewframe(clr.chromsizes)):
+            raise ValueError(
+                "View table is out of the bounds of chromosomes in cooler."
+            )
+    except Exception as e:  # AssertionError or ValueError, see https://github.com/gfudenberg/bioframe/blob/main/bioframe/core/checks.py#L177
+        warnings.warn(
+            "view_df has to be a proper viewframe from next release",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        view_df = bioframe.make_viewframe(view_df)
+
+    # view_df must be sorted, so that blocks resulting from pairwise combinations
+    # are all in the upper part of the contact matrix, otherwise conflicts with pixels
+    if not bioframe.is_sorted(view_df, clr.chromsizes, df_view_col = None):
+        raise ValueError("""regions in the view_df must be sorted by coordinate
+            and chromosomes, order of chromosomes as in cooler""")
+
+    # create pairwise combinations of regions from view_df
+    all_combinations = combinations(view_df.itertuples(index=False),2)
+    # keep only intra-chromosomal combinations
+    cis_combinations = ((r1, r2) for r1, r2 in all_combinations if (r1[0] == r2[0]))
+    # unzip regions1 regions2 defining the blocks for summary collection
+    regions1, regions2 = zip(*cis_combinations)
+    regions1 = pd.DataFrame( regions1 )
+    regions2 = pd.DataFrame( regions2 )
+    # create a table with the counts of valid pixels on each diagonal in each region:
+    dtables = make_diag_tables(
+        clr, regions1, regions2, weight_name=weight_name, bad_bins=bad_bins
+    )
+
+    # combine masking with existing transforms and add a "count" transform:
+    if bad_bins is not None:
+        # turn bad_bins into a mask of size clr.bins:
+        mask_size = len(clr.bins())
+        bad_bins_mask = np.ones(mask_size, dtype=int)
+        bad_bins_mask[bad_bins] = 0
+        #
+        masked_transforms = {}
+        bin1 = "bin1_id"
+        bin2 = "bin2_id"
+        for field in fields:
+            if field in transforms:
+                # combine masking and transform, minding the scope:
+                t = transforms[field]
+                masked_transforms[field] = (
+                    lambda p, t=t, m=bad_bins_mask: t(p) * m[p[bin1]] * m[p[bin2]]
+                )
+            else:
+                # presumably field == "count", mind the scope as well:
+                masked_transforms[field] = (
+                    lambda p, f=field, m=bad_bins_mask: p[f] * m[p[bin1]] * m[p[bin2]]
+                )
+        # substitute transforms to the masked_transforms:
+        transforms = masked_transforms
+
+    for dt in dtables.values():
+        for field in fields:
+            agg_name = "{}.sum".format(field)
+            dt[agg_name] = 0
+
+    job = partial(
+        _diagsum_pairwise, clr, fields, transforms, view_df.values
+    )
+    results = map(job, spans)
+    for result in results:
+        for (i, j), agg in result.items():
+            ni = view_df.loc[i, "name"]
+            nj = view_df.loc[j, "name"]
+            for field in fields:
+                agg_name = "{}.sum".format(field)
+                dtables[ni, nj][agg_name] = dtables[ni, nj][agg_name].add(
+                    agg[field], fill_value=0
+                )
+
+    # assymetric blocks would rarely reach near-diagonal region,
+    # so skip ignore_diags part
+
+    # returning a dataframe for API consistency:
+    result = []
+    for (i, j), dtable in dtables.items():
+        dtable = dtable.reset_index()
+        dtable.insert(0, "region1", i)
+        dtable.insert(1, "region2", j)
         result.append(dtable)
     return pd.concat(result).reset_index(drop=True)
 
@@ -1195,6 +1377,287 @@ def blocksum_asymm(
     )
 
 
+# user-friendly wrapper for diagsum_symm and diagsum_pairwise - part of new "public" API
+def get_cis_expected(
+    clr,
+    view_df=None,
+    symmetric=True,
+    balance=True,
+    ignore_diags=2, # should default to cooler info
+    chunksize=10_000_000,
+    nproc=1,
+):
+    """
+    Calculate average interaction frequencies as a function of genomic
+    separation between pixels i.e. interaction decay with distance.
+    Genomic separation aka "dist" is measured in the number of bins,
+    and defined as an index of a diagonal on which pixels reside (bin1_id - bin2_id).
+
+    Average values are reported in the columns with names {}.avg, and they
+    are calculated as a ratio between a corresponding sum {}.sum and the
+    total number of "valid" pixels on the diagonal "n_valid".
+
+
+    Parameters
+    ----------
+    clr : cooler.Cooler
+        Cooler object
+    view_df : viewframe
+        a collection of genomic intervals where expected is calculated
+        otherwise expected is calculated for full chromosomes.
+    symmetric: bool
+        When True, view_df defines symmetric on-diagonal regions,
+        otherwise expected is calculated for every intra-chromosomal
+        combination of regions in view_df
+    balance : bool or str
+        When True, balanced data is used for caculation of expected.
+        Custom name of the cooler balancing weight column can be
+        specified here.
+    ignore_diags : int, optional
+        Number of intial diagonals to exclude results
+    chunksize : int, optional
+        Size of pixel table chunks to process
+    nproc : int, optional
+        How many processes to use for calculation
+
+    Returns
+    -------
+    DataFrame with summary statistic of every diagonal of every symmetric
+    or asymmetric block:
+    region1, region2, diag, n_valid, count.sum count.avg, etc
+
+    """
+
+    if view_df is None:
+        if not symmetric:
+            raise ValueError("asymmetric regions has to be smaller then full chromosomes, use view_df")
+        # Generate viewframe from clr.chromsizes:
+        view_df = bioframe.make_viewframe(
+            [(chrom, 0, clr.chromsizes[chrom]) for chrom in clr.chromnames]
+        )
+    else:
+        # Make sure view_df is a proper viewframe
+        try:
+            if not bioframe.is_viewframe(view_df, raise_errors=True):
+                raise ValueError("view_df is not a valid viewframe.")
+            if not bioframe.is_contained(view_df, bioframe.make_viewframe(clr.chromsizes)):
+                raise ValueError(
+                    "View table is out of the bounds of chromosomes in cooler."
+                )
+            # add is_sorted check in the asymmetric case ...
+        except Exception as e:  # AssertionError or ValueError, see https://github.com/gfudenberg/bioframe/blob/main/bioframe/core/checks.py#L177
+            warnings.warn(
+                "view_df has to be a proper viewframe from next release",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            view_df = bioframe.make_viewframe(view_df)
+
+    # define transforms - balanced and raw ('count') for now
+    if not balance:
+        # no transforms
+        clr_weight_name = None
+        transforms = {}
+    else:
+        if isinstance(balance, bool):
+            #weight default
+            clr_weight_name = "weight"
+        elif isinstance(balance, str):
+            #weight default
+            clr_weight_name = balance
+        else:
+            raise TypeError("balance has to be bool or str that specifies name of balancing weight in clr")
+        # define balanced data transform:
+        weight1 = clr_weight_name + "1"
+        weight2 = clr_weight_name + "2"
+        transforms = {"balanced": lambda p: p["count"] * p[weight1] * p[weight2]}
+
+    # check if clr_weight_name is in cooler
+    if clr_weight_name not in clr.bins().columns:
+        raise ValueError(f"specified balancing weight {clr_weight_name} is not available in cooler")
+
+    # execution details
+    if nproc > 1:
+        pool = mp.Pool(nproc)
+        map_ = pool.map
+    else:
+        map_ = map
+
+    # using try-clause to close mp.Pool properly
+    try:
+        if symmetric:
+            result = diagsum(
+                clr,
+                view_df,
+                transforms=transforms,
+                weight_name=clr_weight_name,
+                bad_bins=None,
+                chunksize=chunksize,
+                ignore_diags=ignore_diags,
+                map=map_,
+            )
+            # conform with the new expected format
+            # where each region is 2D, even if symmetric:
+            result.insert(1, "region2", result["region"].values)
+            result.rename(columns = {"region": "region1"}, inplace=True)
+        else:
+            result = diagsum_pairwise(
+                clr,
+                view_df,
+                transforms=transforms,
+                weight_name=clr_weight_name,
+                bad_bins=None,
+                chunksize=chunksize,
+                map=map_,
+            )
+    finally:
+        if nproc > 1:
+            pool.close()
+
+    # calculate actual averages by dividing sum by n_valid:
+    result["count.avg"] = result["count.sum"] / result["n_valid"]
+    for key in transforms.keys():
+        result[key + ".avg"] = result[key + ".sum"] / result["n_valid"]
+
+    return result
+
+
+# user-friendly wrapper for diagsum_symm and diagsum_pairwise - part of new "public" API
+def get_trans_expected(
+    clr,
+    view_df=None,
+    balance=True,
+    chunksize=10_000_000,
+    nproc=1,
+):
+    """
+    Calculate average interaction frequencies for inter-chromosomal
+    blocks defined as pairwise combinations of regions in view_df.
+
+    An expected level of interactions between disjoint chromosomes
+    is calculated as a simple average, as there is no notion of genomic
+    separation for a pair of chromosomes and contact matrix for these
+    regions looks "flat".
+
+    Average values are reported in the columns with names {}.avg, and they
+    are calculated as a ratio between a corresponding sum {}.sum and the
+    total number of "valid" pixels on the diagonal "n_valid".
+
+
+    Parameters
+    ----------
+    clr : cooler.Cooler
+        Cooler object
+    view_df : viewframe
+        a collection of genomic intervals where expected is calculated
+        otherwise expected is calculated for full chromosomes.
+    balance : bool or str
+        When True, balanced data is used for caculation of expected.
+        Custom name of the cooler balancing weight column can be
+        specified here.
+    chunksize : int, optional
+        Size of pixel table chunks to process
+    nproc : int, optional
+        How many processes to use for calculation
+
+    Returns
+    -------
+    DataFrame with summary statistic for every trans-blocks:
+    region1, region2, n_valid, count.sum count.avg, etc
+
+    """
+
+    if view_df is None:
+        if not symmetric:
+            raise ValueError("asymmetric regions has to be smaller then full chromosomes, use view_df")
+        # Generate viewframe from clr.chromsizes:
+        view_df = bioframe.make_viewframe(
+            [(chrom, 0, clr.chromsizes[chrom]) for chrom in clr.chromnames]
+        )
+    else:
+        # Make sure view_df is a proper viewframe
+        try:
+            if not bioframe.is_viewframe(view_df, raise_errors=True):
+                raise ValueError("view_df is not a valid viewframe.")
+            if not bioframe.is_contained(view_df, bioframe.make_viewframe(clr.chromsizes)):
+                raise ValueError(
+                    "View table is out of the bounds of chromosomes in cooler."
+                )
+            # add is_sorted check in the asymmetric case ...
+        except Exception as e:  # AssertionError or ValueError, see https://github.com/gfudenberg/bioframe/blob/main/bioframe/core/checks.py#L177
+            warnings.warn(
+                "view_df has to be a proper viewframe from next release",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            view_df = bioframe.make_viewframe(view_df)
+
+    # view_df must be sorted, so that blocks resulting from pairwise combinations
+    # are all in the upper part of the contact matrix, otherwise conflicts with pixels
+    if not bioframe.is_sorted(view_df, clr.chromsizes, df_view_col = None):
+        raise ValueError("""regions in the view_df must be sorted by coordinate
+            and chromosomes, order of chromosomes as in cooler""")
+
+    # define transforms - balanced and raw ('count') for now
+    if not balance:
+        # no transforms
+        clr_weight_name = None
+        transforms = {}
+    else:
+        if isinstance(balance, bool):
+            #weight default
+            clr_weight_name = "weight"
+        elif isinstance(balance, str):
+            #weight default
+            clr_weight_name = balance
+        else:
+            raise TypeError("balance has to be bool or str that specifies name of balancing weight in clr")
+        # define balanced data transform:
+        weight1 = clr_weight_name + "1"
+        weight2 = clr_weight_name + "2"
+        transforms = {"balanced": lambda p: p["count"] * p[weight1] * p[weight2]}
+
+    # check if clr_weight_name is in cooler
+    if clr_weight_name not in clr.bins().columns:
+        raise ValueError(f"specified balancing weight {clr_weight_name} is not available in cooler")
+
+    # execution details
+    if nproc > 1:
+        pool = mp.Pool(nproc)
+        map_ = pool.map
+    else:
+        map_ = map
+
+    # using try-clause to close mp.Pool properly
+    try:
+        result = blocksum_pairwise(
+            clr,
+            view_df,
+            transforms=transforms,
+            weight_name=clr_weight_name,
+            bad_bins=None,
+            chunksize=chunksize,
+            map=map_,
+        )
+    finally:
+        if nproc > 1:
+            pool.close()
+
+    # keep only trans interactions for the user-friendly function:
+    _name_to_region = view_df.set_index("name")
+    _r1_chroms = _name_to_region.loc[result["region1"]]["chrom"].values
+    _r2_chroms = _name_to_region.loc[result["region2"]]["chrom"].values
+    # trans-data only:
+    result = result.loc[_r1_chroms != _r2_chroms].reset_index(drop=True)
+
+    # calculate actual averages by dividing sum by n_valid:
+    result["count.avg"] = result["count.sum"] / result["n_valid"]
+    for key in transforms.keys():
+        result[key + ".avg"] = result[key + ".sum"] / result["n_valid"]
+
+    return result
+
+
 def diagsum_from_array(
     A, counts=None, *, offset=0, ignore_diags=2, filter_counts=False, region_name=None
 ):
@@ -1493,7 +1956,7 @@ def logbin_expected(
 
     # this averages diag_avg with the weight equal to n_valid, and sums everything else
     byReg[diag_avg_name] *= byReg["n_valid"]
-    byRegExp = byReg.groupby(["region", "diag_bin_id"]).sum()
+    byRegExp = byReg.groupby(["region1", "region2", "diag_bin_id"]).sum()
     byRegExp[diag_avg_name] /= byRegExp["n_valid"]
 
     byRegExp = byRegExp.reset_index()
@@ -1511,8 +1974,9 @@ def logbin_expected(
     byRegExp["diag_bin_start"] = diag_bins[byRegExp["diag_bin_id"].values]
     byRegExp["diag_bin_end"] = diag_bins[byRegExp["diag_bin_id"].values + 1] - 1
 
+    # now calculate P(s) derivatives aka slopes per region
     byRegDer = []
-    for reg, subdf in byRegExp.groupby("region"):
+    for (reg1, reg2), subdf in byRegExp.groupby(["region1", "region2"]):
         subdf = subdf.sort_values("diag_bin_id")
         valid = np.minimum(subdf["n_valid"].values[:-1], subdf["n_valid"].values[1:])
         mids = np.sqrt(
@@ -1529,7 +1993,8 @@ def logbin_expected(
                 "diag_bin_id": subdf["diag_bin_id"].values[:-1],
             }
         )
-        newdf["region"] = reg
+        newdf["region1"] = reg1
+        newdf["region2"] = reg2
         byRegDer.append(newdf)
     byRegDer = pd.concat(byRegDer).reset_index(drop=True)
     return byRegExp, byRegDer, diag_bins[: byRegExp["diag_bin_id"].max() + 2]
@@ -1635,7 +2100,7 @@ def combine_binned_expected(
         byRegVar = binned_exp.copy()
         byRegVar = byRegVar.loc[
             byRegVar.index.difference(
-                byRegVar.groupby("region")["n_valid"].tail(minmax_drop_bins).index
+                byRegVar.groupby(["region1", "region2"])["n_valid"].tail(minmax_drop_bins).index
             )
         ]
         low_err = byRegVar.groupby("diag_bin_id")[Pc_name].min()
@@ -1687,7 +2152,7 @@ def combine_binned_expected(
             byRegDer = binned_exp_slope.copy()
             byRegDer = byRegDer.loc[
                 byRegDer.index.difference(
-                    byRegDer.groupby("region")["n_valid"].tail(minmax_drop_bins).index
+                    byRegDer.groupby(["region1", "region2"])["n_valid"].tail(minmax_drop_bins).index
                 )
             ]
             low_err = byRegDer.groupby("diag_bin_id")["slope"].min()
@@ -1757,18 +2222,18 @@ def interpolate_expected(
     """
 
     exp_int = expected.copy()
-    gr_exp = exp_int.groupby("region")  # groupby original expected by region
+    gr_exp = exp_int.groupby(["region1", "region2"])  # groupby original expected by region
 
-    if by_region is not False and "region" not in binned_expected:
-        warnings.warn("Region column not found, assuming combined expected")
+    if by_region is not False and (("region1" not in binned_expected) or ("region2" not in binned_expected)):
+        warnings.warn("Region columns not found, assuming combined expected")
         by_region = False
 
     if by_region is True:
         # groupby expected
-        gr_binned = binned_expected.groupby("region")
+        gr_binned = binned_expected.groupby(["region1", "region2"])
     elif by_region is not False:
         # extract a region that we want to use
-        binned_expected = binned_expected[binned_expected["region"] == by_region]
+        binned_expected = binned_expected[binned_expected["region1"] == by_region]
 
     if by_region is not True:
         # check that we have no duplicates in expected
@@ -1778,11 +2243,11 @@ def interpolate_expected(
 
     interp_dfs = []
 
-    for reg, df_orig in gr_exp:
+    for (reg1, reg2), df_orig in gr_exp:
         if by_region is True:  # use binned expected for this region
-            if reg not in gr_binned.groups:
+            if (reg1, reg2) not in gr_binned.groups:
                 continue
-            subdf = gr_binned.get_group(reg)
+            subdf = gr_binned.get_group((reg1, reg2))
         else:
             subdf = binned_expected
 

@@ -101,13 +101,7 @@ def compute_expected(
     """
 
     clr = cooler.Cooler(cool_path)
-    if view is None:
-        # Generate viewframe from clr.chromsizes:
-        view_df = bioframe.make_viewframe(
-            [(chrom, 0, clr.chromsizes[chrom]) for chrom in clr.chromnames]
-        )
-    else:
-        # Make viewframe out of table:
+    if view is not None:
         # Read view_df dataframe:
         try:
             view_df = bioframe.read_table(view, schema="bed4", index_col=False)
@@ -120,57 +114,27 @@ def compute_expected(
             raise ValueError(
                 "View table is incorrect, please, comply with the format. "
             ) from e
-
-    # define transofrms - balanced and raw ('count') for now
-    if balance:
-        weight1 = clr_weight_name + "1"
-        weight2 = clr_weight_name + "2"
-        transforms = {"balanced": lambda p: p["count"] * p[weight1] * p[weight2]}
     else:
-        # no masking bad bins of any kind, when balancing is not applied
-        clr_weight_name = None
-        transforms = {}
+        view_df = None # full chromosome case
 
-    # execution details
-    if nproc > 1:
-        pool = mp.Pool(nproc)
-        map_ = pool.map
-    else:
-        map_ = map
-
-    # using try-clause to close mp.Pool properly
-    try:
-        if contact_type == "cis":
-            result = expected.diagsum(
-                clr,
-                view_df,
-                transforms=transforms,
-                weight_name=clr_weight_name,
-                bad_bins=None,
-                chunksize=chunksize,
-                ignore_diags=ignore_diags,
-                map=map_,
-            )
-        elif contact_type == "trans":
-            # trans-expected is calculated on an assymetric pairwise combinations
-            # of regions in view_df (special-case for faster calculations):
-            result = expected.blocksum_pairwise(
-                clr,
-                view_df=view_df,
-                transforms=transforms,
-                weight_name=clr_weight_name,
-                bad_bins=None,
-                chunksize=chunksize,
-                map=map_,
-            )
-    finally:
-        if nproc > 1:
-            pool.close()
-
-    # calculate actual averages by dividing sum by n_valid:
-    result["count.avg"] = result["count.sum"] / result["n_valid"]
-    for key in transforms.keys():
-        result[key + ".avg"] = result[key + ".sum"] / result["n_valid"]
+    if contact_type == "cis":
+        result = expected.get_cis_expected(
+            clr,
+            view_df=view_df,
+            symmetric=True,
+            balance=clr_weight_name if balance else False,
+            ignore_diags=ignore_diags,
+            chunksize=chunksize,
+            nproc=nproc
+        )
+    elif contact_type == "trans":
+        result = expected.get_trans_expected(
+            clr,
+            view_df=view_df,
+            balance=clr_weight_name if balance else False,
+            chunksize=chunksize,
+            nproc=nproc,
+        )
 
     # output to file if specified:
     if output:
