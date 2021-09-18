@@ -161,6 +161,70 @@ def test_diagsum_deprecated_view(request):
         )
 
 
+def test_diagsum_pairwise(request):
+    # perform test:
+    clr = cooler.Cooler(op.join(request.fspath.dirname, "data/CN.mm9.1000kb.cool"))
+    res = cooltools.expected.diagsum_pairwise(
+        clr,
+        view_df=view_df,
+        transforms=transforms,
+        weight_name=weight_name,
+        bad_bins=bad_bins,
+        chunksize=chunksize,
+    )
+    # calculate average:
+    res["balanced.avg"] = res["balanced.sum"] / res["n_valid"]
+    # check results for every block , defined as region1/2
+    # should be simplified as there is 1 number per block only
+    grouped = res.groupby(["region1", "region2"])
+    for (name1, name2), group in grouped:
+        matrix = clr.matrix(balance=weight_name).fetch(name1, name2)
+        testing.assert_allclose(
+            actual=group["balanced.avg"].values,
+            desired=_diagsum_asymm_dense(matrix),
+            # rtol=1e-07,
+            # atol=0,
+            equal_nan=True,
+        )
+
+
+def test_get_cis_expected(request):
+    # perform test:
+    clr = cooler.Cooler(op.join(request.fspath.dirname, "data/CN.mm9.1000kb.cool"))
+    # symm result
+    res_symm = cooltools.expected.get_cis_expected(
+        clr,
+        view_df=view_df,
+        balance=weight_name,
+        chunksize=chunksize,
+        ignore_diags=ignore_diags
+    )
+    # asymm result
+    res_asymm = cooltools.expected.get_cis_expected(
+        clr,
+        view_df=view_df,
+        symmetric=False,
+        balance=weight_name,
+        chunksize=chunksize,
+        ignore_diags=ignore_diags
+    )
+    # combine all results to check new expected format conformancy
+    res = pd.concat([res_symm, res_asymm]).reset_index(drop=True)
+    # check results for every block
+    grouped = res.groupby(["region1", "region2"])
+    for (name1, name2), group in grouped:
+        matrix = clr.matrix(balance=weight_name).fetch(name1, name2)
+        # get reference expected for symmetric and asymmetric cases:
+        reference_expected = _diagsum_asymm_dense(matrix) if (name1 != name2) else _diagsum_dense(matrix, ignore_diags=ignore_diags)
+        testing.assert_allclose(
+            actual=group["balanced.avg"].values,
+            desired=reference_expected,
+            # rtol=1e-07,
+            # atol=0,
+            equal_nan=True,
+        )
+
+
 def test_diagsum_asymm(request):
     # perform test:
     clr = cooler.Cooler(op.join(request.fspath.dirname, "data/CN.mm9.1000kb.cool"))
@@ -205,6 +269,29 @@ def test_blocksum_pairwise(request):
     )
     # calculate average:
     res["balanced.avg"] = res["balanced.sum"] / res["n_valid"]
+    # check results for every block , defined as region1/2
+    # should be simplified as there is 1 number per block only
+    grouped = res.groupby(["region1", "region2"])
+    for (name1, name2), group in grouped:
+        matrix = clr.matrix(balance=weight_name).fetch(name1, name2)
+        testing.assert_allclose(
+            actual=group["balanced.avg"].values,
+            desired=_blocksum_asymm_dense(matrix),
+            # rtol=1e-07,
+            # atol=0,
+            equal_nan=True,
+        )
+
+
+def test_get_trans_expected(request):
+    # perform test:
+    clr = cooler.Cooler(op.join(request.fspath.dirname, "data/CN.mm9.1000kb.cool"))
+    res = cooltools.expected.get_trans_expected(
+        clr,
+        view_df=view_df,
+        balance=weight_name,
+        chunksize=chunksize,
+    )
     # check results for every block , defined as region1/2
     # should be simplified as there is 1 number per block only
     grouped = res.groupby(["region1", "region2"])
@@ -269,10 +356,11 @@ def test_expected_cli(request, tmpdir):
     assert result.exit_code == 0
     clr = cooler.Cooler(in_cool)
     cis_expected = pd.read_table(out_cis_expected, sep="\t")
-    grouped = cis_expected.groupby("region")
+    grouped = cis_expected.groupby(["region1", "region2"])
     # full chromosomes in this example:
-    for chrom, group in grouped:
-        matrix = clr.matrix(balance=weight_name).fetch(chrom)
+    for (chrom1, chrom2), group in grouped:
+        assert chrom1 == chrom2
+        matrix = clr.matrix(balance=weight_name).fetch(chrom1)
         testing.assert_allclose(
             actual=group["balanced.avg"].values,
             desired=_diagsum_dense(matrix, ignore_diags=2),
@@ -305,12 +393,13 @@ def test_expected_view_cli(request, tmpdir):
     assert result.exit_code == 0
     clr = cooler.Cooler(in_cool)
     cis_expected = pd.read_csv(out_cis_expected, sep="\t")
-    grouped = cis_expected.groupby("region")
+    grouped = cis_expected.groupby(["region1", "region2"])
     # deal with named and overlapping regions here:
     view_df = pd.read_csv(in_view, sep="\t", header=None)
     view_df = view_df.set_index(3)
-    for region_name, group in grouped:
-        ucsc_region = view_df.loc[region_name].to_list()
+    for (region1, region2), group in grouped:
+        assert region1 == region2
+        ucsc_region = view_df.loc[region1].to_list()
         matrix = clr.matrix(balance=weight_name).fetch(ucsc_region)
         testing.assert_allclose(
             actual=group["balanced.avg"].values,
@@ -360,14 +449,16 @@ def test_trans_expected_view_cli(request, tmpdir):
         region2_name = regions2.iloc[i, 3]
         ucsc_region1 = regions1.iloc[i, :3].to_list()
         ucsc_region2 = regions2.iloc[i, :3].to_list()
-        matrix = clr.matrix(balance=weight_name).fetch(ucsc_region1, ucsc_region2)
-        testing.assert_allclose(
-            actual=trans_expected.loc[(region1_name, region2_name), "balanced.avg"],
-            desired=_blocksum_asymm_dense(matrix),
-            # rtol=1e-07,
-            # atol=0,
-            equal_nan=True,
-        )
+        # check only trans regions !
+        if ucsc_region1[0] != ucsc_region2[0]:
+            matrix = clr.matrix(balance=weight_name).fetch(ucsc_region1, ucsc_region2)
+            testing.assert_allclose(
+                actual=trans_expected.loc[(region1_name, region2_name), "balanced.avg"],
+                desired=_blocksum_asymm_dense(matrix),
+                # rtol=1e-07,
+                # atol=0,
+                equal_nan=True,
+            )
 
 
 def test_logbin_expected_cli(request, tmpdir):
@@ -418,7 +509,8 @@ def test_logbin_interpolate_roundtrip():
     balanced_sum = n_valid * prob
     df = pd.DataFrame(
         {
-            "region": region,
+            "region1": region,
+            "region2": region,  # symmetric
             "diag": diag,
             "n_valid": n_valid,
             "count.sum": count_sum,
