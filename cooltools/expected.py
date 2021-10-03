@@ -981,9 +981,10 @@ def diagsum_from_array(
             raise ValueError("`counts` must have the same shape as `A`.")
 
     # Compute validity mask for bins on each axis
+    invalid_mask1 = np.sum(np.isnan(A), axis=1) == A.shape[0]
+    invalid_mask2 = np.sum(np.isnan(A), axis=0) == A.shape[1]
+
     A[~np.isfinite(A)] = 0
-    invalid_mask1 = np.sum(A, axis=1) == 0
-    invalid_mask2 = np.sum(A, axis=0) == 0
 
     # Prepare an indicator matrix of "diagonals" (toeplitz) where the lower
     # triangle diagonals wrt the parent matrix are negative.
@@ -1008,7 +1009,7 @@ def diagsum_from_array(
 
     # Group by diagonal and aggregate the number of valid pixels and pixel values.
     diagonals = np.arange(diag_lo, diag_hi, dtype=int)
-    n_valid = np.bincount(D_flat, minlength=diag_hi - diag_hi)[diag_lo:]
+    n_valid = np.bincount(D_flat, minlength=diag_hi - diag_lo)[diag_lo:]
     balanced_sum = np.bincount(D_flat, weights=A_flat, minlength=diag_hi - diag_lo)[
         diag_lo:
     ]
