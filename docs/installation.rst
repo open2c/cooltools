@@ -4,7 +4,7 @@ Installation
 Requirements
 ------------
 
-- Python 3.x
+- Python 3.7+
 - Scientific Python packages
 
 Install using pip
