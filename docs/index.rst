@@ -24,6 +24,7 @@ The tools for your *.cool*\ s
 
    ./notebooks/viz.ipynb
    ./notebooks/contacts_vs_distance.ipynb
+   ./notebooks/compartments_and_saddles.ipynb
    ./notebooks/insulation_and_boundaries.ipynb
    ./notebooks/pileup_CTCF.ipynb
 
