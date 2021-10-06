@@ -35,7 +35,7 @@ github. First, make a local clone of the github repository:
     $ git clone https://github.com/open2c/cooltools 
 
 Then, you can compile and install `cooltools` in 
-`the development mode <https://setuptools.readthedocs.io/en/latest/setuptools.html#development-mode>`_, 
+`development mode <https://setuptools.readthedocs.io/en/latest/setuptools.html#development-mode>`_, 
 which installs the package without moving it to a system folder and thus allows
 immediate live-testing any changes in the python code.
 
