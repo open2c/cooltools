@@ -63,6 +63,39 @@ def _log_thin(xs, min_log10_step=0.1):
 
 
 @numba.njit
+def _log_smooth_numba(
+    xs,
+    ys,
+    sigma_log10=0.1,
+    window_sigma=5,
+    steps_per_sigma=10,
+):
+
+    xs_thinned = xs
+    if steps_per_sigma:
+        xs_thinned = _log_thin(xs, sigma_log10 / steps_per_sigma)
+
+    N = xs_thinned.size
+    N_FUNCS = ys.shape[0]
+
+    log_xs = np.log10(xs)
+    log_thinned_xs = np.log10(xs_thinned)
+
+    ys_smooth = np.zeros((N_FUNCS, N))
+
+    for i in range(N):
+        cur_log_x = log_thinned_xs[i]
+        lo = np.searchsorted(log_xs, cur_log_x - sigma_log10 * window_sigma)
+        hi = np.searchsorted(log_xs, cur_log_x + sigma_log10 * window_sigma)
+        smooth_weights = np.exp(
+            -((cur_log_x - log_xs[lo:hi]) ** 2) / 2 / sigma_log10 / sigma_log10
+        )
+        for k in range(N_FUNCS):
+            ys_smooth[k, i] = np.sum(ys[k, lo:hi] * smooth_weights)
+
+    return xs_thinned, ys_smooth
+
+
 def log_smooth(
     xs,
     ys,
@@ -95,6 +128,9 @@ def log_smooth(
         The Gaussian smoothed function arguments.
 
     """
+    xs = np.asarray(xs)
+    ys = np.asarray(ys)
+
     if xs.ndim != 1:
         raise ValueError("xs must be a 1D vector")
     if ys.ndim not in (1, 2):
@@ -104,37 +140,14 @@ def log_smooth(
             "xs and ys must have the same number of elements along the 1st dimension"
         )
 
-    thinned_xs = xs
-    if steps_per_sigma:
-        thinned_xs = _log_thin(xs, sigma_log10 / steps_per_sigma)
+    ys = ys[np.newaxis, :] if ys.ndim == 1 else ys
 
-    N = thinned_xs.size
+    xs_thinned, ys_smoothed = _log_smooth_numba(
+        xs, ys, sigma_log10, window_sigma, steps_per_sigma
+    )
+    ys_smoothed = ys_smoothed[0] if ys.shape[0] == 1 else ys_smoothed
 
-    if ys.ndim == 1:
-        ys = ys.reshape((1, N))
-        N_ARR = 1
-    else:
-        N_ARR = ys.shape[0]
-
-    log_xs = np.log10(xs)
-    log_thinned_xs = np.log10(thinned_xs)
-
-    ys_smooth = np.zeros((N_ARR, N))
-
-    for i in range(N):
-        cur_log_x = log_thinned_xs[i]
-        lo = np.searchsorted(log_xs, cur_log_x - sigma_log10 * window_sigma)
-        hi = np.searchsorted(log_xs, cur_log_x + sigma_log10 * window_sigma)
-        smooth_weights = np.exp(
-            -((cur_log_x - log_xs[lo:hi]) ** 2) / 2 / sigma_log10 / sigma_log10
-        )
-        for k in range(N_ARR):
-            ys_smooth[k, i] = np.sum(ys[k, lo:hi] * smooth_weights)
-
-    if N_ARR == 1:
-        ys_smooth = ys_smooth.reshape((N,))
-
-    return thinned_xs, ys_smooth
+    return xs_thinned, ys_smoothed
 
 
 def agg_smooth_cvd(cvd, sigma_log10=0.1, window_sigma=5, steps_per_sigma=10, **kwargs):
@@ -158,12 +171,10 @@ def agg_smooth_cvd(cvd, sigma_log10=0.1, window_sigma=5, steps_per_sigma=10, **k
 
     bin_mids, (balanced, areas) = log_smooth(
         cvd_agg[dist_col].values.astype(np.float64),
-        np.vstack(
-            [
-                cvd_agg[n_contacts_col].values.astype(np.float64),
-                cvd_agg[n_pairs_col].values.astype(np.float64),
-            ]
-        ),
+        [
+            cvd_agg[n_contacts_col].values.astype(np.float64),
+            cvd_agg[n_pairs_col].values.astype(np.float64),
+        ],
         sigma_log10=sigma_log10,
         steps_per_sigma=steps_per_sigma,
     )
