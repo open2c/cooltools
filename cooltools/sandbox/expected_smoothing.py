@@ -3,6 +3,15 @@ import pandas as pd
 import numba
 
 
+DEFAULT_CVD_COLS = {
+    "dist": "diag",
+    "n_pixels": "n_valid",
+    "n_contacts": "balanced.sum",
+    "contact_freq": "balanced.avg",
+    "smooth_suffix": ".smoothed",
+}
+
+
 def _log_interp(xs, xp, fp):
     """
     Interpolate a function in the log-log space.
@@ -35,7 +44,7 @@ def _log_interp(xs, xp, fp):
 @numba.njit
 def _log_thin(xs, min_log10_step=0.1):
     """
-    Thin out a sorted array, selecting a subset of elements with the uniform density in log-space.
+    Thin out a sorted array, by selecting a subset of elements that are uniformly spaced in log-space.
 
     Parameters
     ----------
@@ -68,12 +77,11 @@ def _log_smooth_numba(
     ys,
     sigma_log10=0.1,
     window_sigma=5,
-    steps_per_sigma=10,
+    points_per_sigma=10,
 ):
-
     xs_thinned = xs
-    if steps_per_sigma:
-        xs_thinned = _log_thin(xs, sigma_log10 / steps_per_sigma)
+    if points_per_sigma:
+        xs_thinned = _log_thin(xs, sigma_log10 / points_per_sigma)
 
     N = xs_thinned.size
     N_FUNCS = ys.shape[0]
@@ -81,7 +89,7 @@ def _log_smooth_numba(
     log_xs = np.log10(xs)
     log_thinned_xs = np.log10(xs_thinned)
 
-    ys_smooth = np.zeros((N_FUNCS, N))
+    ys_smoothed = np.zeros((N_FUNCS, N))
 
     for i in range(N):
         cur_log_x = log_thinned_xs[i]
@@ -91,9 +99,9 @@ def _log_smooth_numba(
             -((cur_log_x - log_xs[lo:hi]) ** 2) / 2 / sigma_log10 / sigma_log10
         )
         for k in range(N_FUNCS):
-            ys_smooth[k, i] = np.sum(ys[k, lo:hi] * smooth_weights)
+            ys_smoothed[k, i] = np.sum(ys[k, lo:hi] * smooth_weights)
 
-    return xs_thinned, ys_smooth
+    return xs_thinned, ys_smoothed
 
 
 def log_smooth(
@@ -101,10 +109,10 @@ def log_smooth(
     ys,
     sigma_log10=0.1,
     window_sigma=5,
-    steps_per_sigma=10,
+    points_per_sigma=10,
 ):
     """
-    Convolve a function or multiple functions in with a gaussian filter in log space.
+    Convolve a function or multiple functions with a gaussian kernel in the log space.
 
     Parameters
     ----------
@@ -112,20 +120,21 @@ def log_smooth(
         The x-coordinates (function arguments) of the data points, must be increasing.
     ys : 1D or 2D array
         The y-coordinates (function values) of the data points.
-        If 2D, rows correspond to multiple functions values, columns correspond to different points.
+        If 2D, rows correspond to multiple functions, columns correspond to different points.
     sigma_log10 : float, optional
         The standard deviation of the smoothing Gaussian kernel, applied over log10(xs), by default 0.1
     window_sigma : int, optional
         Width of the smoothing window, expressed in sigmas, by default 5
-    steps_per_sigma : int, optional
-        The number of interpolation steps per sigma, by default 10
+    points_per_sigma : int, optional
+        If provided, smoothing is done only for `points_per_sigma` points per sigma and the
+        rest of the values are interpolated (this results in a major speed-up). By default 10
 
     Returns
     -------
-    thinned_xs : 1D array
-        The subset of function arguments, uniformly spaced in log-space.
-    ys_smooth : 1D or 2D array
-        The Gaussian smoothed function arguments.
+    xs_thinned : 1D array
+        The subset of arguments, uniformly spaced in log-space.
+    ys_smoothed : 1D or 2D array
+        The gaussian-smoothed function values.
 
     """
     xs = np.asarray(xs)
@@ -143,56 +152,125 @@ def log_smooth(
     ys = ys[np.newaxis, :] if ys.ndim == 1 else ys
 
     xs_thinned, ys_smoothed = _log_smooth_numba(
-        xs, ys, sigma_log10, window_sigma, steps_per_sigma
+        xs, ys, sigma_log10, window_sigma, points_per_sigma
     )
+
+    if points_per_sigma:
+        ys_smoothed = np.asarray(
+            [_log_interp(xs, xs_thinned, ys_row) for ys_row in ys_smoothed]
+        )
+
     ys_smoothed = ys_smoothed[0] if ys.shape[0] == 1 else ys_smoothed
 
-    return xs_thinned, ys_smoothed
+    return ys_smoothed
 
 
-def agg_smooth_cvd(cvd, sigma_log10=0.1, window_sigma=5, steps_per_sigma=10, **kwargs):
+def _smooth_cvd_group(cvd, agg, sigma_log10, window_sigma, points_per_sigma, cols=None):
+    _cols = dict(DEFAULT_CVD_COLS)
 
-    dist_col = kwargs.get("dist_col", "diag")
-    n_pairs_col = kwargs.get("n_pairs_col", "n_valid")
-    n_contacts_col = kwargs.get("n_contacts_col", "balanced.sum")
-    contact_freq_col = kwargs.get("contact_freq_col", "balanced.avg")
-    smooth_suffix = kwargs.get("smooth_suffix", ".smoothed")
+    if cols:
+        _cols.update(cols)
 
-    cvd_agg = (
-        cvd.groupby(dist_col)
-        .agg(
-            {
-                n_pairs_col: "sum",
-                n_contacts_col: "sum",
-            }
+    dist_col = _cols["dist"]
+    contact_freq_col = _cols["contact_freq"]
+    n_pixels_col = _cols["n_pixels"]
+    n_contacts_col = _cols["n_contacts"]
+    smooth_col_suffix = _cols["smooth_suffix"]
+
+    if agg:
+        cvd = (
+            cvd.groupby(dist_col)
+            .agg(
+                {
+                    n_pixels_col: "sum",
+                    n_contacts_col: "sum",
+                }
+            )
+            .reset_index()
         )
-        .reset_index()
-    )
 
-    bin_mids, (balanced, areas) = log_smooth(
-        cvd_agg[dist_col].values.astype(np.float64),
+    if contact_freq_col not in cvd.columns:
+        cvd[contact_freq_col] = cvd[n_contacts_col] / cvd[n_pixels_col]
+
+    balanced, areas = log_smooth(
+        cvd[dist_col].values.astype(np.float64),
         [
-            cvd_agg[n_contacts_col].values.astype(np.float64),
-            cvd_agg[n_pairs_col].values.astype(np.float64),
+            cvd[n_contacts_col].values.astype(np.float64),
+            cvd[n_pixels_col].values.astype(np.float64),
         ],
         sigma_log10=sigma_log10,
-        steps_per_sigma=steps_per_sigma,
+        window_sigma=window_sigma,
+        points_per_sigma=points_per_sigma,
     )
 
-    if steps_per_sigma:
-        cvd_agg[n_pairs_col + smooth_suffix] = _log_interp(
-            cvd_agg[dist_col].values, bin_mids, areas
+    cvd[n_pixels_col + smooth_col_suffix] = areas
+    cvd[n_contacts_col + smooth_col_suffix] = balanced
+
+    cvd[contact_freq_col + smooth_col_suffix] = (
+        cvd[n_contacts_col + smooth_col_suffix] / cvd[n_pixels_col + smooth_col_suffix]
+    )
+
+    return cvd
+
+
+def smooth_cvd(
+    cvd,
+    groupby=["region"],
+    agg=False,
+    sigma_log10=0.1,
+    window_sigma=5,
+    points_per_sigma=10,
+    cols=None,
+):
+    """
+    Smooth the contact-vs-distance curve in the log-space.
+
+    Parameters
+    ----------
+    cvd : pandas.DataFrame
+        A dataframe with the expected values in the cooltools.expected format.
+    agg : bool, optional
+        If True, additionally group by dist_col and aggregate the table or each group (if groupby is provided)
+        before smoothing.
+        By default True.
+    sigma_log10 : float, optional
+        The standard deviation of the smoothing Gaussian kernel, applied over log10(diagonal), by default 0.1
+    window_sigma : int, optional
+        Width of the smoothing window, expressed in sigmas, by default 5
+    points_per_sigma : int, optional
+        If provided, smoothing is done only for `points_per_sigma` points per sigma and the
+        rest of the values are interpolated (this results in a major speed-up). By default 10
+    cols : dict, optional
+        If provided, use the specified column names instead of the standard ones.
+        See DEFAULT_CVD_COLS variable for the format of this argument.
+
+    Returns
+    -------
+    cvd_smoothed : pandas.DataFrame
+        A cvd table with extra column for the log-smoothed contact frequencies (by default, "balanced.avg.smoothed").
+    """
+
+    if groupby is None:
+        cvd_smoothed = _smooth_cvd_group(
+            cvd,
+            agg=agg,
+            sigma_log10=sigma_log10,
+            window_sigma=window_sigma,
+            points_per_sigma=points_per_sigma,
+            cols=cols,
         )
-        cvd_agg[n_contacts_col + smooth_suffix] = _log_interp(
-            cvd_agg[dist_col].values, bin_mids, balanced
-        )
+
     else:
-        cvd_agg[n_pairs_col + smooth_suffix] = areas
-        cvd_agg[n_contacts_col + smooth_suffix] = balanced
+        cvd_smoothed = cvd.groupby(groupby).apply(
+            _smooth_cvd_group,
+            agg=agg,
+            sigma_log10=sigma_log10,
+            window_sigma=window_sigma,
+            points_per_sigma=points_per_sigma,
+            cols=cols,
+        )
 
-    cvd_agg[contact_freq_col] = cvd_agg[n_contacts_col] / cvd_agg[n_pairs_col]
-    cvd_agg[contact_freq_col + smooth_suffix] = (
-        cvd_agg[n_contacts_col + smooth_suffix] / cvd_agg[n_pairs_col + smooth_suffix]
-    )
+        if agg:
+            cvd_smoothed = cvd_smoothed.droplevel(1).reset_index()
 
-    return cvd_agg
+    return cvd_smoothed
