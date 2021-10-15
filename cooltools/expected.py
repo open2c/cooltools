@@ -575,14 +575,14 @@ def _diagsum_symm(clr, fields, transforms, regions, span):
     return {int(i): block.groupby("dist")[fields].sum() for i, block in symm_blocks}
 
 
-def diagsum(
+def diagsum_symm(
     clr,
     view_df,
     transforms={},
     weight_name="weight",
     bad_bins=None,
-    chunksize=10000000,
     ignore_diags=2,
+    chunksize=10000000,
     map=map,
 ):
     """
@@ -667,7 +667,7 @@ def diagsum(
 
     for dt in dtables.values():
         for field in fields:
-            agg_name = "{}.sum".format(field)
+            agg_name = f"{field}.sum"
             dt[agg_name] = 0
 
     job = partial(_diagsum_symm, clr, fields, transforms, view_df.values)
@@ -676,31 +676,31 @@ def diagsum(
         for i, agg in result.items():
             region = view_df.loc[i, "name"]
             for field in fields:
-                agg_name = "{}.sum".format(field)
+                agg_name = f"{field}.sum"
                 dtables[region][agg_name] = dtables[region][agg_name].add(
                     agg[field], fill_value=0
                 )
-
-    if ignore_diags:
-        for dt in dtables.values():
-            for field in fields:
-                agg_name = "{}.sum".format(field)
-                j = dt.columns.get_loc(agg_name)
-                dt.iloc[:ignore_diags, j] = np.nan
 
     # returning dataframe for API consistency
     result = []
     for i, dtable in dtables.items():
         dtable = dtable.reset_index()
-        dtable.insert(0, "region", i)
+        # conform with the new expected format, treat regions as 2D
+        dtable.insert(0, "region1", i)
+        dtable.insert(1, "region2", i)
+        if ignore_diags:
+            # fill out summary fields of ignored diagonals with NaN:
+            summary_fields = [f"{field}.sum" for field in fields]
+            dtable.loc[dtable["diag"] < ignore_diags, summary_fields] = np.nan
         result.append(dtable)
+
     return pd.concat(result).reset_index(drop=True)
 
 
 def _diagsum_pairwise(clr, fields, transforms, regions, span):
     """
     calculates diagonal/distance summary for a collection of
-    square symmetric blocks defined by all pairwise combinations
+    rectangular blocks defined by all pairwise combinations
     of "regions" for intra-chromosomal interactions.
 
     Return:
@@ -738,6 +738,7 @@ def diagsum_pairwise(
     transforms={},
     weight_name="weight",
     bad_bins=None,
+    ignore_diags=2,
     chunksize=10_000_000,
     map=map,
 ):
@@ -847,7 +848,7 @@ def diagsum_pairwise(
 
     for dt in dtables.values():
         for field in fields:
-            agg_name = "{}.sum".format(field)
+            agg_name = f"{field}.sum"
             dt[agg_name] = 0
 
     job = partial(
@@ -859,13 +860,10 @@ def diagsum_pairwise(
             ni = view_df.loc[i, "name"]
             nj = view_df.loc[j, "name"]
             for field in fields:
-                agg_name = "{}.sum".format(field)
+                agg_name = f"{field}.sum"
                 dtables[ni, nj][agg_name] = dtables[ni, nj][agg_name].add(
                     agg[field], fill_value=0
                 )
-
-    # assymetric blocks would rarely reach near-diagonal region,
-    # so skip ignore_diags part
 
     # returning a dataframe for API consistency:
     result = []
@@ -873,6 +871,10 @@ def diagsum_pairwise(
         dtable = dtable.reset_index()
         dtable.insert(0, "region1", i)
         dtable.insert(1, "region2", j)
+        if ignore_diags:
+            # fill out summary fields of ignored diagonals with NaN:
+            summary_fields = [f"{field}.sum" for field in fields]
+            dtable.loc[dtable["diag"] < ignore_diags, summary_fields] = np.nan
         result.append(dtable)
     return pd.concat(result).reset_index(drop=True)
 
@@ -1047,7 +1049,9 @@ def diagsum_asymm(
         dtable.insert(0, "region1", i)
         dtable.insert(1, "region2", j)
         result.append(dtable)
-    return pd.concat(result).reset_index(drop=True)
+    result = pd.concat(result).reset_index(drop=True)
+    return result
+
 
 
 def _blocksum_pairwise(clr, fields, transforms, regions, span):
@@ -1381,8 +1385,8 @@ def blocksum_asymm(
 def get_cis_expected(
     clr,
     view_df=None,
-    symmetric=True,
-    balance=True,
+    intra_only=True,
+    clr_weight_name="weight",
     ignore_diags=2, # should default to cooler info
     chunksize=10_000_000,
     nproc=1,
@@ -1405,14 +1409,14 @@ def get_cis_expected(
     view_df : viewframe
         a collection of genomic intervals where expected is calculated
         otherwise expected is calculated for full chromosomes.
-    symmetric: bool
-        When True, view_df defines symmetric on-diagonal regions,
-        otherwise expected is calculated for every intra-chromosomal
-        combination of regions in view_df
-    balance : bool or str
-        When True, balanced data is used for caculation of expected.
-        Custom name of the cooler balancing weight column can be
-        specified here.
+    intra_only: bool
+        Return expected only for symmetric intra-regions defined by view_df,
+        i.e. chromosomes, chromosomal-arms, intra-domains, etc.
+        When False returns expected both for symmetric intra-regions and
+        assymetric inter-regions.
+    clr_weight_name : str or None
+        Name of balancing weight column from the cooler to use.
+        Use raw unbalanced data, when None.
     ignore_diags : int, optional
         Number of intial diagonals to exclude results
     chunksize : int, optional
@@ -1429,7 +1433,7 @@ def get_cis_expected(
     """
 
     if view_df is None:
-        if not symmetric:
+        if not intra_only:
             raise ValueError("asymmetric regions has to be smaller then full chromosomes, use view_df")
         # Generate viewframe from clr.chromsizes:
         view_df = bioframe.make_viewframe(
@@ -1454,19 +1458,12 @@ def get_cis_expected(
             view_df = bioframe.make_viewframe(view_df)
 
     # define transforms - balanced and raw ('count') for now
-    if not balance:
+    if clr_weight_name is None:
         # no transforms
-        clr_weight_name = None
         transforms = {}
     else:
-        if isinstance(balance, bool):
-            #weight default
-            clr_weight_name = "weight"
-        elif isinstance(balance, str):
-            #weight default
-            clr_weight_name = balance
-        else:
-            raise TypeError("balance has to be bool or str that specifies name of balancing weight in clr")
+        if not isinstance(clr_weight_name, str):
+            raise TypeError("clr_weight_name has to be str that specifies name of balancing weight in clr")
         # define balanced data transform:
         weight1 = clr_weight_name + "1"
         weight2 = clr_weight_name + "2"
@@ -1485,21 +1482,17 @@ def get_cis_expected(
 
     # using try-clause to close mp.Pool properly
     try:
-        if symmetric:
-            result = diagsum(
+        if intra_only:
+            result = diagsum_symm(
                 clr,
                 view_df,
                 transforms=transforms,
                 weight_name=clr_weight_name,
                 bad_bins=None,
-                chunksize=chunksize,
                 ignore_diags=ignore_diags,
+                chunksize=chunksize,
                 map=map_,
             )
-            # conform with the new expected format
-            # where each region is 2D, even if symmetric:
-            result.insert(1, "region2", result["region"].values)
-            result.rename(columns = {"region": "region1"}, inplace=True)
         else:
             result = diagsum_pairwise(
                 clr,
@@ -1507,6 +1500,7 @@ def get_cis_expected(
                 transforms=transforms,
                 weight_name=clr_weight_name,
                 bad_bins=None,
+                ignore_diags=ignore_diags,
                 chunksize=chunksize,
                 map=map_,
             )
@@ -1526,7 +1520,7 @@ def get_cis_expected(
 def get_trans_expected(
     clr,
     view_df=None,
-    balance=True,
+    clr_weight_name="weight",
     chunksize=10_000_000,
     nproc=1,
 ):
@@ -1551,10 +1545,9 @@ def get_trans_expected(
     view_df : viewframe
         a collection of genomic intervals where expected is calculated
         otherwise expected is calculated for full chromosomes.
-    balance : bool or str
-        When True, balanced data is used for caculation of expected.
-        Custom name of the cooler balancing weight column can be
-        specified here.
+    clr_weight_name : str or None
+        Name of balancing weight column from the cooler to use.
+        Use raw unbalanced data, when None.
     chunksize : int, optional
         Size of pixel table chunks to process
     nproc : int, optional
@@ -1599,19 +1592,12 @@ def get_trans_expected(
             and chromosomes, order of chromosomes as in cooler""")
 
     # define transforms - balanced and raw ('count') for now
-    if not balance:
+    if clr_weight_name is None:
         # no transforms
-        clr_weight_name = None
         transforms = {}
     else:
-        if isinstance(balance, bool):
-            #weight default
-            clr_weight_name = "weight"
-        elif isinstance(balance, str):
-            #weight default
-            clr_weight_name = balance
-        else:
-            raise TypeError("balance has to be bool or str that specifies name of balancing weight in clr")
+        if not isinstance(clr_weight_name, str):
+            raise TypeError("clr_weight_name has to be str that specifies name of balancing weight in clr")
         # define balanced data transform:
         weight1 = clr_weight_name + "1"
         weight2 = clr_weight_name + "2"
@@ -1794,12 +1780,12 @@ def logbin_expected(
     min_count=50,
 ):
     """
-    Logarithmically bins expected as produced by diagsum method.
+    Logarithmically bins expected as produced by diagsum_symm method.
 
     Parameters
     ----------
     exp : DataFrame
-        DataFrame produced by diagsum
+        DataFrame produced by diagsum_symm
 
     summary_name : str, optional
         Name of the column of exp-DataFrame to use as a diagonal summary.
@@ -2206,7 +2192,7 @@ def interpolate_expected(
     Parameters
     ----------
     expected: pd.DataFrame
-        expected as returned by diagsum
+        expected as returned by diagsum_symm
     binned_expected: pd.DataFrame
         binned expected (combined or not)
     columns: list[str] (optional)

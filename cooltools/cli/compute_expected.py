@@ -121,8 +121,8 @@ def compute_expected(
         result = expected.get_cis_expected(
             clr,
             view_df=view_df,
-            symmetric=True,
-            balance=clr_weight_name if balance else False,
+            intra_only=True,
+            clr_weight_name=clr_weight_name if balance else None,
             ignore_diags=ignore_diags,
             chunksize=chunksize,
             nproc=nproc
@@ -131,7 +131,7 @@ def compute_expected(
         result = expected.get_trans_expected(
             clr,
             view_df=view_df,
-            balance=clr_weight_name if balance else False,
+            clr_weight_name=clr_weight_name if balance else None,
             chunksize=chunksize,
             nproc=nproc,
         )

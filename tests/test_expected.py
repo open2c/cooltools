@@ -10,12 +10,13 @@ import cooltools.expected
 from cooltools.cli import cli
 
 from itertools import combinations
+import warnings
 
 import pytest  # for capturing deprecation warnings
 
 
 ### Test rudimentary expected functions for dense matrices:
-def _diagsum_dense(matrix, ignore_diags=2, bad_bins=None):
+def _diagsum_symm_dense(matrix, bad_bins=None):
     """
     function returning a diagsum list for a square symmetric and dense matrix
     it starts from the main diagonal and goes until the upper right element -
@@ -30,9 +31,10 @@ def _diagsum_dense(matrix, ignore_diags=2, bad_bins=None):
     # all the way to the upper right element
     diags = range(len(mat))
 
-    return [
-        np.nanmean(mat.diagonal(i)) if (i >= ignore_diags) else np.nan for i in diags
-    ]
+    with warnings.catch_warnings():
+        warnings.filterwarnings(action='ignore', message='Mean of empty slice')
+        result = [np.nanmean(mat.diagonal(i)) for i in diags]
+    return result
 
 
 def _diagsum_asymm_dense(matrix, bad_bin_rows=None, bad_bin_cols=None):
@@ -55,8 +57,10 @@ def _diagsum_asymm_dense(matrix, bad_bin_rows=None, bad_bin_cols=None):
     # negative diagonals are below the "main" one
     diags = range(-mrows + 1, mcols)
 
-    return [np.nanmean(mat.diagonal(i)) for i in diags]
-    # flatexp_tomat = lambda e,m_like: toeplitz(e[m_like.shape[0]-1::-1],e[m_like.shape[0]-1:])
+    with warnings.catch_warnings():
+        warnings.filterwarnings(action='ignore', message='Mean of empty slice')
+        result = [np.nanmean(mat.diagonal(i)) for i in diags]
+    return result
 
 
 def _blocksum_asymm_dense(matrix, bad_bin_rows=None, bad_bin_cols=None):
@@ -104,10 +108,10 @@ for i in range(4):
 view_df = bioframe.make_viewframe(common_regions)
 
 
-def test_diagsum(request):
+def test_diagsum_symm(request):
     # perform test:
     clr = cooler.Cooler(op.join(request.fspath.dirname, "data/CN.mm9.1000kb.cool"))
-    res = cooltools.expected.diagsum(
+    res = cooltools.expected.diagsum_symm(
         clr,
         view_df=view_df,
         transforms=transforms,
@@ -118,15 +122,21 @@ def test_diagsum(request):
     )
     # calculate average:
     res["balanced.avg"] = res["balanced.sum"] / res["n_valid"]
-    # check results for every "region"
-    grouped = res.groupby("region")
-    for name, group in grouped:
-        matrix = clr.matrix(balance=weight_name).fetch(name)
+    # check results for every symmetric region
+    grouped = res.groupby(["region1", "region2"])
+    for (name1, name2), group in grouped:
+        # check symmetry:
+        assert name1 == name2
+        # extract dense matrix and get desired expected:
+        matrix = clr.matrix(balance=weight_name).fetch(name1)
+        desired_expected = np.where(
+            group["diag"] < ignore_diags,
+            np.nan,  # fill nan for ignored diags
+            _diagsum_symm_dense(matrix),
+        )
         testing.assert_allclose(
             actual=group["balanced.avg"].values,
-            desired=_diagsum_dense(matrix, ignore_diags=2),
-            # rtol=1e-07,
-            # atol=0,
+            desired=desired_expected,
             equal_nan=True,
         )
 
@@ -137,7 +147,7 @@ def test_diagsum_deprecated_view(request):
 
     # Check that deprecation warning is generated:
     with pytest.deprecated_call():
-        res = cooltools.expected.diagsum(
+        res = cooltools.expected.diagsum_symm(
             clr,
             view_df=common_regions,
             transforms=transforms,
@@ -148,15 +158,21 @@ def test_diagsum_deprecated_view(request):
         )
     # calculate average:
     res["balanced.avg"] = res["balanced.sum"] / res["n_valid"]
-    # check results for every "region"
-    grouped = res.groupby("region")
-    for name, group in grouped:
-        matrix = clr.matrix(balance=weight_name).fetch(name)
+    # check results for every symmetric region
+    grouped = res.groupby(["region1", "region2"])
+    for (name1, name2), group in grouped:
+        # check symmetry:
+        assert name1 == name2
+        matrix = clr.matrix(balance=weight_name).fetch(name1)
+        # extract dense matrix and get desired expected:
+        desired_expected = np.where(
+            group["diag"] < ignore_diags,
+            np.nan,  # fill nan for ignored diags
+            _diagsum_symm_dense(matrix),
+        )
         testing.assert_allclose(
             actual=group["balanced.avg"].values,
-            desired=_diagsum_dense(matrix, ignore_diags=2),
-            # rtol=1e-07,
-            # atol=0,
+            desired=desired_expected,
             equal_nan=True,
         )
 
@@ -170,6 +186,7 @@ def test_diagsum_pairwise(request):
         transforms=transforms,
         weight_name=weight_name,
         bad_bins=bad_bins,
+        ignore_diags=ignore_diags,
         chunksize=chunksize,
     )
     # calculate average:
@@ -179,11 +196,12 @@ def test_diagsum_pairwise(request):
     grouped = res.groupby(["region1", "region2"])
     for (name1, name2), group in grouped:
         matrix = clr.matrix(balance=weight_name).fetch(name1, name2)
+        desired_expected = _diagsum_asymm_dense(matrix) if (name1 != name2) else _diagsum_symm_dense(matrix)
+        # fill nan for ignored diags
+        desired_expected = np.where(group["diag"] < ignore_diags, np.nan, desired_expected)
         testing.assert_allclose(
             actual=group["balanced.avg"].values,
-            desired=_diagsum_asymm_dense(matrix),
-            # rtol=1e-07,
-            # atol=0,
+            desired=desired_expected,
             equal_nan=True,
         )
 
@@ -191,20 +209,20 @@ def test_diagsum_pairwise(request):
 def test_get_cis_expected(request):
     # perform test:
     clr = cooler.Cooler(op.join(request.fspath.dirname, "data/CN.mm9.1000kb.cool"))
-    # symm result
+    # symm result - engaging diagsum_symm
     res_symm = cooltools.expected.get_cis_expected(
         clr,
         view_df=view_df,
-        balance=weight_name,
+        clr_weight_name=weight_name,
         chunksize=chunksize,
         ignore_diags=ignore_diags
     )
-    # asymm result
+    # asymm result - engaging diagsum_pairwise
     res_asymm = cooltools.expected.get_cis_expected(
         clr,
         view_df=view_df,
-        symmetric=False,
-        balance=weight_name,
+        intra_only=False,
+        clr_weight_name=weight_name,
         chunksize=chunksize,
         ignore_diags=ignore_diags
     )
@@ -214,13 +232,12 @@ def test_get_cis_expected(request):
     grouped = res.groupby(["region1", "region2"])
     for (name1, name2), group in grouped:
         matrix = clr.matrix(balance=weight_name).fetch(name1, name2)
-        # get reference expected for symmetric and asymmetric cases:
-        reference_expected = _diagsum_asymm_dense(matrix) if (name1 != name2) else _diagsum_dense(matrix, ignore_diags=ignore_diags)
+        desired_expected = _diagsum_asymm_dense(matrix) if (name1 != name2) else _diagsum_symm_dense(matrix)
+        # fill nan for ignored diags
+        desired_expected = np.where(group["diag"] < ignore_diags, np.nan, desired_expected)
         testing.assert_allclose(
             actual=group["balanced.avg"].values,
-            desired=reference_expected,
-            # rtol=1e-07,
-            # atol=0,
+            desired=desired_expected,
             equal_nan=True,
         )
 
@@ -250,8 +267,6 @@ def test_diagsum_asymm(request):
         testing.assert_allclose(
             actual=group["balanced.avg"].values,
             desired=_diagsum_asymm_dense(matrix),
-            # rtol=1e-07,
-            # atol=0,
             equal_nan=True,
         )
 
@@ -277,8 +292,6 @@ def test_blocksum_pairwise(request):
         testing.assert_allclose(
             actual=group["balanced.avg"].values,
             desired=_blocksum_asymm_dense(matrix),
-            # rtol=1e-07,
-            # atol=0,
             equal_nan=True,
         )
 
@@ -289,7 +302,7 @@ def test_get_trans_expected(request):
     res = cooltools.expected.get_trans_expected(
         clr,
         view_df=view_df,
-        balance=weight_name,
+        clr_weight_name=weight_name,
         chunksize=chunksize,
     )
     # check results for every block , defined as region1/2
@@ -300,8 +313,6 @@ def test_get_trans_expected(request):
         testing.assert_allclose(
             actual=group["balanced.avg"].values,
             desired=_blocksum_asymm_dense(matrix),
-            # rtol=1e-07,
-            # atol=0,
             equal_nan=True,
         )
 
@@ -330,8 +341,6 @@ def test_blocksum(request):
         testing.assert_allclose(
             actual=group["balanced.avg"].values,
             desired=_blocksum_asymm_dense(matrix),
-            # rtol=1e-07,
-            # atol=0,
             equal_nan=True,
         )
 
@@ -360,12 +369,16 @@ def test_expected_cli(request, tmpdir):
     # full chromosomes in this example:
     for (chrom1, chrom2), group in grouped:
         assert chrom1 == chrom2
+        # extract dense matrix and get desired expected:
         matrix = clr.matrix(balance=weight_name).fetch(chrom1)
+        desired_expected = np.where(
+            group["diag"] < ignore_diags,
+            np.nan,  # fill nan for ignored diags
+            _diagsum_symm_dense(matrix),
+        )
         testing.assert_allclose(
             actual=group["balanced.avg"].values,
-            desired=_diagsum_dense(matrix, ignore_diags=2),
-            # rtol=1e-07,
-            # atol=0,
+            desired=desired_expected,
             equal_nan=True,
         )
 
@@ -400,12 +413,16 @@ def test_expected_view_cli(request, tmpdir):
     for (region1, region2), group in grouped:
         assert region1 == region2
         ucsc_region = view_df.loc[region1].to_list()
+        # extract dense matrix and get desired expected:
         matrix = clr.matrix(balance=weight_name).fetch(ucsc_region)
+        desired_expected = np.where(
+            group["diag"] < ignore_diags,
+            np.nan,  # fill nan for ignored diags
+            _diagsum_symm_dense(matrix),
+        )
         testing.assert_allclose(
             actual=group["balanced.avg"].values,
-            desired=_diagsum_dense(matrix, ignore_diags=2),
-            # rtol=1e-07,
-            # atol=0,
+            desired=desired_expected,
             equal_nan=True,
         )
 
@@ -585,7 +602,7 @@ def test_diagsum_from_array():
     ar = 1 / ar
 
     # Simple symmetric case
-    exp = _diagsum_dense(ar, ignore_diags=0, bad_bins=None)
+    exp = _diagsum_symm_dense(ar, bad_bins=None)
     exp1 = diagsum_from_array(ar, ignore_diags=0)
     exp1["balanced.avg"] = exp1["balanced.sum"] / exp1["n_valid"]
     assert np.allclose(exp, exp1["balanced.avg"].values, equal_nan=True)
@@ -600,7 +617,7 @@ def test_diagsum_from_array():
     # because input was homogenous decay.
     ar[3:5] = 0
     ar[:, 3:5] = 0
-    exp = _diagsum_dense(ar, ignore_diags=0, bad_bins=list(range(3, 5)))
+    exp = _diagsum_symm_dense(ar, bad_bins=list(range(3, 5)))
     exp1 = diagsum_from_array(ar, ignore_diags=0)
     exp1["balanced.avg"] = exp1["balanced.sum"] / exp1["n_valid"]
     assert np.allclose(exp, exp1["balanced.avg"].values, equal_nan=True)
