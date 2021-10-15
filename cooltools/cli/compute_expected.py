@@ -9,11 +9,6 @@ import click
 from . import cli
 from . import util
 
-# might be relevant to us ...
-# https://stackoverflow.com/questions/46577535/how-can-i-run-a-dask-distributed-local-cluster-from-the-command-line
-# http://distributed.readthedocs.io/en/latest/setup.html#using-the-command-line
-
-
 @cli.command()
 @click.argument("cool_path", metavar="COOL_PATH", type=str, nargs=1)
 @click.option(
@@ -40,13 +35,6 @@ from . import util
     required=False,
 )
 @click.option(
-    "--hdf",
-    help="Use hdf5 format instead of tsv."
-    " Output file name must be specified [Not Implemented].",
-    is_flag=True,
-    default=False,
-)
-@click.option(
     "--contact-type",
     "-t",
     help="compute expected for cis or trans region of a Hi-C map."
@@ -58,10 +46,12 @@ from . import util
 @click.option(
     "--view",
     "--regions",
-    help="Path to a BED file containing genomic regions "
-    "for which expected will be calculated. Region names can "
-    "be provided in a 4th column, otherwise UCSC notaion is used."
-    "When not specified, expected is calculated for all chromosomes."
+    help="Path to a 3 or 4-column BED file containing genomic regions"
+    " for which expected will be calculated. Region names are stored"
+    " optionally in a 4th column, otherwise UCSC notaion is generated."
+    " When not specified, expected is calculated for all chromosomes."
+    " Trans-expected is calculated for all pairwise combinations of regions,"
+    " provided regions have to be sorted."
     " Note that '--regions' is the deprecated name of the option. Use '--view' instead. ",
     type=click.Path(exists=True),
     required=False,
@@ -75,19 +65,11 @@ from . import util
     show_default=True,
 )
 @click.option(
-    "--weight-name",
-    help="Use balancing weight with this name.",
+    "--clr-weight-name",
+    help="Use balancing weight with this name stored in cooler.",
     type=str,
     default="weight",
     show_default=True,
-)
-@click.option(
-    "--blacklist",
-    help="Path to a 3-column BED file containing genomic regions to mask "
-    "out during calculation of expected. Overwrites inference of "
-    "'bad' regions from balancing weights. [Not Implemented]",
-    type=click.Path(exists=True),
-    required=False,
 )
 @click.option(
     "--ignore-diags",
@@ -101,12 +83,10 @@ def compute_expected(
     nproc,
     chunksize,
     output,
-    hdf,
     contact_type,
     view,
     balance,
-    weight_name,
-    blacklist,
+    clr_weight_name,
     ignore_diags,
 ):
     """
@@ -119,22 +99,9 @@ def compute_expected(
     COOL_PATH : The paths to a .cool file with a balanced Hi-C map.
 
     """
-    if blacklist is not None:
-        raise NotImplementedError(
-            "Custom genomic regions for masking from calculation of expected"
-            "are not implemented."
-        )
-        # use blacklist-ing from cooler balance module
-        # https://github.com/mirnylab/cooler/blob/843dadca5ef58e3b794dbaf23430082c9a634532/cooler/cli/balance.py#L175
 
     clr = cooler.Cooler(cool_path)
-    if view is None:
-        # Generate viewframe from clr.chromsizes:
-        view_df = bioframe.make_viewframe(
-            [(chrom, 0, clr.chromsizes[chrom]) for chrom in clr.chromnames]
-        )
-    else:
-        # Make viewframe out of table:
+    if view is not None:
         # Read view_df dataframe:
         try:
             view_df = bioframe.read_table(view, schema="bed4", index_col=False)
@@ -147,59 +114,27 @@ def compute_expected(
             raise ValueError(
                 "View table is incorrect, please, comply with the format. "
             ) from e
-
-    # define transofrms - balanced and raw ('count') for now
-    if balance:
-        weight1 = weight_name + "1"
-        weight2 = weight_name + "2"
-        transforms = {"balanced": lambda p: p["count"] * p[weight1] * p[weight2]}
     else:
-        # no masking bad bins of any kind, when balancing is not applied
-        weight_name = None
-        transforms = {}
+        view_df = None # full chromosome case
 
-    # execution details
-    if nproc > 1:
-        pool = mp.Pool(nproc)
-        map_ = pool.map
-    else:
-        map_ = map
-
-    # using try-clause to close mp.Pool properly
-    try:
-        if contact_type == "cis":
-            result = expected.diagsum(
-                clr,
-                view_df,
-                transforms=transforms,
-                weight_name=weight_name,
-                bad_bins=None,
-                chunksize=chunksize,
-                ignore_diags=ignore_diags,
-                map=map_,
-            )
-        elif contact_type == "trans":
-            # prepare pairwise combinations of regions for trans-expected (blocksum):
-            regions_pairwise = combinations(view_df.itertuples(index=False), 2)
-            regions1, regions2 = zip(*regions_pairwise)
-            result = expected.blocksum_asymm(
-                clr,
-                regions1=regions1,
-                regions2=regions2,
-                transforms=transforms,
-                weight_name=weight_name,
-                bad_bins=None,
-                chunksize=chunksize,
-                map=map_,
-            )
-    finally:
-        if nproc > 1:
-            pool.close()
-
-    # calculate actual averages by dividing sum by n_valid:
-    result["count.avg"] = result["count.sum"] / result["n_valid"]
-    for key in transforms.keys():
-        result[key + ".avg"] = result[key + ".sum"] / result["n_valid"]
+    if contact_type == "cis":
+        result = expected.get_cis_expected(
+            clr,
+            view_df=view_df,
+            intra_only=True,
+            clr_weight_name=clr_weight_name if balance else None,
+            ignore_diags=ignore_diags,
+            chunksize=chunksize,
+            nproc=nproc
+        )
+    elif contact_type == "trans":
+        result = expected.get_trans_expected(
+            clr,
+            view_df=view_df,
+            clr_weight_name=clr_weight_name if balance else None,
+            chunksize=chunksize,
+            nproc=nproc,
+        )
 
     # output to file if specified:
     if output:
@@ -207,10 +142,3 @@ def compute_expected(
     # or print into stdout otherwise:
     else:
         print(result.to_csv(sep="\t", index=False, na_rep="nan"))
-
-    # would be nice to have some binary output to preserve precision.
-    # to_hdf/read_hdf should work in this case as the file is small .
-    # still debated as to how should we store it - store in cooler seems
-    # to be consensus:
-    if hdf:
-        raise NotImplementedError("hdf output is to be implemented")
