@@ -33,7 +33,7 @@ def _log_interp(xs, xp, fp):
     ys : 1D array
         The interpolated values, same shape as x.
     """
-    with np.errstate(divide='ignore'):
+    with np.errstate(divide="ignore"):
         ys = np.exp(
             np.interp(
                 np.log(xs),
@@ -171,7 +171,7 @@ def log_smooth(
 
 def _smooth_cvd_group(cvd, sigma_log10, window_sigma, points_per_sigma, cols=None):
     cols = dict(DEFAULT_CVD_COLS, **({} if cols is None else cols))
-    
+
     cvd_smoothed = (
         cvd.groupby(cols["dist"])
         .agg(
@@ -199,20 +199,23 @@ def _smooth_cvd_group(cvd, sigma_log10, window_sigma, points_per_sigma, cols=Non
     cvd_smoothed[cols["n_pixels"] + cols["smooth_suffix"]] = smoothed_n_valid
     cvd_smoothed[cols["n_contacts"] + cols["smooth_suffix"]] = smoothed_balanced_sum
     cvd_smoothed[cols["contact_freq"] + cols["smooth_suffix"]] = (
-        cvd_smoothed[cols["n_contacts"] + cols["smooth_suffix"]] / cvd_smoothed[cols["n_pixels"] + cols["smooth_suffix"]]
+        cvd_smoothed[cols["n_contacts"] + cols["smooth_suffix"]]
+        / cvd_smoothed[cols["n_pixels"] + cols["smooth_suffix"]]
     )
 
     return cvd_smoothed
 
 
-def _agg_smooth_cvd(cvd, groupby, sigma_log10, window_sigma, points_per_sigma, cols=None):
+def _agg_smooth_cvd(
+    cvd, groupby, sigma_log10, window_sigma, points_per_sigma, cols=None
+):
     if groupby:
         cvd = cvd.groupby(groupby).apply(
             _smooth_cvd_group,
             sigma_log10=sigma_log10,
             window_sigma=window_sigma,
             points_per_sigma=points_per_sigma,
-            cols=cols
+            cols=cols,
         )
     else:
         cvd = _smooth_cvd_group(
@@ -220,11 +223,10 @@ def _agg_smooth_cvd(cvd, groupby, sigma_log10, window_sigma, points_per_sigma, c
             sigma_log10=sigma_log10,
             window_sigma=window_sigma,
             points_per_sigma=points_per_sigma,
-            cols=cols
+            cols=cols,
         )
 
     return cvd
-
 
 
 def agg_smooth_cvd(
@@ -246,7 +248,7 @@ def agg_smooth_cvd(
         The list of column names to split the input table before smoothing.
         This argument can be used to calculate separate smoothed CvD curves for
         each region, Hi-C read orientation, etc.
-        If None, a single CvD curve is calculated for the whole table.
+        If None or empty, a single CvD curve is calculated for the whole table.
     sigma_log10 : float, optional
         The standard deviation of the smoothing Gaussian kernel, applied over log10(diagonal), by default 0.1
     window_sigma : int, optional
@@ -273,8 +275,7 @@ def agg_smooth_cvd(
     elif isinstance(groupby, collections.Iterable):
         groupby = list(groupby)
     else:
-        raise ValueError('groupby must be a string, a list of strings, or None')
-    
+        raise ValueError("groupby must be a string, a list of strings, or None")
 
     cvd_smoothed = _agg_smooth_cvd(
         cvd,
@@ -284,14 +285,17 @@ def agg_smooth_cvd(
         points_per_sigma=points_per_sigma,
         cols=cols,
     )
-    
-    cvd_smoothed.drop([cols['n_pixels'], cols['n_contacts']], axis='columns', inplace=True)
+
+    cvd_smoothed.drop(
+        [cols["n_pixels"], cols["n_contacts"]], axis="columns", inplace=True
+    )
 
     # cvd = cvd.drop(cols["contact_freq"], axis='columns', errors='ignore')
 
-    cvd = cvd.merge(cvd_smoothed,
-              on = groupby + [cols["dist"]],
-              how = 'left',
+    cvd = cvd.merge(
+        cvd_smoothed,
+        on=groupby + [cols["dist"]],
+        how="left",
     )
 
     return cvd
