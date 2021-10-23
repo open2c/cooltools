@@ -1,6 +1,4 @@
 import os.path as op
-import subprocess
-import sys
 
 import numpy as np
 import pandas as pd
@@ -47,15 +45,8 @@ def test_saddle_cli(request, tmpdir):
     result = runner.invoke(cli, ["call-compartments", "-o", out_eig_prefix, in_cool])
     assert result.exit_code == 0
 
-    try:
-        subprocess.check_output(
-            f"python -m cooltools compute-expected {in_cool} > {out_expected}",
-            shell=True,
-        ).decode("ascii")
-    except subprocess.CalledProcessError as e:
-        print(e.output)
-        print(sys.exc_info())
-        raise e
+    result = runner.invoke(cli, ["compute-expected", "-o", out_expected, in_cool])
+    assert result.exit_code == 0
 
     runner = CliRunner()
     result = runner.invoke(
@@ -133,15 +124,11 @@ def test_trans_saddle_cli(request, tmpdir):
     )
     assert result.exit_code == 0
 
-    try:
-        subprocess.check_output(
-            f"python -m cooltools compute-expected --contact-type trans {in_cool} > {out_expected}",
-            shell=True,
-        ).decode("ascii")
-    except subprocess.CalledProcessError as e:
-        print(e.output)
-        print(sys.exc_info())
-        raise e
+    result = runner.invoke(
+        cli,
+        ["compute-expected", "--contact-type", "trans", "-o", out_expected, in_cool],
+    )
+    assert result.exit_code == 0
 
     runner = CliRunner()
     result = runner.invoke(
@@ -195,7 +182,7 @@ def test_get_digitized():
     df = pd.DataFrame(
         [["chr1", 0, 10, pd.NA]],
         columns=["chrom", "start", "end", "value"],
-    ).astype({"value": pd.Float64Dtype()})
+    ).astype({"value": pd.Int64Dtype()})
     digitized = saddle.get_digitized(df, 10, vrange=(-1, 1), digitized_suffix=".test")[
         0
     ]
@@ -283,17 +270,30 @@ def test_get_digitized():
         saddle.get_digitized(df, n_bins, qrange=(0.5, 0.25))
 
 
-def test_get_saddle(request):
+def test_get_saddle(request, tmpdir):
+
+    in_cool = op.join(request.fspath.dirname, "data/sin_eigs_mat.cool")
+    out_eig_prefix = op.join(tmpdir, "test.eigs")
+    out_expected = op.join(tmpdir, "test.cis.expected")
+
+    runner = CliRunner()
+    result = runner.invoke(
+        cli,
+        ["call-compartments", "-o", out_eig_prefix, in_cool],
+    )
+    assert result.exit_code == 0
+
+    result = runner.invoke(
+        cli,
+        ["compute-expected", "-o", out_expected, in_cool],
+    )
+    assert result.exit_code == 0
+
+    track = pd.read_csv(f"{out_eig_prefix}.cis.vecs.tsv", sep="\t")[["chrom", "start", "end", "E1"]]
+    expected = pd.read_csv(out_expected, sep="\t")
 
     import cooler
-
     clr = cooler.Cooler(op.join(request.fspath.dirname, "data/sin_eigs_mat.cool"))
-
-    track = pd.read_csv(
-        op.join(request.fspath.dirname, "test.eigs.cis.vecs.tsv"), sep="\t"
-    )[["chrom", "start", "end", "E1"]]
-
-    expected = pd.read_csv(op.join(request.fspath.dirname, "test.expected"), sep="\t")
 
     # non-digitized track should raise an error
     with pytest.raises(ValueError):
