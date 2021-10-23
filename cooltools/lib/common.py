@@ -1,5 +1,6 @@
 import numpy as np
 import pandas as pd
+from more_itertools import is_sorted
 
 # Test data download requirements:
 import requests
@@ -381,3 +382,179 @@ def print_available_datasets(url=URL_DATA):
 \tStored as {filename} 
 \tOriginal md5sum: {checksum}
 """.format(**data))
+
+
+def read_expected(
+    fname,
+    contact_type="cis",
+    expected_value_cols=["count.avg","balanced.avg"],
+    verify_view=None,
+    verify_cooler=None,
+    ):
+    """
+    Read an expected from a file.
+    Expected must conform v1.0 format
+    https://github.com/open2c/cooltools/issues/217
+
+    Parameters
+    ----------
+    fname : str
+        Path to a tsv file with expected
+    contact_type : str
+        cis and trans expected have different formats
+    expected_value_cols : list of str
+        Names of the column with the values of expected.
+        Summaries and averaged values can be requested.
+    verify_view : None or viewframe
+        Viewframe that defines regions in expected. Used for
+        verifications. All verifications are skipped if None.
+    verify_cooler : None or cooler
+        Cooler object to use when verifying if expected
+        is compatible. No verifications is performed when None.
+
+    Returns
+    -------
+    expected_df : pd.DataFrame
+        DataFrame with the expected
+    """
+    if contact_type == "cis":
+        # that's what we expect as column names:
+        expected_columns = ["region1", "region2", "diag", "n_valid"]
+        # expected dtype as a rudimentary form of validation:
+        expected_dtypes = {
+            "region1": np.str,
+            "region2": np.str,
+            "diag": np.int64,
+            "n_valid": np.int64,
+        }
+    elif contact_type == "trans":
+        # that's what we expect as column names:
+        expected_columns = ["region1", "region2", "n_valid"]
+        # expected dtype as a rudimentary form of validation:
+        expected_dtypes = {
+            "region1": np.str,
+            "region2": np.str,
+            "n_valid": np.int64,
+        }
+    else:
+        raise ValueError(
+            f"Incorrect contact_type: {contact_type}, only cis and trans are supported."
+        )
+
+    # add columns with values and their dtype (float64):
+    for name in expected_value_cols:
+        expected_columns.append(name)
+        expected_dtypes[name] = np.float64
+
+
+    try:
+        expected_df = pd.read_table(
+            fname,
+            usecols=expected_columns,
+            dtype=expected_dtypes,
+        )
+    except ValueError as e:
+        raise ValueError(
+            "input expected does not match the schema\n"
+            "tab-separated expected file must have a header as well"
+        )
+
+    # add some validations before returning
+
+    # Check that view regions are named as in expected table.
+    # Note that since cooltools v0.5 we do not support parsing region names:
+    # https://github.com/open2c/cooltools/issues/262
+    if verify_view is not None:
+        if contact_type == "cis":
+            if not bioframe.is_cataloged(
+                verify_view,
+                expected_df,
+                df_view_col="name",
+                view_name_col="region1",
+            ):
+                raise ValueError(
+                    "View regions are not in the expected table. Provide expected table for the same regions"
+                )
+        if contact_type == "trans":
+            # Check region names:
+            _all_expected_regions = expected_df[["region1", "region2"]].values.flatten()
+            if not np.all(verify_view["name"].isin(_all_expected_regions)):
+                raise ValueError(
+                    "View regions are not in the expected table. Provide expected table for the same regions"
+                )
+
+    # check if the number of diagonals is correct:
+    if contact_type == "cis":
+        if (verify_cooler is not None) and (verify_view is not None):
+            # pass
+            # check number of bins per region in cooler and expected table
+            # compute # of bins by comparing matching indexes
+            for (name1, name2), group in expected_df.groupby(["region1","region2"]):
+                expected_n_diags = len(group)
+                if name1 == name2:
+                    region = verify_view.set_index("name").loc[name1]
+                    lo, hi = verify_cooler.extent(region)
+                    region_n_diags = hi - lo
+                else:
+                    region1 = verify_view.set_index("name").loc[name1]
+                    region2 = verify_view.set_index("name").loc[name2]
+                    lo1, hi1 = verify_cooler.extent(region1)
+                    lo2, hi2 = verify_cooler.extent(region2)
+                    if not is_sorted([lo2, hi2, lo1, hi1]):
+                        raise ValueError(f"Only upper right cis regions are supported, {name1}:{name2} is not")
+                    # rectangle that is fully contained within upper-right part of the heatmap
+                    region_n_diags = (hi1 - lo1) + (hi2 - lo2) - 1
+            if expected_n_diags != region_n_diags:
+                raise ValueError(
+                    "Region shape mismatch between expected and cooler. "
+                    "Are they using the same resolution?"
+                )
+
+    return expected_df
+
+
+def read_viewframe(
+    fname,
+    verify_cooler_view=None,
+    ):
+    """
+    Read a BED file with regions that conforms
+    a definition of a viewframe (non-overlaping, unique names, etc).
+
+    Parameters
+    ----------
+    fname : str
+        Path to a BED file with regions.
+    verify_cooler_view : None or viewframe
+        Viewframe with entire chromosome sizes
+
+    Returns
+    -------
+    view_df : pd.DataFrame
+        DataFrame with the viewframe
+    """
+    # define chromsizes based on verify_cooler_view
+    chromsizes = None if (verify_cooler_view is None) else \
+        verify_cooler_view.set_index("chrom")["end"]
+    # read BED file assuming bed4/3 formats (with names-columns and without):
+    try:
+        view_df = bioframe.read_table(fname, schema="bed4", index_col=False)
+    except Exception:
+        view_df = bioframe.read_table(fname, schema="bed3", index_col=False)
+    # Convert view dataframe to viewframe:
+    try:
+        view_df = bioframe.make_viewframe(view_df) if (verify_cooler_view is None) else \
+            bioframe.make_viewframe(view_df, check_bounds=chromsizes)
+    except ValueError as e:
+        raise ValueError(
+            "View table is incorrect, please, comply with the format. "
+        ) from e
+
+    # Check that input view is contained in cooler bounds, but not vice versa (because cooler may have more regions):
+    if verify_cooler_view is not None:
+        if not bioframe.is_contained(view_df, verify_cooler_view):
+            raise ValueError(
+                "View regions are not contained in cooler chromsizes bounds"
+            )
+
+    return view_df
