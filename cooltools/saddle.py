@@ -119,7 +119,7 @@ def _make_cis_obsexp_fetcher(
     clr : cooler.Cooler
         Observed matrix.
     expected : DataFrame
-        Diagonal summary statistics for each chromosome.
+        Diagonal summary statistics for a number of regions.
     view_df: viewframe
         Viewframe with genomic regions.
     clr_weight_name : str
@@ -134,14 +134,17 @@ def _make_cis_obsexp_fetcher(
     getexpected(reg, _). 2nd arg is ignored.
 
     """
-    expected = {k: x.values for k, x in expected.groupby("region")[expected_value_col]}
+    expected = {
+        k: x.values
+        for k, x in expected.groupby(["region1","region2"])[expected_value_col]
+    }
     view_df = view_df.set_index(view_name_col)
 
     def _fetch_cis_oe(reg1, reg2):
         reg1_coords = tuple(view_df.loc[reg1])
-        # reg2_coords = tuple(view_df.loc[reg2])
-        obs_mat = clr.matrix(balance=clr_weight_name).fetch(reg1_coords)
-        exp_mat = toeplitz(expected[reg1][: obs_mat.shape[0]])
+        reg2_coords = tuple(view_df.loc[reg2])
+        obs_mat = clr.matrix(balance=clr_weight_name).fetch(reg1_coords, reg2_coords)
+        exp_mat = toeplitz(expected[reg1, reg2][: obs_mat.shape[0]])
         return obs_mat / exp_mat
 
     return _fetch_cis_oe
@@ -465,7 +468,7 @@ def get_saddle(
     if contact_type == "cis":
         supports = list(zip(view_df[view_name_col], view_df[view_name_col]))
         if not bioframe.is_cataloged(
-            expected, view_df, df_view_col="region", view_name_col=view_name_col
+            expected, view_df, df_view_col="region1", view_name_col=view_name_col
         ):
             raise ValueError("Region names in expected are not cataloged in view_df.")
         getmatrix = _make_cis_obsexp_fetcher(
