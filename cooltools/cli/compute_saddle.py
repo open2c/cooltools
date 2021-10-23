@@ -12,6 +12,7 @@ from .. import saddle
 
 import click
 from .util import validate_csv
+from ..lib.common import assign_regions, read_expected, read_viewframe
 from . import util
 from . import cli
 
@@ -203,76 +204,9 @@ def compute_saddle(
 
     """
     #### Read inputs: ####
-    print(cool_path)
     clr = cooler.Cooler(cool_path)
     expected_path, expected_value_col = expected_path
     track_path, track_name = track_path
-
-    #### Read expected: ####
-    if contact_type == "cis":
-        # that's what we expect as column names:
-        expected_columns = ["region", "diag", "n_valid", expected_value_col]
-        # what would become a MultiIndex:
-        expected_index = ["region", "diag"]
-        # expected dtype as a rudimentary form of validation:
-        expected_dtype = {
-            "region": np.str,
-            "diag": np.int64,
-            "n_valid": np.int64,
-            expected_value_col: np.float64,
-        }
-        # # unique list of chroms mentioned in expected_path:
-        # get_exp_chroms = lambda df: df.index.get_level_values("region").unique()
-        # # compute # of bins by comparing matching indexes:
-        # get_exp_bins = lambda df, ref_chroms, _: (
-        #     df.index.get_level_values("chrom").isin(ref_chroms).sum()
-        # )
-    elif contact_type == "trans":
-        # that's what we expect as column names:
-        expected_columns = ["region1", "region2", "n_valid", expected_value_col]
-        # what would become a MultiIndex:
-        expected_index = ["region1", "region2"]
-        # expected dtype as a rudimentary form of validation:
-        expected_dtype = {
-            "region1": np.str,
-            "region2": np.str,
-            "n_valid": np.int64,
-            expected_value_col: np.float64,
-        }
-        # # unique list of chroms mentioned in expected_path:
-        # get_exp_chroms = lambda df: np.union1d(
-        #     df.index.get_level_values("region1").unique(),
-        #     df.index.get_level_values("region2").unique(),
-        # )
-        # # no way to get bins from trans-expected, so just get the number:
-        # get_exp_bins = lambda _1, _2, correct_bins: correct_bins
-    else:
-        raise ValueError(
-            "Incorrect contact_type: {}, ".format(contact_type),
-            "Should have been caught by click.",
-        )
-
-    if min_dist < 0:
-        min_diag = 3
-    else:
-        min_diag = int(np.ceil(min_dist / clr.binsize))
-
-    if max_dist >= 0:
-        max_diag = int(np.floor(max_dist / clr.binsize))
-    else:
-        max_diag = -1
-
-    # use 'usecols' as a rudimentary form of validation,
-    # and dtype. Keep 'comment' and 'verbose' - explicit,
-    # as we may use them later:
-    expected = pd.read_table(
-        expected_path,
-        usecols=expected_columns,
-        # index_col=expected_index,
-        dtype=expected_dtype,
-        comment=None,
-        verbose=verbose,
-    )
 
     #### Read track: ####
     # read bedGraph-file :
@@ -294,33 +228,11 @@ def compute_saddle(
 
     #### Generate viewframes ####
     # 1:cooler_view_df. Generate viewframe from clr.chromsizes:
-    cooler_view_df = bioframe.make_viewframe(
-        [(chrom, 0, clr.chromsizes[chrom]) for chrom in clr.chromnames]
-    )
+    cooler_view_df = bioframe.make_viewframe( clr.chromsizes )
 
-    # 2:view_df. Define global view for calculating saddles
-    # use input "view" BED file or all chromosomes mentioned in "track":
-    if view is None:
-        view_df = cooler_view_df
-    else:
-        # Make viewframe out of table, read view dataframe:
-        try:
-            view_df = bioframe.read_table(view, schema="bed4", index_col=False)
-        except Exception:
-            view_df = bioframe.read_table(view, schema="bed3", index_col=False)
-        # Convert view dataframe to viewframe:
-        try:
-            view_df = bioframe.make_viewframe(view_df, check_bounds=clr.chromsizes)
-        except ValueError as e:
-            raise ValueError(
-                "View table is incorrect, please, comply with the format. "
-            ) from e
-
-        # Check that input view is contained in cooler bounds, but not vice versa (because cooler may have more regions):
-        if not bioframe.is_contained(view_df, cooler_view_df):
-            raise ValueError(
-                "View regions are not contained in cooler chromsizes bounds"
-            )
+    # 2:view_df. Define global view for calculating calling dots
+    # use input "view" BED file or all chromosomes :
+    view_df = cooler_view_df if (view is None) else read_viewframe(view, cooler_view_df)
 
     # 3:track_view_df. Generate viewframe from track table:
     track_view_df = bioframe.make_viewframe(
@@ -329,6 +241,17 @@ def compute_saddle(
             for i, group in track.reset_index().groupby("chrom")
         ]
     )
+
+    #### Read expected: ####
+    expected_summary_cols = [expected_value_col, ]
+    expected = read_expected(
+        expected_path,
+        contact_type=contact_type,
+        expected_value_cols=expected_summary_cols,
+        verify_view=view_df,
+        verify_cooler=clr,
+    )
+    # add checks to make sure cis-expected is symmetric
 
     #############################################
     # CROSS-VALIDATE viewframes of COOLER, TRACK and EXPECTED:
@@ -343,29 +266,19 @@ def compute_saddle(
     if not bioframe.is_contained(view_df, track_view_df):
         raise ValueError("View table does not have some regions annotated in the track")
 
-    # Check that view regions are named as in expected table, necessary for querying expected:
-    if contact_type == "cis":
-        # Check region names:
-        if not bioframe.is_cataloged(
-            view_df, expected, df_view_col="name", view_name_col="region"
-        ):
-            raise ValueError(
-                "View regions are not in the expected table. Provide expected table for the same regions"
-            )
-    elif contact_type == "trans":
-        # Check region names:
-        all_expected_regions = expected.reset_index()[
-            ["region1", "region2"]
-        ].values.flatten()
-        if not np.all(view_df["name"].isin(all_expected_regions)):
-            raise ValueError(
-                "View regions are not in the expected table. Provide expected table for the same regions"
-            )
-        del all_expected_regions
-
     #############################################
     # CROSS-VALIDATION IS COMPLETE.
     #############################################
+
+    if min_dist < 0:
+        min_diag = 3
+    else:
+        min_diag = int(np.ceil(min_dist / clr.binsize))
+
+    if max_dist >= 0:
+        max_diag = int(np.floor(max_dist / clr.binsize))
+    else:
+        max_diag = -1
 
     track = saddle.mask_bad_bins((track, track_name), (clr.bins()[:], clr_weight_name))
     if vrange[0] is None:

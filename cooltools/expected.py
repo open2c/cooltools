@@ -1561,12 +1561,8 @@ def get_trans_expected(
     """
 
     if view_df is None:
-        if not symmetric:
-            raise ValueError("asymmetric regions has to be smaller then full chromosomes, use view_df")
         # Generate viewframe from clr.chromsizes:
-        view_df = bioframe.make_viewframe(
-            [(chrom, 0, clr.chromsizes[chrom]) for chrom in clr.chromnames]
-        )
+        view_df = bioframe.make_viewframe( clr.chromsizes )
     else:
         # Make sure view_df is a proper viewframe
         try:
