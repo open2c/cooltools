@@ -10,33 +10,94 @@ from .lib.numutils import LazyToeplitz
 import warnings
 
 
-def make_bin_aligned_windows(
-    binsize, chroms, centers_bp, flank_bp=0, region_start_bp=0, ignore_index=False
-):
-    """
-    Convert genomic loci into bin spans on a fixed bin-size segmentation of a
-    genomic region. Window limits are adjusted to align with bin edges.
+def expand_align_features(features_df, flank, resolution, format="bed"):
+    """Short summary.
 
     Parameters
-    -----------
-    binsize : int
-        Bin size (resolution) in base pairs.
-    chroms : 1D array-like
-        Column of chromosome names.
-    centers_bp : 1D or nx2 array-like
-        If 1D, center points of each window. If 2D, the starts and ends.
-    flank_bp : int
-        Distance in base pairs to extend windows on either side.
-    region_start_bp : int, optional
-        If region is a subset of a chromosome, shift coordinates by this amount.
-        Default is 0.
+    ----------
+    features_df : pd.DataFrame
+        Dataframe with feature coordinates.
+    flank : int
+        Flank size to add to the central bin of each feature.
+    resolution : int
+        Size of the bins to use.
+    format : str
+        "bed" or "bedpe" format: has to have 'chrom', 'start', 'end'
+        or 'chrom1', 'start1', 'end1', 'chrom2', 'start2', 'end1' columns, repectively.
 
     Returns
     -------
-    DataFrame with columns:
-        'chrom'        - chromosome
-        'start', 'end' - window limits in base pairs
-        'lo', 'hi'     - window limits in bins
+    pd.DataFrame
+        DataFrame with features with new columns
+           "center",  "exp_start"   "exp_end"
+        or "center1", "exp_start1", "exp_end1",
+           "center2", "exp_start2", "exp_end2", depending on format.
+
+    """
+    features_df = features_df.copy()
+    if format == "bed":
+        features_df[["orig_start", "orig_end"]] = features_df[["start", "end"]]
+        features_df["center"] = (features_df["start"] + features_df["end"]) / 2
+        features_df["start"] = (
+            np.floor(features_df["center"] / resolution) * resolution - flank
+        ).astype(int)
+        features_df["end"] = (
+            np.floor(features_df["center"] / resolution + 1) * resolution + flank
+        ).astype(int)
+    elif format == "bedpe":
+        features_df[
+            ["orig_start1", "orig_end1", "orig_start2", "orig_end2"]
+        ] = features_df[["start1", "end1", "start2", "end2"]]
+        features_df["center1"] = (features_df["start1"] + features_df["end1"]) / 2
+        features_df["center2"] = (features_df["start2"] + features_df["end2"]) / 2
+        features_df["start1"] = (
+            np.floor(features_df["center1"] / resolution) * resolution - flank
+        ).astype(int)
+        features_df["end1"] = (
+            np.floor(features_df["center1"] / resolution + 1) * resolution + flank
+        ).astype(int)
+        features_df["start2"] = (
+            np.floor(features_df["center2"] / resolution) * resolution - flank
+        ).astype(int)
+        features_df["end2"] = (
+            np.floor(features_df["center2"] / resolution + 1) * resolution + flank
+        ).astype(int)
+    return features_df
+
+
+def make_bin_aligned_windows(
+    binsize,
+    chroms,
+    centers_bp,
+    flank_bp=0,
+    region_start_bp=0,
+    ignore_index=False,
+):
+    """
+        Convert genomic loci into bin spans on a fixed bin-    resolution : int
+    size segmentation of a
+        genomic region. Window limits are adjusted to align with bin edges.
+
+        Parameters
+        -----------
+        binsize : int
+            Bin size (resolution) in base pairs.
+        chroms : 1D array-like
+            Column of chromosome names.
+        centers_bp : 1D or nx2 array-like
+            If 1D, center points of each window. If 2D, the starts and ends.
+        flank_bp : int
+            Distance in base pairs to extend windows on either side.
+        region_start_bp : int, optional
+            If region is a subset of a chromosome, shift coordinates by this amount.
+            Default is 0.
+
+        Returns
+        -------
+        DataFrame with columns:
+            'chrom'        - chromosome
+            'start', 'end' - window limits in base pairs
+            'lo', 'hi'     - window limits in bins
 
     """
     if not (flank_bp % binsize == 0):
@@ -128,7 +189,7 @@ def _pileup(data_select, data_snip, arg):
     return np.dstack(stack), feature_group["_rank"].values
 
 
-def pileup(features, data_select, data_snip, map=map):
+def pileup_legacy(features, data_select, data_snip, map=map):
     """
     Handles on-diagonal and off-diagonal cases.
 
@@ -150,13 +211,13 @@ def pileup(features, data_select, data_snip, map=map):
 
 
     """
-    if features.region.isnull().any():
+    if features["region"].isnull().any():
         warnings.warn(
             "Some features do not have view regions assigned! Some snips will be empty."
         )
 
     features = features.copy()
-    features["region"] = features.region.fillna(
+    features["region"] = features["region"].fillna(
         ""
     )  # fill in unanotated view regions with empty string
     features["_rank"] = range(len(features))
@@ -346,7 +407,9 @@ class ObsExpSnipper:
 
         for (name1, name2), group in self.expected.groupby(["region1", "region2"]):
             if name1 != name2:
-                raise ValueError("Only symmetric regions a supported, e.g. chromosomes, arms, etc")
+                raise ValueError(
+                    "Only symmetric regions a supported, e.g. chromosomes, arms, etc"
+                )
             n_diags = group.shape[0]
             region = self.view_df.loc[name1]
             lo, hi = self.clr.extent(region)
@@ -381,7 +444,9 @@ class ObsExpSnipper:
         self._isnan1 = np.isnan(self.clr.bins()["weight"].fetch(region1_coords).values)
         self._isnan2 = np.isnan(self.clr.bins()["weight"].fetch(region2_coords).values)
         self._expected = LazyToeplitz(
-            self.expected.groupby(["region1", "region2"]).get_group((region1, region2))["balanced.avg"].values
+            self.expected.groupby(["region1", "region2"])
+            .get_group((region1, region2))["balanced.avg"]
+            .values
         )
         return matrix
 
@@ -465,7 +530,9 @@ class ExpectedSnipper:
 
         for (name1, name2), group in self.expected.groupby(["region1", "region2"]):
             if name1 != name2:
-                raise ValueError("Only symmetric regions a supported, e.g. chromosomes, arms, etc")
+                raise ValueError(
+                    "Only symmetric regions a supported, e.g. chromosomes, arms, etc"
+                )
             n_diags = group.shape[0]
             region = self.view_df.loc[name1]
             lo, hi = self.clr.extent(region)
@@ -492,7 +559,9 @@ class ExpectedSnipper:
         self.m = np.diff(self.clr.extent(region1_coords))
         self.n = np.diff(self.clr.extent(region2_coords))
         self._expected = LazyToeplitz(
-            self.expected.groupby(["region1", "region2"]).get_group((region1, region2))["balanced.avg"].values
+            self.expected.groupby(["region1", "region2"])
+            .get_group((region1, region2))["balanced.avg"]
+            .values
         )
         return self._expected
 
@@ -512,3 +581,89 @@ class ExpectedSnipper:
 
         snippet = exp[lo1:hi1, lo2:hi2]
         return snippet
+
+
+def pileup(
+    clr,
+    features_df,
+    view_df=None,
+    expected_df=None,
+    flank=100_000,
+    min_diag="auto",
+    clr_weight_name="weight",
+    force=False,
+    nproc=1,
+):
+    """
+    Pileup features over the cooler.
+
+    Parameters
+    ----------
+    clr : cooler.Cooler
+        Cooler with Hi-C data
+    featured_df : pd.DataFrame
+        Dataframe in bed or bedpe format: has to have 'chrom', 'start', 'end'
+        or 'chrom1', 'start1', 'end1', 'chrom2', 'start2', 'end1' columns.
+    view_df : pd.DataFrame
+        Dataframe with the genomic view for this operation (has to match the
+        expected_df, if provided)
+    expected_df : pd.DataFrame
+        Dataframe with the expected level of interactions at different
+        genomic separations
+    flank : int
+        How much to flank the center of the features by, in bp
+    min_diag: str or int (Not implemented)
+        All diagonals of the matrix below this value are ignored. 'auto'
+        tried to extract the value used during the matrix balancing,
+        if it fails defaults to 2
+    clr_weight_name : str (Not implemented)
+        Value of the column that contains the balancing weights
+    force : bool
+        Allows start>end in the features (not implemented)
+    nproc : str
+        How many cores to use
+    Returns
+    -------
+        np.ndarray: a stackup of all snippets corresponding to the features
+
+    """
+
+    if {"chrom", "start", "end"}.issubset(features_df.columns):
+        feature_type = "bed"
+    elif {"chrom1", "start1", "end1", "chrom2", "start2", "end1"}.issubset(
+        features_df.columns
+    ):
+        feature_type = "bedpe"
+    else:
+        raise ValueError("Unknown feature_df format")
+    if flank is not None:
+        features_df = expand_align_features(
+            features_df, flank, clr.binsize, format=feature_type
+        )
+
+    if view_df is None:
+        view_df = bioframe.make_viewframe(clr.chromsizes)
+    else:
+        if not bioframe.is_contained(view_df, bioframe.make_viewframe(clr.chromsizes)):
+            raise ValueError("view_df is out of the bounds of chromosomes in cooler.")
+
+    features_df = assign_regions(features_df, view_df)
+
+    # TODO Expected checks are now implemented in the snippers, maybe move them out to here
+    # when there is a neat function?
+
+    if expected_df is None:
+        snipper = CoolerSnipper(clr, view_df=view_df)
+    else:
+        snipper = ObsExpSnipper(clr, expected_df, view_df=view_df)
+
+    if nproc > 1:
+        pool = multiprocessing.Pool(nproc)
+        mymap = pool.map
+    else:
+        mymap = map
+    stack = pileup_legacy(features_df, snipper.select, snipper.snip, map=mymap)
+
+    if nproc > 1:
+        poo.close()
+    return stack
