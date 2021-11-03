@@ -12,6 +12,7 @@ from .. import saddle
 
 import click
 from .util import validate_csv
+from ..lib.common import assign_regions, read_expected, read_viewframe
 from . import util
 from . import cli
 
@@ -65,35 +66,30 @@ from . import cli
     show_default=True,
 )
 @click.option(
-    "--quantiles",
-    help="Bin the signal track into quantiles rather than by value.",
-    is_flag=True,
-    default=False,
-)
-@click.option(
-    "--range",
-    "range_",
+    "--vrange",
+    "vrange",
     help="Low and high values used for binning genome-wide track values, e.g. "
     "if `range`=(-0.05, 0.05), `n-bins` equidistant bins would be generated. "
-    "Use to prevent the extreme track values from exploding the bin range and "
+    "Use to prevent extreme track values from exploding the bin range and "
     "to ensure consistent bins across several runs of `compute_saddle` command "
     "using different track files.",
+    type=(float, float),
+    default=(None, None),
     nargs=2,
-    type=float,
 )
 @click.option(
     "--qrange",
-    help="The fraction of the genome-wide range of the track values used to "
-    "generate bins. E.g., if `qrange`=(0.02, 0.98) the lower bin would "
+    help="Low and high values used for quantile bins of genome-wide track values,"
+    "e.g. if `qrange`=(0.02, 0.98) the lower bin would "
     "start at the 2nd percentile and the upper bin would end at the 98th "
     "percentile of the genome-wide signal. "
     "Use to prevent the extreme track values from exploding the bin range.",
     type=(float, float),
-    default=(0.0, 1.0),
+    default=(None, None),
     show_default=True,
 )
 @click.option(
-    "--weight-name",
+    "--clr-weight-name",
     help="Use balancing weight with this name.",
     type=str,
     default="weight",
@@ -166,10 +162,9 @@ def compute_saddle(
     min_dist,
     max_dist,
     n_bins,
-    quantiles,
-    range_,
+    vrange,
     qrange,
-    weight_name,
+    clr_weight_name,
     strength,
     view,
     out_prefix,
@@ -210,74 +205,8 @@ def compute_saddle(
     """
     #### Read inputs: ####
     clr = cooler.Cooler(cool_path)
-    expected_path, expected_name = expected_path
+    expected_path, expected_value_col = expected_path
     track_path, track_name = track_path
-
-    #### Read expected: ####
-    if contact_type == "cis":
-        # that's what we expect as column names:
-        expected_columns = ["region", "diag", "n_valid", expected_name]
-        # what would become a MultiIndex:
-        expected_index = ["region", "diag"]
-        # expected dtype as a rudimentary form of validation:
-        expected_dtype = {
-            "region": np.str,
-            "diag": np.int64,
-            "n_valid": np.int64,
-            expected_name: np.float64,
-        }
-        # # unique list of chroms mentioned in expected_path:
-        # get_exp_chroms = lambda df: df.index.get_level_values("region").unique()
-        # # compute # of bins by comparing matching indexes:
-        # get_exp_bins = lambda df, ref_chroms, _: (
-        #     df.index.get_level_values("chrom").isin(ref_chroms).sum()
-        # )
-    elif contact_type == "trans":
-        # that's what we expect as column names:
-        expected_columns = ["region1", "region2", "n_valid", expected_name]
-        # what would become a MultiIndex:
-        expected_index = ["region1", "region2"]
-        # expected dtype as a rudimentary form of validation:
-        expected_dtype = {
-            "region1": np.str,
-            "region2": np.str,
-            "n_valid": np.int64,
-            expected_name: np.float64,
-        }
-        # # unique list of chroms mentioned in expected_path:
-        # get_exp_chroms = lambda df: np.union1d(
-        #     df.index.get_level_values("region1").unique(),
-        #     df.index.get_level_values("region2").unique(),
-        # )
-        # # no way to get bins from trans-expected, so just get the number:
-        # get_exp_bins = lambda _1, _2, correct_bins: correct_bins
-    else:
-        raise ValueError(
-            "Incorrect contact_type: {}, ".format(contact_type),
-            "Should have been caught by click.",
-        )
-
-    if min_dist < 0:
-        min_diag = 3
-    else:
-        min_diag = int(np.ceil(min_dist / clr.binsize))
-
-    if max_dist >= 0:
-        max_diag = int(np.floor(max_dist / clr.binsize))
-    else:
-        max_diag = -1
-
-    # use 'usecols' as a rudimentary form of validation,
-    # and dtype. Keep 'comment' and 'verbose' - explicit,
-    # as we may use them later:
-    expected = pd.read_table(
-        expected_path,
-        usecols=expected_columns,
-        index_col=expected_index,
-        dtype=expected_dtype,
-        comment=None,
-        verbose=verbose,
-    )
 
     #### Read track: ####
     # read bedGraph-file :
@@ -299,33 +228,11 @@ def compute_saddle(
 
     #### Generate viewframes ####
     # 1:cooler_view_df. Generate viewframe from clr.chromsizes:
-    cooler_view_df = bioframe.make_viewframe(
-        [(chrom, 0, clr.chromsizes[chrom]) for chrom in clr.chromnames]
-    )
+    cooler_view_df = bioframe.make_viewframe( clr.chromsizes )
 
-    # 2:view_df. Define global view for calculating saddles
-    # use input "view" BED file or all chromosomes mentioned in "track":
-    if view is None:
-        view_df = cooler_view_df
-    else:
-        # Make viewframe out of table, read view dataframe:
-        try:
-            view_df = bioframe.read_table(view, schema="bed4", index_col=False)
-        except Exception:
-            view_df = bioframe.read_table(view, schema="bed3", index_col=False)
-        # Convert view dataframe to viewframe:
-        try:
-            view_df = bioframe.make_viewframe(view_df, check_bounds=clr.chromsizes)
-        except ValueError as e:
-            raise ValueError(
-                "View table is incorrect, please, comply with the format. "
-            ) from e
-
-        # Check that input view is contained in cooler bounds, but not vice versa (because cooler may have more regions):
-        if not bioframe.is_contained(view_df, cooler_view_df):
-            raise ValueError(
-                "View regions are not contained in cooler chromsizes bounds"
-            )
+    # 2:view_df. Define global view for calculating calling dots
+    # use input "view" BED file or all chromosomes :
+    view_df = cooler_view_df if (view is None) else read_viewframe(view, cooler_view_df)
 
     # 3:track_view_df. Generate viewframe from track table:
     track_view_df = bioframe.make_viewframe(
@@ -334,6 +241,17 @@ def compute_saddle(
             for i, group in track.reset_index().groupby("chrom")
         ]
     )
+
+    #### Read expected: ####
+    expected_summary_cols = [expected_value_col, ]
+    expected = read_expected(
+        expected_path,
+        contact_type=contact_type,
+        expected_value_cols=expected_summary_cols,
+        verify_view=view_df,
+        verify_cooler=clr,
+    )
+    # add checks to make sure cis-expected is symmetric
 
     #############################################
     # CROSS-VALIDATE viewframes of COOLER, TRACK and EXPECTED:
@@ -348,76 +266,51 @@ def compute_saddle(
     if not bioframe.is_contained(view_df, track_view_df):
         raise ValueError("View table does not have some regions annotated in the track")
 
-    # Check that view regions are named as in expected table, necessary for querying expected:
-    if contact_type == "cis":
-        # Check region names:
-        if not bioframe.is_cataloged(
-            view_df, expected.reset_index(), df_view_col="name", view_name_col="region"
-        ):
-            raise ValueError(
-                "View regions are not in the expected table. Provide expected table for the same regions"
-            )
-    elif contact_type == "trans":
-        # Check region names:
-        all_expected_regions = expected.reset_index()[
-            ["region1", "region2"]
-        ].values.flatten()
-        if not np.all(view_df["name"].isin(all_expected_regions)):
-            raise ValueError(
-                "View regions are not in the expected table. Provide expected table for the same regions"
-            )
-        del all_expected_regions
-
     #############################################
     # CROSS-VALIDATION IS COMPLETE.
     #############################################
 
-    track = saddle.mask_bad_bins((track, track_name), (clr.bins()[:], weight_name))
-
-    if contact_type == "cis":
-        getmatrix = saddle.make_cis_obsexp_fetcher(
-            clr, (expected, expected_name), view_df, weight_name=weight_name
-        )
-    elif contact_type == "trans":
-        getmatrix = saddle.make_trans_obsexp_fetcher(
-            clr, (expected, expected_name), view_df, weight_name=weight_name
-        )
-
-    if quantiles:
-        if len(range_):
-            qlo, qhi = saddle.ecdf(track[track_name], range_)
-        elif len(qrange):
-            qlo, qhi = qrange
-        else:
-            qlo, qhi = 0.0, 1.0
-        q_edges = np.linspace(qlo, qhi, n_bins)
-        binedges = saddle.quantile(track[track_name], q_edges)
+    if min_dist < 0:
+        min_diag = 3
     else:
-        if len(range_):
-            lo, hi = range_
-        elif len(qrange):
-            lo, hi = saddle.quantile(track[track_name], qrange)
-        else:
-            lo, hi = track[track_name].min(), track[track_name].max()
-        binedges = np.linspace(lo, hi, n_bins)
+        min_diag = int(np.ceil(min_dist / clr.binsize))
 
-    digitized, hist = saddle.digitize_track(
-        binedges, track=(track, track_name), view_df=track_view_df
+    if max_dist >= 0:
+        max_diag = int(np.floor(max_dist / clr.binsize))
+    else:
+        max_diag = -1
+
+    track = saddle.mask_bad_bins((track, track_name), (clr.bins()[:], clr_weight_name))
+    if vrange[0] is None:
+        vrange = None
+    if qrange[0] is None:
+        qrange = None
+
+    digitized, binedges = saddle.get_digitized(
+        track[["chrom", "start", "end", track_name]],
+        n_bins,
+        vrange=vrange,
+        qrange=qrange,
+        digitized_suffix=".d",
     )
-
-    S, C = saddle.make_saddle(
-        getmatrix,
-        binedges,
-        (digitized, track_name + ".d"),
-        contact_type=contact_type,
+    S, C = saddle.get_saddle(
+        clr,
+        expected,
+        digitized[["chrom", "start", "end", track_name + ".d"]],
+        contact_type,
         view_df=view_df,
+        clr_weight_name=clr_weight_name,
+        expected_value_col=expected_value_col,
+        view_name_col="name",
         min_diag=min_diag,
         max_diag=max_diag,
+        verbose=verbose,
     )
-
     saddledata = S / C
 
-    to_save = dict(saddledata=saddledata, binedges=binedges, hist=hist)
+    to_save = dict(
+        saddledata=saddledata, binedges=binedges, digitized=digitized, saddlecounts=C
+    )
 
     if strength:
         ratios = saddle.saddle_strength(S, C)
@@ -448,18 +341,20 @@ def compute_saddle(
         else:
             color = mpl.colors.colorConverter.to_rgb(hist_color)
         title = op.basename(cool_path) + " ({})".format(contact_type)
-        if quantiles:
-            edges = q_edges
+
+        if qrange is not None:
             track_label = track_name + " quantiles"
         else:
-            edges = binedges
             track_label = track_name
+
         clabel = "(contact frequency / expected)"
 
         saddle.saddleplot(
-            edges,
-            hist,
+            track,
             saddledata,
+            n_bins,
+            vrange=vrange,
+            qrange=qrange,
             scale=scale,
             vmin=vmin,
             vmax=vmax,

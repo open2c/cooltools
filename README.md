@@ -14,7 +14,7 @@ Our contributing guide can be found [here](https://github.com/open2c/cooltools/b
 
 The following are required before installing cooltools:
 
-* Python 3.4+
+* Python 3.7+
 * `numpy`
 * `cython`
 

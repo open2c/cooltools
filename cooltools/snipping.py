@@ -316,16 +316,14 @@ class ObsExpSnipper:
         # Detecting the columns for the detection of regions
         columns = expected.columns
         assert len(columns) > 0
-        if "region" not in columns:
-            if "chrom" in columns:
-                self.expected = self.expected.rename(columns={"chrom": "region"})
-                warnings.warn(
-                    "The expected dataframe appears to be in the old format."
-                    "It should have a `region` column, not `chrom`."
+        if ("region1" not in columns) or ("region2" not in columns):
+            if ("chrom" in columns) or ("region" in columns):
+                raise ValueError(
+                    "Provided expected appears to have old format, it has to comply with the format of expected v1.0"
                 )
             else:
                 raise ValueError(
-                    "Please check the expected dataframe, it has no `region` column"
+                    "Please check the expected dataframe, it has to comply with the format of expected v1.0"
                 )
 
         # get chromosomes from cooler, if view_df not specified:
@@ -346,17 +344,17 @@ class ObsExpSnipper:
 
         self.view_df = view_df.set_index("name")
 
-        try:
-            for region_name, group in self.expected.groupby("region"):
-                n_diags = group.shape[0]
-                region = self.view_df.loc[region_name]
-                lo, hi = self.clr.extent(region)
-                assert n_diags == (hi - lo)
-        except AssertionError:
-            raise ValueError(
-                "Region shape mismatch between expected and cooler. "
-                "Are they using the same resolution?"
-            )
+        for (name1, name2), group in self.expected.groupby(["region1", "region2"]):
+            if name1 != name2:
+                raise ValueError("Only symmetric regions a supported, e.g. chromosomes, arms, etc")
+            n_diags = group.shape[0]
+            region = self.view_df.loc[name1]
+            lo, hi = self.clr.extent(region)
+            if n_diags != (hi - lo):
+                raise ValueError(
+                    "Region shape mismatch between expected and cooler. "
+                    "Are they using the same resolution?"
+                )
 
         self.binsize = self.clr.binsize
         self.offsets = {}
@@ -383,7 +381,7 @@ class ObsExpSnipper:
         self._isnan1 = np.isnan(self.clr.bins()["weight"].fetch(region1_coords).values)
         self._isnan2 = np.isnan(self.clr.bins()["weight"].fetch(region2_coords).values)
         self._expected = LazyToeplitz(
-            self.expected.groupby("region").get_group(region1)["balanced.avg"].values
+            self.expected.groupby(["region1", "region2"]).get_group((region1, region2))["balanced.avg"].values
         )
         return matrix
 
@@ -438,16 +436,14 @@ class ExpectedSnipper:
         # Detecting the columns for the detection of regions
         columns = expected.columns
         assert len(columns) > 0
-        if "region" not in columns:
-            if "chrom" in columns:
-                self.expected = self.expected.rename(columns={"chrom": "region"})
-                warnings.warn(
-                    "The expected dataframe appears to be in the old format."
-                    "It should have a `region` column, not `chrom`."
+        if ("region1" not in columns) or ("region2" not in columns):
+            if ("chrom" in columns) or ("region" in columns):
+                raise ValueError(
+                    "Provided expected appears to have old format, it has to comply with the format of expected v1.0"
                 )
             else:
                 raise ValueError(
-                    "Please check the expected dataframe, it has no `region` column"
+                    "Please check the expected dataframe, it has to comply with the format of expected v1.0"
                 )
 
         # get chromosomes from cooler, if view_df not specified:
@@ -467,17 +463,17 @@ class ExpectedSnipper:
                 )
         self.view_df = view_df.set_index("name")
 
-        try:
-            for region_name, group in self.expected.groupby("region"):
-                n_diags = group.shape[0]
-                region = self.view_df.loc[region_name]
-                lo, hi = self.clr.extent(region)
-                assert n_diags == (hi - lo)
-        except AssertionError:
-            raise ValueError(
-                "Region shape mismatch between expected and cooler. "
-                "Are they using the same resolution?"
-            )
+        for (name1, name2), group in self.expected.groupby(["region1", "region2"]):
+            if name1 != name2:
+                raise ValueError("Only symmetric regions a supported, e.g. chromosomes, arms, etc")
+            n_diags = group.shape[0]
+            region = self.view_df.loc[name1]
+            lo, hi = self.clr.extent(region)
+            if n_diags != (hi - lo):
+                raise ValueError(
+                    "Region shape mismatch between expected and cooler. "
+                    "Are they using the same resolution?"
+                )
 
         self.binsize = self.clr.binsize
         self.offsets = {}
@@ -496,7 +492,7 @@ class ExpectedSnipper:
         self.m = np.diff(self.clr.extent(region1_coords))
         self.n = np.diff(self.clr.extent(region2_coords))
         self._expected = LazyToeplitz(
-            self.expected.groupby("region").get_group(region1)["balanced.avg"].values
+            self.expected.groupby(["region1", "region2"]).get_group((region1, region2))["balanced.avg"].values
         )
         return self._expected
 
