@@ -999,6 +999,12 @@ def is_cooler_balanced(clr, clr_weight_name="weight", raise_errors=False):
     if not isinstance(clr_weight_name, str):
         raise TypeError("clr_weight_name has to be str that specifies name of balancing weight in clr")
 
+    if clr_weight_name in schemas.DIVISIVE_WEIGHTS_4DN:
+        raise KeyError(
+            f"clr_weight_name: {clr_weight_name} is reserved as divisive by 4DN"
+            "cooltools supports multiplicative weights at this time."
+        )
+
     # check if clr_weight_name is in cooler
     if clr_weight_name not in clr.bins().columns:
         if raise_errors:
