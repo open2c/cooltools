@@ -9,6 +9,8 @@ from .lib.common import assign_regions
 from .lib.numutils import LazyToeplitz
 import warnings
 
+import multiprocessing
+
 
 def expand_align_features(features_df, flank, resolution, format="bed"):
     """Short summary.
@@ -589,9 +591,9 @@ def pileup(
     view_df=None,
     expected_df=None,
     flank=100_000,
-    min_diag="auto",
-    clr_weight_name="weight",
-    force=False,
+    min_diag="auto", # TODO: implement
+    clr_weight_name="weight", # TODO: implement
+    force=False, # TODO: implement
     nproc=1,
 ):
     """
@@ -601,7 +603,7 @@ def pileup(
     ----------
     clr : cooler.Cooler
         Cooler with Hi-C data
-    featured_df : pd.DataFrame
+    features_df : pd.DataFrame
         Dataframe in bed or bedpe format: has to have 'chrom', 'start', 'end'
         or 'chrom1', 'start1', 'end1', 'chrom2', 'start2', 'end1' columns.
     view_df : pd.DataFrame
@@ -665,5 +667,5 @@ def pileup(
     stack = pileup_legacy(features_df, snipper.select, snipper.snip, map=mymap)
 
     if nproc > 1:
-        poo.close()
+        pool.close()
     return stack
