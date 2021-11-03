@@ -130,6 +130,7 @@ def logbin_expected(
 
     cvd = read_expected(
         expected_path,
+        contact_type="cis",
         expected_value_cols=expected_summary_cols,
     )
 

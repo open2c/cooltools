@@ -5,6 +5,7 @@ from cytoolz import merge
 import numpy as np
 import pandas as pd
 from .lib import numutils
+from .lib.common import is_compatible_viewframe, is_compatible_expected
 import warnings
 
 import bioframe
@@ -15,23 +16,6 @@ def _is_track(track):
         raise ValueError("track must have bedFrame-like interval columns")
     if not pd.core.dtypes.common.is_numeric_dtype(track[track.columns[3]]):
         raise ValueError("track signal column must be numeric")
-
-
-def _make_cooler_view(view_df, clr):
-    try:
-        if not bioframe.is_viewframe(view_df, raise_errors=True):
-            raise ValueError("view_df is not a valid viewframe.")
-    except Exception as e:  # AssertionError or ValueError, see https://github.com/gfudenberg/bioframe/blob/main/bioframe/core/checks.py#L177
-        warnings.warn(
-            "view_df has to be a proper viewframe from next release",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        view_df = bioframe.make_viewframe(view_df)
-    if not bioframe.is_contained(view_df, bioframe.make_viewframe(clr.chromsizes)):
-        raise ValueError("View table is out of the bounds of chromosomes in cooler.")
-    return view_df
-
 
 def _view_from_track(track_df):
     bioframe.core.checks._verify_columns(track_df, ["chrom", "start", "end"])
@@ -457,20 +441,41 @@ def get_saddle(
     if view_df is None:
         view_df = _view_from_track(digitized_track)
     else:
-        view_df = _make_cooler_view(view_df, clr)
+        # Make sure view_df is a proper viewframe
+        try:
+            _ = is_compatible_viewframe(
+                    view_df,
+                    clr,
+                    check_sorting=True, # just in case
+                    raise_errors=True,
+                )
+        except Exception as e:
+            raise ValueError("view_df is not a valid viewframe or incompatible") from e
+
+    # make sure provided expected is compatible
+    try:
+        _ = is_compatible_expected(
+            expected,
+            contact_type,
+            view_df,
+            verify_cooler=clr,
+            expected_value_cols=["balanced.avg", ],
+            raise_errors=True
+        )
+    except Exception as e:
+        raise ValueError("provided expected is not compatible") from e
+
 
     digitized_tracks = {}
     for num, reg in view_df.iterrows():
         digitized_reg = bioframe.select(digitized_track, reg)
         digitized_tracks[reg[view_name_col]] = digitized_reg[digitized_col]
 
-    ### set "cis" or "trans" for supports (regions to iterate over) and matrix fetcher
+    # set "cis" or "trans" for supports (regions to iterate over) and matrix fetcher
     if contact_type == "cis":
+        # only symmetric intra-chromosomal regions :
         supports = list(zip(view_df[view_name_col], view_df[view_name_col]))
-        if not bioframe.is_cataloged(
-            expected, view_df, df_view_col="region1", view_name_col=view_name_col
-        ):
-            raise ValueError("Region names in expected are not cataloged in view_df.")
+
         getmatrix = _make_cis_obsexp_fetcher(
             clr,
             expected,
@@ -480,6 +485,7 @@ def get_saddle(
             clr_weight_name=clr_weight_name,
         )
     elif contact_type == "trans":
+        # asymmetric inter-chromosomal regions :
         supports = list(combinations(view_df[view_name_col], 2))
         supports = [
             i
