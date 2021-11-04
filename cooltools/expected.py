@@ -675,7 +675,7 @@ def diagsum_symm(
     results = map(job, spans)
     for result in results:
         for i, agg in result.items():
-            region = view_df.loc[i, "name"]
+            region = view_df["name"].iat[i]
             for field in fields:
                 agg_name = f"{field}.sum"
                 dtables[region][agg_name] = dtables[region][agg_name].add(
@@ -858,8 +858,8 @@ def diagsum_pairwise(
     results = map(job, spans)
     for result in results:
         for (i, j), agg in result.items():
-            ni = view_df.loc[i, "name"]
-            nj = view_df.loc[j, "name"]
+            ni = view_df["name"].iat[i]
+            nj = view_df["name"].iat[j]
             for field in fields:
                 agg_name = f"{field}.sum"
                 dtables[ni, nj][agg_name] = dtables[ni, nj][agg_name].add(
@@ -1212,8 +1212,8 @@ def blocksum_pairwise(
                 agg_name = "{}.sum".format(field)
                 s = agg[field].item()
                 if not np.isnan(s):
-                    ni = view_df.loc[i, "name"]
-                    nj = view_df.loc[j, "name"]
+                    ni = view_df["name"].iat[i]
+                    nj = view_df["name"].iat[j]
                     records[ni, nj][agg_name] += s
 
     # returning a dataframe for API consistency:
