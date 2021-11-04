@@ -3,7 +3,7 @@ import cooler
 
 from . import cli
 from .. import insulation
-
+import bioframe
 
 @cli.command()
 @click.argument("in_path", metavar="IN_PATH", type=str, nargs=1)
@@ -52,6 +52,13 @@ from .. import insulation
 )
 @click.option("--chunksize", help="", type=int, default=20000000, show_default=True)
 @click.option("--verbose", help="Report real-time progress.", is_flag=True)
+@click.option(
+    "--bigwig",
+    help="Also save insulation tracks as a bigWig files for different window sizes"
+    " with the names output.<window-size>.bw",
+    is_flag=True,
+    default=False,
+)
 def diamond_insulation(
     in_path,
     window,
@@ -63,6 +70,7 @@ def diamond_insulation(
     append_raw_scores,
     chunksize,
     verbose,
+    bigwig
 ):
     """
     Calculate the diamond insulation scores and call insulating boundaries.
@@ -101,3 +109,14 @@ def diamond_insulation(
     # or print into stdout otherwise:
     else:
         print(ins_table.to_csv(sep="\t", index=False, na_rep="nan"))
+
+    # Write the insulation track as a bigwig:
+
+    if bigwig:
+        for w in window:
+            bioframe.to_bigwig(
+                ins_table,
+                clr.chromsizes,
+                output + "." + str(w) + ".bw",
+                value_field=f"log2_insulation_score_{w}",
+            )
