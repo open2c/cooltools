@@ -6,6 +6,11 @@ If you haven't contributed to open-source before, we recommend you read [this ex
 
 If you're not already familiar with it, we follow the [fork and pull model](https://help.github.com/articles/about-collaborative-development-models) on GitHub. Also, check out this recommended [git workflow](https://www.asmeurer.com/git-workflow/).
 
+As a rough guide for cooltools:
+- contributors should preferably work on their forks and submit pull requests to the main branch
+- core maintainers can work on feature branches in the main fork and then submit pull requests to the main branch
+- core maintainers can push directly to the main branch if it's urgently needed 
+
 
 ## Contributing Code
 
