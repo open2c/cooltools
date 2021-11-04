@@ -1,4 +1,5 @@
 import os.path as op
+from functools import partial
 import pandas as pd
 import numpy as np
 import cooler
@@ -6,9 +7,14 @@ import bioframe
 
 import click
 from . import cli
-from ..lib.common import assign_regions
+from ..lib.common import assign_regions, \
+                        read_expected, \
+                        read_viewframe, \
+                        make_cooler_view
 from .. import dotfinder
 from . import util
+from .util import validate_csv
+
 
 
 @cli.command()
@@ -21,8 +27,8 @@ from . import util
 @click.argument(
     "expected_path",
     metavar="EXPECTED_PATH",
-    type=click.Path(exists=True, dir_okay=False),
-    nargs=1,
+    type=str,
+    callback=partial(validate_csv, default_column="balanced.avg"),
 )
 @click.option(
     "--view",
@@ -36,15 +42,8 @@ from . import util
     show_default=True,
 )
 @click.option(
-    "--expected-name",
-    help="Name of value column in EXPECTED_PATH",
-    type=str,
-    default="balanced.avg",
-    show_default=True,
-)
-@click.option(
-    "--weight-name",
-    help="Use balancing weight with this name.",
+    "--clr-weight-name",
+    help="Use cooler balancing weight with this name.",
     type=str,
     default="weight",
     show_default=True,
@@ -138,8 +137,7 @@ def call_dots(
     cool_path,
     expected_path,
     view,
-    expected_name,
-    weight_name,
+    clr_weight_name,
     nproc,
     max_loci_separation,
     max_nans_tolerated,
@@ -157,7 +155,8 @@ def call_dots(
 
     COOL_PATH : The paths to a .cool file with a balanced Hi-C map.
 
-    EXPECTED_PATH : The paths to a tsv-like file with expected cis-expected.
+    EXPECTED_PATH : The paths to a tsv-like file with expected signal,
+    including a header. Use the '::' syntax to specify a column name.
 
     Analysis will be performed for chromosomes referred to in EXPECTED_PATH, and
     therefore these chromosomes must be a subset of chromosomes referred to in
@@ -168,110 +167,34 @@ def call_dots(
     COOL_PATH and EXPECTED_PATH must be binned at the same resolution.
 
     EXPECTED_PATH must contain at least the following columns for cis contacts:
-    'region', 'diag', 'n_valid', value_name. value_name is controlled using
+    'region1/2', 'diag', 'n_valid', value_name. value_name is controlled using
     options. Header must be present in a file.
 
     """
     clr = cooler.Cooler(cool_path)
-
-    # preliminary SCHEMA for cis-expected
-    region_column_name = "region"
-    expected_columns = [region_column_name, "diag", "n_valid", expected_name]
-    expected_dtypes = {
-        region_column_name: np.str,
-        "diag": np.int64,
-        "n_valid": np.int64,
-        expected_name: np.float64,
-    }
-
-    try:
-        expected = pd.read_table(
-            expected_path,
-            usecols=expected_columns,
-            dtype=expected_dtypes,
-            comment=None,
-            verbose=verbose,
-        )
-    except ValueError as e:
-        raise ValueError(
-            "input expected does not match the schema\n"
-            "tab-separated expected file must have a header as well"
-        )
-    expected_index = [
-        region_column_name,
-        "diag",
-    ]
-    expected.set_index(expected_index, inplace=True)
-    # end of SCHEMA for cis-expected
+    expected_path, expected_value_col = expected_path
 
     #### Generate viewframes ####
     # 1:cooler_view_df. Generate viewframe from clr.chromsizes:
-    cooler_view_df = bioframe.make_viewframe(
-        [(chrom, 0, clr.chromsizes[chrom]) for chrom in clr.chromnames]
-    )
+    cooler_view_df = make_cooler_view(clr)
 
-    # 2:view_df. Define global view for calculating saddles
-    # use input "view" BED file or all chromosomes mentioned in "track":
+    # 2:view_df. Define global view for calculating calling dots
+    # use input "view" BED file or all chromosomes :
     if view is None:
         view_df = cooler_view_df
     else:
-        # Make viewframe out of table, read view dataframe:
-        try:
-            view_df = bioframe.read_table(view, schema="bed4", index_col=False)
-        except Exception:
-            view_df = bioframe.read_table(view, schema="bed3", index_col=False)
-        # Convert view dataframe to viewframe:
-        try:
-            view_df = bioframe.make_viewframe(view_df, check_bounds=clr.chromsizes)
-        except ValueError as e:
-            raise ValueError(
-                "View table is incorrect, please, comply with the format. "
-            ) from e
+        view_df = read_viewframe(view, clr, check_sorting=True)
 
-        # Check that input view is contained in cooler bounds, but not vice versa (because cooler may have more regions):
-        if not bioframe.is_contained(view_df, cooler_view_df):
-            raise ValueError(
-                "View regions are not contained in cooler chromsizes bounds"
-            )
-
-    # Check that view regions are named as in expected table.
-    # Note that since cooltools v0.5 we do not support parsing region names:
-    # https://github.com/open2c/cooltools/issues/262
-    if not bioframe.is_cataloged(
-        view_df,
-        expected.reset_index(),
-        df_view_col="name",
-        view_name_col=region_column_name,
-    ):
-        raise ValueError(
-            "View regions are not in the expected table. Provide expected table for the same regions"
-        )
-
-    # Verify appropriate columns order (required for heatmap_tiles_generator_diag):
-    view_df = view_df[["chrom", "start", "end", "name"]]
-
-    # check number of bins per region in cooler and expected table
-    # compute # of bins by comparing matching indexes
-    try:
-        for region_name, group in expected.reset_index().groupby(region_column_name):
-            n_diags = group.shape[0]
-            region = view_df.set_index("name").loc[region_name]
-            lo, hi = clr.extent(region)
-            assert n_diags == (hi - lo)
-    except AssertionError:
-        raise ValueError(
-            "Region shape mismatch between expected and cooler. "
-            "Are they using the same resolution?"
-        )
-    # All the checks have passed:
-    if verbose:
-        print(
-            "{} and {} passed cross-compatibility checks.".format(
-                cool_path, expected_path
-            )
-        )
-
-    # by now we have a usable region_table and expected for most scenarios
+    #### Read expected: ####
+    expected_summary_cols = [expected_value_col, ]
+    expected = read_expected(
+        expected_path,
+        contact_type="cis",
+        expected_value_cols=expected_summary_cols,
+        verify_view=view_df,
+        verify_cooler=clr,
+    )
+    # add checks to make sure cis-expected is symmetric
 
     # Prepare some parameters.
     binsize = clr.binsize
@@ -335,9 +258,9 @@ def call_dots(
     # 1. Calculate genome-wide histograms of scores.
     gw_hist = dotfinder.scoring_and_histogramming_step(
         clr,
-        expected,
-        expected_name,
-        weight_name,
+        expected.set_index(["region1","region2","diag"]),
+        expected_value_col,
+        clr_weight_name,
         tiles,
         kernels,
         ledges,
@@ -358,9 +281,9 @@ def call_dots(
     # 3. Filter using FDR thresholds calculated in the histogramming step
     filtered_pixels = dotfinder.scoring_and_extraction_step(
         clr,
-        expected,
-        expected_name,
-        weight_name,
+        expected.set_index(["region1","region2","diag"]),
+        expected_value_col,
+        clr_weight_name,
         tiles,
         kernels,
         ledges,

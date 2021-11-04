@@ -953,8 +953,9 @@ def score_tile(
     origin = (tilei[0], tilej[0])
 
     # we have to do it for every tile, because
-    # region_name is not known apriori (maybe move outside):
-    lazy_exp = LazyToeplitz(cis_exp.loc[region_name][exp_v_name].values)
+    # region_name is not known apriori (maybe move outside)
+    # use .loc[region, region] for symmetric cis regions to conform with expected v1.0
+    lazy_exp = LazyToeplitz(cis_exp.loc[region_name, region_name][exp_v_name].values)
 
     # RAW observed matrix slice:
     observed = clr.matrix(balance=False)[slice(*tilei), slice(*tilej)]

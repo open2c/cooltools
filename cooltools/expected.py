@@ -15,6 +15,7 @@ from cooler.tools import partition
 import cooler
 import bioframe
 from .lib import assign_supports, numutils
+from .lib.common import is_compatible_viewframe, is_cooler_balanced
 
 where = np.flatnonzero
 concat = chain.from_iterable
@@ -1435,43 +1436,36 @@ def get_cis_expected(
     if view_df is None:
         if not intra_only:
             raise ValueError("asymmetric regions has to be smaller then full chromosomes, use view_df")
-        # Generate viewframe from clr.chromsizes:
-        view_df = bioframe.make_viewframe(
-            [(chrom, 0, clr.chromsizes[chrom]) for chrom in clr.chromnames]
-        )
+        else:
+            # Generate viewframe from clr.chromsizes:
+            view_df = make_cooler_view(clr)
     else:
         # Make sure view_df is a proper viewframe
         try:
-            if not bioframe.is_viewframe(view_df, raise_errors=True):
-                raise ValueError("view_df is not a valid viewframe.")
-            if not bioframe.is_contained(view_df, bioframe.make_viewframe(clr.chromsizes)):
-                raise ValueError(
-                    "View table is out of the bounds of chromosomes in cooler."
+            _ = is_compatible_viewframe(
+                    view_df,
+                    clr,
+                    # must be sorted for asymmetric case
+                    check_sorting=(not intra_only),
+                    raise_errors=True,
                 )
-            # add is_sorted check in the asymmetric case ...
-        except Exception as e:  # AssertionError or ValueError, see https://github.com/gfudenberg/bioframe/blob/main/bioframe/core/checks.py#L177
-            warnings.warn(
-                "view_df has to be a proper viewframe from next release",
-                DeprecationWarning,
-                stacklevel=2,
-            )
-            view_df = bioframe.make_viewframe(view_df)
+        except Exception as e:
+            raise ValueError("view_df is not a valid viewframe or incompatible") from e
 
     # define transforms - balanced and raw ('count') for now
     if clr_weight_name is None:
         # no transforms
         transforms = {}
-    else:
-        if not isinstance(clr_weight_name, str):
-            raise TypeError("clr_weight_name has to be str that specifies name of balancing weight in clr")
+    elif is_cooler_balanced(clr, clr_weight_name):
         # define balanced data transform:
         weight1 = clr_weight_name + "1"
         weight2 = clr_weight_name + "2"
         transforms = {"balanced": lambda p: p["count"] * p[weight1] * p[weight2]}
-
-    # check if clr_weight_name is in cooler
-    if clr_weight_name not in clr.bins().columns:
-        raise ValueError(f"specified balancing weight {clr_weight_name} is not available in cooler")
+    else:
+        raise ValueError(
+                "cooler is not balanced, or"
+                f"balancing weight {clr_weight_name} is not available in the cooler."
+            )
 
     # execution details
     if nproc > 1:
@@ -1561,51 +1555,36 @@ def get_trans_expected(
     """
 
     if view_df is None:
-        if not symmetric:
-            raise ValueError("asymmetric regions has to be smaller then full chromosomes, use view_df")
         # Generate viewframe from clr.chromsizes:
-        view_df = bioframe.make_viewframe(
-            [(chrom, 0, clr.chromsizes[chrom]) for chrom in clr.chromnames]
-        )
+        view_df = make_cooler_view(clr)
     else:
         # Make sure view_df is a proper viewframe
         try:
-            if not bioframe.is_viewframe(view_df, raise_errors=True):
-                raise ValueError("view_df is not a valid viewframe.")
-            if not bioframe.is_contained(view_df, bioframe.make_viewframe(clr.chromsizes)):
-                raise ValueError(
-                    "View table is out of the bounds of chromosomes in cooler."
+            _ = is_compatible_viewframe(
+                    view_df,
+                    clr,
+                    # must be sorted for pairwise regions combinations
+                    # to be in the upper right of the heatmap
+                    check_sorting=True,
+                    raise_errors=True,
                 )
-            # add is_sorted check in the asymmetric case ...
-        except Exception as e:  # AssertionError or ValueError, see https://github.com/gfudenberg/bioframe/blob/main/bioframe/core/checks.py#L177
-            warnings.warn(
-                "view_df has to be a proper viewframe from next release",
-                DeprecationWarning,
-                stacklevel=2,
-            )
-            view_df = bioframe.make_viewframe(view_df)
-
-    # view_df must be sorted, so that blocks resulting from pairwise combinations
-    # are all in the upper part of the contact matrix, otherwise conflicts with pixels
-    if not bioframe.is_sorted(view_df, clr.chromsizes, df_view_col = None):
-        raise ValueError("""regions in the view_df must be sorted by coordinate
-            and chromosomes, order of chromosomes as in cooler""")
+        except Exception as e:
+            raise ValueError("view_df is not a valid viewframe or incompatible") from e
 
     # define transforms - balanced and raw ('count') for now
     if clr_weight_name is None:
         # no transforms
         transforms = {}
-    else:
-        if not isinstance(clr_weight_name, str):
-            raise TypeError("clr_weight_name has to be str that specifies name of balancing weight in clr")
+    elif is_cooler_balanced(clr, clr_weight_name):
         # define balanced data transform:
         weight1 = clr_weight_name + "1"
         weight2 = clr_weight_name + "2"
         transforms = {"balanced": lambda p: p["count"] * p[weight1] * p[weight2]}
-
-    # check if clr_weight_name is in cooler
-    if clr_weight_name not in clr.bins().columns:
-        raise ValueError(f"specified balancing weight {clr_weight_name} is not available in cooler")
+    else:
+        raise ValueError(
+                "cooler is not balanced, or"
+                f"balancing weight {clr_weight_name} is not available in the cooler."
+            )
 
     # execution details
     if nproc > 1:

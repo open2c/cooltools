@@ -4,6 +4,7 @@ from itertools import combinations
 import cooler
 import bioframe
 from .. import expected
+from ..lib.common import make_cooler_view, read_viewframe
 
 import click
 from . import cli
@@ -101,21 +102,14 @@ def compute_expected(
     """
 
     clr = cooler.Cooler(cool_path)
-    if view is not None:
-        # Read view_df dataframe:
-        try:
-            view_df = bioframe.read_table(view, schema="bed4", index_col=False)
-        except Exception:
-            view_df = bioframe.read_table(view, schema="bed3", index_col=False)
-        # Convert view dataframe to viewframe:
-        try:
-            view_df = bioframe.make_viewframe(view_df, check_bounds=clr.chromsizes)
-        except ValueError as e:
-            raise ValueError(
-                "View table is incorrect, please, comply with the format. "
-            ) from e
+    cooler_view_df = make_cooler_view(clr)
+
+    if view is None:
+        # full chromosome case
+        view_df = cooler_view_df
     else:
-        view_df = None # full chromosome case
+        # Read view_df dataframe, and verify against cooler
+        view_df = read_viewframe(view, clr, check_sorting=True)
 
     if contact_type == "cis":
         result = expected.get_cis_expected(

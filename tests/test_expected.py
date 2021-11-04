@@ -615,8 +615,8 @@ def test_diagsum_from_array():
 
     # Add some "bad" bins. Should have same outcome for this synthetic dataset
     # because input was homogenous decay.
-    ar[3:5] = 0
-    ar[:, 3:5] = 0
+    ar[3:5] = np.nan
+    ar[:, 3:5] = np.nan
     exp = _diagsum_symm_dense(ar, bad_bins=list(range(3, 5)))
     exp1 = diagsum_from_array(ar, ignore_diags=0)
     exp1["balanced.avg"] = exp1["balanced.sum"] / exp1["n_valid"]
