@@ -1,6 +1,7 @@
 import numpy as np
 import pandas as pd
-from more_itertools import is_sorted
+from itertools import tee, starmap
+from operator import gt
 from copy import copy
 
 # Test data download requirements:
@@ -12,6 +13,24 @@ import bioframe
 from . import schemas
 
 URL_DATA = "https://raw.githubusercontent.com/open2c/cooltools/master/datasets/external_test_files.tsv"
+
+def _is_sorted_ascending(iterable):
+    # code copied from "more_itertools" package
+    """Returns ``True`` if the items of iterable are in sorted order, and
+    ``False`` otherwise.
+
+    The function returns ``False`` after encountering the first out-of-order
+    item. If there are no out-of-order items, the iterable is exhausted.
+    """
+
+    it0, it1 = tee(iterable) # duplicate the iterator
+    next(it1, None) # skip 1st element in "it1" copy
+    # check if all values in iterable are in ascending order
+    # similar to all(array[:-1] < array[1:])
+    _pairs_out_of_order = starmap(gt, zip(it0, it1) )
+    # no pairs out of order returns True, i.e. iterator is sorted
+    return not any(_pairs_out_of_order)
+
 
 def assign_regions(features, supports):
     """
@@ -615,7 +634,7 @@ def _is_compatible_cis_expected(
                     region2 = verify_view.set_index("name").loc[name2]
                     lo1, hi1 = verify_cooler.extent(region1)
                     lo2, hi2 = verify_cooler.extent(region2)
-                    if not is_sorted([lo1, hi1, lo2, hi2]):
+                    if not _is_sorted_ascending([lo1, hi1, lo2, hi2]):
                         raise ValueError(f"Only upper right cis regions are supported, {name1}:{name2} is not")
                     # rectangle that is fully contained within upper-right part of the heatmap
                     n_diags_cooler = (hi1 - lo1) + (hi2 - lo2) - 1
@@ -698,7 +717,7 @@ def _is_compatible_trans_expected(
                 region2 = verify_view.set_index("name").loc[name2]
                 lo1, hi1 = verify_cooler.extent(region1)
                 lo2, hi2 = verify_cooler.extent(region2)
-                if not is_sorted([lo1, hi1, lo2, hi2]):
+                if not _is_sorted_ascending([lo1, hi1, lo2, hi2]):
                     raise ValueError(f"Only upper right trans regions are supported, {name1}:{name2} is not")
                 # compare n_valid per trans block and make sure it make sense:
                 n_valid_cooler = (hi1 - lo1) * (hi2 - lo2)
