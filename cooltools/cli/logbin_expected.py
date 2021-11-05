@@ -157,8 +157,8 @@ def logbin_expected(
         spread_funcs_slope=spread_funcs_slope,
     )
     if resolution is not None:
-        lb_cvd_agg["s_bp"] = lb_cvd_agg["diag.avg"] * resolution
-        lb_slopes_agg["s_bp"] = lb_slopes_agg["diag.avg"] * resolution
+        lb_cvd_agg["s_bp"] = lb_cvd_agg["dist.avg"] * resolution
+        lb_slopes_agg["s_bp"] = lb_slopes_agg["dist.avg"] * resolution
 
     lb_cvd_agg.to_csv(
         f"{output_prefix}.log.tsv",
