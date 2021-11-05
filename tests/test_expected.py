@@ -12,8 +12,6 @@ from cooltools.cli import cli
 from itertools import combinations
 import warnings
 
-# import pytest  # for capturing deprecation warnings
-
 
 ### Test rudimentary expected functions for dense matrices:
 def _diagsum_symm_dense(matrix, bad_bins=None):
@@ -140,41 +138,78 @@ def test_diagsum_symm(request):
             equal_nan=True,
         )
 
+def test_diagsum_symm_raw(request):
+    # test raw expected calculation, weights=None
+    # perform test:
+    clr = cooler.Cooler(op.join(request.fspath.dirname, "data/CN.mm9.1000kb.cool"))
+    res = cooltools.expected.diagsum_symm(
+        clr,
+        view_df=view_df,
+        transforms={},
+        weight_name=None,
+        bad_bins=bad_bins,
+        ignore_diags=ignore_diags,
+        chunksize=chunksize,
+    )
+    # calculate average:
+    res["count.avg"] = res["count.sum"] / res["n_valid"]
+    # check results for every symmetric region
+    grouped = res.groupby(["region1", "region2"])
+    for (name1, name2), group in grouped:
+        # check symmetry:
+        assert name1 == name2
+        # extract dense matrix and get desired expected:
+        matrix = clr.matrix(balance=False).fetch(name1)
+        desired_expected = np.where(
+            group["dist"] < ignore_diags,
+            np.nan,  # fill nan for ignored diags
+            _diagsum_symm_dense(matrix),
+        )
+        testing.assert_allclose(
+            actual=group["count.avg"].values,
+            desired=desired_expected,
+            equal_nan=True,
+        )
 
-# def test_diagsum_deprecated_view(request):
-#     # TODO: remove it when the support of non-view regions is removed completely
-#     clr = cooler.Cooler(op.join(request.fspath.dirname, "data/CN.mm9.1000kb.cool"))
 
-#     # Check that deprecation warning is generated:
-#     with pytest.deprecated_call():
-#         res = cooltools.expected.diagsum_symm(
-#             clr,
-#             view_df=common_regions,
-#             transforms=transforms,
-#             weight_name=weight_name,
-#             bad_bins=bad_bins,
-#             ignore_diags=ignore_diags,
-#             chunksize=chunksize,
-#         )
-#     # calculate average:
-#     res["balanced.avg"] = res["balanced.sum"] / res["n_valid"]
-#     # check results for every symmetric region
-#     grouped = res.groupby(["region1", "region2"])
-#     for (name1, name2), group in grouped:
-#         # check symmetry:
-#         assert name1 == name2
-#         matrix = clr.matrix(balance=weight_name).fetch(name1)
-#         # extract dense matrix and get desired expected:
-#         desired_expected = np.where(
-#             group["dist"] < ignore_diags,
-#             np.nan,  # fill nan for ignored diags
-#             _diagsum_symm_dense(matrix),
-#         )
-#         testing.assert_allclose(
-#             actual=group["balanced.avg"].values,
-#             desired=desired_expected,
-#             equal_nan=True,
-#         )
+def test_diagsum_symm_raw_weight_filter(request):
+    # test raw expected calculations when weights affects
+    # both n_valid and filtering of count-s
+    # perform test:
+    clr = cooler.Cooler(op.join(request.fspath.dirname, "data/CN.mm9.1000kb.cool"))
+    res = cooltools.expected.diagsum_symm(
+        clr,
+        view_df=view_df,
+        transforms={},
+        weight_name=weight_name,
+        bad_bins=bad_bins,
+        ignore_diags=ignore_diags,
+        chunksize=chunksize,
+    )
+    # calculate average:
+    res["count.avg"] = res["count.sum"] / res["n_valid"]
+    # check results for every symmetric region
+    grouped = res.groupby(["region1", "region2"])
+    for (name1, name2), group in grouped:
+        # check symmetry:
+        assert name1 == name2
+        # extract dense matrix and get desired expected:
+        matrix = clr.matrix(balance=False).fetch(name1).astype("float")
+        weight_mask = clr.bins()[weight_name].fetch(name1).isna().to_numpy()
+        # apply filtering from weight column to raw counts
+        matrix[weight_mask,:] = np.nan
+        matrix[:,weight_mask] = np.nan
+        desired_expected = np.where(
+            group["dist"] < ignore_diags,
+            np.nan,  # fill nan for ignored diags
+            _diagsum_symm_dense(matrix),
+        )
+        testing.assert_allclose(
+            actual=group["count.avg"].values,
+            desired=desired_expected,
+            equal_nan=True,
+        )
+
 
 
 def test_diagsum_pairwise(request):
