@@ -3,7 +3,7 @@ import numpy as np
 import cooler
 import bioframe
 from .. import snipping
-from ..lib.common import read_expected
+from ..lib.common import read_expected, make_cooler_view
 
 import click
 from functools import partial
@@ -178,9 +178,7 @@ def compute_pileup(
     # use input "view" BED file or all chromosomes mentioned in "track":
     if view is None:
         # Generate viewframe from clr.chromsizes:
-        view_df = bioframe.make_viewframe(
-            [(chrom, 0, clr.chromsizes[chrom]) for chrom in clr.chromnames]
-        )
+        view_df = make_cooler_view(clr)
         if not bioframe.is_contained(features_df, view_df):
             raise ValueError("Features are not contained in chromosomes bounds")
     else:
