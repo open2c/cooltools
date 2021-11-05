@@ -200,7 +200,9 @@ def compute_pileup(
         raise ValueError("Features are not contained in view bounds")
 
     ##### Read expected, should be cis-expected:
-    if not expected is None:
+    if expected is None:
+        expected_value_col = None
+    else:
         expected_path, expected_value_col = expected
         expected_summary_cols = [
             expected_value_col,
@@ -213,15 +215,16 @@ def compute_pileup(
             verify_cooler=clr,
         )
 
-    ##### CReate the pileup:
+    ##### Create the pileup:
     stack = snipping.pileup(
         clr,
         features_df,
         view_df=view_df,
         expected_df=expected,
+        expected_value_col=expected_value_col,
         flank=flank,
-        min_diag=ignore_diags,  # TODO: implement in pileup API
-        clr_weight_name=weight_name,  # TODO: implement in pileup API
+        min_diag=ignore_diags,
+        clr_weight_name=weight_name,
         force=force,  # TODO: implement in pileup API
         nproc=nproc,
     )

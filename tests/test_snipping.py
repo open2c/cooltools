@@ -150,7 +150,7 @@ def test_ondiag_pileups_without_expected(request):
 
     windows = cooltools.snipping.assign_regions(windows, view_df).reset_index(drop=True)
 
-    snipper = cooltools.snipping.CoolerSnipper(clr, view_df=view_df)
+    snipper = cooltools.snipping.CoolerSnipper(clr, view_df=view_df, min_diag=None)
     stack = cooltools.snipping.pileup_legacy(
         windows, snipper.select, snipper.snip, map=map
     )
@@ -259,7 +259,7 @@ def test_offdiag_pileups_without_expected(request):
     )
     windows = cooltools.snipping.assign_regions(windows, view_df).reset_index(drop=True)
 
-    snipper = cooltools.snipping.CoolerSnipper(clr, view_df=view_df)
+    snipper = cooltools.snipping.CoolerSnipper(clr, view_df=view_df, min_diag=None)
     stack = cooltools.snipping.pileup_legacy(
         windows, snipper.select, snipper.snip, map=map
     )
