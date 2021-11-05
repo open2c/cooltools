@@ -284,7 +284,7 @@ def pair_sites(sites, separation, slop):
 
 
 class CoolerSnipper:
-    def __init__(self, clr, cooler_opts=None, view_df=None):
+    def __init__(self, clr, cooler_opts=None, view_df=None, min_diag=2):
 
         # get chromosomes from cooler, if view_df not specified:
         if view_df is None:
@@ -293,21 +293,32 @@ class CoolerSnipper:
             # Make sure view_df is a proper viewframe
             try:
                 _ = is_compatible_viewframe(
-                        view_df,
-                        clr,
-                        check_sorting=True,
-                        raise_errors=True,
-                    )
+                    view_df,
+                    clr,
+                    check_sorting=True,
+                    raise_errors=True,
+                )
             except Exception as e:
-                raise ValueError("view_df is not a valid viewframe or incompatible") from e
+                raise ValueError(
+                    "view_df is not a valid viewframe or incompatible"
+                ) from e
 
         self.view_df = view_df.set_index("name")
         self.clr = clr
         self.binsize = self.clr.binsize
         self.offsets = {}
+        self.diag_indicators = {}
         self.pad = True
         self.cooler_opts = {} if cooler_opts is None else cooler_opts
         self.cooler_opts.setdefault("sparse", True)
+        if "balance" in self.cooler_opts:
+            if self.cooler_opts["balance"] is True:
+                self.clr_weight_name = "weight"
+            else:
+                self.clr_weight_name = self.cooler_opts["balance"]
+        else:
+            self.clr_weight_name = "weight"
+        self.min_diag = min_diag
 
     def select(self, region1, region2):
         region1_coords = self.view_df.loc[region1]
@@ -321,10 +332,24 @@ class CoolerSnipper:
         matrix = self.clr.matrix(**self.cooler_opts).fetch(
             region1_coords, region2_coords
         )
-        self._isnan1 = np.isnan(self.clr.bins()["weight"].fetch(region1_coords).values)
-        self._isnan2 = np.isnan(self.clr.bins()["weight"].fetch(region2_coords).values)
+        if self.clr_weight_name:
+            self._isnan1 = np.isnan(
+                self.clr.bins()[self.clr_weight_name].fetch(region1_coords).values
+            )
+            self._isnan2 = np.isnan(
+                self.clr.bins()[self.clr_weight_name].fetch(region2_coords).values
+            )
+        else:
+            self._isnan1 = np.empty_like(
+                self.clr.bins()["start"].fetch(region1_coords).values
+            ).astype(bool)
+            self._isnan2 = np.empty_like(
+                self.clr.bins()["start"].fetch(region2_coords).values
+            ).astype(bool)
         if self.cooler_opts["sparse"]:
             matrix = matrix.tocsr()
+        diags = np.arange(np.diff(self.clr.extent(region1_coords)), dtype=np.int32)
+        self.diag_indicators[region1] = LazyToeplitz(-diags, diags)
         return matrix
 
     def snip(self, matrix, region1, region2, tup):
@@ -366,11 +391,13 @@ class CoolerSnipper:
             snippet = matrix[lo1:hi1, lo2:hi2].toarray().astype("float")
             snippet[self._isnan1[lo1:hi1], :] = np.nan
             snippet[:, self._isnan2[lo2:hi2]] = np.nan
+        D = self.diag_indicators[region1][lo1:hi1, lo2:hi2] < self.min_diag
+        snippet[D] = np.nan
         return snippet
 
 
 class ObsExpSnipper:
-    def __init__(self, clr, expected, cooler_opts=None, view_df=None):
+    def __init__(self, clr, expected, cooler_opts=None, view_df=None, min_diag=2):
         self.clr = clr
         self.expected = expected
 
@@ -381,32 +408,45 @@ class ObsExpSnipper:
             # Make sure view_df is a proper viewframe
             try:
                 _ = is_compatible_viewframe(
-                        view_df,
-                        clr,
-                        check_sorting=True,
-                        raise_errors=True,
-                    )
+                    view_df,
+                    clr,
+                    check_sorting=True,
+                    raise_errors=True,
+                )
             except Exception as e:
-                raise ValueError("view_df is not a valid viewframe or incompatible") from e
+                raise ValueError(
+                    "view_df is not a valid viewframe or incompatible"
+                ) from e
         # make sure expected is compatible
         try:
             _ = is_compatible_expected(
-                    expected,
-                    "cis",
-                    view_df,
-                    verify_cooler=clr,
-                    expected_value_cols=["balanced.avg", ],
-                    raise_errors=True
-                )
+                expected,
+                "cis",
+                view_df,
+                verify_cooler=clr,
+                expected_value_cols=[
+                    "balanced.avg",
+                ],
+                raise_errors=True,
+            )
         except Exception as e:
             raise ValueError("provided expected is not valid") from e
 
         self.view_df = view_df.set_index("name")
         self.binsize = self.clr.binsize
         self.offsets = {}
+        self.diag_indicators = {}
         self.pad = True
         self.cooler_opts = {} if cooler_opts is None else cooler_opts
         self.cooler_opts.setdefault("sparse", True)
+        if "balance" in self.cooler_opts:
+            if self.cooler_opts["balance"] is True:
+                self.clr_weight_name = "weight"
+            else:
+                self.clr_weight_name = self.cooler_opts["balance"]
+        else:
+            self.clr_weight_name = "weight"
+        self.min_diag = min_diag
 
     def select(self, region1, region2):
         if not region1 == region2:
@@ -424,13 +464,27 @@ class ObsExpSnipper:
         )
         if self.cooler_opts["sparse"]:
             matrix = matrix.tocsr()
-        self._isnan1 = np.isnan(self.clr.bins()["weight"].fetch(region1_coords).values)
-        self._isnan2 = np.isnan(self.clr.bins()["weight"].fetch(region2_coords).values)
+        if self.clr_weight_name:
+            self._isnan1 = np.isnan(
+                self.clr.bins()[self.clr_weight_name].fetch(region1_coords).values
+            )
+            self._isnan2 = np.isnan(
+                self.clr.bins()[self.clr_weight_name].fetch(region2_coords).values
+            )
+        else:
+            self._isnan1 = np.empty_like(
+                self.clr.bins()["start"].fetch(region1_coords).values
+            ).astype(bool)
+            self._isnan2 = np.empty_like(
+                self.clr.bins()["start"].fetch(region2_coords).values
+            ).astype(bool)
         self._expected = LazyToeplitz(
             self.expected.groupby(["region1", "region2"])
             .get_group((region1, region2))["balanced.avg"]
             .values
         )
+        diags = np.arange(np.diff(self.clr.extent(region1_coords)), dtype=np.int32)
+        self.diag_indicators[region1] = LazyToeplitz(-diags, diags)
         return matrix
 
     def snip(self, matrix, region1, region2, tup):
@@ -474,6 +528,8 @@ class ObsExpSnipper:
             snippet[:, self._isnan2[lo2:hi2]] = np.nan
 
         e = self._expected[lo1:hi1, lo2:hi2]
+        D = self.diag_indicators[region1][lo1:hi1, lo2:hi2] < self.min_diag
+        snippet[D] = np.nan
         return snippet / e
 
 
@@ -489,23 +545,27 @@ class ExpectedSnipper:
             # Make sure view_df is a proper viewframe
             try:
                 _ = is_compatible_viewframe(
-                        view_df,
-                        clr,
-                        check_sorting=True,
-                        raise_errors=True,
-                    )
+                    view_df,
+                    clr,
+                    check_sorting=True,
+                    raise_errors=True,
+                )
             except Exception as e:
-                raise ValueError("view_df is not a valid viewframe or incompatible") from e
+                raise ValueError(
+                    "view_df is not a valid viewframe or incompatible"
+                ) from e
         # make sure expected is compatible
         try:
             _ = is_compatible_expected(
-                    expected,
-                    "cis",
-                    view_df,
-                    verify_cooler=clr,
-                    expected_value_cols=["balanced.avg", ],
-                    raise_errors=True
-                )
+                expected,
+                "cis",
+                view_df,
+                verify_cooler=clr,
+                expected_value_cols=[
+                    "balanced.avg",
+                ],
+                raise_errors=True,
+            )
         except Exception as e:
             raise ValueError("provided expected is not valid") from e
 
@@ -557,9 +617,9 @@ def pileup(
     view_df=None,
     expected_df=None,
     flank=100_000,
-    min_diag="auto", # TODO: implement
-    clr_weight_name="weight", # TODO: implement
-    force=False, # TODO: implement
+    min_diag="auto",
+    clr_weight_name="weight",
+    force=False,  # TODO: implement
     nproc=1,
 ):
     """
@@ -580,11 +640,11 @@ def pileup(
         genomic separations
     flank : int
         How much to flank the center of the features by, in bp
-    min_diag: str or int (Not implemented)
+    min_diag: str or int
         All diagonals of the matrix below this value are ignored. 'auto'
-        tried to extract the value used during the matrix balancing,
+        tries to extract the value used during the matrix balancing,
         if it fails defaults to 2
-    clr_weight_name : str (Not implemented)
+    clr_weight_name : str
         Value of the column that contains the balancing weights
     force : bool
         Allows start>end in the features (not implemented)
@@ -615,15 +675,33 @@ def pileup(
         if not bioframe.is_contained(view_df, bioframe.make_viewframe(clr.chromsizes)):
             raise ValueError("view_df is out of the bounds of chromosomes in cooler.")
 
+    if min_diag == "auto" and clr_weight_name is not None:
+        min_diag = dict(clr.open()[f"bins/{clr_weight_name}"].attrs).get(
+            "ignore_diags", 2
+        )
+    elif clr_weight_name is None:
+        min_diag = 2
+
     features_df = assign_regions(features_df, view_df)
 
     # TODO Expected checks are now implemented in the snippers, maybe move them out to here
     # when there is a neat function?
 
     if expected_df is None:
-        snipper = CoolerSnipper(clr, view_df=view_df)
+        snipper = CoolerSnipper(
+            clr,
+            view_df=view_df,
+            cooler_opts={"balance": clr_weight_name},
+            min_diag=min_diag,
+        )
     else:
-        snipper = ObsExpSnipper(clr, expected_df, view_df=view_df)
+        snipper = ObsExpSnipper(
+            clr,
+            expected_df,
+            view_df=view_df,
+            cooler_opts={"balance": clr_weight_name},
+            min_diag=min_diag,
+        )
 
     if nproc > 1:
         pool = multiprocessing.Pool(nproc)
@@ -631,6 +709,8 @@ def pileup(
     else:
         mymap = map
     stack = pileup_legacy(features_df, snipper.select, snipper.snip, map=mymap)
+    if feature_type == "bed":
+        stack = np.nansum([stack, np.transpose(stack, axes=(1, 0, 2))], axis=0)
 
     if nproc > 1:
         pool.close()
