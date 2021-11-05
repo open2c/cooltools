@@ -12,7 +12,7 @@ from .. import saddle
 
 import click
 from .util import validate_csv
-from ..lib.common import assign_regions, read_expected, read_viewframe
+from ..lib.common import assign_regions, read_expected, read_viewframe, make_cooler_view
 from . import util
 from . import cli
 
@@ -228,11 +228,14 @@ def compute_saddle(
 
     #### Generate viewframes ####
     # 1:cooler_view_df. Generate viewframe from clr.chromsizes:
-    cooler_view_df = bioframe.make_viewframe( clr.chromsizes )
+    cooler_view_df = make_cooler_view(clr)
 
     # 2:view_df. Define global view for calculating calling dots
     # use input "view" BED file or all chromosomes :
-    view_df = cooler_view_df if (view is None) else read_viewframe(view, cooler_view_df)
+    if view is None:
+        view_df = cooler_view_df
+    else:
+        view_df = read_viewframe(view, clr, check_sorting=True)
 
     # 3:track_view_df. Generate viewframe from track table:
     track_view_df = bioframe.make_viewframe(

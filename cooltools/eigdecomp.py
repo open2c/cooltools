@@ -4,6 +4,7 @@ import scipy.stats
 
 import pandas as pd
 from .lib import numutils
+from .lib.common import make_cooler_view, is_compatible_viewframe
 
 import bioframe
 
@@ -363,15 +364,18 @@ def cooler_cis_eig(
 
     # get chromosomes from cooler, if view_df not specified:
     if view_df is None:
-        view_df = bioframe.make_viewframe(
-            [(chrom, 0, clr.chromsizes[chrom]) for chrom in clr.chromnames]
-        )
+        view_df = make_cooler_view(clr)
     else:
-        # appropriate viewframe checks:
-        if not bioframe.is_viewframe(view_df):
-            raise ValueError("view_df is not a valid viewframe.")
-        if not bioframe.is_contained(view_df, bioframe.make_viewframe(clr.chromsizes)):
-            raise ValueError("view_df is out of the bounds of chromosomes in cooler.")
+        # Make sure view_df is a proper viewframe
+        try:
+            _ = is_compatible_viewframe(
+                    view_df,
+                    clr,
+                    check_sorting=True,
+                    raise_errors=True,
+                )
+        except Exception as e:
+            raise ValueError("view_df is not a valid viewframe or incompatible") from e
 
     # make sure phasing_track_col is in bins, if phasing is requested
     if phasing_track_col and (phasing_track_col not in bins):

@@ -21,7 +21,7 @@ or install the latest version directly from github:
 
 .. code-block:: bash
 
-    $ pip install git+https://github.com/open2c/cooltools.git
+    $ pip install https://github.com/open2c/cooltools/archive/refs/heads/master.zip
 
 
 Install the development version

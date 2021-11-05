@@ -3,6 +3,7 @@ import numpy as np
 import cooler
 import bioframe
 from .. import eigdecomp
+from ..lib.common import make_cooler_view, read_viewframe
 
 import click
 from .util import TabularFilePath, sniff_for_header
@@ -85,6 +86,8 @@ def call_compartments(
 
     """
     clr = cooler.Cooler(cool_path)
+    # full chromosome view, based on cooler
+    cooler_view_df = make_cooler_view(clr)
 
     if reference_track is not None:
 
@@ -163,24 +166,9 @@ def call_compartments(
     # define view for cis compartment-calling
     # use input "view" BED file or all chromosomes mentioned in "track":
     if view is None:
-        # Generate viewframe from clr.chromsizes:
-        view_df = bioframe.make_viewframe(
-            [(chrom, 0, clr.chromsizes[chrom]) for chrom in clr.chromnames]
-        )
+        view_df = cooler_view_df
     else:
-        # Make viewframe out of table:
-        # Read view_df:
-        try:
-            view_df = bioframe.read_table(view, schema="bed4", index_col=False)
-        except Exception:
-            view_df = bioframe.read_table(view, schema="bed3", index_col=False)
-        # Convert view_df to viewframe:
-        try:
-            view_df = bioframe.make_viewframe(view_df, check_bounds=clr.chromsizes)
-        except ValueError as e:
-            raise ValueError(
-                "View table is incorrect, please, comply with the format. "
-            ) from e
+        view_df = read_viewframe(view, clr, check_sorting=True)
 
     # TODO: Add check that view_df has the same bins as track
 

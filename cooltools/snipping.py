@@ -5,7 +5,7 @@ import numpy as np
 import pandas as pd
 import bioframe
 
-from .lib.common import assign_regions
+from .lib.common import assign_regions, is_compatible_viewframe, is_compatible_expected
 from .lib.numutils import LazyToeplitz
 import warnings
 
@@ -286,24 +286,22 @@ def pair_sites(sites, separation, slop):
 class CoolerSnipper:
     def __init__(self, clr, cooler_opts=None, view_df=None):
 
-        # get chromosomes from bins, if view_df not specified:
+        # get chromosomes from cooler, if view_df not specified:
         if view_df is None:
-            view_df = bioframe.make_viewframe(
-                [(chrom, 0, l, chrom) for chrom, l in clr.chromsizes.items()]
-            )
+            view_df = make_cooler_view(clr)
         else:
-            # appropriate viewframe checks:
-            if not bioframe.is_viewframe(view_df):
-                raise ValueError("view_df is not a valid viewframe.")
-            if not bioframe.is_contained(
-                view_df, bioframe.make_viewframe(clr.chromsizes)
-            ):
-                raise ValueError(
-                    "view_df is out of the bounds of chromosomes in cooler."
-                )
+            # Make sure view_df is a proper viewframe
+            try:
+                _ = is_compatible_viewframe(
+                        view_df,
+                        clr,
+                        check_sorting=True,
+                        raise_errors=True,
+                    )
+            except Exception as e:
+                raise ValueError("view_df is not a valid viewframe or incompatible") from e
 
         self.view_df = view_df.set_index("name")
-
         self.clr = clr
         self.binsize = self.clr.binsize
         self.offsets = {}
@@ -376,51 +374,34 @@ class ObsExpSnipper:
         self.clr = clr
         self.expected = expected
 
-        # Detecting the columns for the detection of regions
-        columns = expected.columns
-        assert len(columns) > 0
-        if ("region1" not in columns) or ("region2" not in columns):
-            if ("chrom" in columns) or ("region" in columns):
-                raise ValueError(
-                    "Provided expected appears to have old format, it has to comply with the format of expected v1.0"
-                )
-            else:
-                raise ValueError(
-                    "Please check the expected dataframe, it has to comply with the format of expected v1.0"
-                )
-
         # get chromosomes from cooler, if view_df not specified:
         if view_df is None:
-            view_df = bioframe.make_viewframe(
-                [(chrom, 0, l, chrom) for chrom, l in clr.chromsizes.items()]
-            )
+            view_df = make_cooler_view(clr)
         else:
-            # appropriate viewframe checks:
-            if not bioframe.is_viewframe(view_df):
-                raise ValueError("view_df is not a valid viewframe.")
-            if not bioframe.is_contained(
-                view_df, bioframe.make_viewframe(clr.chromsizes)
-            ):
-                raise ValueError(
-                    "view_df is out of the bounds of chromosomes in cooler."
+            # Make sure view_df is a proper viewframe
+            try:
+                _ = is_compatible_viewframe(
+                        view_df,
+                        clr,
+                        check_sorting=True,
+                        raise_errors=True,
+                    )
+            except Exception as e:
+                raise ValueError("view_df is not a valid viewframe or incompatible") from e
+        # make sure expected is compatible
+        try:
+            _ = is_compatible_expected(
+                    expected,
+                    "cis",
+                    view_df,
+                    verify_cooler=clr,
+                    expected_value_cols=["balanced.avg", ],
+                    raise_errors=True
                 )
+        except Exception as e:
+            raise ValueError("provided expected is not valid") from e
 
         self.view_df = view_df.set_index("name")
-
-        for (name1, name2), group in self.expected.groupby(["region1", "region2"]):
-            if name1 != name2:
-                raise ValueError(
-                    "Only symmetric regions a supported, e.g. chromosomes, arms, etc"
-                )
-            n_diags = group.shape[0]
-            region = self.view_df.loc[name1]
-            lo, hi = self.clr.extent(region)
-            if n_diags != (hi - lo):
-                raise ValueError(
-                    "Region shape mismatch between expected and cooler. "
-                    "Are they using the same resolution?"
-                )
-
         self.binsize = self.clr.binsize
         self.offsets = {}
         self.pad = True
@@ -500,50 +481,35 @@ class ExpectedSnipper:
     def __init__(self, clr, expected, view_df=None):
         self.clr = clr
         self.expected = expected
-        # Detecting the columns for the detection of regions
-        columns = expected.columns
-        assert len(columns) > 0
-        if ("region1" not in columns) or ("region2" not in columns):
-            if ("chrom" in columns) or ("region" in columns):
-                raise ValueError(
-                    "Provided expected appears to have old format, it has to comply with the format of expected v1.0"
-                )
-            else:
-                raise ValueError(
-                    "Please check the expected dataframe, it has to comply with the format of expected v1.0"
-                )
 
         # get chromosomes from cooler, if view_df not specified:
         if view_df is None:
-            view_df = bioframe.make_viewframe(
-                [(chrom, 0, l, chrom) for chrom, l in clr.chromsizes.items()]
-            )
+            view_df = make_cooler_view(clr)
         else:
-            # appropriate viewframe checks:
-            if not bioframe.is_viewframe(view_df):
-                raise ValueError("view_df is not a valid viewframe.")
-            if not bioframe.is_contained(
-                view_df, bioframe.make_viewframe(clr.chromsizes)
-            ):
-                raise ValueError(
-                    "view_df is out of the bounds of chromosomes in cooler."
+            # Make sure view_df is a proper viewframe
+            try:
+                _ = is_compatible_viewframe(
+                        view_df,
+                        clr,
+                        check_sorting=True,
+                        raise_errors=True,
+                    )
+            except Exception as e:
+                raise ValueError("view_df is not a valid viewframe or incompatible") from e
+        # make sure expected is compatible
+        try:
+            _ = is_compatible_expected(
+                    expected,
+                    "cis",
+                    view_df,
+                    verify_cooler=clr,
+                    expected_value_cols=["balanced.avg", ],
+                    raise_errors=True
                 )
+        except Exception as e:
+            raise ValueError("provided expected is not valid") from e
+
         self.view_df = view_df.set_index("name")
-
-        for (name1, name2), group in self.expected.groupby(["region1", "region2"]):
-            if name1 != name2:
-                raise ValueError(
-                    "Only symmetric regions a supported, e.g. chromosomes, arms, etc"
-                )
-            n_diags = group.shape[0]
-            region = self.view_df.loc[name1]
-            lo, hi = self.clr.extent(region)
-            if n_diags != (hi - lo):
-                raise ValueError(
-                    "Region shape mismatch between expected and cooler. "
-                    "Are they using the same resolution?"
-                )
-
         self.binsize = self.clr.binsize
         self.offsets = {}
 
