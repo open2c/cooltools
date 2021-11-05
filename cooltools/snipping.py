@@ -314,6 +314,11 @@ class CoolerSnipper:
         if "balance" in self.cooler_opts:
             if self.cooler_opts["balance"] is True:
                 self.clr_weight_name = "weight"
+            elif (
+                self.cooler_opts["balance"] is False
+                or self.cooler_opts["balance"] is None
+            ):
+                self.clr_weight_name = None
             else:
                 self.clr_weight_name = self.cooler_opts["balance"]
         else:
@@ -340,10 +345,10 @@ class CoolerSnipper:
                 self.clr.bins()[self.clr_weight_name].fetch(region2_coords).values
             )
         else:
-            self._isnan1 = np.empty_like(
+            self._isnan1 = np.zeros_like(
                 self.clr.bins()["start"].fetch(region1_coords).values
             ).astype(bool)
-            self._isnan2 = np.empty_like(
+            self._isnan2 = np.zeros_like(
                 self.clr.bins()["start"].fetch(region2_coords).values
             ).astype(bool)
         if self.cooler_opts["sparse"]:
@@ -397,10 +402,18 @@ class CoolerSnipper:
 
 
 class ObsExpSnipper:
-    def __init__(self, clr, expected, cooler_opts=None, view_df=None, min_diag=2):
+    def __init__(
+        self,
+        clr,
+        expected,
+        cooler_opts=None,
+        view_df=None,
+        min_diag=2,
+        expected_value_col="balanced.avg",
+    ):
         self.clr = clr
         self.expected = expected
-
+        self.expected_value_col = expected_value_col
         # get chromosomes from cooler, if view_df not specified:
         if view_df is None:
             view_df = make_cooler_view(clr)
@@ -425,7 +438,7 @@ class ObsExpSnipper:
                 view_df,
                 verify_cooler=clr,
                 expected_value_cols=[
-                    "balanced.avg",
+                    self.expected_value_col,
                 ],
                 raise_errors=True,
             )
@@ -442,6 +455,11 @@ class ObsExpSnipper:
         if "balance" in self.cooler_opts:
             if self.cooler_opts["balance"] is True:
                 self.clr_weight_name = "weight"
+            elif (
+                self.cooler_opts["balance"] is False
+                or self.cooler_opts["balance"] is None
+            ):
+                self.clr_weight_name = None
             else:
                 self.clr_weight_name = self.cooler_opts["balance"]
         else:
@@ -472,15 +490,15 @@ class ObsExpSnipper:
                 self.clr.bins()[self.clr_weight_name].fetch(region2_coords).values
             )
         else:
-            self._isnan1 = np.empty_like(
+            self._isnan1 = np.zeros_like(
                 self.clr.bins()["start"].fetch(region1_coords).values
             ).astype(bool)
-            self._isnan2 = np.empty_like(
+            self._isnan2 = np.zeros_like(
                 self.clr.bins()["start"].fetch(region2_coords).values
             ).astype(bool)
         self._expected = LazyToeplitz(
             self.expected.groupby(["region1", "region2"])
-            .get_group((region1, region2))["balanced.avg"]
+            .get_group((region1, region2))[self.expected_value_col]
             .values
         )
         diags = np.arange(np.diff(self.clr.extent(region1_coords)), dtype=np.int32)
@@ -523,7 +541,7 @@ class ObsExpSnipper:
         #             snippet[pad_bottom:pad_top,
         #                     pad_left:pad_right] = matrix[i0:i1, j0:j1].toarray()
         else:
-            snippet = matrix[lo1:hi1, lo2:hi2].toarray()
+            snippet = matrix[lo1:hi1, lo2:hi2].toarray().astype("float")
             snippet[self._isnan1[lo1:hi1], :] = np.nan
             snippet[:, self._isnan2[lo2:hi2]] = np.nan
 
@@ -534,10 +552,10 @@ class ObsExpSnipper:
 
 
 class ExpectedSnipper:
-    def __init__(self, clr, expected, view_df=None):
+    def __init__(self, clr, expected, view_df=None, expected_value_col="balanced.avg"):
         self.clr = clr
         self.expected = expected
-
+        self.expected_value_col = expected_value_col
         # get chromosomes from cooler, if view_df not specified:
         if view_df is None:
             view_df = make_cooler_view(clr)
@@ -562,7 +580,7 @@ class ExpectedSnipper:
                 view_df,
                 verify_cooler=clr,
                 expected_value_cols=[
-                    "balanced.avg",
+                    self.expected_value_col,
                 ],
                 raise_errors=True,
             )
@@ -588,7 +606,7 @@ class ExpectedSnipper:
         self.n = np.diff(self.clr.extent(region2_coords))
         self._expected = LazyToeplitz(
             self.expected.groupby(["region1", "region2"])
-            .get_group((region1, region2))["balanced.avg"]
+            .get_group((region1, region2))[self.expected_value_col]
             .values
         )
         return self._expected
@@ -616,6 +634,7 @@ def pileup(
     features_df,
     view_df=None,
     expected_df=None,
+    expected_value_col="balanced.avg",
     flank=100_000,
     min_diag="auto",
     clr_weight_name="weight",
@@ -638,6 +657,8 @@ def pileup(
     expected_df : pd.DataFrame
         Dataframe with the expected level of interactions at different
         genomic separations
+    expected_value_col : str
+        Name of the column in expected used for normalizing.
     flank : int
         How much to flank the center of the features by, in bp
     min_diag: str or int
@@ -675,11 +696,11 @@ def pileup(
         if not bioframe.is_contained(view_df, bioframe.make_viewframe(clr.chromsizes)):
             raise ValueError("view_df is out of the bounds of chromosomes in cooler.")
 
-    if min_diag == "auto" and clr_weight_name is not None:
+    if min_diag == "auto" and clr_weight_name not in [None, False]:
         min_diag = dict(clr.open()[f"bins/{clr_weight_name}"].attrs).get(
             "ignore_diags", 2
         )
-    elif clr_weight_name is None:
+    elif clr_weight_name in [None, False]:
         min_diag = 2
 
     features_df = assign_regions(features_df, view_df)
@@ -701,6 +722,7 @@ def pileup(
             view_df=view_df,
             cooler_opts={"balance": clr_weight_name},
             min_diag=min_diag,
+            expected_value_col=expected_value_col,
         )
 
     if nproc > 1:
