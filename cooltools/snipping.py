@@ -647,7 +647,7 @@ def pileup(
     flank=100_000,
     min_diag="auto",
     clr_weight_name="weight",
-    force=False,  # TODO: implement
+    force=False, # TODO: not implemented and potentially hard to implement because bioframe.overlap requires bedframes
     nproc=1,
 ):
     """
@@ -711,6 +711,16 @@ def pileup(
         )
     elif clr_weight_name in [None, False]:
         min_diag = 2
+
+    ### Draft "force" implementation:
+    # if not force:
+    #     if feature_type=='bed':
+    #         if not bioframe.is_bedframe(features_df[['chrom', 'start', 'end']]):
+    #             raise ValueError("features_df is not a valid bedframe, use force=True if you still want to use it.")
+    #     elif feature_type=='bedpe':
+    #         if not bioframe.is_bedframe(features_df.rename({'chrom1': 'chrom', 'start1':'start', 'end1':'end'}, axis=1)[['chrom', 'start', 'end']]) or \
+    #             not bioframe.is_bedframe(features_df.rename({'chrom2': 'chrom', 'start2':'start', 'end2':'end'}, axis=1)[['chrom', 'start', 'end']]):
+    #                 raise ValueError("features_df first or second coordinates does not represent a valid bedframe, use force=True if you still want to use it.")
 
     features_df = assign_regions(features_df, view_df)
 

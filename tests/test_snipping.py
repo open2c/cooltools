@@ -5,7 +5,7 @@ import os.path as op
 import cooltools.snipping
 import numpy as np
 import pandas as pd
-
+import pytest
 
 from click.testing import CliRunner
 from cooltools.cli import cli
@@ -84,7 +84,91 @@ def test_pileup_cli_hdf5(request):
     assert result.exit_code == 0
 
 
-def test_ondiag_pileups_with_expected(request):
+def test_pileup(request):
+
+    # Read cool file and create view_df out of it:
+    clr = cooler.Cooler(op.join(request.fspath.dirname, "data/CN.mm9.1000kb.cool"))
+    exp = pd.read_table(op.join(request.fspath.dirname, "data/CN.mm9.toy_expected.tsv"))
+    view_df = bioframe.read_table(
+        op.join(request.fspath.dirname, "data/CN.mm9.toy_regions.bed"), schema="bed4"
+    )
+
+    # I.
+    # Example on-diagonal features, two regions from annotated genomic regions:
+    windows = pd.DataFrame(
+        {
+            "chrom": ["chr1", "chr1"],
+            "start": [102_000_000, 108_000_000],
+            "end": [107_000_000, 113_000_000],
+        }
+    )
+    stack = cooltools.snipping.pileup(
+        clr, windows, view_df, exp, flank=None, force=False
+    )
+    # Check that the size of snips is OK and there are two of them:
+    assert stack.shape == (5, 5, 2)
+
+    # II.
+    # Example of-diagonal features, two regions from annotated genomic regions:
+    windows = pd.DataFrame(
+        {
+            "chrom1": ["chr1", "chr1"],
+            "start1": [102_000_000, 107_000_000],
+            "end1": [107_000_000, 112_000_000],
+            "chrom2": ["chr1", "chr1"],
+            "start2": [107_000_000, 113_000_000],
+            "end2": [112_000_000, 118_000_000],
+        }
+    )
+    stack = cooltools.snipping.pileup(
+        clr, windows, view_df, exp, flank=None, force=False
+    )
+    # Check that the size of snips is OK and there are two of them:
+    assert stack.shape == (5, 5, 2)
+
+    # III.
+    # Example on-diagonal features, not valid bedframes (start>end):
+    windows = pd.DataFrame(
+        {
+            "chrom": ["chr1", "chr1"],
+            "start": [107_000_000, 108_000_000],
+            "end": [102_000_000, 113_000_000],
+        }
+    )
+    with pytest.raises(ValueError):
+        stack = cooltools.snipping.pileup(
+            clr, windows, view_df, exp, flank=None, force=False
+        )
+
+    # DRAFT # Should work with force=True:
+    # stack = cooltools.snipping.pileup(clr, windows, view_df, exp, flank=None, force=True)
+    # # Check that the size of snips is OK and there are two of them:
+    # assert stack.shape == (5, 5, 2)
+
+    # IV.
+    # Example of-diagonal features not valid bedframes (start>end):
+    windows = pd.DataFrame(
+        {
+            "chrom1": ["chr1", "chr1"],
+            "start1": [107_000_000, 107_000_000],
+            "end1": [102_000_000, 112_000_000],
+            "chrom2": ["chr1", "chr1"],
+            "start2": [107_000_000, 113_000_000],
+            "end2": [112_000_000, 118_000_000],
+        }
+    )
+    with pytest.raises(ValueError):
+        stack = cooltools.snipping.pileup(
+            clr, windows, view_df, exp, flank=None, force=False
+        )
+
+    # DRAFT # Should work with force=True:
+    # stack = cooltools.snipping.pileup(clr, windows, view_df, exp, flank=0, force=True)
+    # # Check that the size of snips is OK and there are two of them:
+    # assert stack.shape == (5, 5, 2)
+
+
+def test_ondiag_pileup_legacy_with_expected(request):
     """
     Test the snipping on matrix:
     """
@@ -132,7 +216,7 @@ def test_ondiag_pileups_with_expected(request):
         assert np.all(np.isnan(stack[:, :, 1]))
 
 
-def test_ondiag_pileups_without_expected(request):
+def test_ondiag_pileup_legacy_without_expected(request):
     """
     Test the snipping on matrix:
     """
@@ -174,7 +258,7 @@ def test_ondiag_pileups_without_expected(request):
     assert np.all(np.isnan(stack[:, :, 1]))
 
 
-def test_offdiag_pileups_with_expected(request):
+def test_offdiag_pileup_legacy_with_expected(request):
     """
     Test the snipping on matrix:
     """
@@ -236,7 +320,7 @@ def test_offdiag_pileups_with_expected(request):
         assert np.all(np.isnan(stack[:, :, 1]))
 
 
-def test_offdiag_pileups_without_expected(request):
+def test_offdiag_pileup_legacy_without_expected(request):
     """
     Test the snipping on matrix:
     """
