@@ -396,8 +396,9 @@ class CoolerSnipper:
             snippet = matrix[lo1:hi1, lo2:hi2].toarray().astype("float")
             snippet[self._isnan1[lo1:hi1], :] = np.nan
             snippet[:, self._isnan2[lo2:hi2]] = np.nan
-        D = self.diag_indicators[region1][lo1:hi1, lo2:hi2] < self.min_diag
-        snippet[D] = np.nan
+        if not self.min_diag is None:
+            D = self.diag_indicators[region1][lo1:hi1, lo2:hi2] < self.min_diag
+            snippet[D] = np.nan
         return snippet
 
 
@@ -546,13 +547,14 @@ class ObsExpSnipper:
             snippet[:, self._isnan2[lo2:hi2]] = np.nan
 
         e = self._expected[lo1:hi1, lo2:hi2]
-        D = self.diag_indicators[region1][lo1:hi1, lo2:hi2] < self.min_diag
-        snippet[D] = np.nan
+        if not self.min_diag is None:
+            D = self.diag_indicators[region1][lo1:hi1, lo2:hi2] < self.min_diag
+            snippet[D] = np.nan
         return snippet / e
 
 
 class ExpectedSnipper:
-    def __init__(self, clr, expected, view_df=None, expected_value_col="balanced.avg"):
+    def __init__(self, clr, expected, view_df=None, min_diag=2, expected_value_col="balanced.avg"):
         self.clr = clr
         self.expected = expected
         self.expected_value_col = expected_value_col
@@ -590,6 +592,8 @@ class ExpectedSnipper:
         self.view_df = view_df.set_index("name")
         self.binsize = self.clr.binsize
         self.offsets = {}
+        self.diag_indicators = {}
+        self.min_diag = min_diag
 
     def select(self, region1, region2):
         if not region1 == region2:
@@ -609,6 +613,8 @@ class ExpectedSnipper:
             .get_group((region1, region2))[self.expected_value_col]
             .values
         )
+        diags = np.arange(np.diff(self.clr.extent(region1_coords)), dtype=np.int32)
+        self.diag_indicators[region1] = LazyToeplitz(-diags, diags)
         return self._expected
 
     def snip(self, exp, region1, region2, tup):
@@ -626,6 +632,9 @@ class ExpectedSnipper:
             return np.full((dm, dn), np.nan)
 
         snippet = exp[lo1:hi1, lo2:hi2]
+        if not self.min_diag is None:
+            D = self.diag_indicators[region1][lo1:hi1, lo2:hi2] < self.min_diag
+            snippet[D] = np.nan
         return snippet
 
 
