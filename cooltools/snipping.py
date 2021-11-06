@@ -31,9 +31,9 @@ def expand_align_features(features_df, flank, resolution, format="bed"):
     -------
     pd.DataFrame
         DataFrame with features with new columns
-           "center",  "exp_start"   "exp_end"
-        or "center1", "exp_start1", "exp_end1",
-           "center2", "exp_start2", "exp_end2", depending on format.
+           "center",  "orig_start"   "orig_end"
+        or "center1", "orig_start1", "orig_end1",
+           "center2", "orig_start2", "orig_rank_end2", depending on format.
 
     """
     features_df = features_df.copy()
@@ -76,7 +76,7 @@ def make_bin_aligned_windows(
     ignore_index=False,
 ):
     """
-        Convert genomic loci into bin spans on a fixed bin-    resolution : int
+        Convert genomic loci into bin spans on a fixed bin-   resolution : int
     size segmentation of a
         genomic region. Window limits are adjusted to align with bin edges.
 
@@ -140,7 +140,6 @@ def make_bin_aligned_windows(
 
 def _pileup(data_select, data_snip, arg):
     support, feature_group = arg
-
     # return empty snippets if region is unannotated:
     if len(support) == 0:
         if "start" in feature_group:  # on-diagonal off-region case:
@@ -353,8 +352,9 @@ class CoolerSnipper:
             ).astype(bool)
         if self.cooler_opts["sparse"]:
             matrix = matrix.tocsr()
-        diags = np.arange(np.diff(self.clr.extent(region1_coords)), dtype=np.int32)
-        self.diag_indicators[region1] = LazyToeplitz(-diags, diags)
+        if self.min_diag is not None:
+            diags = np.arange(np.diff(self.clr.extent(region1_coords)), dtype=np.int32)
+            self.diag_indicators[region1] = LazyToeplitz(-diags, diags)
         return matrix
 
     def snip(self, matrix, region1, region2, tup):
@@ -396,7 +396,7 @@ class CoolerSnipper:
             snippet = matrix[lo1:hi1, lo2:hi2].toarray().astype("float")
             snippet[self._isnan1[lo1:hi1], :] = np.nan
             snippet[:, self._isnan2[lo2:hi2]] = np.nan
-        if not self.min_diag is None:
+        if self.min_diag is not None:
             D = self.diag_indicators[region1][lo1:hi1, lo2:hi2] < self.min_diag
             snippet[D] = np.nan
         return snippet
@@ -502,8 +502,9 @@ class ObsExpSnipper:
             .get_group((region1, region2))[self.expected_value_col]
             .values
         )
-        diags = np.arange(np.diff(self.clr.extent(region1_coords)), dtype=np.int32)
-        self.diag_indicators[region1] = LazyToeplitz(-diags, diags)
+        if self.min_diag is not None:
+            diags = np.arange(np.diff(self.clr.extent(region1_coords)), dtype=np.int32)
+            self.diag_indicators[region1] = LazyToeplitz(-diags, diags)
         return matrix
 
     def snip(self, matrix, region1, region2, tup):
@@ -547,14 +548,16 @@ class ObsExpSnipper:
             snippet[:, self._isnan2[lo2:hi2]] = np.nan
 
         e = self._expected[lo1:hi1, lo2:hi2]
-        if not self.min_diag is None:
+        if self.min_diag is not None:
             D = self.diag_indicators[region1][lo1:hi1, lo2:hi2] < self.min_diag
             snippet[D] = np.nan
         return snippet / e
 
 
 class ExpectedSnipper:
-    def __init__(self, clr, expected, view_df=None, min_diag=2, expected_value_col="balanced.avg"):
+    def __init__(
+        self, clr, expected, view_df=None, min_diag=2, expected_value_col="balanced.avg"
+    ):
         self.clr = clr
         self.expected = expected
         self.expected_value_col = expected_value_col
@@ -613,8 +616,9 @@ class ExpectedSnipper:
             .get_group((region1, region2))[self.expected_value_col]
             .values
         )
-        diags = np.arange(np.diff(self.clr.extent(region1_coords)), dtype=np.int32)
-        self.diag_indicators[region1] = LazyToeplitz(-diags, diags)
+        if self.min_diag is not None:
+            diags = np.arange(np.diff(self.clr.extent(region1_coords)), dtype=np.int32)
+            self.diag_indicators[region1] = LazyToeplitz(-diags, diags)
         return self._expected
 
     def snip(self, exp, region1, region2, tup):
@@ -632,7 +636,7 @@ class ExpectedSnipper:
             return np.full((dm, dn), np.nan)
 
         snippet = exp[lo1:hi1, lo2:hi2]
-        if not self.min_diag is None:
+        if self.min_diag is not None:
             D = self.diag_indicators[region1][lo1:hi1, lo2:hi2] < self.min_diag
             snippet[D] = np.nan
         return snippet
@@ -647,7 +651,7 @@ def pileup(
     flank=100_000,
     min_diag="auto",
     clr_weight_name="weight",
-    force=False, # TODO: not implemented and potentially hard to implement because bioframe.overlap requires bedframes
+    force=False,  # TODO: not implemented and potentially hard to implement because bioframe.overlap requires bedframes
     nproc=1,
 ):
     """
@@ -698,6 +702,17 @@ def pileup(
         features_df = expand_align_features(
             features_df, flank, clr.binsize, format=feature_type
         )
+    else:
+        features_df = features_df.copy()
+
+    if feature_type == "bed":
+        features_df["lo"] = features_df["start"] // clr.binsize
+        features_df["hi"] = features_df["end"] // clr.binsize
+    if feature_type == "bedpe":
+        features_df["lo1"] = features_df["start1"] // clr.binsize
+        features_df["hi1"] = features_df["end1"] // clr.binsize
+        features_df["lo2"] = features_df["start2"] // clr.binsize
+        features_df["hi2"] = features_df["end2"] // clr.binsize
 
     if view_df is None:
         view_df = bioframe.make_viewframe(clr.chromsizes)
@@ -721,7 +736,6 @@ def pileup(
     #         if not bioframe.is_bedframe(features_df.rename({'chrom1': 'chrom', 'start1':'start', 'end1':'end'}, axis=1)[['chrom', 'start', 'end']]) or \
     #             not bioframe.is_bedframe(features_df.rename({'chrom2': 'chrom', 'start2':'start', 'end2':'end'}, axis=1)[['chrom', 'start', 'end']]):
     #                 raise ValueError("features_df first or second coordinates does not represent a valid bedframe, use force=True if you still want to use it.")
-
     features_df = assign_regions(features_df, view_df)
 
     # TODO Expected checks are now implemented in the snippers, maybe move them out to here

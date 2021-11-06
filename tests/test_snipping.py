@@ -109,7 +109,7 @@ def test_pileup(request):
     assert stack.shape == (5, 5, 2)
 
     # II.
-    # Example of-diagonal features, two regions from annotated genomic regions:
+    # Example off-diagonal features, two regions from annotated genomic regions:
     windows = pd.DataFrame(
         {
             "chrom1": ["chr1", "chr1"],
@@ -127,6 +127,26 @@ def test_pileup(request):
     assert stack.shape == (5, 5, 2)
 
     # III.
+    # Example off-diagonal features, one region outside the view:
+    windows = pd.DataFrame(
+        {
+            "chrom1": ["chr1", "chr1"],
+            "start1": [90_000_000, 105_000_000],
+            "end1": [95_000_000, 110_000_000],
+            "chrom2": ["chr1", "chr1"],
+            "start2": [105_000_000, 110_000_000],
+            "end2": [110_000_000, 115_000_000],
+        }
+    )
+    stack = cooltools.snipping.pileup(
+        clr, windows, view_df, exp, flank=None, force=False
+    )
+    # Check that the size of snips is OK and there are two of them:
+    assert stack.shape == (5, 5, 2)
+
+    assert np.all(np.isnan(stack[:, :, 0]))
+
+    # IV.
     # Example on-diagonal features, not valid bedframes (start>end):
     windows = pd.DataFrame(
         {
