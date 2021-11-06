@@ -46,12 +46,17 @@ def test_calculate_insulation_score(request):
         insulation.columns
     )
 
+    # II. Insulation with masking bad bins
     insulation = calculate_insulation_score(clr, 10_000_000, min_dist_bad_bin=1)
     # All bins closer than 1 to bad bins are filled with np.nans:
     assert np.all(np.isnan(insulation.query('dist_bad_bin==0')['log2_insulation_score_10000000']))
     # Some of the bins at the distance 1 (above threshold) are not np.nans:
     assert np.any(~np.isnan(insulation.query('dist_bad_bin==1')['log2_insulation_score_10000000']))
 
+    # III. Insulation for separate view:
+    region = pd.DataFrame({'chrom': ['chr1'], 'start': [0], 'end': [10_000_000], 'name': ['fragment01']})
+    insulation = calculate_insulation_score(clr, 10_000_000, min_dist_bad_bin=0, view_df=region)
+    assert len(insulation)==10
 
 def test_find_boundaries(request):
     clr_path = op.join(request.fspath.dirname, "data/CN.mm9.1000kb.cool")

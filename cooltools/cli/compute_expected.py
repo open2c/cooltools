@@ -49,7 +49,7 @@ from . import util
     "--regions",
     help="Path to a 3 or 4-column BED file containing genomic regions"
     " for which expected will be calculated. Region names are stored"
-    " optionally in a 4th column, otherwise UCSC notaion is generated."
+    " optionally in a 4th column, otherwise UCSC notation is generated."
     " When not specified, expected is calculated for all chromosomes."
     " Trans-expected is calculated for all pairwise combinations of regions,"
     " provided regions have to be sorted."
