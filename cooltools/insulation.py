@@ -122,6 +122,8 @@ def calculate_insulation_score(
     clr,
     window_bp,
     ignore_diags=None,
+    min_dist_bad_bin=0,
+    is_bad_bin_key="is_bad_bin",
     chromosomes=None,
     append_raw_scores=False,
     chunksize=20000000,
@@ -141,6 +143,11 @@ def calculate_insulation_score(
     ignore_diags : int
         The number of diagonals to ignore. If None, equals the number of
         diagonals ignored during IC balancing.
+    min_dist_bad_bin : int
+        The minimal allowed distance to a bad bin to report insulation score.
+        Fills bins that have a bad bin closer than this distance by nans.
+    is_bad_bin_key : str
+        Name of the output column to store bad bins
     append_raw_scores : bool
         If True, append columns with raw scores (sum_counts, sum_balanced, n_pixels)
         to the output table.
@@ -191,7 +198,10 @@ def calculate_insulation_score(
 
         chrom_bins = clr.bins().fetch(chrom)
         ins_chrom = chrom_bins[["chrom", "start", "end"]].copy()
-        ins_chrom["is_bad_bin"] = chrom_bins[clr_weight_name].isnull()
+        ins_chrom[is_bad_bin_key] = chrom_bins[clr_weight_name].isnull()
+
+        if min_dist_bad_bin:
+            ins_chrom = ins_chrom.assign(dist_bad_bin=numutils.dist_to_mask(ins_chrom[is_bad_bin_key]))
 
         # XXX --- Create a delayed selection
         c0, c1 = clr.extent(chrom)
@@ -212,6 +222,10 @@ def calculate_insulation_score(
             ins_chrom["log2_insulation_score_{}".format(window_bp[j])] = ins_track
             ins_chrom["n_valid_pixels_{}".format(window_bp[j])] = n_pixels
 
+            if min_dist_bad_bin:
+                mask_bad = ins_chrom.dist_bad_bin.values < min_dist_bad_bin
+                ins_chrom.loc[mask_bad, "log2_insulation_score_{}".format(window_bp[j])] = np.nan
+
             if append_raw_scores:
                 ins_chrom["sum_counts_{}".format(window_bp[j])] = sum_counts
                 ins_chrom["sum_balanced_{}".format(window_bp[j])] = sum_balanced
@@ -228,7 +242,7 @@ def find_boundaries(
     min_dist_bad_bin=0,
     log2_ins_key="log2_insulation_score_{WINDOW}",
     n_valid_pixels_key="n_valid_pixels_{WINDOW}",
-    is_bad_bin_key="is_bad_bin", # TODO: implement, currently unused
+    is_bad_bin_key="is_bad_bin",
 ):
     """Call insulating boundaries.
 
@@ -245,7 +259,7 @@ def find_boundaries(
         The minimal fraction of valid pixels in a diamond to be used in
         boundary picking and prominence calculation.
     min_dist_bad_bin : int
-        The minimal allowed distance to a bad bin.
+        The minimal allowed distance to a bad bin to be used in boundary picking.
         Ignore bins that have a bad bin closer than this distance.
     log2_ins_key, n_valid_pixels_key : str
         The names of the columns containing log2_insulation_score and
@@ -262,7 +276,7 @@ def find_boundaries(
     if min_dist_bad_bin:
         ins_table = pd.concat(
             [
-                df.assign(dist_bad_bin=numutils.dist_to_mask(df.is_bad_bin))
+                df.assign(dist_bad_bin=numutils.dist_to_mask(df[is_bad_bin_key]))
                 for chrom, df in ins_table.groupby("chrom")
             ]
         )

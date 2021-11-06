@@ -32,7 +32,7 @@ def test_insulation_cli(request, tmpdir):
     assert result.exit_code == 1
 
 
-def test_insulation_score(request):
+def test_calculate_insulation_score(request):
     clr_path = op.join(request.fspath.dirname, "data/CN.mm9.1000kb.cool")
     clr = cooler.Cooler(clr_path)
     windows = [10_000_000, 20_000_000]
@@ -45,6 +45,12 @@ def test_insulation_score(request):
     assert {f"n_valid_pixels_{window}" for window in windows}.issubset(
         insulation.columns
     )
+
+    insulation = calculate_insulation_score(clr, 10_000_000, min_dist_bad_bin=1)
+    # All bins closer than 1 to bad bins are filled with np.nans:
+    assert np.all(np.isnan(insulation.query('dist_bad_bin==0')['log2_insulation_score_10000000']))
+    # Some of the bins at the distance 1 (above threshold) are not np.nans:
+    assert np.any(~np.isnan(insulation.query('dist_bad_bin==1')['log2_insulation_score_10000000']))
 
 
 def test_find_boundaries(request):
@@ -130,7 +136,11 @@ def test_insulation_sparse_vs_dense(request):
     )
 
     insulation_sparse = calculate_insulation_score(
-        clr, 10_000_000, clr_weight_name="weight", ignore_diags=2, #min_dist_bad_bin=0, 
+        clr,
+        10_000_000,
+        clr_weight_name="weight",
+        min_dist_bad_bin=0,
+        ignore_diags=2
     )
     boundaries_sparse = find_boundaries(insulation_sparse)
 

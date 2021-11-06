@@ -34,7 +34,7 @@ import bioframe
 @click.option(
     "--min-dist-bad-bin",
     help="The minimal allowed distance to a bad bin. "
-    "Used to mask bins during boundary detection.",
+    "Use to mask bins after insulation calculation and during boundary detection.",
     type=int,
     default=0,
     show_default=True,
@@ -92,6 +92,7 @@ def diamond_insulation(
         clr,
         window_bp=window,
         ignore_diags=ignore_diags,
+        min_dist_bad_bin=min_dist_bad_bin,
         append_raw_scores=append_raw_scores,
         chunksize=chunksize,
         verbose=verbose,
