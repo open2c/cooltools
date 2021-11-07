@@ -40,30 +40,38 @@ def expand_align_features(features_df, flank, resolution, format="bed"):
     if format == "bed":
         features_df[["orig_start", "orig_end"]] = features_df[["start", "end"]]
         features_df["center"] = (features_df["start"] + features_df["end"]) / 2
-        features_df["start"] = (
-            np.floor(features_df["center"] / resolution) * resolution - flank
+        features_df["lo"] = (
+            np.floor(features_df["center"] / resolution) - flank // resolution
         ).astype(int)
-        features_df["end"] = (
-            np.floor(features_df["center"] / resolution + 1) * resolution + flank
+        features_df["hi"] = (
+            np.floor(features_df["center"] / resolution) + flank // resolution + 1
         ).astype(int)
+        features_df["start"] = features_df["lo"] * resolution
+        features_df["end"] = features_df["hi"] * resolution
     elif format == "bedpe":
         features_df[
             ["orig_start1", "orig_end1", "orig_start2", "orig_end2"]
         ] = features_df[["start1", "end1", "start2", "end2"]]
         features_df["center1"] = (features_df["start1"] + features_df["end1"]) / 2
         features_df["center2"] = (features_df["start2"] + features_df["end2"]) / 2
-        features_df["start1"] = (
-            np.floor(features_df["center1"] / resolution) * resolution - flank
+
+        features_df["lo1"] = (
+            np.floor(features_df["center1"] / resolution) - flank // resolution
         ).astype(int)
-        features_df["end1"] = (
-            np.floor(features_df["center1"] / resolution + 1) * resolution + flank
+        features_df["hi1"] = (
+            np.floor(features_df["center1"] / resolution) + flank // resolution + 1
         ).astype(int)
-        features_df["start2"] = (
-            np.floor(features_df["center2"] / resolution) * resolution - flank
+        features_df["start1"] = features_df["lo1"] * resolution
+        features_df["end1"] = features_df["hi1"] * resolution
+
+        features_df["lo2"] = (
+            np.floor(features_df["center2"] / resolution) - flank // resolution
         ).astype(int)
-        features_df["end2"] = (
-            np.floor(features_df["center2"] / resolution + 1) * resolution + flank
+        features_df["hi2"] = (
+            np.floor(features_df["center2"] / resolution) + flank // resolution + 1
         ).astype(int)
+        features_df["start2"] = features_df["lo2"] * resolution
+        features_df["end2"] = features_df["hi2"] * resolution
     return features_df
 
 
@@ -76,30 +84,29 @@ def make_bin_aligned_windows(
     ignore_index=False,
 ):
     """
-        Convert genomic loci into bin spans on a fixed bin-   resolution : int
-    size segmentation of a
-        genomic region. Window limits are adjusted to align with bin edges.
+    Convert genomic loci into bin spans on a fixed bin-segmentation of a
+    genomic region. Window limits are adjusted to align with bin edges.
 
-        Parameters
-        -----------
-        binsize : int
-            Bin size (resolution) in base pairs.
-        chroms : 1D array-like
-            Column of chromosome names.
-        centers_bp : 1D or nx2 array-like
-            If 1D, center points of each window. If 2D, the starts and ends.
-        flank_bp : int
-            Distance in base pairs to extend windows on either side.
-        region_start_bp : int, optional
-            If region is a subset of a chromosome, shift coordinates by this amount.
-            Default is 0.
+    Parameters
+    -----------
+    binsize : int
+        Bin size (resolution) in base pairs.
+    chroms : 1D array-like
+        Column of chromosome names.
+    centers_bp : 1D or nx2 array-like
+        If 1D, center points of each window. If 2D, the starts and ends.
+    flank_bp : int
+        Distance in base pairs to extend windows on either side.
+    region_start_bp : int, optional
+        If region is a subset of a chromosome, shift coordinates by this amount.
+        Default is 0.
 
-        Returns
-        -------
-        DataFrame with columns:
-            'chrom'        - chromosome
-            'start', 'end' - window limits in base pairs
-            'lo', 'hi'     - window limits in bins
+    Returns
+    -------
+    DataFrame with columns:
+        'chrom'        - chromosome
+        'start', 'end' - window limits in base pairs
+        'lo', 'hi'     - window limits in bins
 
     """
     if not (flank_bp % binsize == 0):
@@ -698,21 +705,39 @@ def pileup(
         feature_type = "bedpe"
     else:
         raise ValueError("Unknown feature_df format")
+
+    features_df = assign_regions(features_df, view_df)
+
+    # Draft using bioframe assign_view, that doesn't work because of mysterious dtype issues!
+    # And with all the required renaming, it's more annoying than it could be...
+    # if feature_type == "bed":
+    #     features_df = bioframe.assign_view(features_df, view_df, df_view_col="region")
+    # else:
+    #     features_df = bioframe.assign_view(
+    #         features_df.rename(
+    #             columns={"chrom1": "chrom", "start1": "start", "end1": "end"}
+    #         ),
+    #         view_df,
+    #         df_view_col="region1",
+    #     ).rename(columns={"chrom": "chrom1", "start": "start1", "end": "end1"})
+    #     features_df = bioframe.assign_view(
+    #         features_df.rename(
+    #             columns={"chrom2": "chrom", "start2": "start", "end2": "end"}
+    #         ),
+    #         view_df,
+    #         df_view_col="region2",
+    #     ).rename(columns={"chrom": "chrom2", "start": "start2", "end": "end2"})
+    #     features["region"] = np.where(
+    #         features["region1"] == features["region2"], features["region1"], None
+    #     )
+    #     features = features.drop(["region1", "region2"], axis=1)
+
     if flank is not None:
         features_df = expand_align_features(
             features_df, flank, clr.binsize, format=feature_type
         )
     else:
         features_df = features_df.copy()
-
-    if feature_type == "bed":
-        features_df["lo"] = features_df["start"] // clr.binsize
-        features_df["hi"] = features_df["end"] // clr.binsize
-    if feature_type == "bedpe":
-        features_df["lo1"] = features_df["start1"] // clr.binsize
-        features_df["hi1"] = features_df["end1"] // clr.binsize
-        features_df["lo2"] = features_df["start2"] // clr.binsize
-        features_df["hi2"] = features_df["end2"] // clr.binsize
 
     if view_df is None:
         view_df = bioframe.make_viewframe(clr.chromsizes)
@@ -736,7 +761,38 @@ def pileup(
     #         if not bioframe.is_bedframe(features_df.rename({'chrom1': 'chrom', 'start1':'start', 'end1':'end'}, axis=1)[['chrom', 'start', 'end']]) or \
     #             not bioframe.is_bedframe(features_df.rename({'chrom2': 'chrom', 'start2':'start', 'end2':'end'}, axis=1)[['chrom', 'start', 'end']]):
     #                 raise ValueError("features_df first or second coordinates does not represent a valid bedframe, use force=True if you still want to use it.")
-    features_df = assign_regions(features_df, view_df)
+
+    ### Mask out of bounds features?
+    # features_df["region"] = np.where(
+    #     np.logical_and(
+    #         features_df["end"]
+    #         <= features_df["region"].replace(
+    #             view_df[["name", "end"]].set_index("name")["end"]
+    #         ),
+    #         features_df["start"] >= 0,
+    #     ),
+    #     features_df["region"],
+    #     None,
+    # )
+
+    # Find region offsets and then subtract them from the feature extents
+
+    region_offsets = view_df[["chrom", "start", "end"]].apply(clr.offset, axis=1)
+    region_offsets_dict = dict(zip(view_df["name"].values, region_offsets))
+
+    features_df["region_offset"] = features_df["region"].replace(region_offsets_dict)
+
+    if feature_type == "bed":
+        features_df[["lo", "hi"]] = features_df[["lo", "hi"]].subtract(
+            features_df["region_offset"], axis=0
+        )
+    else:
+        features_df[["lo1", "hi1"]] = features_df[["lo1", "hi1"]].subtract(
+            features_df["region_offset"], axis=0
+        )
+        features_df[["lo2", "hi2"]] = features_df[["lo2", "hi2"]].subtract(
+            features_df["region_offset"], axis=0
+        )
 
     # TODO Expected checks are now implemented in the snippers, maybe move them out to here
     # when there is a neat function?
