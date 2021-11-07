@@ -738,6 +738,14 @@ def pileup(
         )
     else:
         features_df = features_df.copy()
+        if feature_type == "bed":
+            features_df["lo"] = (features_df["start"] / clr.binsize).astype(int)
+            features_df["hi"] = (features_df["end"] / clr.binsize).astype(int)
+        else:
+            features_df["lo1"] = (features_df["start1"] / clr.binsize).astype(int)
+            features_df["hi1"] = (features_df["end1"] / clr.binsize).astype(int)
+            features_df["lo2"] = (features_df["start2"] / clr.binsize).astype(int)
+            features_df["hi2"] = (features_df["end2"] / clr.binsize).astype(int)
 
     if view_df is None:
         view_df = bioframe.make_viewframe(clr.chromsizes)
@@ -783,15 +791,30 @@ def pileup(
     features_df["region_offset"] = features_df["region"].replace(region_offsets_dict)
 
     if feature_type == "bed":
-        features_df[["lo", "hi"]] = features_df[["lo", "hi"]].subtract(
-            features_df["region_offset"], axis=0
+        features_df[["lo", "hi"]] = (
+            features_df[["lo", "hi"]]
+            .subtract(
+                features_df["region_offset"].fillna(0),
+                axis=0,
+            )
+            .astype(int)
         )
     else:
-        features_df[["lo1", "hi1"]] = features_df[["lo1", "hi1"]].subtract(
-            features_df["region_offset"], axis=0
+        features_df[["lo1", "hi1"]] = (
+            features_df[["lo1", "hi1"]]
+            .subtract(
+                features_df["region_offset"].fillna(0),
+                axis=0,
+            )
+            .astype(int)
         )
-        features_df[["lo2", "hi2"]] = features_df[["lo2", "hi2"]].subtract(
-            features_df["region_offset"], axis=0
+        features_df[["lo2", "hi2"]] = (
+            features_df[["lo2", "hi2"]]
+            .subtract(
+                features_df["region_offset"].fillna(0),
+                axis=0,
+            )
+            .astype(int)
         )
 
     # TODO Expected checks are now implemented in the snippers, maybe move them out to here
