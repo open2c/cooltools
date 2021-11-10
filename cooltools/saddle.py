@@ -475,6 +475,7 @@ def get_saddle(
     if contact_type == "cis":
         # only symmetric intra-chromosomal regions :
         supports = list(zip(view_df[view_name_col], view_df[view_name_col]))
+
         getmatrix = _make_cis_obsexp_fetcher(
             clr,
             expected,
