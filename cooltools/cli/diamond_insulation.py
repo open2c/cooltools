@@ -16,6 +16,17 @@ import bioframe
     required=False,
 )
 @click.option(
+    "--view",
+    "--regions",
+    help="Path to a BED file containing genomic regions "
+    "for which insulation scores will be calculated. Region names can "
+    "be provided in a 4th column and should match regions and "
+    "their names in expected."
+    " Note that '--regions' is the deprecated name of the option. Use '--view' instead. ",
+    type=click.Path(exists=True),
+    required=False,
+)
+@click.option(
     "--ignore-diags",
     help="The number of diagonals to ignore. By default, equals"
     " the number of diagonals ignored during IC balancing.",
@@ -34,7 +45,7 @@ import bioframe
 @click.option(
     "--min-dist-bad-bin",
     help="The minimal allowed distance to a bad bin. "
-    "Used to mask bins during boundary detection.",
+    "Use to mask bins after insulation calculation and during boundary detection.",
     type=int,
     default=0,
     show_default=True,
@@ -63,6 +74,7 @@ def diamond_insulation(
     in_path,
     window,
     output,
+    view,
     ignore_diags,
     min_frac_valid_pixels,
     min_dist_bad_bin,
@@ -85,20 +97,36 @@ def diamond_insulation(
     """
 
     clr = cooler.Cooler(in_path)
+
+    # Create view:
+    cooler_view_df = make_cooler_view(clr)
+    if view is None:
+        # full chromosomes:
+        view_df = cooler_view_df
+    else:
+        # read view_df dataframe, and verify against cooler
+        view_df = read_viewframe(view, clr, check_sorting=True)
+
+    # Read list with windows:
     if window_pixels:
         window = [win * clr.info["bin-size"] for win in window]
 
+    # Calculate insulation score:
     ins_table = insulation.calculate_insulation_score(
         clr,
+        view_df=view_df,
         window_bp=window,
         ignore_diags=ignore_diags,
+        min_dist_bad_bin=min_dist_bad_bin,
         append_raw_scores=append_raw_scores,
         chunksize=chunksize,
         verbose=verbose,
     )
 
+    # Find boundaries:
     ins_table = insulation.find_boundaries(
         ins_table,
+        view_df=view_df,
         min_frac_valid_pixels=min_frac_valid_pixels,
         min_dist_bad_bin=min_dist_bad_bin,
     )
@@ -111,7 +139,6 @@ def diamond_insulation(
         print(ins_table.to_csv(sep="\t", index=False, na_rep="nan"))
 
     # Write the insulation track as a bigwig:
-
     if bigwig:
         for w in window:
             bioframe.to_bigwig(
