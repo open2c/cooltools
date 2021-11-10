@@ -5,9 +5,190 @@ import os.path as op
 import cooltools.snipping
 import numpy as np
 import pandas as pd
+import pytest
+
+from click.testing import CliRunner
+from cooltools.cli import cli
 
 
-def test_ondiag_pileups_with_expected(request):
+def test_pileup_cli_npz(request):
+    in_cool = op.join(request.fspath.dirname, "data/CN.mm9.1000kb.cool")
+    in_features = op.join(request.fspath.dirname, "data/CN.mm9.toy_features.bed")
+    in_regions = op.join(request.fspath.dirname, "data/CN.mm9.toy_regions.bed")
+    in_expected = op.join(request.fspath.dirname, "data/CN.mm9.toy_expected.tsv")
+    runner = CliRunner()
+    # Output npz file:
+    result = runner.invoke(
+        cli,
+        [
+            "compute-pileup",
+            in_cool,
+            in_features,
+            "--view",
+            in_regions,
+            "--expected",
+            in_expected,
+            "--flank",
+            300000,
+            "--ignore-diags",
+            2,
+            "--clr-weight-name",
+            "weight",
+            "--features-format",
+            "bed",
+            "--nproc",
+            1,
+            "--store-snips",
+            "--out",
+            "tmp.npz",
+        ],
+    )
+    assert result.exit_code == 0
+
+
+def test_pileup_cli_hdf5(request):
+    in_cool = op.join(request.fspath.dirname, "data/CN.mm9.1000kb.cool")
+    in_features = op.join(request.fspath.dirname, "data/CN.mm9.toy_features.bed")
+    in_regions = op.join(request.fspath.dirname, "data/CN.mm9.toy_regions.bed")
+    in_expected = op.join(request.fspath.dirname, "data/CN.mm9.toy_expected.tsv")
+    runner = CliRunner()
+
+    # Output hdf5 file:
+    result = runner.invoke(
+        cli,
+        [
+            "compute-pileup",
+            in_cool,
+            in_features,
+            "--view",
+            in_regions,
+            "--expected",
+            in_expected,
+            "--flank",
+            300000,
+            "--ignore-diags",
+            2,
+            "--clr-weight-name",
+            "weight",
+            "--features-format",
+            "bed",
+            "--nproc",
+            1,
+            "--store-snips",
+            "--out",
+            "tmp.hdf5",
+            "--out-format",
+            "HDF5",
+        ],
+    )
+    assert result.exit_code == 0
+
+
+def test_pileup(request):
+
+    # Read cool file and create view_df out of it:
+    clr = cooler.Cooler(op.join(request.fspath.dirname, "data/CN.mm9.1000kb.cool"))
+    exp = pd.read_table(op.join(request.fspath.dirname, "data/CN.mm9.toy_expected.tsv"))
+    view_df = bioframe.read_table(
+        op.join(request.fspath.dirname, "data/CN.mm9.toy_regions.bed"), schema="bed4"
+    )
+
+    # I.
+    # Example on-diagonal features, two regions from annotated genomic regions:
+    windows = pd.DataFrame(
+        {
+            "chrom": ["chr1", "chr1"],
+            "start": [102_000_000, 108_000_000],
+            "end": [107_000_000, 113_000_000],
+        }
+    )
+    stack = cooltools.snipping.pileup(
+        clr, windows, view_df, exp, flank=None
+    )
+    # Check that the size of snips is OK and there are two of them:
+    assert stack.shape == (5, 5, 2)
+
+    # II.
+    # Example off-diagonal features, two regions from annotated genomic regions:
+    windows = pd.DataFrame(
+        {
+            "chrom1": ["chr1", "chr1"],
+            "start1": [102_000_000, 107_000_000],
+            "end1": [107_000_000, 112_000_000],
+            "chrom2": ["chr1", "chr1"],
+            "start2": [107_000_000, 113_000_000],
+            "end2": [112_000_000, 118_000_000],
+        }
+    )
+    stack = cooltools.snipping.pileup(
+        clr, windows, view_df, exp, flank=None
+    )
+    # Check that the size of snips is OK and there are two of them:
+    assert stack.shape == (5, 5, 2)
+
+    # III.
+    # Example off-diagonal features, one region outside the view:
+    windows = pd.DataFrame(
+        {
+            "chrom1": ["chr1", "chr1"],
+            "start1": [90_000_000, 105_000_000],
+            "end1": [95_000_000, 110_000_000],
+            "chrom2": ["chr1", "chr1"],
+            "start2": [105_000_000, 110_000_000],
+            "end2": [110_000_000, 115_000_000],
+        }
+    )
+    stack = cooltools.snipping.pileup(
+        clr, windows, view_df, exp, flank=None
+    )
+    # Check that the size of snips is OK and there are two of them:
+    assert stack.shape == (5, 5, 2)
+
+    assert np.all(np.isnan(stack[:, :, 0]))
+
+    # IV.
+    # Example on-diagonal features, not valid bedframes (start>end):
+    windows = pd.DataFrame(
+        {
+            "chrom": ["chr1", "chr1"],
+            "start": [107_000_000, 108_000_000],
+            "end": [102_000_000, 113_000_000],
+        }
+    )
+    with pytest.raises(ValueError):
+        stack = cooltools.snipping.pileup(
+            clr, windows, view_df, exp, flank=None
+        )
+
+    # DRAFT # Should work with force=True:
+    # stack = cooltools.snipping.pileup(clr, windows, view_df, exp, flank=None, force=True)
+    # # Check that the size of snips is OK and there are two of them:
+    # assert stack.shape == (5, 5, 2)
+
+    # IV.
+    # Example of-diagonal features not valid bedframes (start>end):
+    windows = pd.DataFrame(
+        {
+            "chrom1": ["chr1", "chr1"],
+            "start1": [107_000_000, 107_000_000],
+            "end1": [102_000_000, 112_000_000],
+            "chrom2": ["chr1", "chr1"],
+            "start2": [107_000_000, 113_000_000],
+            "end2": [112_000_000, 118_000_000],
+        }
+    )
+    with pytest.raises(ValueError):
+        stack = cooltools.snipping.pileup(
+            clr, windows, view_df, exp, flank=None
+        )
+
+    # DRAFT # Should work with force=True:
+    # stack = cooltools.snipping.pileup(clr, windows, view_df, exp, flank=0, force=True)
+    # # Check that the size of snips is OK and there are two of them:
+    # assert stack.shape == (5, 5, 2)
+
+
+def test_ondiag_pileup_legacy_with_expected(request):
     """
     Test the snipping on matrix:
     """
@@ -31,7 +212,7 @@ def test_ondiag_pileups_with_expected(request):
         windows = cooltools.snipping.assign_regions(windows, view_df).reset_index(
             drop=True
         )
-        stack = cooltools.snipping.pileup(
+        stack = cooltools.snipping.pileup_legacy(
             windows, snipper.select, snipper.snip, map=map
         )
 
@@ -47,7 +228,7 @@ def test_ondiag_pileups_with_expected(request):
             drop=True
         )
 
-        stack = cooltools.snipping.pileup(
+        stack = cooltools.snipping.pileup_legacy(
             windows, snipper.select, snipper.snip, map=map
         )
 
@@ -55,7 +236,7 @@ def test_ondiag_pileups_with_expected(request):
         assert np.all(np.isnan(stack[:, :, 1]))
 
 
-def test_ondiag_pileups_without_expected(request):
+def test_ondiag_pileup_legacy_without_expected(request):
     """
     Test the snipping on matrix:
     """
@@ -73,8 +254,10 @@ def test_ondiag_pileups_without_expected(request):
 
     windows = cooltools.snipping.assign_regions(windows, view_df).reset_index(drop=True)
 
-    snipper = cooltools.snipping.CoolerSnipper(clr, view_df=view_df)
-    stack = cooltools.snipping.pileup(windows, snipper.select, snipper.snip, map=map)
+    snipper = cooltools.snipping.CoolerSnipper(clr, view_df=view_df, min_diag=None)
+    stack = cooltools.snipping.pileup_legacy(
+        windows, snipper.select, snipper.snip, map=map
+    )
 
     # Check that the size of snips is OK and there are two of them:
     assert stack.shape == (5, 5, 2)
@@ -86,14 +269,16 @@ def test_ondiag_pileups_without_expected(request):
     )
     windows = cooltools.snipping.assign_regions(windows, view_df).reset_index(drop=True)
 
-    stack = cooltools.snipping.pileup(windows, snipper.select, snipper.snip, map=map)
+    stack = cooltools.snipping.pileup_legacy(
+        windows, snipper.select, snipper.snip, map=map
+    )
 
     assert stack.shape == (5, 5, 2)
     assert np.all(np.isfinite(stack[:, :, 0]))
     assert np.all(np.isnan(stack[:, :, 1]))
 
 
-def test_offdiag_pileups_with_expected(request):
+def test_offdiag_pileup_legacy_with_expected(request):
     """
     Test the snipping on matrix:
     """
@@ -125,7 +310,7 @@ def test_offdiag_pileups_with_expected(request):
             drop=True
         )
 
-        stack = cooltools.snipping.pileup(
+        stack = cooltools.snipping.pileup_legacy(
             windows, snipper.select, snipper.snip, map=map
         )
 
@@ -147,7 +332,7 @@ def test_offdiag_pileups_with_expected(request):
             drop=True
         )
 
-        stack = cooltools.snipping.pileup(
+        stack = cooltools.snipping.pileup_legacy(
             windows, snipper.select, snipper.snip, map=map
         )
 
@@ -155,7 +340,7 @@ def test_offdiag_pileups_with_expected(request):
         assert np.all(np.isnan(stack[:, :, 1]))
 
 
-def test_offdiag_pileups_without_expected(request):
+def test_offdiag_pileup_legacy_without_expected(request):
     """
     Test the snipping on matrix:
     """
@@ -178,8 +363,10 @@ def test_offdiag_pileups_without_expected(request):
     )
     windows = cooltools.snipping.assign_regions(windows, view_df).reset_index(drop=True)
 
-    snipper = cooltools.snipping.CoolerSnipper(clr, view_df=view_df)
-    stack = cooltools.snipping.pileup(windows, snipper.select, snipper.snip, map=map)
+    snipper = cooltools.snipping.CoolerSnipper(clr, view_df=view_df, min_diag=None)
+    stack = cooltools.snipping.pileup_legacy(
+        windows, snipper.select, snipper.snip, map=map
+    )
 
     # Check that the size of snips is OK and there are two of them:
     assert stack.shape == (5, 5, 2)
@@ -197,7 +384,9 @@ def test_offdiag_pileups_without_expected(request):
     )
     windows = cooltools.snipping.assign_regions(windows, view_df).reset_index(drop=True)
 
-    stack = cooltools.snipping.pileup(windows, snipper.select, snipper.snip, map=map)
+    stack = cooltools.snipping.pileup_legacy(
+        windows, snipper.select, snipper.snip, map=map
+    )
 
     assert stack.shape == (5, 5, 2)
     assert np.all(np.isfinite(stack[:, :, 0]))

@@ -9,12 +9,82 @@ from .lib.common import assign_regions, is_compatible_viewframe, is_compatible_e
 from .lib.numutils import LazyToeplitz
 import warnings
 
+import multiprocessing
+
+
+def expand_align_features(features_df, flank, resolution, format="bed"):
+    """Short summary.
+
+    Parameters
+    ----------
+    features_df : pd.DataFrame
+        Dataframe with feature coordinates.
+    flank : int
+        Flank size to add to the central bin of each feature.
+    resolution : int
+        Size of the bins to use.
+    format : str
+        "bed" or "bedpe" format: has to have 'chrom', 'start', 'end'
+        or 'chrom1', 'start1', 'end1', 'chrom2', 'start2', 'end1' columns, repectively.
+
+    Returns
+    -------
+    pd.DataFrame
+        DataFrame with features with new columns
+           "center",  "orig_start"   "orig_end"
+        or "center1", "orig_start1", "orig_end1",
+           "center2", "orig_start2", "orig_rank_end2", depending on format.
+
+    """
+    features_df = features_df.copy()
+    if format == "bed":
+        features_df[["orig_start", "orig_end"]] = features_df[["start", "end"]]
+        features_df["center"] = (features_df["start"] + features_df["end"]) / 2
+        features_df["lo"] = (
+            np.floor(features_df["center"] / resolution) - flank // resolution
+        ).astype(int)
+        features_df["hi"] = (
+            np.floor(features_df["center"] / resolution) + flank // resolution + 1
+        ).astype(int)
+        features_df["start"] = features_df["lo"] * resolution
+        features_df["end"] = features_df["hi"] * resolution
+    elif format == "bedpe":
+        features_df[
+            ["orig_start1", "orig_end1", "orig_start2", "orig_end2"]
+        ] = features_df[["start1", "end1", "start2", "end2"]]
+        features_df["center1"] = (features_df["start1"] + features_df["end1"]) / 2
+        features_df["center2"] = (features_df["start2"] + features_df["end2"]) / 2
+
+        features_df["lo1"] = (
+            np.floor(features_df["center1"] / resolution) - flank // resolution
+        ).astype(int)
+        features_df["hi1"] = (
+            np.floor(features_df["center1"] / resolution) + flank // resolution + 1
+        ).astype(int)
+        features_df["start1"] = features_df["lo1"] * resolution
+        features_df["end1"] = features_df["hi1"] * resolution
+
+        features_df["lo2"] = (
+            np.floor(features_df["center2"] / resolution) - flank // resolution
+        ).astype(int)
+        features_df["hi2"] = (
+            np.floor(features_df["center2"] / resolution) + flank // resolution + 1
+        ).astype(int)
+        features_df["start2"] = features_df["lo2"] * resolution
+        features_df["end2"] = features_df["hi2"] * resolution
+    return features_df
+
 
 def make_bin_aligned_windows(
-    binsize, chroms, centers_bp, flank_bp=0, region_start_bp=0, ignore_index=False
+    binsize,
+    chroms,
+    centers_bp,
+    flank_bp=0,
+    region_start_bp=0,
+    ignore_index=False,
 ):
     """
-    Convert genomic loci into bin spans on a fixed bin-size segmentation of a
+    Convert genomic loci into bin spans on a fixed bin-segmentation of a
     genomic region. Window limits are adjusted to align with bin edges.
 
     Parameters
@@ -77,7 +147,6 @@ def make_bin_aligned_windows(
 
 def _pileup(data_select, data_snip, arg):
     support, feature_group = arg
-
     # return empty snippets if region is unannotated:
     if len(support) == 0:
         if "start" in feature_group:  # on-diagonal off-region case:
@@ -128,7 +197,7 @@ def _pileup(data_select, data_snip, arg):
     return np.dstack(stack), feature_group["_rank"].values
 
 
-def pileup(features, data_select, data_snip, map=map):
+def pileup_legacy(features, data_select, data_snip, map=map):
     """
     Handles on-diagonal and off-diagonal cases.
 
@@ -150,13 +219,13 @@ def pileup(features, data_select, data_snip, map=map):
 
 
     """
-    if features.region.isnull().any():
+    if features["region"].isnull().any():
         warnings.warn(
             "Some features do not have view regions assigned! Some snips will be empty."
         )
 
     features = features.copy()
-    features["region"] = features.region.fillna(
+    features["region"] = features["region"].fillna(
         ""
     )  # fill in unanotated view regions with empty string
     features["_rank"] = range(len(features))
@@ -221,7 +290,7 @@ def pair_sites(sites, separation, slop):
 
 
 class CoolerSnipper:
-    def __init__(self, clr, cooler_opts=None, view_df=None):
+    def __init__(self, clr, cooler_opts=None, view_df=None, min_diag=2):
 
         # get chromosomes from cooler, if view_df not specified:
         if view_df is None:
@@ -230,21 +299,37 @@ class CoolerSnipper:
             # Make sure view_df is a proper viewframe
             try:
                 _ = is_compatible_viewframe(
-                        view_df,
-                        clr,
-                        check_sorting=True,
-                        raise_errors=True,
-                    )
+                    view_df,
+                    clr,
+                    check_sorting=True,
+                    raise_errors=True,
+                )
             except Exception as e:
-                raise ValueError("view_df is not a valid viewframe or incompatible") from e
+                raise ValueError(
+                    "view_df is not a valid viewframe or incompatible"
+                ) from e
 
         self.view_df = view_df.set_index("name")
         self.clr = clr
         self.binsize = self.clr.binsize
         self.offsets = {}
+        self.diag_indicators = {}
         self.pad = True
         self.cooler_opts = {} if cooler_opts is None else cooler_opts
         self.cooler_opts.setdefault("sparse", True)
+        if "balance" in self.cooler_opts:
+            if self.cooler_opts["balance"] is True:
+                self.clr_weight_name = "weight"
+            elif (
+                self.cooler_opts["balance"] is False
+                or self.cooler_opts["balance"] is None
+            ):
+                self.clr_weight_name = None
+            else:
+                self.clr_weight_name = self.cooler_opts["balance"]
+        else:
+            self.clr_weight_name = "weight"
+        self.min_diag = min_diag
 
     def select(self, region1, region2):
         region1_coords = self.view_df.loc[region1]
@@ -258,10 +343,25 @@ class CoolerSnipper:
         matrix = self.clr.matrix(**self.cooler_opts).fetch(
             region1_coords, region2_coords
         )
-        self._isnan1 = np.isnan(self.clr.bins()["weight"].fetch(region1_coords).values)
-        self._isnan2 = np.isnan(self.clr.bins()["weight"].fetch(region2_coords).values)
+        if self.clr_weight_name:
+            self._isnan1 = np.isnan(
+                self.clr.bins()[self.clr_weight_name].fetch(region1_coords).values
+            )
+            self._isnan2 = np.isnan(
+                self.clr.bins()[self.clr_weight_name].fetch(region2_coords).values
+            )
+        else:
+            self._isnan1 = np.zeros_like(
+                self.clr.bins()["start"].fetch(region1_coords).values
+            ).astype(bool)
+            self._isnan2 = np.zeros_like(
+                self.clr.bins()["start"].fetch(region2_coords).values
+            ).astype(bool)
         if self.cooler_opts["sparse"]:
             matrix = matrix.tocsr()
+        if self.min_diag is not None:
+            diags = np.arange(np.diff(self.clr.extent(region1_coords)), dtype=np.int32)
+            self.diag_indicators[region1] = LazyToeplitz(-diags, diags)
         return matrix
 
     def snip(self, matrix, region1, region2, tup):
@@ -303,14 +403,25 @@ class CoolerSnipper:
             snippet = matrix[lo1:hi1, lo2:hi2].toarray().astype("float")
             snippet[self._isnan1[lo1:hi1], :] = np.nan
             snippet[:, self._isnan2[lo2:hi2]] = np.nan
+        if self.min_diag is not None:
+            D = self.diag_indicators[region1][lo1:hi1, lo2:hi2] < self.min_diag
+            snippet[D] = np.nan
         return snippet
 
 
 class ObsExpSnipper:
-    def __init__(self, clr, expected, cooler_opts=None, view_df=None):
+    def __init__(
+        self,
+        clr,
+        expected,
+        cooler_opts=None,
+        view_df=None,
+        min_diag=2,
+        expected_value_col="balanced.avg",
+    ):
         self.clr = clr
         self.expected = expected
-
+        self.expected_value_col = expected_value_col
         # get chromosomes from cooler, if view_df not specified:
         if view_df is None:
             view_df = make_cooler_view(clr)
@@ -318,32 +429,50 @@ class ObsExpSnipper:
             # Make sure view_df is a proper viewframe
             try:
                 _ = is_compatible_viewframe(
-                        view_df,
-                        clr,
-                        check_sorting=True,
-                        raise_errors=True,
-                    )
+                    view_df,
+                    clr,
+                    check_sorting=True,
+                    raise_errors=True,
+                )
             except Exception as e:
-                raise ValueError("view_df is not a valid viewframe or incompatible") from e
+                raise ValueError(
+                    "view_df is not a valid viewframe or incompatible"
+                ) from e
         # make sure expected is compatible
         try:
             _ = is_compatible_expected(
-                    expected,
-                    "cis",
-                    view_df,
-                    verify_cooler=clr,
-                    expected_value_cols=["balanced.avg", ],
-                    raise_errors=True
-                )
+                expected,
+                "cis",
+                view_df,
+                verify_cooler=clr,
+                expected_value_cols=[
+                    self.expected_value_col,
+                ],
+                raise_errors=True,
+            )
         except Exception as e:
             raise ValueError("provided expected is not valid") from e
 
         self.view_df = view_df.set_index("name")
         self.binsize = self.clr.binsize
         self.offsets = {}
+        self.diag_indicators = {}
         self.pad = True
         self.cooler_opts = {} if cooler_opts is None else cooler_opts
         self.cooler_opts.setdefault("sparse", True)
+        if "balance" in self.cooler_opts:
+            if self.cooler_opts["balance"] is True:
+                self.clr_weight_name = "weight"
+            elif (
+                self.cooler_opts["balance"] is False
+                or self.cooler_opts["balance"] is None
+            ):
+                self.clr_weight_name = None
+            else:
+                self.clr_weight_name = self.cooler_opts["balance"]
+        else:
+            self.clr_weight_name = "weight"
+        self.min_diag = min_diag
 
     def select(self, region1, region2):
         if not region1 == region2:
@@ -361,11 +490,28 @@ class ObsExpSnipper:
         )
         if self.cooler_opts["sparse"]:
             matrix = matrix.tocsr()
-        self._isnan1 = np.isnan(self.clr.bins()["weight"].fetch(region1_coords).values)
-        self._isnan2 = np.isnan(self.clr.bins()["weight"].fetch(region2_coords).values)
+        if self.clr_weight_name:
+            self._isnan1 = np.isnan(
+                self.clr.bins()[self.clr_weight_name].fetch(region1_coords).values
+            )
+            self._isnan2 = np.isnan(
+                self.clr.bins()[self.clr_weight_name].fetch(region2_coords).values
+            )
+        else:
+            self._isnan1 = np.zeros_like(
+                self.clr.bins()["start"].fetch(region1_coords).values
+            ).astype(bool)
+            self._isnan2 = np.zeros_like(
+                self.clr.bins()["start"].fetch(region2_coords).values
+            ).astype(bool)
         self._expected = LazyToeplitz(
-            self.expected.groupby(["region1", "region2"]).get_group((region1, region2))["balanced.avg"].values
+            self.expected.groupby(["region1", "region2"])
+            .get_group((region1, region2))[self.expected_value_col]
+            .values
         )
+        if self.min_diag is not None:
+            diags = np.arange(np.diff(self.clr.extent(region1_coords)), dtype=np.int32)
+            self.diag_indicators[region1] = LazyToeplitz(-diags, diags)
         return matrix
 
     def snip(self, matrix, region1, region2, tup):
@@ -404,19 +550,24 @@ class ObsExpSnipper:
         #             snippet[pad_bottom:pad_top,
         #                     pad_left:pad_right] = matrix[i0:i1, j0:j1].toarray()
         else:
-            snippet = matrix[lo1:hi1, lo2:hi2].toarray()
+            snippet = matrix[lo1:hi1, lo2:hi2].toarray().astype("float")
             snippet[self._isnan1[lo1:hi1], :] = np.nan
             snippet[:, self._isnan2[lo2:hi2]] = np.nan
 
         e = self._expected[lo1:hi1, lo2:hi2]
+        if self.min_diag is not None:
+            D = self.diag_indicators[region1][lo1:hi1, lo2:hi2] < self.min_diag
+            snippet[D] = np.nan
         return snippet / e
 
 
 class ExpectedSnipper:
-    def __init__(self, clr, expected, view_df=None):
+    def __init__(
+        self, clr, expected, view_df=None, min_diag=2, expected_value_col="balanced.avg"
+    ):
         self.clr = clr
         self.expected = expected
-
+        self.expected_value_col = expected_value_col
         # get chromosomes from cooler, if view_df not specified:
         if view_df is None:
             view_df = make_cooler_view(clr)
@@ -424,29 +575,35 @@ class ExpectedSnipper:
             # Make sure view_df is a proper viewframe
             try:
                 _ = is_compatible_viewframe(
-                        view_df,
-                        clr,
-                        check_sorting=True,
-                        raise_errors=True,
-                    )
+                    view_df,
+                    clr,
+                    check_sorting=True,
+                    raise_errors=True,
+                )
             except Exception as e:
-                raise ValueError("view_df is not a valid viewframe or incompatible") from e
+                raise ValueError(
+                    "view_df is not a valid viewframe or incompatible"
+                ) from e
         # make sure expected is compatible
         try:
             _ = is_compatible_expected(
-                    expected,
-                    "cis",
-                    view_df,
-                    verify_cooler=clr,
-                    expected_value_cols=["balanced.avg", ],
-                    raise_errors=True
-                )
+                expected,
+                "cis",
+                view_df,
+                verify_cooler=clr,
+                expected_value_cols=[
+                    self.expected_value_col,
+                ],
+                raise_errors=True,
+            )
         except Exception as e:
             raise ValueError("provided expected is not valid") from e
 
         self.view_df = view_df.set_index("name")
         self.binsize = self.clr.binsize
         self.offsets = {}
+        self.diag_indicators = {}
+        self.min_diag = min_diag
 
     def select(self, region1, region2):
         if not region1 == region2:
@@ -462,8 +619,13 @@ class ExpectedSnipper:
         self.m = np.diff(self.clr.extent(region1_coords))
         self.n = np.diff(self.clr.extent(region2_coords))
         self._expected = LazyToeplitz(
-            self.expected.groupby(["region1", "region2"]).get_group((region1, region2))["balanced.avg"].values
+            self.expected.groupby(["region1", "region2"])
+            .get_group((region1, region2))[self.expected_value_col]
+            .values
         )
+        if self.min_diag is not None:
+            diags = np.arange(np.diff(self.clr.extent(region1_coords)), dtype=np.int32)
+            self.diag_indicators[region1] = LazyToeplitz(-diags, diags)
         return self._expected
 
     def snip(self, exp, region1, region2, tup):
@@ -481,4 +643,169 @@ class ExpectedSnipper:
             return np.full((dm, dn), np.nan)
 
         snippet = exp[lo1:hi1, lo2:hi2]
+        if self.min_diag is not None:
+            D = self.diag_indicators[region1][lo1:hi1, lo2:hi2] < self.min_diag
+            snippet[D] = np.nan
         return snippet
+
+
+def pileup(
+    clr,
+    features_df,
+    view_df=None,
+    expected_df=None,
+    expected_value_col="balanced.avg",
+    flank=100_000,
+    min_diag="auto",
+    clr_weight_name="weight",
+    nproc=1,
+):
+    """
+    Pileup features over the cooler.
+
+    Parameters
+    ----------
+    clr : cooler.Cooler
+        Cooler with Hi-C data
+    features_df : pd.DataFrame
+        Dataframe in bed or bedpe format: has to have 'chrom', 'start', 'end'
+        or 'chrom1', 'start1', 'end1', 'chrom2', 'start2', 'end1' columns.
+    view_df : pd.DataFrame
+        Dataframe with the genomic view for this operation (has to match the
+        expected_df, if provided)
+    expected_df : pd.DataFrame
+        Dataframe with the expected level of interactions at different
+        genomic separations
+    expected_value_col : str
+        Name of the column in expected used for normalizing.
+    flank : int
+        How much to flank the center of the features by, in bp
+    min_diag: str or int
+        All diagonals of the matrix below this value are ignored. 'auto'
+        tries to extract the value used during the matrix balancing,
+        if it fails defaults to 2
+    clr_weight_name : str
+        Value of the column that contains the balancing weights
+    force : bool
+        Allows start>end in the features (not implemented)
+    nproc : str
+        How many cores to use
+
+    Returns
+    -------
+        np.ndarray: a stackup of all snippets corresponding to the features
+
+    """
+
+    if {"chrom", "start", "end"}.issubset(features_df.columns):
+        feature_type = "bed"
+    elif {"chrom1", "start1", "end1", "chrom2", "start2", "end1"}.issubset(
+        features_df.columns
+    ):
+        feature_type = "bedpe"
+    else:
+        raise ValueError("Unknown feature_df format")
+
+    features_df = assign_regions(features_df, view_df)
+    # TODO: switch to bioframe.assign_view upon update
+
+    if flank is not None:
+        features_df = expand_align_features(
+            features_df, flank, clr.binsize, format=feature_type
+        )
+    else:
+        features_df = features_df.copy()
+        if feature_type == "bed":
+            features_df["lo"] = (features_df["start"] / clr.binsize).astype(int)
+            features_df["hi"] = (features_df["end"] / clr.binsize).astype(int)
+        else:
+            features_df["lo1"] = (features_df["start1"] / clr.binsize).astype(int)
+            features_df["hi1"] = (features_df["end1"] / clr.binsize).astype(int)
+            features_df["lo2"] = (features_df["start2"] / clr.binsize).astype(int)
+            features_df["hi2"] = (features_df["end2"] / clr.binsize).astype(int)
+
+    if view_df is None:
+        view_df = make_cooler_view(clr)
+    else:
+        try:
+            _ = is_compatible_viewframe(
+                    view_df,
+                    clr,
+                    check_sorting=True,
+                    raise_errors=True,
+                )
+        except Exception as e:
+            raise ValueError("view_df is not a valid viewframe or incompatible") from e
+
+    if min_diag == "auto" and clr_weight_name not in [None, False]:
+        min_diag = dict(clr.open()[f"bins/{clr_weight_name}"].attrs).get(
+            "ignore_diags", 2
+        )
+    elif clr_weight_name in [None, False]:
+        min_diag = 2
+
+    # Find region offsets and then subtract them from the feature extents
+
+    region_offsets = view_df[["chrom", "start", "end"]].apply(clr.offset, axis=1)
+    region_offsets_dict = dict(zip(view_df["name"].values, region_offsets))
+
+    features_df["region_offset"] = features_df["region"].replace(region_offsets_dict)
+
+    if feature_type == "bed":
+        features_df[["lo", "hi"]] = (
+            features_df[["lo", "hi"]]
+            .subtract(
+                features_df["region_offset"].fillna(0),
+                axis=0,
+            )
+            .astype(int)
+        )
+    else:
+        features_df[["lo1", "hi1"]] = (
+            features_df[["lo1", "hi1"]]
+            .subtract(
+                features_df["region_offset"].fillna(0),
+                axis=0,
+            )
+            .astype(int)
+        )
+        features_df[["lo2", "hi2"]] = (
+            features_df[["lo2", "hi2"]]
+            .subtract(
+                features_df["region_offset"].fillna(0),
+                axis=0,
+            )
+            .astype(int)
+        )
+
+    # TODO move view, expected and other checks in the user-facing functions, add tests
+
+    if expected_df is None:
+        snipper = CoolerSnipper(
+            clr,
+            view_df=view_df,
+            cooler_opts={"balance": clr_weight_name},
+            min_diag=min_diag,
+        )
+    else:
+        snipper = ObsExpSnipper(
+            clr,
+            expected_df,
+            view_df=view_df,
+            cooler_opts={"balance": clr_weight_name},
+            min_diag=min_diag,
+            expected_value_col=expected_value_col,
+        )
+
+    if nproc > 1:
+        pool = multiprocessing.Pool(nproc)
+        mymap = pool.map
+    else:
+        mymap = map
+    stack = pileup_legacy(features_df, snipper.select, snipper.snip, map=mymap)
+    if feature_type == "bed":
+        stack = np.nansum([stack, np.transpose(stack, axes=(1, 0, 2))], axis=0)
+
+    if nproc > 1:
+        pool.close()
+    return stack
