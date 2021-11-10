@@ -60,10 +60,6 @@ install_requires = get_requirements('requirements.txt')
 
 extensions = [
     Extension(
-        "cooltools.io.fastsavetxt", ["cooltools/io/fastsavetxt.pyx"],
-        include_dirs=[np.get_include()]
-    ),
-    Extension(
         "cooltools.lib._numutils", ["cooltools/lib/_numutils.pyx"],
         include_dirs=[np.get_include()]
     ),
