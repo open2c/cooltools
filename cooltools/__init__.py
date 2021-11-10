@@ -13,7 +13,6 @@ import logging
 
 __version__ = "0.4.0"
 
-from . import io
 from . import lib
 from .lib import (
     numutils,

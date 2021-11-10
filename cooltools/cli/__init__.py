@@ -47,7 +47,8 @@ def cli(verbose, debug):
 
 from . import (
     diamond_insulation,
-    compute_expected,
+    cis_expected,
+    trans_expected,
     compute_pileup,
     logbin_expected,
     compute_saddle,

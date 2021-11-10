@@ -332,7 +332,7 @@ def test_expected_cli(request, tmpdir):
     result = runner.invoke(
         cli,
         [
-            "compute-expected",
+            "cis-expected",
             "--clr-weight-name",
             weight_name,
             "-o",
@@ -371,7 +371,7 @@ def test_expected_view_cli(request, tmpdir):
     result = runner.invoke(
         cli,
         [
-            "compute-expected",
+            "cis-expected",
             "--clr-weight-name",
             weight_name,
             "--view",
@@ -415,13 +415,11 @@ def test_trans_expected_view_cli(request, tmpdir):
     result = runner.invoke(
         cli,
         [
-            "compute-expected",
+            "trans-expected",
             "--clr-weight-name",
             weight_name,
             "--view",
             in_view,
-            "--contact-type",
-            "trans",
             "-o",
             out_trans_expected,
             in_cool,
