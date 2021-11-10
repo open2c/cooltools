@@ -103,7 +103,7 @@ def test_pileup(request):
         }
     )
     stack = cooltools.snipping.pileup(
-        clr, windows, view_df, exp, flank=None, force=False
+        clr, windows, view_df, exp, flank=None
     )
     # Check that the size of snips is OK and there are two of them:
     assert stack.shape == (5, 5, 2)
@@ -121,7 +121,7 @@ def test_pileup(request):
         }
     )
     stack = cooltools.snipping.pileup(
-        clr, windows, view_df, exp, flank=None, force=False
+        clr, windows, view_df, exp, flank=None
     )
     # Check that the size of snips is OK and there are two of them:
     assert stack.shape == (5, 5, 2)
@@ -139,7 +139,7 @@ def test_pileup(request):
         }
     )
     stack = cooltools.snipping.pileup(
-        clr, windows, view_df, exp, flank=None, force=False
+        clr, windows, view_df, exp, flank=None
     )
     # Check that the size of snips is OK and there are two of them:
     assert stack.shape == (5, 5, 2)
@@ -157,7 +157,7 @@ def test_pileup(request):
     )
     with pytest.raises(ValueError):
         stack = cooltools.snipping.pileup(
-            clr, windows, view_df, exp, flank=None, force=False
+            clr, windows, view_df, exp, flank=None
         )
 
     # DRAFT # Should work with force=True:
@@ -179,7 +179,7 @@ def test_pileup(request):
     )
     with pytest.raises(ValueError):
         stack = cooltools.snipping.pileup(
-            clr, windows, view_df, exp, flank=None, force=False
+            clr, windows, view_df, exp, flank=None
         )
 
     # DRAFT # Should work with force=True:

@@ -96,7 +96,6 @@ import h5py
     ),
     show_default=True,
 )
-@click.option("-f", "--force", help="Forced computation", is_flag=True, default=False)
 @click.option(
     "-v", "--verbose", help="Enable verbose output", is_flag=True, default=False
 )
@@ -114,7 +113,6 @@ def compute_pileup(
     nproc,
     ignore_diags,
     aggregate,
-    force,
     verbose,
 ):
     """
@@ -213,7 +211,6 @@ def compute_pileup(
         flank=flank,
         min_diag=ignore_diags,
         clr_weight_name=clr_weight_name,
-        force=force,  # TODO: implement in pileup API
         nproc=nproc,
     )
 
