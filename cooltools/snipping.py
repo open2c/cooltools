@@ -658,7 +658,6 @@ def pileup(
     flank=100_000,
     min_diag="auto",
     clr_weight_name="weight",
-    force=False,  # TODO: not implemented and potentially hard to implement because bioframe.overlap requires bedframes
     nproc=1,
 ):
     """
@@ -691,6 +690,7 @@ def pileup(
         Allows start>end in the features (not implemented)
     nproc : str
         How many cores to use
+
     Returns
     -------
         np.ndarray: a stackup of all snippets corresponding to the features
@@ -707,30 +707,7 @@ def pileup(
         raise ValueError("Unknown feature_df format")
 
     features_df = assign_regions(features_df, view_df)
-
-    # Draft using bioframe assign_view, that doesn't work because of mysterious dtype issues!
-    # And with all the required renaming, it's more annoying than it could be...
-    # if feature_type == "bed":
-    #     features_df = bioframe.assign_view(features_df, view_df, df_view_col="region")
-    # else:
-    #     features_df = bioframe.assign_view(
-    #         features_df.rename(
-    #             columns={"chrom1": "chrom", "start1": "start", "end1": "end"}
-    #         ),
-    #         view_df,
-    #         df_view_col="region1",
-    #     ).rename(columns={"chrom": "chrom1", "start": "start1", "end": "end1"})
-    #     features_df = bioframe.assign_view(
-    #         features_df.rename(
-    #             columns={"chrom2": "chrom", "start2": "start", "end2": "end"}
-    #         ),
-    #         view_df,
-    #         df_view_col="region2",
-    #     ).rename(columns={"chrom": "chrom2", "start": "start2", "end": "end2"})
-    #     features["region"] = np.where(
-    #         features["region1"] == features["region2"], features["region1"], None
-    #     )
-    #     features = features.drop(["region1", "region2"], axis=1)
+    # TODO: switch to bioframe.assign_view upon update
 
     if flank is not None:
         features_df = expand_align_features(
@@ -748,10 +725,17 @@ def pileup(
             features_df["hi2"] = (features_df["end2"] / clr.binsize).astype(int)
 
     if view_df is None:
-        view_df = bioframe.make_viewframe(clr.chromsizes)
+        view_df = make_cooler_view(clr)
     else:
-        if not bioframe.is_contained(view_df, bioframe.make_viewframe(clr.chromsizes)):
-            raise ValueError("view_df is out of the bounds of chromosomes in cooler.")
+        try:
+            _ = is_compatible_viewframe(
+                    view_df,
+                    clr,
+                    check_sorting=True,
+                    raise_errors=True,
+                )
+        except Exception as e:
+            raise ValueError("view_df is not a valid viewframe or incompatible") from e
 
     if min_diag == "auto" and clr_weight_name not in [None, False]:
         min_diag = dict(clr.open()[f"bins/{clr_weight_name}"].attrs).get(
@@ -759,29 +743,6 @@ def pileup(
         )
     elif clr_weight_name in [None, False]:
         min_diag = 2
-
-    ### Draft "force" implementation:
-    # if not force:
-    #     if feature_type=='bed':
-    #         if not bioframe.is_bedframe(features_df[['chrom', 'start', 'end']]):
-    #             raise ValueError("features_df is not a valid bedframe, use force=True if you still want to use it.")
-    #     elif feature_type=='bedpe':
-    #         if not bioframe.is_bedframe(features_df.rename({'chrom1': 'chrom', 'start1':'start', 'end1':'end'}, axis=1)[['chrom', 'start', 'end']]) or \
-    #             not bioframe.is_bedframe(features_df.rename({'chrom2': 'chrom', 'start2':'start', 'end2':'end'}, axis=1)[['chrom', 'start', 'end']]):
-    #                 raise ValueError("features_df first or second coordinates does not represent a valid bedframe, use force=True if you still want to use it.")
-
-    ### Mask out of bounds features?
-    # features_df["region"] = np.where(
-    #     np.logical_and(
-    #         features_df["end"]
-    #         <= features_df["region"].replace(
-    #             view_df[["name", "end"]].set_index("name")["end"]
-    #         ),
-    #         features_df["start"] >= 0,
-    #     ),
-    #     features_df["region"],
-    #     None,
-    # )
 
     # Find region offsets and then subtract them from the feature extents
 
@@ -817,8 +778,7 @@ def pileup(
             .astype(int)
         )
 
-    # TODO Expected checks are now implemented in the snippers, maybe move them out to here
-    # when there is a neat function?
+    # TODO move view, expected and other checks in the user-facing functions, add tests
 
     if expected_df is None:
         snipper = CoolerSnipper(
