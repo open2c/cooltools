@@ -60,10 +60,6 @@ install_requires = get_requirements('requirements.txt')
 
 extensions = [
     Extension(
-        "cooltools.io.fastsavetxt", ["cooltools/io/fastsavetxt.pyx"],
-        include_dirs=[np.get_include()]
-    ),
-    Extension(
         "cooltools.lib._numutils", ["cooltools/lib/_numutils.pyx"],
         include_dirs=[np.get_include()]
     ),
@@ -86,7 +82,7 @@ setup(
     url='https://github.com/open2c/cooltools',
     zip_safe=False,
     classifiers=[s.strip() for s in classifiers.split('\n') if s],
-
+    python_requires='>=3.7.1',  # same as pandas
     packages=packages,
     ext_modules=cythonize(extensions),
     include_dirs=[np.get_include()],

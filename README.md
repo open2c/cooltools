@@ -1,6 +1,5 @@
 # cooltools
 
-[![Build Status](https://travis-ci.org/open2c/cooltools.svg?branch=master)](https://travis-ci.org/open2c/cooltools)
 [![Documentation Status](https://readthedocs.org/projects/cooltools/badge/?version=latest)](https://cooltools.readthedocs.io/en/latest/?badge=latest)
 [![DOI](https://zenodo.org/badge/82413481.svg)](https://zenodo.org/badge/latestdoi/82413481)
 
