@@ -45,7 +45,7 @@ def test_saddle_cli(request, tmpdir):
     result = runner.invoke(cli, ["call-compartments", "-o", out_eig_prefix, in_cool])
     assert result.exit_code == 0
 
-    result = runner.invoke(cli, ["compute-expected", "-o", out_expected, in_cool])
+    result = runner.invoke(cli, ["cis-expected", "-o", out_expected, in_cool])
     assert result.exit_code == 0
 
     runner = CliRunner()
@@ -126,7 +126,7 @@ def test_trans_saddle_cli(request, tmpdir):
 
     result = runner.invoke(
         cli,
-        ["compute-expected", "--contact-type", "trans", "-o", out_expected, in_cool],
+        ["trans-expected", "-o", out_expected, in_cool],
     )
     assert result.exit_code == 0
 
@@ -285,7 +285,7 @@ def test_get_saddle(request, tmpdir):
 
     result = runner.invoke(
         cli,
-        ["compute-expected", "-o", out_expected, in_cool],
+        ["cis-expected", "-o", out_expected, in_cool],
     )
     assert result.exit_code == 0
 
