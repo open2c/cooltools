@@ -55,7 +55,7 @@ from . import util
     default="weight",
     show_default=True,
 )
-def compute_expected(
+def trans_expected(
     cool_path,
     nproc,
     chunksize,

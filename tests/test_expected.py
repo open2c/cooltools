@@ -138,6 +138,7 @@ def test_diagsum_symm(request):
             equal_nan=True,
         )
 
+
 def test_diagsum_symm_raw(request):
     # test raw expected calculation, weights=None
     # perform test:
@@ -197,8 +198,8 @@ def test_diagsum_symm_raw_weight_filter(request):
         matrix = clr.matrix(balance=False).fetch(name1).astype("float")
         weight_mask = clr.bins()[weight_name].fetch(name1).isna().to_numpy()
         # apply filtering from weight column to raw counts
-        matrix[weight_mask,:] = np.nan
-        matrix[:,weight_mask] = np.nan
+        matrix[weight_mask, :] = np.nan
+        matrix[:, weight_mask] = np.nan
         desired_expected = np.where(
             group["dist"] < ignore_diags,
             np.nan,  # fill nan for ignored diags
@@ -209,7 +210,6 @@ def test_diagsum_symm_raw_weight_filter(request):
             desired=desired_expected,
             equal_nan=True,
         )
-
 
 
 def test_diagsum_pairwise(request):
@@ -462,7 +462,7 @@ def test_logbin_expected_cli(request, tmpdir):
     result = runner.invoke(
         cli,
         [
-            "compute-expected",
+            "cis-expected",
             "--clr-weight-name",
             weight_name,
             "-o",

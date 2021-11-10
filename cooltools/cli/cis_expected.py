@@ -61,7 +61,7 @@ from . import util
     default=2,
     show_default=True,
 )
-def compute_expected(
+def cis_expected(
     cool_path,
     nproc,
     chunksize,
