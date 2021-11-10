@@ -82,7 +82,7 @@ setup(
     url='https://github.com/open2c/cooltools',
     zip_safe=False,
     classifiers=[s.strip() for s in classifiers.split('\n') if s],
-
+    python_requires='>=3.7.1',  # same as pandas
     packages=packages,
     ext_modules=cythonize(extensions),
     include_dirs=[np.get_include()],
