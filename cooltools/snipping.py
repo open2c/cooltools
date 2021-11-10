@@ -5,8 +5,7 @@ import numpy as np
 import pandas as pd
 import bioframe
 
-from .lib.common import assign_regions, is_compatible_viewframe, is_compatible_expected
-from .lib.common import make_cooler_view, read_viewframe
+from .lib.common import assign_regions, is_compatible_viewframe, is_compatible_expected, make_cooler_view
 from .lib.numutils import LazyToeplitz
 import warnings
 

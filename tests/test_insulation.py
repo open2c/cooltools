@@ -5,7 +5,6 @@ import pandas as pd
 from click.testing import CliRunner
 from cooltools.cli import cli
 
-import pytest
 from cooltools.insulation import (
     calculate_insulation_score,
     find_boundaries,
@@ -56,7 +55,8 @@ def test_calculate_insulation_score(request):
     # III. Insulation for separate view:
     region = pd.DataFrame({'chrom': ['chr1'], 'start': [0], 'end': [10_000_000], 'name': ['fragment01']})
     insulation = calculate_insulation_score(clr, 10_000_000, min_dist_bad_bin=0, view_df=region)
-    assert len(insulation)==10
+    assert len(insulation) == 10
+
 
 def test_find_boundaries(request):
     clr_path = op.join(request.fspath.dirname, "data/CN.mm9.1000kb.cool")
@@ -134,7 +134,6 @@ def test_insulation_sparse_vs_dense(request):
     insul_dense = _find_insulating_boundaries_dense(
         clr,
         10_000_000,
-        balance=True,
         clr_weight_name="weight",
         min_dist_bad_bin=0,
         ignore_diags=2,

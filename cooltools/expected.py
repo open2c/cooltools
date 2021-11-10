@@ -15,8 +15,7 @@ from cooler.tools import partition
 import cooler
 import bioframe
 from .lib import assign_supports, numutils
-from .lib.common import is_compatible_viewframe, is_cooler_balanced
-from .lib.common import make_cooler_view, read_viewframe
+from .lib.common import is_compatible_viewframe, is_cooler_balanced, make_cooler_view
 
 where = np.flatnonzero
 concat = chain.from_iterable

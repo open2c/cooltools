@@ -7,7 +7,7 @@ import cooler
 
 from .lib._query import CSRSelector
 from .lib import peaks, numutils
-from .lib.common import make_cooler_view, is_compatible_viewframe
+from .lib.common import make_cooler_view, is_compatible_viewframe, is_cooler_balanced
 
 logging.basicConfig(level=logging.INFO)
 
@@ -68,6 +68,9 @@ def insul_diamond(pixel_query,
         artifacts.
     norm_by_median : bool
         If True, normalize the insulation score by its NaN-median.
+    clr_weight_name : str
+        Name of balancing weight column from the cooler to use.
+        Using raw unbalanced data is not supported for insulation.
     """
     lo_bin_id = bins.index.min()
     hi_bin_id = bins.index.max() + 1
@@ -148,7 +151,7 @@ def calculate_insulation_score(
         value of window_bp.
     view_df : bioframe.viewframe or None
         Viewframe for independent calculation of insulation scores for regions
-    ignore_diags : int
+    ignore_diags : int | None
         The number of diagonals to ignore. If None, equals the number of
         diagonals ignored during IC balancing.
     min_dist_bad_bin : int
@@ -185,12 +188,21 @@ def calculate_insulation_score(
         except Exception as e:
             raise ValueError("view_df is not a valid viewframe or incompatible") from e
 
+    # check if cooler is balanced
+    try:
+        _ = is_cooler_balanced(clr, clr_weight_name, raise_errors = True)
+    except Exception as e:
+        raise ValueError(f"provided cooler is not balanced or {clr_weight_name} is missing") from e
+
     bin_size = clr.info["bin-size"]
-    ignore_diags = (
-        ignore_diags
-        if ignore_diags is not None
-        else clr._load_attrs(clr.root.rstrip("/") + f"/bins/{clr_weight_name}")["ignore_diags"]
-    )
+    # check if ignore_diags is valid
+    if ignore_diags is None:
+        ignore_diags = clr._load_attrs(clr.root.rstrip("/") \
+                        + f"/bins/{clr_weight_name}")["ignore_diags"]
+    elif isinstance(ignore_diags, int):
+        pass # keep it as is
+    else:
+        raise ValueError(f"provided ignore_diags {ignore_diags} is not int or None")
 
     if isinstance(window_bp, int):
         window_bp = [window_bp]
@@ -199,10 +211,8 @@ def calculate_insulation_score(
 
     bad_win_sizes = window_bp % bin_size != 0
     if np.any(bad_win_sizes):
-        raise Exception(
-            "The window sizes {} has to be a multiple of the bin size {}".format(
-                window_bp[bad_win_sizes], bin_size
-            )
+        raise ValueError(
+            f"The window sizes {window_bp[bad_win_sizes]} has to be a multiple of the bin size {bin_size}"
         )
 
     # XXX -- Use a delayed query executor
@@ -214,7 +224,7 @@ def calculate_insulation_score(
     ins_region_tables = []
     for chrom, start, end, name in view_df[['chrom', 'start', 'end', 'name']].values:
         if verbose:
-            logging.info("Processing region {}".format(name))
+            logging.info(f"Processing region {name}")
 
         region = [chrom, start, end]
         region_bins = clr.bins().fetch(region)
@@ -241,16 +251,16 @@ def calculate_insulation_score(
 
             ins_track[~np.isfinite(ins_track)] = np.nan
 
-            ins_region["log2_insulation_score_{}".format(window_bp[j])] = ins_track
-            ins_region["n_valid_pixels_{}".format(window_bp[j])] = n_pixels
+            ins_region[f"log2_insulation_score_{window_bp[j]}"] = ins_track
+            ins_region[f"n_valid_pixels_{window_bp[j]}"] = n_pixels
 
             if min_dist_bad_bin:
                 mask_bad = ins_region.dist_bad_bin.values < min_dist_bad_bin
-                ins_region.loc[mask_bad, "log2_insulation_score_{}".format(window_bp[j])] = np.nan
+                ins_region.loc[mask_bad, f"log2_insulation_score_{window_bp[j]}"] = np.nan
 
             if append_raw_scores:
-                ins_region["sum_counts_{}".format(window_bp[j])] = sum_counts
-                ins_region["sum_balanced_{}".format(window_bp[j])] = sum_balanced
+                ins_region[f"sum_counts_{window_bp[j]}"] = sum_counts
+                ins_region[f"sum_balanced_{window_bp[j]}"] = sum_balanced
 
         ins_region_tables.append(ins_region)
 
@@ -343,7 +353,7 @@ def find_boundaries(
             ins_prom_track[poss] = proms
 
             if win is not None:
-                bs_key = "boundary_strength_{win}".format(win=win)
+                bs_key = f"boundary_strength_{win}"
             else:
                 bs_key = "boundary_strength"
 
@@ -381,6 +391,10 @@ def _insul_diamond_dense(mat, window=10, ignore_diags=2, norm_by_median=True):
     norm_by_median : bool
         If True, normalize the insulation score by its NaN-median.
 
+    Returns
+    -------
+    score : ndarray
+        an array with normalized insulation scores for provided matrix
     """
     if ignore_diags:
         mat = mat.copy()
@@ -406,17 +420,15 @@ def _find_insulating_boundaries_dense(
     clr,
     window_bp=100000,
     view_df=None,
-    balance=True,
     clr_weight_name="weight",
     min_dist_bad_bin=2,
     ignore_diags=None,
-    chromosomes=None,
 ):
     """Calculate the diamond insulation scores and call insulating boundaries.
 
     Parameters
     ----------
-    c : cooler.Cooler
+    clr : cooler.Cooler
         A cooler with balanced Hi-C data. Balancing weights are required
         for the detection of bad_bins.
     window_bp : int
@@ -424,8 +436,6 @@ def _find_insulating_boundaries_dense(
         score.
     view_df : bioframe.viewframe or None
         Viewframe for independent calculation of insulation scores for regions
-    balance : bool
-        Flag, whether fetch balanced Hi-C map or not.
     clr_weight_name : str
         Name of the column in bin table that stores the balancing weights.
     min_dist_bad_bin : int
@@ -457,18 +467,27 @@ def _find_insulating_boundaries_dense(
             raise ValueError("view_df is not a valid viewframe or incompatible") from e
 
     bin_size = clr.info["bin-size"]
-    ignore_diags = (
-        ignore_diags
-        if ignore_diags is not None
-        else clr._load_attrs(clr.root.rstrip("/") + f"/bins/{clr_weight_name}")["ignore_diags"]
-    )
+
+    # check if cooler is balanced
+    try:
+        _ = is_cooler_balanced(clr, clr_weight_name, raise_errors = True)
+    except Exception as e:
+        raise ValueError(f"provided cooler is not balanced or {clr_weight_name} is missing") from e
+
+    # check if ignore_diags is valid
+    if ignore_diags is None:
+        ignore_diags = clr._load_attrs(clr.root.rstrip("/") \
+                        + f"/bins/{clr_weight_name}")["ignore_diags"]
+    elif isinstance(ignore_diags, int):
+        pass # keep it as is
+    else:
+        raise ValueError(f"provided ignore_diags {ignore_diags} is not int or None")
+
     window_bins = window_bp // bin_size
 
     if window_bp % bin_size != 0:
-        raise Exception(
-            "The window size ({}) has to be a multiple of the bin size {}".format(
-                window_bp, bin_size
-            )
+        raise ValueError(
+            f"The window size ({window_bp}) has to be a multiple of the bin size {bin_size}"
         )
 
     ins_region_tables = []
@@ -476,11 +495,8 @@ def _find_insulating_boundaries_dense(
         region = [chrom, start, end]
         ins_region = clr.bins().fetch(region)[["chrom", "start", "end"]]
         is_bad_bin = np.isnan(clr.bins().fetch(region)[clr_weight_name].values)
-
-        if balance==True:
-            m = clr.matrix(balance=clr_weight_name).fetch(region)
-        else:
-            m = clr.matrix(balance=balance).fetch(region)
+        # extract dense Hi-C heatmap for a given "region"
+        m = clr.matrix(balance=clr_weight_name).fetch(region)
 
         with warnings.catch_warnings():
             warnings.simplefilter("ignore", RuntimeWarning)
@@ -501,13 +517,13 @@ def _find_insulating_boundaries_dense(
 
         ins_track[~np.isfinite(ins_track)] = np.nan
 
-        ins_region["log2_insulation_score_{}".format(window_bp)] = ins_track
+        ins_region[f"log2_insulation_score_{window_bp}"] = ins_track
 
         poss, proms = peaks.find_peak_prominence(-ins_track)
         ins_prom_track = np.zeros_like(ins_track) * np.nan
         ins_prom_track[poss] = proms
-        ins_region["boundary_strength_{}".format(window_bp)] = ins_prom_track
-        ins_region["boundary_strength_{}".format(window_bp)] = ins_prom_track
+        ins_region[f"boundary_strength_{window_bp}"] = ins_prom_track
+        ins_region[f"boundary_strength_{window_bp}"] = ins_prom_track
 
         ins_region_tables.append(ins_region)
 
