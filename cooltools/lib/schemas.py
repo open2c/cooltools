@@ -3,7 +3,7 @@
 diag_expected_dtypes = {
     "region1": "string",
     "region2": "string",
-    "diag": "Int64",
+    "dist": "Int64",
     "n_valid": "Int64",
 }
 

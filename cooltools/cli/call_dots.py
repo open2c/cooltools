@@ -167,7 +167,7 @@ def call_dots(
     COOL_PATH and EXPECTED_PATH must be binned at the same resolution.
 
     EXPECTED_PATH must contain at least the following columns for cis contacts:
-    'region1/2', 'diag', 'n_valid', value_name. value_name is controlled using
+    'region1/2', 'dist', 'n_valid', value_name. value_name is controlled using
     options. Header must be present in a file.
 
     """
@@ -258,7 +258,7 @@ def call_dots(
     # 1. Calculate genome-wide histograms of scores.
     gw_hist = dotfinder.scoring_and_histogramming_step(
         clr,
-        expected.set_index(["region1","region2","diag"]),
+        expected.set_index(["region1","region2","dist"]),
         expected_value_col,
         clr_weight_name,
         tiles,
@@ -281,7 +281,7 @@ def call_dots(
     # 3. Filter using FDR thresholds calculated in the histogramming step
     filtered_pixels = dotfinder.scoring_and_extraction_step(
         clr,
-        expected.set_index(["region1","region2","diag"]),
+        expected.set_index(["region1","region2","dist"]),
         expected_value_col,
         clr_weight_name,
         tiles,

@@ -1,4 +1,4 @@
-region1	region2	diag	n_valid	count.sum	balanced.sum	balanced.avg
+region1	region2	dist	n_valid	count.sum	balanced.sum	balanced.avg
 foo	foo	0	50			
 foo	foo	1	49			
 foo	foo	2	48	448255.0	2.3205076553434987	0.04834390948632289

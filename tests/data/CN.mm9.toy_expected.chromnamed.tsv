@@ -1,4 +1,4 @@
-region1	region2	diag	n_valid	count.sum	balanced.sum	balanced.avg
+region1	region2	dist	n_valid	count.sum	balanced.sum	balanced.avg
 chr1	chr1	0	50			
 chr1	chr1	1	49			
 chr1	chr1	2	48	448255.0	2.3205076553434987	0.04834390948632289

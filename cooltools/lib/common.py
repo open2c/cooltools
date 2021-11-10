@@ -435,9 +435,7 @@ def make_cooler_view(clr, ucsc_names=False):
 
 
 
-
-
-def is_expected(
+def _is_expected(
         expected_df,
         contact_type="cis",
         expected_value_cols=["count.avg","balanced.avg"],
@@ -465,7 +463,7 @@ def is_expected(
 
     Returns
     -------
-    is_expected : bool
+    _is_expected : bool
         True when expected_df passes the checks, False otherwise
     """
 
@@ -526,6 +524,12 @@ def is_expected(
         if expected_df[grouping_columns].isna().any().any():
             raise ValueError(
                 f"There are missing values in columns {grouping_columns}"
+                )
+
+        # make sure "grouping" columns are unique:
+        if expected_df.duplicated(subset=grouping_columns).any():
+            raise ValueError(
+                f"Values in {grouping_columns} columns must be unique"
                 )
 
         # make sure region1/2 groups have 1 value for trans contacts
@@ -599,7 +603,7 @@ def _is_compatible_cis_expected(
     try:
         # make sure it looks like cis-expected in the first place
         try:
-            _ = is_expected(
+            _ = _is_expected(
                 expected_df,
                 "cis",
                 expected_value_cols,
@@ -690,7 +694,7 @@ def _is_compatible_trans_expected(
     try:
         # make sure it looks like trans-expected in the first place
         try:
-            _ = is_expected(
+            _ = _is_expected(
                 expected_df,
                 "trans",
                 expected_value_cols,
@@ -833,7 +837,7 @@ def read_expected(
 
     try:
         expected_df = pd.read_table(fname)
-        _ = is_expected(expected_df,
+        _ = _is_expected(expected_df,
                 contact_type,
                 expected_value_cols,
                 raise_errors=True
