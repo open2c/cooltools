@@ -182,7 +182,7 @@ def test_get_digitized():
     df = pd.DataFrame(
         [["chr1", 0, 10, pd.NA]],
         columns=["chrom", "start", "end", "value"],
-    ).astype({"value": pd.Int64Dtype()})
+    ).astype({"value": pd.Float64Dtype()})
     digitized = saddle.get_digitized(df, 10, vrange=(-1, 1), digitized_suffix=".test")[
         0
     ]
