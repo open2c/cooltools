@@ -3,7 +3,7 @@ import numpy as np
 import cooler
 import bioframe
 from .. import snipping
-from ..lib.common import read_expected, make_cooler_view
+from ..lib.common import read_expected, make_cooler_view, read_viewframe
 
 import click
 from functools import partial
@@ -46,7 +46,7 @@ import h5py
     type=click.Choice(["auto", "BED", "BEDPE"], case_sensitive=False),
 )
 @click.option(
-    "--weight-name",
+    "--clr-weight-name",
     help="Use balancing weight with this name.",
     type=str,
     default="weight",
@@ -107,7 +107,7 @@ def compute_pileup(
     expected,
     flank,
     features_format,
-    weight_name,
+    clr_weight_name,
     out,
     out_format,
     store_snips,
@@ -130,6 +130,7 @@ def compute_pileup(
     """
 
     clr = cooler.Cooler(cool_path)
+    cooler_view_df = make_cooler_view(clr)
 
     #### Read the features:
     buf, names = sniff_for_header(features)
@@ -165,7 +166,7 @@ def compute_pileup(
         else:
             kwargs = dict(header="infer", usecols=bed_cols)
     else:
-        raise ValueError(
+        raise NotImplementedError(
             "Automatic detection of features format is not implemented yet. "
             "Please provide BED or BEDPE as --features-format"
         )
@@ -174,28 +175,15 @@ def compute_pileup(
         buf, comment="#", usecols=default_cols, dtype=dtypes, verbose=verbose, **kwargs
     )
 
-    ###### Define view for cis compartment-calling
-    # use input "view" BED file or all chromosomes mentioned in "track":
+    ###### Define view
     if view is None:
-        # Generate viewframe from clr.chromsizes:
-        view_df = make_cooler_view(clr)
-        if not bioframe.is_contained(features_df, view_df):
-            raise ValueError("Features are not contained in chromosomes bounds")
+        # full chromosome case
+        view_df = cooler_view_df
     else:
-        # Make viewframe out of table:
-        # Read view_df:
-        try:
-            view_df = bioframe.read_table(view, schema="bed4", index_col=False)
-        except Exception:
-            view_df = bioframe.read_table(view, schema="bed3", index_col=False)
-        # Convert view_df to viewframe:
-        try:
-            view_df = bioframe.make_viewframe(view_df, check_bounds=clr.chromsizes)
-        except ValueError as e:
-            raise ValueError(
-                "View table is incorrect, please, comply with the format. "
-            ) from e
+        # Read view_df dataframe, and verify against cooler
+        view_df = read_viewframe(view, clr, check_sorting=True)
 
+    # make sure feature are compatible with the view_df
     if not bioframe.is_contained(features_df, view_df):
         raise ValueError("Features are not contained in view bounds")
 
@@ -204,13 +192,13 @@ def compute_pileup(
         expected_value_col = None
     else:
         expected_path, expected_value_col = expected
-        expected_summary_cols = [
+        expected_value_cols = [
             expected_value_col,
         ]
         expected = read_expected(
             expected_path,
             contact_type="cis",
-            expected_value_cols=expected_summary_cols,
+            expected_value_cols=expected_value_cols,
             verify_view=view_df,
             verify_cooler=clr,
         )
@@ -224,7 +212,7 @@ def compute_pileup(
         expected_value_col=expected_value_col,
         flank=flank,
         min_diag=ignore_diags,
-        clr_weight_name=weight_name,
+        clr_weight_name=clr_weight_name,
         force=force,  # TODO: implement in pileup API
         nproc=nproc,
     )
