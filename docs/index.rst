@@ -6,9 +6,9 @@
 .. toctree::
    :caption: Overview
    :hidden:
-   :maxdepth: 3
+   :maxdepth: 2
 
-   index
+   self
 
 Getting started
 ***************
@@ -68,23 +68,26 @@ immediate live-testing any changes in the python code.
     $ cd cooltools
     $ pip install -e ./
 
-.. toctree::
-   :maxdepth: 2
-   :caption: Tutorials
-   :titlesonly:
 
-   ./notebooks/viz.ipynb
-   ./notebooks/contacts_vs_distance.ipynb
-   ./notebooks/compartments_and_saddles.ipynb
-   ./notebooks/insulation_and_boundaries.ipynb
-   ./notebooks/pileup_CTCF.ipynb
+.. toctree::
+  :maxdepth: 2
+  :caption: Tutorials
+  :titlesonly:
+
+  ./notebooks/viz.ipynb
+  ./notebooks/contacts_vs_distance.ipynb
+  ./notebooks/compartments_and_saddles.ipynb
+  ./notebooks/insulation_and_boundaries.ipynb
+  ./notebooks/pileup_CTCF.ipynb
 
 Note that these notebooks currently focus on mammalian interphase Hi-C analysis, but are readily extendible to other organisms and cellualr contexts.
 
-.. toctree::
-   :maxdepth: 1
-   :caption: Reference
 
-   cli
-   cooltools
-   releases
+.. toctree::
+  :maxdepth: 1
+  :caption: Reference
+
+  cli
+  cooltools
+  releases
+
