@@ -17,6 +17,8 @@ import bioframe
 from .lib import assign_supports, numutils
 from .lib.common import is_compatible_viewframe, is_cooler_balanced, make_cooler_view
 
+from .sandbox import expected_smoothing
+
 where = np.flatnonzero
 concat = chain.from_iterable
 
@@ -982,6 +984,8 @@ def get_cis_expected(
     clr,
     view_df=None,
     intra_only=True,
+    smooth=False,
+    aggregate=False,
     clr_weight_name="weight",
     ignore_diags=2, # should default to cooler info
     chunksize=10_000_000,
@@ -1010,6 +1014,10 @@ def get_cis_expected(
         i.e. chromosomes, chromosomal-arms, intra-domains, etc.
         When False returns expected both for symmetric intra-regions and
         assymetric inter-regions.
+    smooth: bool
+        Apply smoothing to cis-expected. Will be stored in an additional column
+    aggregate: bool
+        When smoothing, average over all regions, ignored without smoothing.
     clr_weight_name : str or None
         Name of balancing weight column from the cooler to use.
         Use raw unbalanced data, when None.
@@ -1101,6 +1109,12 @@ def get_cis_expected(
     result["count.avg"] = result["count.sum"] / result[_NUM_VALID]
     for key in transforms.keys():
         result[key + ".avg"] = result[key + ".sum"] / result[_NUM_VALID]
+
+    if smooth:
+        if aggregate:
+            result = expected_smoothing.agg_smooth_cvd(result, groupby=None)
+        else:
+            result = expected_smoothing.agg_smooth_cvd(result)
 
     return result
 
