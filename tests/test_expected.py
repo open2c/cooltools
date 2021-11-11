@@ -252,8 +252,21 @@ def test_get_cis_expected(request):
         chunksize=chunksize,
         ignore_diags=ignore_diags
     )
-    # asymm result - engaging diagsum_pairwise
-    res_asymm = cooltools.expected.get_cis_expected(
+    # check results for every block
+    grouped = res_symm.groupby(["region1", "region2"])
+    for (name1, name2), group in grouped:
+        assert name1 == name2
+        matrix = clr.matrix(balance=weight_name).fetch(name1)
+        desired_expected = _diagsum_symm_dense(matrix)
+        # fill nan for ignored diags
+        desired_expected = np.where(group["dist"] < ignore_diags, np.nan, desired_expected)
+        testing.assert_allclose(
+            actual=group["balanced.avg"].values,
+            desired=desired_expected,
+            equal_nan=True,
+        )
+    # asymm and symm result together - engaging diagsum_pairwise
+    res_all = cooltools.expected.get_cis_expected(
         clr,
         view_df=view_df,
         intra_only=False,
@@ -261,10 +274,8 @@ def test_get_cis_expected(request):
         chunksize=chunksize,
         ignore_diags=ignore_diags
     )
-    # combine all results to check new expected format conformancy
-    res = pd.concat([res_symm, res_asymm]).reset_index(drop=True)
     # check results for every block
-    grouped = res.groupby(["region1", "region2"])
+    grouped = res_all.groupby(["region1", "region2"])
     for (name1, name2), group in grouped:
         matrix = clr.matrix(balance=weight_name).fetch(name1, name2)
         desired_expected = _diagsum_asymm_dense(matrix) if (name1 != name2) else _diagsum_symm_dense(matrix)
