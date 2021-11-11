@@ -82,6 +82,7 @@ extensions = [
     'sphinx_click.ext',
     'recommonmark',
     'nbsphinx',
+    'sphinx_rtd_theme'
 ]
 
 # Extension configuration
