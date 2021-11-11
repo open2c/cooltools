@@ -1,4 +1,4 @@
-from itertools import chain, combinations
+from itertools import chain, combinations, combinations_with_replacement
 from collections import defaultdict
 from functools import partial
 
@@ -669,7 +669,7 @@ def _diagsum_pairwise(clr, fields, transforms, weight_name, regions, span):
         pixels = pixels.dropna(subset=["r1", "r2"])
     else:
         pixels = pixels.dropna(subset=["r1", "r2", weight_name+"1", weight_name+"2"])
-    pixels = pixels[ pixels["r1"] != pixels["r2"] ]
+    # pixels = pixels[ pixels["r1"] != pixels["r2"] ]
 
     # this could further expanded to allow for custom groupings:
     pixels[_DIST] = pixels["bin2_id"] - pixels["bin1_id"]
@@ -746,7 +746,7 @@ def diagsum_pairwise(
         raise ValueError("provided view_df is not valid") from e
 
     # create pairwise combinations of regions from view_df
-    all_combinations = combinations(view_df.itertuples(index=False),2)
+    all_combinations = combinations_with_replacement(view_df.itertuples(index=False),2)
     # keep only intra-chromosomal combinations
     cis_combinations = ((r1, r2) for r1, r2 in all_combinations if (r1[0] == r2[0]))
     # unzip regions1 regions2 defining the blocks for summary collection
