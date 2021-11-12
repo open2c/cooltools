@@ -2,7 +2,7 @@ import click
 import cooler
 
 from . import cli
-from .. import api 
+from .. import api
 from ..lib import common
 import bioframe
 
@@ -53,6 +53,15 @@ import bioframe
     show_default=True,
 )
 @click.option(
+    "--threshold",
+    help="Rule used to threshold the histogram of boundary strengths to exclude weak"
+    "boundaries. 'Li' or 'Otsu' use corresponding methods from skimage.thresholding."
+    "Providing a float value will filter by a fixed threshold",
+    type=str,
+    default=0,
+    show_default=True,
+)
+@click.option(
     "--window-pixels",
     help="If set then the window sizes are provided in units of pixels.",
     is_flag=True,
@@ -80,11 +89,12 @@ def insulation(
     ignore_diags,
     min_frac_valid_pixels,
     min_dist_bad_bin,
+    threshold,
     window_pixels,
     append_raw_scores,
     chunksize,
     verbose,
-    bigwig
+    bigwig,
 ):
     """
     Calculate the diamond insulation scores and call insulating boundaries.
@@ -113,23 +123,17 @@ def insulation(
     if window_pixels:
         window = [win * clr.info["bin-size"] for win in window]
 
-    # Calculate insulation score:
-    ins_table = api.insulation.calculate_insulation_score(
+    ins_table = api.insulation.insulation(
         clr,
         view_df=view_df,
         window_bp=window,
         ignore_diags=ignore_diags,
+        min_frac_valid_pixels=min_frac_valid_pixels,
         min_dist_bad_bin=min_dist_bad_bin,
+        threshold=threshold,
         append_raw_scores=append_raw_scores,
         chunksize=chunksize,
         verbose=verbose,
-    )
-
-    # Find boundaries:
-    ins_table = api.insulation.find_boundaries(
-        ins_table,
-        min_frac_valid_pixels=min_frac_valid_pixels,
-        min_dist_bad_bin=min_dist_bad_bin,
     )
 
     # output to file if specified:

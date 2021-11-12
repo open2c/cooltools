@@ -4,6 +4,7 @@ import warnings
 import numpy as np
 import pandas as pd
 import cooler
+from skimage.filters import threshold_li, threshold_otsu
 
 from ..lib._query import CSRSelector
 from ..lib import peaks, numutils
@@ -41,12 +42,14 @@ def get_n_pixels(bad_bin_mask, window=10, ignore_diags=2):
     return n_pixels
 
 
-def insul_diamond(pixel_query,
-                  bins,
-                  window=10,
-                  ignore_diags=2,
-                  norm_by_median=True,
-                  clr_weight_name="weight"):
+def insul_diamond(
+    pixel_query,
+    bins,
+    window=10,
+    ignore_diags=2,
+    norm_by_median=True,
+    clr_weight_name="weight",
+):
     """
     Calculates the insulation score of a Hi-C interaction matrix.
 
@@ -88,7 +91,9 @@ def insul_diamond(pixel_query,
 
         diag_pixels = cooler.annotate(diag_pixels, bins[[clr_weight_name]])
         diag_pixels["balanced"] = (
-            diag_pixels["count"] * diag_pixels[f"{clr_weight_name}1"] * diag_pixels[f"{clr_weight_name}2"]
+            diag_pixels["count"]
+            * diag_pixels[f"{clr_weight_name}1"]
+            * diag_pixels[f"{clr_weight_name}2"]
         )
         valid_pixel_mask = ~diag_pixels["balanced"].isnull().values
 
@@ -139,7 +144,7 @@ def calculate_insulation_score(
     clr_weight_name="weight",
     verbose=False,
 ):
-    """Calculate the diamond insulation scores and call insulating boundaries.
+    """Calculate the diamond insulation scores for all bins in a cooler.
 
     Parameters
     ----------
@@ -170,8 +175,7 @@ def calculate_insulation_score(
     Returns
     -------
     ins_table : pandas.DataFrame
-        A table containing the insulation scores of the genomic bins and
-        the insulating boundary strengths.
+        A table containing the insulation scores of the genomic bins
     """
 
     if view_df is None:
@@ -190,17 +194,20 @@ def calculate_insulation_score(
 
     # check if cooler is balanced
     try:
-        _ = is_cooler_balanced(clr, clr_weight_name, raise_errors = True)
+        _ = is_cooler_balanced(clr, clr_weight_name, raise_errors=True)
     except Exception as e:
-        raise ValueError(f"provided cooler is not balanced or {clr_weight_name} is missing") from e
+        raise ValueError(
+            f"provided cooler is not balanced or {clr_weight_name} is missing"
+        ) from e
 
     bin_size = clr.info["bin-size"]
     # check if ignore_diags is valid
     if ignore_diags is None:
-        ignore_diags = clr._load_attrs(clr.root.rstrip("/") \
-                        + f"/bins/{clr_weight_name}")["ignore_diags"]
+        ignore_diags = clr._load_attrs(
+            clr.root.rstrip("/") + f"/bins/{clr_weight_name}"
+        )["ignore_diags"]
     elif isinstance(ignore_diags, int):
-        pass # keep it as is
+        pass  # keep it as is
     else:
         raise ValueError(f"provided ignore_diags {ignore_diags} is not int or None")
 
@@ -222,18 +229,20 @@ def calculate_insulation_score(
     )
 
     ins_region_tables = []
-    for chrom, start, end, name in view_df[['chrom', 'start', 'end', 'name']].values:
+    for chrom, start, end, name in view_df[["chrom", "start", "end", "name"]].values:
         if verbose:
             logging.info(f"Processing region {name}")
 
         region = [chrom, start, end]
         region_bins = clr.bins().fetch(region)
         ins_region = region_bins[["chrom", "start", "end"]].copy()
-        ins_region.loc[:, 'region'] = name
+        ins_region.loc[:, "region"] = name
         ins_region[is_bad_bin_key] = region_bins[clr_weight_name].isnull()
 
         if min_dist_bad_bin:
-            ins_region = ins_region.assign(dist_bad_bin=numutils.dist_to_mask(ins_region[is_bad_bin_key]))
+            ins_region = ins_region.assign(
+                dist_bad_bin=numutils.dist_to_mask(ins_region[is_bad_bin_key])
+            )
 
         # XXX --- Create a delayed selection
         c0, c1 = clr.extent(region)
@@ -244,7 +253,11 @@ def calculate_insulation_score(
                 warnings.simplefilter("ignore", RuntimeWarning)
                 # XXX -- updated insul_diamond
                 ins_track, n_pixels, sum_balanced, sum_counts = insul_diamond(
-                    region_query, region_bins, window=win_bin, ignore_diags=ignore_diags, clr_weight_name=clr_weight_name
+                    region_query,
+                    region_bins,
+                    window=win_bin,
+                    ignore_diags=ignore_diags,
+                    clr_weight_name=clr_weight_name,
                 )
                 ins_track[ins_track == 0] = np.nan
                 ins_track = np.log2(ins_track)
@@ -256,7 +269,9 @@ def calculate_insulation_score(
 
             if min_dist_bad_bin:
                 mask_bad = ins_region.dist_bad_bin.values < min_dist_bad_bin
-                ins_region.loc[mask_bad, f"log2_insulation_score_{window_bp[j]}"] = np.nan
+                ins_region.loc[
+                    mask_bad, f"log2_insulation_score_{window_bp[j]}"
+                ] = np.nan
 
             if append_raw_scores:
                 ins_region[f"sum_counts_{window_bp[j]}"] = sum_counts
@@ -332,12 +347,12 @@ def find_boundaries(
     }
 
     dfs = []
-    index_name = ins_table.index.name # Store the name of the index and soring order
+    index_name = ins_table.index.name  # Store the name of the index and soring order
     sorting_order = ins_table.index.values
-    ins_table.index.name = 'sorting_index'
+    ins_table.index.name = "sorting_index"
     ins_table.reset_index(drop=False, inplace=True)
     for region, df in ins_table.groupby("region"):
-        df = df.sort_values(['start']) # Force sorting by the bin start coordinate
+        df = df.sort_values(["start"])  # Force sorting by the bin start coordinate
         for win in windows:
             mask = (
                 df[n_valid_pixels_key.format(WINDOW=win)].values
@@ -363,7 +378,7 @@ def find_boundaries(
         dfs.append(df)
 
     df = pd.concat(dfs)
-    df = df.set_index("sorting_index") # Restore original sorting order and name
+    df = df.set_index("sorting_index")  # Restore original sorting order and name
     df.index.name = index_name
     df = df.loc[sorting_order, :]
     return df
@@ -470,16 +485,19 @@ def _find_insulating_boundaries_dense(
 
     # check if cooler is balanced
     try:
-        _ = is_cooler_balanced(clr, clr_weight_name, raise_errors = True)
+        _ = is_cooler_balanced(clr, clr_weight_name, raise_errors=True)
     except Exception as e:
-        raise ValueError(f"provided cooler is not balanced or {clr_weight_name} is missing") from e
+        raise ValueError(
+            f"provided cooler is not balanced or {clr_weight_name} is missing"
+        ) from e
 
     # check if ignore_diags is valid
     if ignore_diags is None:
-        ignore_diags = clr._load_attrs(clr.root.rstrip("/") \
-                        + f"/bins/{clr_weight_name}")["ignore_diags"]
+        ignore_diags = clr._load_attrs(
+            clr.root.rstrip("/") + f"/bins/{clr_weight_name}"
+        )["ignore_diags"]
     elif isinstance(ignore_diags, int):
-        pass # keep it as is
+        pass  # keep it as is
     else:
         raise ValueError(f"provided ignore_diags {ignore_diags} is not int or None")
 
@@ -491,7 +509,7 @@ def _find_insulating_boundaries_dense(
         )
 
     ins_region_tables = []
-    for chrom, start, end, name in view_df[['chrom', 'start', 'end', 'name']].values:
+    for chrom, start, end, name in view_df[["chrom", "start", "end", "name"]].values:
         region = [chrom, start, end]
         ins_region = clr.bins().fetch(region)[["chrom", "start", "end"]]
         is_bad_bin = np.isnan(clr.bins().fetch(region)[clr_weight_name].values)
@@ -528,4 +546,117 @@ def _find_insulating_boundaries_dense(
         ins_region_tables.append(ins_region)
 
     ins_table = pd.concat(ins_region_tables)
+    return ins_table
+
+
+def insulation(
+    clr,
+    window_bp,
+    view_df=None,
+    ignore_diags=None,
+    min_frac_valid_pixels=0.66,
+    min_dist_bad_bin=0,
+    threshold="Li",
+    append_raw_scores=False,
+    clr_weight_name="weight",
+    chunksize=20000000,
+    verbose=False,
+):
+    """Calculate the diamond insulation scores for all bins in a cooler.
+
+    Parameters
+    ----------
+    clr : cooler.Cooler
+        A cooler with balanced Hi-C data.
+    window_bp : int or list
+        The size of the sliding diamond window used to calculate the insulation
+        score. If a list is provided, then a insulation score if done for each
+        value of window_bp.
+    view_df : bioframe.viewframe or None
+        Viewframe for independent calculation of insulation scores for regions
+    ignore_diags : int | None
+        The number of diagonals to ignore. If None, equals the number of
+        diagonals ignored during IC balancing.
+    min_frac_valid_pixels : float
+        The minimal fraction of valid pixels in a diamond to be used in
+        boundary picking and prominence calculation.
+    min_dist_bad_bin : int
+        The minimal allowed distance to a bad bin to report insulation score.
+        Fills bins that have a bad bin closer than this distance by nans.
+    threshold : "Li", "Otsu" or float
+        Rule used to threshold the histogram of boundary strengths to exclude weak
+        boundaries. "Li" or "Otsu" use corresponding methods from skimage.thresholding.
+        Providing a float value will filter by a fixed threshold
+    append_raw_scores : bool
+        If True, append columns with raw scores (sum_counts, sum_balanced, n_pixels)
+        to the output table.
+    clr_weight_name : str
+        Name of the column in the bin table with weight
+    verbose : bool
+        If True, report real-time progress.
+
+    Returns
+    -------
+    ins_table : pandas.DataFrame
+        A table containing the insulation scores of the genomic bins
+    """
+    # Create view:
+    if view_df is None:
+        # full chromosomes:
+        view_df = make_cooler_view(clr)
+    else:
+        # Make sure view_df is a proper viewframe
+        try:
+            _ = is_compatible_viewframe(
+                view_df,
+                clr,
+                # must be sorted for pairwise regions combinations
+                # to be in the upper right of the heatmap
+                check_sorting=True,
+                raise_errors=True,
+            )
+        except Exception as e:
+            raise ValueError("view_df is not a valid viewframe or incompatible") from e
+
+    if isinstance(window_bp, int):
+        window_bp = [window_bp]
+    window_bp = np.array(window_bp)
+
+    if threshold == "Li":
+        thresholding_func = lambda x: x >= threshold_li(x)
+    elif threshold == "Otsu":
+        thresholding_func = lambda x: x >= threshold_otsu(x)
+    else:
+        try:
+            thr = float(threshold)
+            thresholding_func = lambda x: x >= thr
+        except ValueError:
+            raise ValueError(
+                "Insulating boundary strength threshold can be Li, Otsu or a float"
+            )
+    # Calculate insulation score:
+    ins_table = calculate_insulation_score(
+        clr,
+        view_df=view_df,
+        window_bp=window_bp,
+        ignore_diags=ignore_diags,
+        min_dist_bad_bin=min_dist_bad_bin,
+        append_raw_scores=append_raw_scores,
+        clr_weight_name=clr_weight_name,
+        chunksize=chunksize,
+        verbose=verbose,
+    )
+
+    # Find boundaries:
+    ins_table = find_boundaries(
+        ins_table,
+        min_frac_valid_pixels=min_frac_valid_pixels,
+        min_dist_bad_bin=min_dist_bad_bin,
+    )
+    for win in window_bp:
+        strong_boundaries = thresholding_func(
+            ins_table[f"boundary_strength_{win}"].values
+        )
+        ins_table[f"is_boundary_{win}"] = strong_boundaries
+
     return ins_table
