@@ -47,6 +47,24 @@ from . import cli
     required=False,
 )
 @click.option(
+    "--smooth",
+    help="If set, cis-expected will be smoothed and result stored in an extra column",
+    is_flag=True,
+)
+@click.option(
+    "--aggregate",
+    help="If set, smoothing cis-expected will average over all regions, ignored without smoothing",
+    is_flag=True,
+)
+@click.option(
+    "--sigma-log10",
+    help="Control smoothing with the standard deviation of the smoothing Gaussian kernel,"
+    " ignored without smoothing."
+    type=float,
+    default=0.1,
+    show_default=True,
+)
+@click.option(
     "--clr-weight-name",
     help="Use balancing weight with this name stored in cooler."
     "Provide empty argument to calculate cis-expected on raw data",
@@ -67,6 +85,9 @@ def expected_cis(
     chunksize,
     output,
     view,
+    smooth,
+    aggregate,
+    sigma_log10,
     clr_weight_name,
     ignore_diags,
 ):
@@ -95,6 +116,9 @@ def expected_cis(
         clr,
         view_df=view_df,
         intra_only=True,
+        smooth=smooth,
+        aggregate=aggregate,
+        sigma_log10=sigma_log10,
         clr_weight_name=clr_weight_name if clr_weight_name else None,
         ignore_diags=ignore_diags,
         chunksize=chunksize,

@@ -6,7 +6,7 @@ import numba
 
 
 DEFAULT_CVD_COLS = {
-    "dist": "diag",
+    "dist": "dist",
     "n_pixels": "n_valid",
     "n_contacts": "balanced.sum",
     "contact_freq": "balanced.avg",
