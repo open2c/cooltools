@@ -986,6 +986,7 @@ def get_cis_expected(
     intra_only=True,
     smooth=False,
     aggregate=False,
+    sigma_log10=0.1,
     clr_weight_name="weight",
     ignore_diags=2, # should default to cooler info
     chunksize=10_000_000,
@@ -1009,6 +1010,8 @@ def get_cis_expected(
     view_df : viewframe
         a collection of genomic intervals where expected is calculated
         otherwise expected is calculated for full chromosomes.
+        view_df has to be sorted, when inter-regions expected is requested,
+        i.e. intra_only is False.
     intra_only: bool
         Return expected only for symmetric intra-regions defined by view_df,
         i.e. chromosomes, chromosomal-arms, intra-domains, etc.
@@ -1018,6 +1021,9 @@ def get_cis_expected(
         Apply smoothing to cis-expected. Will be stored in an additional column
     aggregate: bool
         When smoothing, average over all regions, ignored without smoothing.
+    sigma_log10: float
+        Control smoothing with the standard deviation of the smoothing Gaussian kernel.
+        Ignored without smoothing.
     clr_weight_name : str or None
         Name of balancing weight column from the cooler to use.
         Use raw unbalanced data, when None.
@@ -1112,9 +1118,16 @@ def get_cis_expected(
 
     if smooth:
         if aggregate:
-            result = expected_smoothing.agg_smooth_cvd(result, groupby=None)
+            result = expected_smoothing.agg_smooth_cvd(
+                        result,
+                        groupby=None,
+                        sigma_log10=sigma_log10,
+                    )
         else:
-            result = expected_smoothing.agg_smooth_cvd(result)
+            result = expected_smoothing.agg_smooth_cvd(
+                        result,
+                        sigma_log10=sigma_log10,
+                    )
 
     return result
 
@@ -1147,7 +1160,7 @@ def get_trans_expected(
         Cooler object
     view_df : viewframe
         a collection of genomic intervals where expected is calculated
-        otherwise expected is calculated for full chromosomes.
+        otherwise expected is calculated for full chromosomes, has to be sorted.
     clr_weight_name : str or None
         Name of balancing weight column from the cooler to use.
         Use raw unbalanced data, when None.
