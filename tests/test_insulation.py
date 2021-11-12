@@ -20,14 +20,8 @@ def test_insulation_cli(request, tmpdir):
     window = 10_000_000
     out_prefix = op.join(tmpdir, "CN.insulation.tsv")
     runner = CliRunner()
-    result = runner.invoke(
-        cli, ["diamond-insulation", "-o", out_prefix, in_cool, window]
-    )
-    print(
-        " ".join(
-            [str(x) for x in ["diamond-insulation", "-o", out_prefix, in_cool, window]]
-        )
-    )
+    result = runner.invoke(cli, ["insulation", "-o", out_prefix, in_cool, window])
+    print(" ".join([str(x) for x in ["insulation", "-o", out_prefix, in_cool, window]]))
     assert result.exit_code == 1
 
 
@@ -48,13 +42,21 @@ def test_calculate_insulation_score(request):
     # II. Insulation with masking bad bins
     insulation = calculate_insulation_score(clr, 10_000_000, min_dist_bad_bin=1)
     # All bins closer than 1 to bad bins are filled with np.nans:
-    assert np.all(np.isnan(insulation.query('dist_bad_bin==0')['log2_insulation_score_10000000']))
+    assert np.all(
+        np.isnan(insulation.query("dist_bad_bin==0")["log2_insulation_score_10000000"])
+    )
     # Some of the bins at the distance 1 (above threshold) are not np.nans:
-    assert np.any(~np.isnan(insulation.query('dist_bad_bin==1')['log2_insulation_score_10000000']))
+    assert np.any(
+        ~np.isnan(insulation.query("dist_bad_bin==1")["log2_insulation_score_10000000"])
+    )
 
     # III. Insulation for separate view:
-    region = pd.DataFrame({'chrom': ['chr1'], 'start': [0], 'end': [10_000_000], 'name': ['fragment01']})
-    insulation = calculate_insulation_score(clr, 10_000_000, min_dist_bad_bin=0, view_df=region)
+    region = pd.DataFrame(
+        {"chrom": ["chr1"], "start": [0], "end": [10_000_000], "name": ["fragment01"]}
+    )
+    insulation = calculate_insulation_score(
+        clr, 10_000_000, min_dist_bad_bin=0, view_df=region
+    )
     assert len(insulation) == 10
 
 
@@ -140,11 +142,7 @@ def test_insulation_sparse_vs_dense(request):
     )
 
     insulation_sparse = calculate_insulation_score(
-        clr,
-        10_000_000,
-        clr_weight_name="weight",
-        min_dist_bad_bin=0,
-        ignore_diags=2
+        clr, 10_000_000, clr_weight_name="weight", min_dist_bad_bin=0, ignore_diags=2
     )
     boundaries_sparse = find_boundaries(insulation_sparse)
 
