@@ -1004,8 +1004,8 @@ def expected_cis(
     clr,
     view_df=None,
     intra_only=True,
-    smooth=False,
-    aggregate_smoothed=False,
+    smooth=True,
+    aggregate_smoothed=True,
     smooth_sigma=0.1,
     clr_weight_name="weight",
     ignore_diags=2,  # should default to cooler info
