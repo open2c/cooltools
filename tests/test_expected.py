@@ -6,7 +6,7 @@ from numpy import testing
 import bioframe
 import cooler
 from click.testing import CliRunner
-import cooltools.expected
+import cooltools.api.expected
 from cooltools.cli import cli
 
 from itertools import combinations
@@ -109,7 +109,7 @@ view_df = bioframe.make_viewframe(common_regions)
 def test_diagsum_symm(request):
     # perform test:
     clr = cooler.Cooler(op.join(request.fspath.dirname, "data/CN.mm9.1000kb.cool"))
-    res = cooltools.expected.diagsum_symm(
+    res = cooltools.api.expected.diagsum_symm(
         clr,
         view_df=view_df,
         transforms=transforms,
@@ -143,7 +143,7 @@ def test_diagsum_symm_raw(request):
     # test raw expected calculation, weights=None
     # perform test:
     clr = cooler.Cooler(op.join(request.fspath.dirname, "data/CN.mm9.1000kb.cool"))
-    res = cooltools.expected.diagsum_symm(
+    res = cooltools.api.expected.diagsum_symm(
         clr,
         view_df=view_df,
         transforms={},
@@ -178,7 +178,7 @@ def test_diagsum_symm_raw_weight_filter(request):
     # both n_valid and filtering of count-s
     # perform test:
     clr = cooler.Cooler(op.join(request.fspath.dirname, "data/CN.mm9.1000kb.cool"))
-    res = cooltools.expected.diagsum_symm(
+    res = cooltools.api.expected.diagsum_symm(
         clr,
         view_df=view_df,
         transforms={},
@@ -215,7 +215,7 @@ def test_diagsum_symm_raw_weight_filter(request):
 def test_diagsum_pairwise(request):
     # perform test:
     clr = cooler.Cooler(op.join(request.fspath.dirname, "data/CN.mm9.1000kb.cool"))
-    res = cooltools.expected.diagsum_pairwise(
+    res = cooltools.api.expected.diagsum_pairwise(
         clr,
         view_df=view_df,
         transforms=transforms,
@@ -241,19 +241,32 @@ def test_diagsum_pairwise(request):
         )
 
 
-def test_get_cis_expected(request):
+def test_expected_cis(request):
     # perform test:
     clr = cooler.Cooler(op.join(request.fspath.dirname, "data/CN.mm9.1000kb.cool"))
     # symm result - engaging diagsum_symm
-    res_symm = cooltools.expected.get_cis_expected(
+    res_symm = cooltools.api.expected.expected_cis(
         clr,
         view_df=view_df,
         clr_weight_name=weight_name,
         chunksize=chunksize,
         ignore_diags=ignore_diags
     )
-    # asymm result - engaging diagsum_pairwise
-    res_asymm = cooltools.expected.get_cis_expected(
+    # check results for every block
+    grouped = res_symm.groupby(["region1", "region2"])
+    for (name1, name2), group in grouped:
+        assert name1 == name2
+        matrix = clr.matrix(balance=weight_name).fetch(name1)
+        desired_expected = _diagsum_symm_dense(matrix)
+        # fill nan for ignored diags
+        desired_expected = np.where(group["dist"] < ignore_diags, np.nan, desired_expected)
+        testing.assert_allclose(
+            actual=group["balanced.avg"].values,
+            desired=desired_expected,
+            equal_nan=True,
+        )
+    # asymm and symm result together - engaging diagsum_pairwise
+    res_all = cooltools.api.expected.expected_cis(
         clr,
         view_df=view_df,
         intra_only=False,
@@ -261,10 +274,8 @@ def test_get_cis_expected(request):
         chunksize=chunksize,
         ignore_diags=ignore_diags
     )
-    # combine all results to check new expected format conformancy
-    res = pd.concat([res_symm, res_asymm]).reset_index(drop=True)
     # check results for every block
-    grouped = res.groupby(["region1", "region2"])
+    grouped = res_all.groupby(["region1", "region2"])
     for (name1, name2), group in grouped:
         matrix = clr.matrix(balance=weight_name).fetch(name1, name2)
         desired_expected = _diagsum_asymm_dense(matrix) if (name1 != name2) else _diagsum_symm_dense(matrix)
@@ -280,7 +291,7 @@ def test_get_cis_expected(request):
 def test_blocksum_pairwise(request):
     # perform test:
     clr = cooler.Cooler(op.join(request.fspath.dirname, "data/CN.mm9.1000kb.cool"))
-    res = cooltools.expected.blocksum_pairwise(
+    res = cooltools.api.expected.blocksum_pairwise(
         clr,
         view_df=view_df,
         transforms=transforms,
@@ -302,10 +313,10 @@ def test_blocksum_pairwise(request):
         )
 
 
-def test_get_trans_expected(request):
+def test_expected_trans(request):
     # perform test:
     clr = cooler.Cooler(op.join(request.fspath.dirname, "data/CN.mm9.1000kb.cool"))
-    res = cooltools.expected.get_trans_expected(
+    res = cooltools.api.expected.expected_trans(
         clr,
         view_df=view_df,
         clr_weight_name=weight_name,
@@ -332,7 +343,7 @@ def test_expected_cli(request, tmpdir):
     result = runner.invoke(
         cli,
         [
-            "cis-expected",
+            "expected-cis",
             "--clr-weight-name",
             weight_name,
             "-o",
@@ -371,7 +382,7 @@ def test_expected_view_cli(request, tmpdir):
     result = runner.invoke(
         cli,
         [
-            "cis-expected",
+            "expected-cis",
             "--clr-weight-name",
             weight_name,
             "--view",
@@ -415,7 +426,7 @@ def test_trans_expected_view_cli(request, tmpdir):
     result = runner.invoke(
         cli,
         [
-            "trans-expected",
+            "expected-trans",
             "--clr-weight-name",
             weight_name,
             "--view",
@@ -454,122 +465,122 @@ def test_trans_expected_view_cli(request, tmpdir):
             )
 
 
-def test_logbin_expected_cli(request, tmpdir):
-    # test CLI logbin-expected for default chrom-wide output of compute-expected
-    in_cool = op.join(request.fspath.dirname, "data/CN.mm9.1000kb.cool")
-    out_cis_expected = op.join(tmpdir, "cis.exp.tsv")
-    runner = CliRunner()
-    result = runner.invoke(
-        cli,
-        [
-            "cis-expected",
-            "--clr-weight-name",
-            weight_name,
-            "-o",
-            out_cis_expected,
-            in_cool,
-        ],
-    )
-    assert result.exit_code == 0
+# def test_logbin_expected_cli(request, tmpdir):
+#     # test CLI logbin-expected for default chrom-wide output of compute-expected
+#     in_cool = op.join(request.fspath.dirname, "data/CN.mm9.1000kb.cool")
+#     out_cis_expected = op.join(tmpdir, "cis.exp.tsv")
+#     runner = CliRunner()
+#     result = runner.invoke(
+#         cli,
+#         [
+#             "cis-expected",
+#             "--clr-weight-name",
+#             weight_name,
+#             "-o",
+#             out_cis_expected,
+#             in_cool,
+#         ],
+#     )
+#     assert result.exit_code == 0
 
-    # consider adding logbin expected baswed on raw counts
-    binsize = 1_000_000
-    logbin_prefix = op.join(tmpdir, "logbin_prefix")
-    runner = CliRunner()
-    result = runner.invoke(
-        cli,
-        ["logbin-expected", "--resolution", binsize, out_cis_expected, logbin_prefix],
-    )
-    assert result.exit_code == 0
-    # make sure logbin output is generated:
-    assert op.isfile(f"{logbin_prefix}.log.tsv")
-    assert op.isfile(f"{logbin_prefix}.der.tsv")
+#     # consider adding logbin expected baswed on raw counts
+#     binsize = 1_000_000
+#     logbin_prefix = op.join(tmpdir, "logbin_prefix")
+#     runner = CliRunner()
+#     result = runner.invoke(
+#         cli,
+#         ["logbin-expected", "--resolution", binsize, out_cis_expected, logbin_prefix],
+#     )
+#     assert result.exit_code == 0
+#     # make sure logbin output is generated:
+#     assert op.isfile(f"{logbin_prefix}.log.tsv")
+#     assert op.isfile(f"{logbin_prefix}.der.tsv")
 
 
-def test_logbin_interpolate_roundtrip():
-    from cooltools.expected import (
-        logbin_expected,
-        combine_binned_expected,
-        interpolate_expected,
-    )
+# def test_logbin_interpolate_roundtrip():
+#     from cooltools.api.expected import (
+#         logbin_expected,
+#         combine_binned_expected,
+#         interpolate_expected,
+#     )
 
-    N = [100, 300]
-    diag = np.concatenate([np.arange(i, dtype=int) for i in N])
-    region = np.concatenate([i * [j] for i, j in zip(N, ["chr1", "chr2"])])
-    prob = 1 / (diag + 1)
-    n_valid = prob * 0 + 300
-    count_sum = n_valid * prob * 100
-    balanced_sum = n_valid * prob
-    df = pd.DataFrame(
-        {
-            "region1": region,
-            "region2": region,  # symmetric
-            "dist": diag,
-            "n_valid": n_valid,
-            "count.sum": count_sum,
-            "balanced.sum": balanced_sum,
-        }
-    )
-    df2 = df.copy()
-    df2["balanced.sum"].values[: N[0]] *= 2  # chr2 is different  in df2
+#     N = [100, 300]
+#     diag = np.concatenate([np.arange(i, dtype=int) for i in N])
+#     region = np.concatenate([i * [j] for i, j in zip(N, ["chr1", "chr2"])])
+#     prob = 1 / (diag + 1)
+#     n_valid = prob * 0 + 300
+#     count_sum = n_valid * prob * 100
+#     balanced_sum = n_valid * prob
+#     df = pd.DataFrame(
+#         {
+#             "region1": region,
+#             "region2": region,  # symmetric
+#             "dist": diag,
+#             "n_valid": n_valid,
+#             "count.sum": count_sum,
+#             "balanced.sum": balanced_sum,
+#         }
+#     )
+#     df2 = df.copy()
+#     df2["balanced.sum"].values[: N[0]] *= 2  # chr2 is different  in df2
 
-    # simple roundtrip
-    exp1, der1, bins = logbin_expected(df2)
-    interp = interpolate_expected(df2, exp1)
-    max_dev = np.nanmax(
-        np.abs(
-            (interp["balanced.avg"] - df2["balanced.sum"] / df2["n_valid"])
-            / interp["balanced.avg"]
-        )
-    )
-    assert max_dev < 0.1  # maximum absolute deviation less than 10%
+#     # simple roundtrip
+#     exp1, der1, bins = logbin_expected(df2)
+#     interp = interpolate_expected(df2, exp1)
+#     max_dev = np.nanmax(
+#         np.abs(
+#             (interp["balanced.avg"] - df2["balanced.sum"] / df2["n_valid"])
+#             / interp["balanced.avg"]
+#         )
+#     )
+#     assert max_dev < 0.1  # maximum absolute deviation less than 10%
 
-    # using combined expected succeeds when chroms are same
-    exp1, der1, bins = logbin_expected(df)
-    comb, cder = combine_binned_expected(exp1, der1)
-    interp = interpolate_expected(df, comb, by_region=False)
-    max_dev = np.nanmax(
-        np.abs(
-            (interp["balanced.avg"] - df["balanced.sum"] / df["n_valid"])
-            / interp["balanced.avg"]
-        )
-    )
-    assert max_dev < 0.1  # maximum absolute deviation less than 10%
+#     # using combined expected succeeds when chroms are same
+#     exp1, der1, bins = logbin_expected(df)
+#     comb, cder = combine_binned_expected(exp1, der1)
+#     interp = interpolate_expected(df, comb, by_region=False)
+#     max_dev = np.nanmax(
+#         np.abs(
+#             (interp["balanced.avg"] - df["balanced.sum"] / df["n_valid"])
+#             / interp["balanced.avg"]
+#         )
+#     )
+#     assert max_dev < 0.1  # maximum absolute deviation less than 10%
 
-    # using combined expected deemed to fail with df2
-    exp1, der1, bins = logbin_expected(df2)
-    comb, cder = combine_binned_expected(exp1, der1)
-    interp = interpolate_expected(df2, comb, by_region=False)
-    max_dev = np.nanmax(
-        np.abs(
-            (interp["balanced.avg"] - df2["balanced.sum"] / df2["n_valid"])
-            / interp["balanced.avg"]
-        )
-    )
-    assert max_dev > 0.1  # we are now different because we fed combined expected
+#     # using combined expected deemed to fail with df2
+#     exp1, der1, bins = logbin_expected(df2)
+#     comb, cder = combine_binned_expected(exp1, der1)
+#     interp = interpolate_expected(df2, comb, by_region=False)
+#     max_dev = np.nanmax(
+#         np.abs(
+#             (interp["balanced.avg"] - df2["balanced.sum"] / df2["n_valid"])
+#             / interp["balanced.avg"]
+#         )
+#     )
+#     assert max_dev > 0.1  # we are now different because we fed combined expected
 
-    # using chr2 for chr1 works if they are the same
-    interp = interpolate_expected(df, exp1, by_region="chr2")
-    max_dev = np.abs(
-        (interp["balanced.avg"] - df["balanced.sum"] / df["n_valid"])
-        / interp["balanced.avg"]
-    )
-    assert np.nanmax(max_dev) < 0.1  # maximum absolute deviation less than 10%
+#     # using chr2 for chr1 works if they are the same
+#     interp = interpolate_expected(df, exp1, by_region="chr2")
+#     max_dev = np.abs(
+#         (interp["balanced.avg"] - df["balanced.sum"] / df["n_valid"])
+#         / interp["balanced.avg"]
+#     )
+#     assert np.nanmax(max_dev) < 0.1  # maximum absolute deviation less than 10%
 
-    # using chr2 for chr1 fails if chroms are different
-    interp = interpolate_expected(df2, exp1, by_region="chr2")
-    max_dev = np.abs(
-        (interp["balanced.avg"] - df2["balanced.sum"] / df2["n_valid"])
-        / interp["balanced.avg"]
-    )
-    assert (
-        np.nanmax(max_dev[N[0] :]) < 0.1
-    )  # we are now correct for chr2 because we chose chr2
-    assert np.nanmax(max_dev[: N[0]]) > 0.5  # we are now different for chr1
+#     # using chr2 for chr1 fails if chroms are different
+#     interp = interpolate_expected(df2, exp1, by_region="chr2")
+#     max_dev = np.abs(
+#         (interp["balanced.avg"] - df2["balanced.sum"] / df2["n_valid"])
+#         / interp["balanced.avg"]
+#     )
+#     assert (
+#         np.nanmax(max_dev[N[0] :]) < 0.1
+#     )  # we are now correct for chr2 because we chose chr2
+#     assert np.nanmax(max_dev[: N[0]]) > 0.5  # we are now different for chr1
 
 
 def test_diagsum_from_array():
-    from cooltools.expected import diagsum_from_array
+    from cooltools.api.expected import diagsum_from_array
 
     # Toy data: create a uniform 1/s decay as input
     ar = np.arange(100)

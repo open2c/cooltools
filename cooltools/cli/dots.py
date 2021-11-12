@@ -7,12 +7,14 @@ import bioframe
 
 import click
 from . import cli
+from .. import api
+
+
 from ..lib.common import assign_regions, \
                         read_expected, \
                         read_viewframe, \
                         make_cooler_view
-from .. import dotfinder
-from . import util
+
 from .util import validate_csv
 
 
@@ -133,7 +135,7 @@ from .util import validate_csv
     type=str,
     required=True,
 )
-def call_dots(
+def dots(
     cool_path,
     expected_path,
     view,
@@ -210,7 +212,7 @@ def call_dots(
     ktypes = ["donut", "vertical", "horizontal", "lowleft"]
 
     if (kernel_width is None) or (kernel_peak is None):
-        w, p = dotfinder.recommend_kernel_params(binsize)
+        w, p = api.dotfinder.recommend_kernel_params(binsize)
         print(f"Using kernel parameters w={w}, p={p} recommended for binsize {binsize}")
     else:
         w, p = kernel_width, kernel_peak
@@ -228,17 +230,17 @@ def call_dots(
     # may lead to scoring the same pixel twice, - i.e. duplicates.
 
     # generate standard kernels - consider providing custom ones
-    kernels = {k: dotfinder.get_kernel(w, p, k) for k in ktypes}
+    kernels = {k: api.dotfinder.get_kernel(w, p, k) for k in ktypes}
 
     # list of tile coordinate ranges
     tiles = list(
-        dotfinder.heatmap_tiles_generator_diag(
+        api.dotfinder.heatmap_tiles_generator_diag(
             clr, view_df, w, tile_size_bins, loci_separation_bins
         )
     )
 
     # lambda-chunking edges ...
-    if not dotfinder.HiCCUPS_W1_MAX_INDX <= num_lambda_chunks <= 50:
+    if not api.dotfinder.HiCCUPS_W1_MAX_INDX <= num_lambda_chunks <= 50:
         raise ValueError("Incompatible num_lambda_chunks")
     base = 2 ** (1 / 3)
     ledges = np.concatenate(
@@ -249,14 +251,14 @@ def call_dots(
                 num_lambda_chunks - 1,
                 num=num_lambda_chunks,
                 base=base,
-                dtype=np.float,
+                dtype=np.float64,
             ),
             [np.inf],
         )
     )
 
     # 1. Calculate genome-wide histograms of scores.
-    gw_hist = dotfinder.scoring_and_histogramming_step(
+    gw_hist = api.dotfinder.scoring_and_histogramming_step(
         clr,
         expected.set_index(["region1","region2","dist"]),
         expected_value_col,
@@ -274,12 +276,12 @@ def call_dots(
         print("Done building histograms ...")
 
     # 2. Determine the FDR thresholds.
-    threshold_df, qvalues = dotfinder.determine_thresholds(
+    threshold_df, qvalues = api.dotfinder.determine_thresholds(
         kernels, ledges, gw_hist, fdr
     )
 
     # 3. Filter using FDR thresholds calculated in the histogramming step
-    filtered_pixels = dotfinder.scoring_and_extraction_step(
+    filtered_pixels = api.dotfinder.scoring_and_extraction_step(
         clr,
         expected.set_index(["region1","region2","dist"]),
         expected_value_col,
@@ -303,7 +305,7 @@ def call_dots(
         print(f"Begin post-processing of {len(filtered_pixels)} filtered pixels")
         print("preparing to extract needed q-values ...")
 
-    filtered_pixels_qvals = dotfinder.annotate_pixels_with_qvalues(
+    filtered_pixels_qvals = api.dotfinder.annotate_pixels_with_qvalues(
         filtered_pixels, qvalues, kernels
     )
     # 4a. clustering
@@ -314,7 +316,7 @@ def call_dots(
     filtered_pixels_annotated = cooler.annotate(filtered_pixels_qvals, clr.bins()[:])
     filtered_pixels_annotated = assign_regions(filtered_pixels_annotated, view_df)
     # consider reseting index here
-    centroids = dotfinder.clustering_step(
+    centroids = api.dotfinder.clustering_step(
         filtered_pixels_annotated,
         view_df["name"],
         dots_clustering_radius,
@@ -322,7 +324,7 @@ def call_dots(
     )
 
     # 4b. filter by enrichment and qval
-    postprocessed_calls = dotfinder.thresholding_step(centroids)
+    postprocessed_calls = api.dotfinder.thresholding_step(centroids)
 
     # Final-postprocessed result
     if out_prefix is not None:

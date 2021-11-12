@@ -2,8 +2,9 @@ import pandas as pd
 import numpy as np
 import cooler
 import bioframe
-from .. import snipping
-from ..lib.common import read_expected, make_cooler_view, read_viewframe
+
+from .. import api
+from ..lib import common
 
 import click
 from functools import partial
@@ -99,7 +100,7 @@ import h5py
 @click.option(
     "-v", "--verbose", help="Enable verbose output", is_flag=True, default=False
 )
-def compute_pileup(
+def pileup(
     cool_path,
     features,
     view,
@@ -128,7 +129,7 @@ def compute_pileup(
     """
 
     clr = cooler.Cooler(cool_path)
-    cooler_view_df = make_cooler_view(clr)
+    cooler_view_df = common.make_cooler_view(clr)
 
     #### Read the features:
     buf, names = sniff_for_header(features)
@@ -179,7 +180,7 @@ def compute_pileup(
         view_df = cooler_view_df
     else:
         # Read view_df dataframe, and verify against cooler
-        view_df = read_viewframe(view, clr, check_sorting=True)
+        view_df = common.read_viewframe(view, clr, check_sorting=True)
 
     # make sure feature are compatible with the view_df
     if not bioframe.is_contained(features_df, view_df):
@@ -193,7 +194,7 @@ def compute_pileup(
         expected_value_cols = [
             expected_value_col,
         ]
-        expected = read_expected(
+        expected = common.read_expected(
             expected_path,
             contact_type="cis",
             expected_value_cols=expected_value_cols,
@@ -202,7 +203,7 @@ def compute_pileup(
         )
 
     ##### Create the pileup:
-    stack = snipping.pileup(
+    stack = api.snipping.pileup(
         clr,
         features_df,
         view_df=view_df,

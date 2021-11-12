@@ -3,12 +3,12 @@ import pandas as pd
 from itertools import combinations
 import cooler
 import bioframe
-from ..expected import get_trans_expected
-from ..lib.common import make_cooler_view, read_viewframe
+from .. import api
+from .. import lib
 
 import click
 from . import cli
-from . import util
+
 
 @cli.command()
 @click.argument("cool_path", metavar="COOL_PATH", type=str, nargs=1)
@@ -38,14 +38,31 @@ from . import util
 @click.option(
     "--view",
     "--regions",
-    help="Path to a 3 or 4-column BED file with genomic regions. Trans-expected"
-    " is calculated on all pairwise combinations of these regions."
-    " When region names are not provided (no 4th column),"
-    " UCSC-style region names are generated. Trans-expected is calculated "
-    " for all inter-chromosomal pairs, when view is not specified."
+    help="Path to a 3 or 4-column BED file with genomic regions"
+    " to calculated cis-expected on. When region names are not provided"
+    " (no 4th column), UCSC-style region names are generated."
+    " Cis-expected is calculated for all chromosomes, when this is not specified."
     " Note that '--regions' is the deprecated name of the option. Use '--view' instead.",
     type=click.Path(exists=True),
     required=False,
+)
+@click.option(
+    "--smooth",
+    help="If set, cis-expected will be smoothed and result stored in an extra column",
+    is_flag=True,
+)
+@click.option(
+    "--aggregate",
+    help="If set, smoothing cis-expected will average over all regions, ignored without smoothing",
+    is_flag=True,
+)
+@click.option(
+    "--sigma-log10",
+    help="Control smoothing with the standard deviation of the smoothing Gaussian kernel,"
+    " ignored without smoothing."
+    type=float,
+    default=0.1,
+    show_default=True,
 )
 @click.option(
     "--clr-weight-name",
@@ -55,18 +72,29 @@ from . import util
     default="weight",
     show_default=True,
 )
-def trans_expected(
+@click.option(
+    "--ignore-diags",
+    help="Number of diagonals to neglect for cis contact type",
+    type=int,
+    default=2,
+    show_default=True,
+)
+def expected_cis(
     cool_path,
     nproc,
     chunksize,
     output,
     view,
+    smooth,
+    aggregate,
+    sigma_log10,
     clr_weight_name,
+    ignore_diags,
 ):
     """
-    Calculate expected Hi-C signal for trans regions of chromosomal interaction map:
-    average of interactions in a rectangular block defined by a pair of regions, e.g.
-    inter-chromosomal blocks.
+    Calculate expected Hi-C signal for cis regions of chromosomal interaction map:
+    average of interactions separated by the same genomic distance, i.e.
+    are on the same diagonal on the cis-heatmap.
 
     When balancing weights are not applied to the data, there is no
     masking of bad bins performed.
@@ -79,17 +107,22 @@ def trans_expected(
 
     if view is None:
         # full chromosome case
-        view_df = make_cooler_view(clr)
+        view_df = lib.common.make_cooler_view(clr)
     else:
         # Read view_df dataframe, and verify against cooler
-        view_df = read_viewframe(view, clr, check_sorting=True)
+        view_df = lib.common.read_viewframe(view, clr, check_sorting=True)
 
-    result = get_trans_expected(
+    result = api.expected.expected_cis(
         clr,
         view_df=view_df,
+        intra_only=True,
+        smooth=smooth,
+        aggregate=aggregate,
+        sigma_log10=sigma_log10,
         clr_weight_name=clr_weight_name if clr_weight_name else None,
+        ignore_diags=ignore_diags,
         chunksize=chunksize,
-        nproc=nproc,
+        nproc=nproc
     )
 
     # output to file if specified:

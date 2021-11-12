@@ -4,8 +4,8 @@ from scipy.linalg import toeplitz
 from cytoolz import merge
 import numpy as np
 import pandas as pd
-from .lib import numutils
-from .lib.common import is_compatible_viewframe, is_compatible_expected
+from ..lib import numutils
+from ..lib.common import is_compatible_viewframe, is_compatible_expected
 import warnings
 
 import bioframe
@@ -278,7 +278,7 @@ def _make_binedges(track_values, n_bins, vrange=None, qrange=None):
         raise ValueError("either vrange or qrange must be supplied")
 
 
-def get_digitized(
+def digitize(
     track,
     n_bins,
     vrange=None,
@@ -341,7 +341,7 @@ def get_digitized(
     digitized_col = track_value_col + digitized_suffix
 
     track_values = track[track_value_col].copy()
-    track_values = track_values.astype({track_value_col: np.float}).values
+    track_values = track_values.astype({track_value_col: np.float64}).values
 
     binedges, lo, hi = _make_binedges(
         track_values, n_bins, vrange=vrange, qrange=qrange
@@ -365,7 +365,7 @@ def get_digitized(
     return digitized, binedges
 
 
-def get_saddle(
+def saddle(
     clr,
     expected,
     digitized_track,
@@ -619,7 +619,7 @@ def saddleplot(
     track_value_col = track.columns[3]
     track_values = track[track_value_col].values
 
-    digitized_track, binedges = get_digitized(
+    digitized_track, binedges = digitize(
         track, n_bins, vrange=vrange, qrange=qrange
     )
     x = digitized_track[digitized_track.columns[3]].values.astype(int).copy()

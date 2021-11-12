@@ -5,9 +5,9 @@ import numpy as np
 import pandas as pd
 import cooler
 
-from .lib._query import CSRSelector
-from .lib import peaks, numutils
-from .lib.common import make_cooler_view, is_compatible_viewframe, is_cooler_balanced
+from ..lib._query import CSRSelector
+from ..lib import peaks, numutils
+from ..lib.common import make_cooler_view, is_compatible_viewframe, is_cooler_balanced
 
 logging.basicConfig(level=logging.INFO)
 

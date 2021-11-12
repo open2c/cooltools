@@ -923,7 +923,7 @@ def is_compatible_viewframe(
             if not bioframe.is_sorted(view_df, verify_cooler.chromsizes, df_view_col = None):
                 raise ValueError(
                     "regions in the view_df must be sorted by coordinate"
-                    "and chromosomes order as as in the verify_cooler."
+                    " and chromosomes order as as in the verify_cooler."
                 )
 
     except Exception as e:

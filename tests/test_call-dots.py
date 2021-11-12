@@ -13,7 +13,7 @@ def test_call_dots_cli(request, tmpdir):
     result = runner.invoke(
         cli,
         [
-            "call-dots",
+            "dots",
             "-p",
             1,
             "--kernel-width",
@@ -42,10 +42,8 @@ def test_call_dots_view_cli(request, tmpdir):
     out_dots = op.join(tmpdir, "test.dots")
 
     runner = CliRunner()
-    result = runner.invoke(
-        cli,
-        [
-            "call-dots",
+    cmd = [
+            "dots",
             "--view",
             in_regions,
             "-p",
@@ -62,8 +60,8 @@ def test_call_dots_view_cli(request, tmpdir):
             out_dots,
             in_cool,
             in_exp,
-        ],
-    )
+        ]
+    result = runner.invoke(cli, cmd)
     assert result.exit_code == 0
     # make sure output is generated:
     assert op.isfile(f"{out_dots}.enriched.tsv")
@@ -82,7 +80,7 @@ def test_call_dots_regions_deprecated_cli(request, tmpdir):
     result = runner.invoke(
         cli,
         [
-            "call-dots",
+            "dots",
             "--regions",
             in_regions,
             "-p",
