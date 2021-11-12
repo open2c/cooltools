@@ -17,7 +17,7 @@ import bioframe
 from ..lib import assign_supports, numutils
 from ..lib.common import is_compatible_viewframe, is_cooler_balanced, make_cooler_view
 
-from .sandbox import expected_smoothing
+from ..sandbox import expected_smoothing
 
 where = np.flatnonzero
 concat = chain.from_iterable
@@ -232,7 +232,9 @@ def make_diag_table(bad_mask, span1, span2):
     def _make_diag_table(n_bins, bad_locs):
         diags = pd.DataFrame(index=pd.Series(np.arange(n_bins), name=_DIST))
         diags["n_elem"] = count_all_pixels_per_diag(n_bins)
-        diags[_NUM_VALID] = diags["n_elem"] - count_bad_pixels_per_diag(n_bins, bad_locs)
+        diags[_NUM_VALID] = diags["n_elem"] - count_bad_pixels_per_diag(
+            n_bins, bad_locs
+        )
         return diags
 
     if span1 == span2:
@@ -339,7 +341,9 @@ def make_diag_tables(clr, regions, regions2=None, weight_name="weight", bad_bins
             chrom: np.array(groups[chrom].isnull()) for chrom in groups.keys()
         }
     else:
-        raise ValueError(f"provided cooler is not balanced, or weight {weight_name} is missing")
+        raise ValueError(
+            f"provided cooler is not balanced, or weight {weight_name} is missing"
+        )
 
     # combine custom "bad_bins" with "bad_bin_dict":
     if bad_bins is not None:
@@ -365,7 +369,9 @@ def make_diag_tables(clr, regions, regions2=None, weight_name="weight", bad_bins
             chrom2, start2, end2, name2 = regions2[i]
             # cis-only for now:
             if not (chrom2 == chrom):
-                raise ValueError("regions/2 have to be on the same chrom to generate diag_tables")
+                raise ValueError(
+                    "regions/2 have to be on the same chrom to generate diag_tables"
+                )
         else:
             start2, end2 = start1, end1
 
@@ -477,7 +483,9 @@ def make_block_table(clr, regions1, regions2, weight_name="weight", bad_bins=Non
             bad_bins_x = np.count_nonzero(cb_bins_x)
             bad_bins_y = np.count_nonzero(cb_bins_y)
         else:
-            raise ValueError(f"cooler is not balanced or weight {weight_name} is missing")
+            raise ValueError(
+                f"cooler is not balanced or weight {weight_name} is missing"
+            )
 
         # calculate total and bad pixels per block:
         n_tot = count_all_pixels_per_block(x, y)
@@ -505,7 +513,7 @@ def _diagsum_symm(clr, fields, transforms, weight_name, regions, span):
     pixels = clr.pixels()[lo:hi]
     pixels = cooler.annotate(pixels, bins, replace=False)
     # pre-filter cis-only pixels to speed up calculations
-    pixels = pixels[ pixels["chrom1"] == pixels["chrom2"] ].copy()
+    pixels = pixels[pixels["chrom1"] == pixels["chrom2"]].copy()
 
     # annotate pixels with regions at once
     # book-ended regions still get reannotated
@@ -515,8 +523,10 @@ def _diagsum_symm(clr, fields, transforms, weight_name, regions, span):
     if weight_name is None:
         pixels = pixels.dropna(subset=["r1", "r2"])
     else:
-        pixels = pixels.dropna(subset=["r1", "r2", weight_name+"1", weight_name+"2"])
-    pixels = pixels[ pixels["r1"] == pixels["r2"] ]
+        pixels = pixels.dropna(
+            subset=["r1", "r2", weight_name + "1", weight_name + "2"]
+        )
+    pixels = pixels[pixels["r1"] == pixels["r2"]]
 
     # this could further expanded to allow for custom groupings:
     pixels[_DIST] = pixels["bin2_id"] - pixels["bin1_id"]
@@ -577,11 +587,11 @@ def diagsum_symm(
     # check viewframe
     try:
         _ = is_compatible_viewframe(
-                view_df,
-                clr,
-                check_sorting=False,  # liberal for this low-level function
-                raise_errors=True,
-            )
+            view_df,
+            clr,
+            check_sorting=False,  # liberal for this low-level function
+            raise_errors=True,
+        )
     except Exception as e:
         raise ValueError("provided view_df is not valid") from e
 
@@ -660,7 +670,7 @@ def _diagsum_pairwise(clr, fields, transforms, weight_name, regions, span):
     pixels = clr.pixels()[lo:hi]
     pixels = cooler.annotate(pixels, bins, replace=False)
     # pre-filter cis-only pixels to speed up calculations
-    pixels = pixels[ pixels["chrom1"] == pixels["chrom2"] ].copy()
+    pixels = pixels[pixels["chrom1"] == pixels["chrom2"]].copy()
 
     # annotate pixels with regions at once
     # book-ended regions still get reannotated
@@ -670,7 +680,9 @@ def _diagsum_pairwise(clr, fields, transforms, weight_name, regions, span):
     if weight_name is None:
         pixels = pixels.dropna(subset=["r1", "r2"])
     else:
-        pixels = pixels.dropna(subset=["r1", "r2", weight_name+"1", weight_name+"2"])
+        pixels = pixels.dropna(
+            subset=["r1", "r2", weight_name + "1", weight_name + "2"]
+        )
     # pixels = pixels[ pixels["r1"] != pixels["r2"] ]
 
     # this could further expanded to allow for custom groupings:
@@ -678,8 +690,11 @@ def _diagsum_pairwise(clr, fields, transforms, weight_name, regions, span):
     for field, t in transforms.items():
         pixels[field] = t(pixels)
 
-    asymm_blocks = pixels.groupby(["r1","r2"])
-    return {(int(i), int(j)): block.groupby(_DIST)[fields].sum() for (i, j), block in asymm_blocks}
+    asymm_blocks = pixels.groupby(["r1", "r2"])
+    return {
+        (int(i), int(j)): block.groupby(_DIST)[fields].sum()
+        for (i, j), block in asymm_blocks
+    }
 
 
 def diagsum_pairwise(
@@ -739,22 +754,22 @@ def diagsum_pairwise(
     # check viewframe
     try:
         _ = is_compatible_viewframe(
-                view_df,
-                clr,
-                check_sorting=True,  # required for pairwise combinations
-                raise_errors=True,
-            )
+            view_df,
+            clr,
+            check_sorting=True,  # required for pairwise combinations
+            raise_errors=True,
+        )
     except Exception as e:
         raise ValueError("provided view_df is not valid") from e
 
     # create pairwise combinations of regions from view_df
-    all_combinations = combinations_with_replacement(view_df.itertuples(index=False),2)
+    all_combinations = combinations_with_replacement(view_df.itertuples(index=False), 2)
     # keep only intra-chromosomal combinations
     cis_combinations = ((r1, r2) for r1, r2 in all_combinations if (r1[0] == r2[0]))
     # unzip regions1 regions2 defining the blocks for summary collection
     regions1, regions2 = zip(*cis_combinations)
-    regions1 = pd.DataFrame( regions1 )
-    regions2 = pd.DataFrame( regions2 )
+    regions1 = pd.DataFrame(regions1)
+    regions2 = pd.DataFrame(regions2)
     # create a table with the counts of valid pixels on each diagonal in each region:
     dtables = make_diag_tables(
         clr, regions1, regions2, weight_name=weight_name, bad_bins=bad_bins
@@ -846,16 +861,21 @@ def _blocksum_pairwise(clr, fields, transforms, weight_name, regions, span):
     if weight_name is None:
         pixels = pixels.dropna(subset=["r1", "r2"])
     else:
-        pixels = pixels.dropna(subset=["r1", "r2", weight_name+"1", weight_name+"2"])
-    pixels = pixels[ pixels["r1"] != pixels["r2"] ]
+        pixels = pixels.dropna(
+            subset=["r1", "r2", weight_name + "1", weight_name + "2"]
+        )
+    pixels = pixels[pixels["r1"] != pixels["r2"]]
 
     # apply transforms, e.g. balancing etc
     for field, t in transforms.items():
         pixels[field] = t(pixels)
 
     # pairwise-combinations of regions define asymetric pixels-blocks
-    pixel_groups = pixels.groupby(["r1","r2"])
-    return {(int(i), int(j)): group[fields].sum(skipna=False) for (i,j), group in pixel_groups}
+    pixel_groups = pixels.groupby(["r1", "r2"])
+    return {
+        (int(i), int(j)): group[fields].sum(skipna=False)
+        for (i, j), group in pixel_groups
+    }
 
 
 def blocksum_pairwise(
@@ -910,11 +930,11 @@ def blocksum_pairwise(
     # check viewframe
     try:
         _ = is_compatible_viewframe(
-                view_df,
-                clr,
-                check_sorting=False,  # required for pairwise combinations
-                raise_errors=True,
-            )
+            view_df,
+            clr,
+            check_sorting=False,  # required for pairwise combinations
+            raise_errors=True,
+        )
     except Exception as e:
         raise ValueError("provided view_df is not valid") from e
 
@@ -923,9 +943,9 @@ def blocksum_pairwise(
 
     # create pairwise combinations of regions from view_df using
     # the standard zip(*bunch_of_tuples) unzipping procedure:
-    regions1, regions2 = zip(*combinations(view_df.itertuples(index=False),2))
-    regions1 = pd.DataFrame( regions1 )
-    regions2 = pd.DataFrame( regions2 )
+    regions1, regions2 = zip(*combinations(view_df.itertuples(index=False), 2))
+    regions1 = pd.DataFrame(regions1)
+    regions2 = pd.DataFrame(regions2)
     # similar with diagonal summations, pre-generate a block_table listing
     # all of the rectangular blocks and "n_valid" number of pixels per each block:
     records = make_block_table(
@@ -962,7 +982,7 @@ def blocksum_pairwise(
     )
     results = map(job, spans)
     for result in results:
-        for (i,j), agg in result.items():
+        for (i, j), agg in result.items():
             for field in fields:
                 agg_name = "{}.sum".format(field)
                 s = agg[field].item()
@@ -988,7 +1008,7 @@ def expected_cis(
     aggregate=False,
     sigma_log10=0.1,
     clr_weight_name="weight",
-    ignore_diags=2, # should default to cooler info
+    ignore_diags=2,  # should default to cooler info
     chunksize=10_000_000,
     nproc=1,
 ):
@@ -1044,7 +1064,9 @@ def expected_cis(
 
     if view_df is None:
         if not intra_only:
-            raise ValueError("asymmetric regions has to be smaller then full chromosomes, use view_df")
+            raise ValueError(
+                "asymmetric regions has to be smaller then full chromosomes, use view_df"
+            )
         else:
             # Generate viewframe from clr.chromsizes:
             view_df = make_cooler_view(clr)
@@ -1052,12 +1074,12 @@ def expected_cis(
         # Make sure view_df is a proper viewframe
         try:
             _ = is_compatible_viewframe(
-                    view_df,
-                    clr,
-                    # must be sorted for asymmetric case
-                    check_sorting=(not intra_only),
-                    raise_errors=True,
-                )
+                view_df,
+                clr,
+                # must be sorted for asymmetric case
+                check_sorting=(not intra_only),
+                raise_errors=True,
+            )
         except Exception as e:
             raise ValueError("view_df is not a valid viewframe or incompatible") from e
 
@@ -1072,9 +1094,9 @@ def expected_cis(
         transforms = {"balanced": lambda p: p["count"] * p[weight1] * p[weight2]}
     else:
         raise ValueError(
-                "cooler is not balanced, or"
-                f"balancing weight {clr_weight_name} is not available in the cooler."
-            )
+            "cooler is not balanced, or"
+            f"balancing weight {clr_weight_name} is not available in the cooler."
+        )
 
     # execution details
     if nproc > 1:
@@ -1119,15 +1141,15 @@ def expected_cis(
     if smooth:
         if aggregate:
             result = expected_smoothing.agg_smooth_cvd(
-                        result,
-                        groupby=None,
-                        sigma_log10=sigma_log10,
-                    )
+                result,
+                groupby=None,
+                sigma_log10=sigma_log10,
+            )
         else:
             result = expected_smoothing.agg_smooth_cvd(
-                        result,
-                        sigma_log10=sigma_log10,
-                    )
+                result,
+                sigma_log10=sigma_log10,
+            )
 
     return result
 
@@ -1183,13 +1205,13 @@ def expected_trans(
         # Make sure view_df is a proper viewframe
         try:
             _ = is_compatible_viewframe(
-                    view_df,
-                    clr,
-                    # must be sorted for pairwise regions combinations
-                    # to be in the upper right of the heatmap
-                    check_sorting=True,
-                    raise_errors=True,
-                )
+                view_df,
+                clr,
+                # must be sorted for pairwise regions combinations
+                # to be in the upper right of the heatmap
+                check_sorting=True,
+                raise_errors=True,
+            )
         except Exception as e:
             raise ValueError("view_df is not a valid viewframe or incompatible") from e
 
@@ -1204,9 +1226,9 @@ def expected_trans(
         transforms = {"balanced": lambda p: p["count"] * p[weight1] * p[weight2]}
     else:
         raise ValueError(
-                "cooler is not balanced, or"
-                f"balancing weight {clr_weight_name} is not available in the cooler."
-            )
+            "cooler is not balanced, or"
+            f"balancing weight {clr_weight_name} is not available in the cooler."
+        )
 
     # execution details
     if nproc > 1:
@@ -1506,6 +1528,7 @@ def logbin_expected(
     For example, see this gist: https://gist.github.com/mimakaev/e9117a7fcc318e7904702eba5b47d9e6
 
     """
+
     def _get_diag_bins(bin_layout, diagmax, bins_per_order_magnitude):
         """
         create the logbins themselves based on layout, maxdiag, etc.
@@ -1516,7 +1539,9 @@ def logbin_expected(
                 10, bins_per_order_magnitude=bins_per_order_magnitude
             )
         elif bin_layout == "longest_region":
-            diag_bins = numutils.logbins(1, diagmax + 1, ratio=10 ** (1 / bins_per_order_magnitude))
+            diag_bins = numutils.logbins(
+                1, diagmax + 1, ratio=10 ** (1 / bins_per_order_magnitude)
+            )
         elif isinstance(bin_layout, np.ndarray):
             diag_bins = bin_layout
         else:
@@ -1529,33 +1554,41 @@ def logbin_expected(
         return diag_bins
 
     def _get_weighted_expected(
-            exp_filtered,
-            diag_bins,
-            digit_id_name,
-            weighted_dist_name,
-            Pc_name,
-            summary_name,
-            raw_summary_name,
-            min_nvalid=0,
-            min_count=0,
-        ):
+        exp_filtered,
+        diag_bins,
+        digit_id_name,
+        weighted_dist_name,
+        Pc_name,
+        summary_name,
+        raw_summary_name,
+        min_nvalid=0,
+        min_count=0,
+    ):
         """
         given the logbins (diag_bins) and expected with digitized distances (and pre-filtered)
         calculate weighted distance per logbin and weighted expected.
         """
 
         # digitize dist: assign diagonals in expected df to diag_bins, - give them ids:
-        exp_filtered[digit_id_name] = \
-            np.searchsorted(diag_bins, exp_filtered[weighted_dist_name], side="right") - 1
-        exp_filtered = exp_filtered[exp_filtered[digit_id_name] >= 0]  # ignore those that do not fit into diag_bins
+        exp_filtered[digit_id_name] = (
+            np.searchsorted(diag_bins, exp_filtered[weighted_dist_name], side="right")
+            - 1
+        )
+        exp_filtered = exp_filtered[
+            exp_filtered[digit_id_name] >= 0
+        ]  # ignore those that do not fit into diag_bins
 
         # constructing expected grouped by region
         byReg = exp_filtered.copy()
 
         # this averages diag_avg with the weight equal to n_valid, and sums everything else
-        byReg[weighted_dist_name] *= byReg[_NUM_VALID] # dist * n_valid
-        byRegExp = byReg.groupby([_REGION1, _REGION2, digit_id_name]).sum() # sum in each logbin
-        byRegExp[weighted_dist_name] /= byRegExp[_NUM_VALID] # sum(dist*n_valid) / sum(n_valid)
+        byReg[weighted_dist_name] *= byReg[_NUM_VALID]  # dist * n_valid
+        byRegExp = byReg.groupby(
+            [_REGION1, _REGION2, digit_id_name]
+        ).sum()  # sum in each logbin
+        byRegExp[weighted_dist_name] /= byRegExp[
+            _NUM_VALID
+        ]  # sum(dist*n_valid) / sum(n_valid)
 
         byRegExp = byRegExp.reset_index()
         byRegExp = byRegExp[byRegExp[_NUM_VALID] > min_nvalid]  # filtering by n_valid
@@ -1567,7 +1600,9 @@ def logbin_expected(
                 byRegExp = byRegExp[byRegExp[raw_summary_name] > min_count]
             else:
                 warnings.warn(
-                    RuntimeWarning(f"{raw_summary_name} not found in the input expected")
+                    RuntimeWarning(
+                        f"{raw_summary_name} not found in the input expected"
+                    )
                 )
 
         byRegExp["dist_bin_start"] = diag_bins[byRegExp[digit_id_name].to_numpy()]
@@ -1576,11 +1611,11 @@ def logbin_expected(
         return byRegExp
 
     def _get_slopes(
-            logbin_exp,
-            digit_id_name,
-            weighted_dist_name,
-            Pc_name,
-        ):
+        logbin_exp,
+        digit_id_name,
+        weighted_dist_name,
+        Pc_name,
+    ):
         """
         calculate derivative of P(s) (our logbinned weighted average expected)
         """
@@ -1591,10 +1626,13 @@ def logbin_expected(
         byRegDer = []
         for (reg1, reg2), subdf in logbin_exp.groupby([_REGION1, _REGION2]):
             subdf = subdf.sort_values(digit_id_name)
-            valid = np.minimum(subdf[_NUM_VALID].to_numpy()[:-1], subdf[_NUM_VALID].to_numpy()[1:])
+            valid = np.minimum(
+                subdf[_NUM_VALID].to_numpy()[:-1], subdf[_NUM_VALID].to_numpy()[1:]
+            )
             # geometric mean of each logbin - aka mids
             mids = np.sqrt(
-                subdf[weighted_dist_name].to_numpy()[:-1] * subdf[weighted_dist_name].to_numpy()[1:]
+                subdf[weighted_dist_name].to_numpy()[:-1]
+                * subdf[weighted_dist_name].to_numpy()[1:]
             )
             slope = np.diff(smooth(np.log(subdf[Pc_name].to_numpy()))) / np.diff(
                 smooth(np.log(subdf[weighted_dist_name].to_numpy()))
@@ -1614,43 +1652,46 @@ def logbin_expected(
 
         return byRegDer
 
-
     raw_summary_name = "count.sum"
     exp_summary_base, *_ = summary_name.split(".")
     Pc_name = f"{exp_summary_base}.avg"
     diag_name = _DIST
     diag_avg_name = f"{diag_name}.avg"
     # filter expected from NaNs in summary column and copy (precaution)
-    exp = exp.dropna(subset=[summary_name,]).copy()
+    exp = exp.dropna(
+        subset=[
+            summary_name,
+        ]
+    ).copy()
     # rename "dist" column dist.avg, it'll change later
     exp[diag_avg_name] = exp.pop(diag_name)
 
     # generate the "logbins", i.e. uneven bins for the diagonal distances
     diag_bins = _get_diag_bins(
-                    bin_layout=bin_layout,
-                    diagmax=exp[diag_avg_name].max(),
-                    bins_per_order_magnitude=bins_per_order_magnitude
-                )
+        bin_layout=bin_layout,
+        diagmax=exp[diag_avg_name].max(),
+        bins_per_order_magnitude=bins_per_order_magnitude,
+    )
     # assign distances to logbins and calculate weight averages for dist and counts
     byRegExp = _get_weighted_expected(
-                    exp,
-                    diag_bins,
-                    digit_id_name="dist_bin_id",
-                    weighted_dist_name=diag_avg_name,
-                    Pc_name=f"{exp_summary_base}.avg",
-                    summary_name=summary_name,
-                    raw_summary_name="count.sum",
-                    min_nvalid=min_nvalid,
-                    min_count=min_count,
-                )
+        exp,
+        diag_bins,
+        digit_id_name="dist_bin_id",
+        weighted_dist_name=diag_avg_name,
+        Pc_name=f"{exp_summary_base}.avg",
+        summary_name=summary_name,
+        raw_summary_name="count.sum",
+        min_nvalid=min_nvalid,
+        min_count=min_count,
+    )
 
     # now calculate P(s) derivatives aka slopes per region
     byRegDer = _get_slopes(
-                    byRegExp,
-                    digit_id_name="dist_bin_id",
-                    weighted_dist_name=diag_avg_name,
-                    Pc_name=f"{exp_summary_base}.avg",
-                )
+        byRegExp,
+        digit_id_name="dist_bin_id",
+        weighted_dist_name=diag_avg_name,
+        Pc_name=f"{exp_summary_base}.avg",
+    )
 
     # returning logbin expected, its derivative and lobins themselves:
     return byRegExp, byRegDer, diag_bins[: byRegExp["dist_bin_id"].max() + 2]
@@ -1756,7 +1797,9 @@ def combine_binned_expected(
         byRegVar = binned_exp.copy()
         byRegVar = byRegVar.loc[
             byRegVar.index.difference(
-                byRegVar.groupby(["region1", "region2"])["n_valid"].tail(minmax_drop_bins).index
+                byRegVar.groupby(["region1", "region2"])["n_valid"]
+                .tail(minmax_drop_bins)
+                .index
             )
         ]
         low_err = byRegVar.groupby("dist_bin_id")[Pc_name].min()
@@ -1808,7 +1851,9 @@ def combine_binned_expected(
             byRegDer = binned_exp_slope.copy()
             byRegDer = byRegDer.loc[
                 byRegDer.index.difference(
-                    byRegDer.groupby(["region1", "region2"])["n_valid"].tail(minmax_drop_bins).index
+                    byRegDer.groupby(["region1", "region2"])["n_valid"]
+                    .tail(minmax_drop_bins)
+                    .index
                 )
             ]
             low_err = byRegDer.groupby("dist_bin_id")["slope"].min()
@@ -1878,9 +1923,13 @@ def interpolate_expected(
     """
 
     exp_int = expected.copy()
-    gr_exp = exp_int.groupby(["region1", "region2"])  # groupby original expected by region
+    gr_exp = exp_int.groupby(
+        ["region1", "region2"]
+    )  # groupby original expected by region
 
-    if by_region is not False and (("region1" not in binned_expected) or ("region2" not in binned_expected)):
+    if by_region is not False and (
+        ("region1" not in binned_expected) or ("region2" not in binned_expected)
+    ):
         warnings.warn("Region columns not found, assuming combined expected")
         by_region = False
 

@@ -59,7 +59,7 @@ from . import cli
 @click.option(
     "--sigma-log10",
     help="Control smoothing with the standard deviation of the smoothing Gaussian kernel,"
-    " ignored without smoothing."
+    " ignored without smoothing.",
     type=float,
     default=0.1,
     show_default=True,
@@ -122,7 +122,7 @@ def expected_cis(
         clr_weight_name=clr_weight_name if clr_weight_name else None,
         ignore_diags=ignore_diags,
         chunksize=chunksize,
-        nproc=nproc
+        nproc=nproc,
     )
 
     # output to file if specified:
