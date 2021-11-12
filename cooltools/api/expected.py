@@ -17,6 +17,8 @@ import bioframe
 from ..lib import assign_supports, numutils
 from ..lib.common import is_compatible_viewframe, is_cooler_balanced, make_cooler_view
 
+from .sandbox import expected_smoothing
+
 where = np.flatnonzero
 concat = chain.from_iterable
 
@@ -982,6 +984,9 @@ def expected_cis(
     clr,
     view_df=None,
     intra_only=True,
+    smooth=False,
+    aggregate=False,
+    sigma_log10=0.1,
     clr_weight_name="weight",
     ignore_diags=2, # should default to cooler info
     chunksize=10_000_000,
@@ -1005,11 +1010,20 @@ def expected_cis(
     view_df : viewframe
         a collection of genomic intervals where expected is calculated
         otherwise expected is calculated for full chromosomes.
+        view_df has to be sorted, when inter-regions expected is requested,
+        i.e. intra_only is False.
     intra_only: bool
         Return expected only for symmetric intra-regions defined by view_df,
         i.e. chromosomes, chromosomal-arms, intra-domains, etc.
         When False returns expected both for symmetric intra-regions and
         assymetric inter-regions.
+    smooth: bool
+        Apply smoothing to cis-expected. Will be stored in an additional column
+    aggregate: bool
+        When smoothing, average over all regions, ignored without smoothing.
+    sigma_log10: float
+        Control smoothing with the standard deviation of the smoothing Gaussian kernel.
+        Ignored without smoothing.
     clr_weight_name : str or None
         Name of balancing weight column from the cooler to use.
         Use raw unbalanced data, when None.
@@ -1102,6 +1116,19 @@ def expected_cis(
     for key in transforms.keys():
         result[key + ".avg"] = result[key + ".sum"] / result[_NUM_VALID]
 
+    if smooth:
+        if aggregate:
+            result = expected_smoothing.agg_smooth_cvd(
+                        result,
+                        groupby=None,
+                        sigma_log10=sigma_log10,
+                    )
+        else:
+            result = expected_smoothing.agg_smooth_cvd(
+                        result,
+                        sigma_log10=sigma_log10,
+                    )
+
     return result
 
 
@@ -1133,7 +1160,7 @@ def expected_trans(
         Cooler object
     view_df : viewframe
         a collection of genomic intervals where expected is calculated
-        otherwise expected is calculated for full chromosomes.
+        otherwise expected is calculated for full chromosomes, has to be sorted.
     clr_weight_name : str or None
         Name of balancing weight column from the cooler to use.
         Use raw unbalanced data, when None.
