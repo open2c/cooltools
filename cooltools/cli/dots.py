@@ -4,6 +4,7 @@ import pandas as pd
 import numpy as np
 import cooler
 import bioframe
+import logging
 
 import click
 from . import cli
@@ -17,6 +18,7 @@ from ..lib.common import assign_regions, \
 
 from .util import validate_csv
 
+logging.basicConfig(level=logging.INFO)
 
 
 @cli.command()
@@ -102,7 +104,7 @@ from .util import validate_csv
 @click.option(
     "--num-lambda-chunks",
     help="Number of log-spaced bins to divide your adjusted expected"
-    " between. Same as HiCCUPS_W1_MAX_INDX in the original HiCCUPS.",
+    " between. Same as HiCCUPS_W1_MAX_INDX (40) in the original HiCCUPS.",
     type=int,
     default=45,
     show_default=True,
@@ -213,13 +215,13 @@ def dots(
 
     if (kernel_width is None) or (kernel_peak is None):
         w, p = api.dotfinder.recommend_kernel_params(binsize)
-        print(f"Using kernel parameters w={w}, p={p} recommended for binsize {binsize}")
+        logging.info(f"Using kernel parameters w={w}, p={p} recommended for binsize {binsize}")
     else:
         w, p = kernel_width, kernel_peak
         # add some sanity check for w,p:
         if not w > p:
             raise ValueError(f"Wrong inner/outer kernel parameters w={w}, p={p}")
-        print(f"Using kernel parameters w={w}, p={p} provided by user")
+        logging.info(f"Using kernel parameters w={w}, p={p} provided by user")
 
     # once kernel parameters are setup check max_nans_tolerated
     # to make sure kernel footprints overlaping 1 side with the
@@ -240,7 +242,7 @@ def dots(
     )
 
     # lambda-chunking edges ...
-    if not api.dotfinder.HiCCUPS_W1_MAX_INDX <= num_lambda_chunks <= 50:
+    if not 40 <= num_lambda_chunks <= 50:
         raise ValueError("Incompatible num_lambda_chunks")
     base = 2 ** (1 / 3)
     ledges = np.concatenate(
@@ -273,7 +275,7 @@ def dots(
     )
 
     if verbose:
-        print("Done building histograms ...")
+        logging.info("Done building histograms ...")
 
     # 2. Determine the FDR thresholds.
     threshold_df, qvalues = api.dotfinder.determine_thresholds(
@@ -302,8 +304,8 @@ def dots(
 
     # 4. Post-processing
     if verbose:
-        print(f"Begin post-processing of {len(filtered_pixels)} filtered pixels")
-        print("preparing to extract needed q-values ...")
+        logging.info(f"Begin post-processing of {len(filtered_pixels)} filtered pixels")
+        logging.info("preparing to extract needed q-values ...")
 
     filtered_pixels_qvals = api.dotfinder.annotate_pixels_with_qvalues(
         filtered_pixels, qvalues, kernels
