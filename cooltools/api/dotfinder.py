@@ -4,6 +4,7 @@ Collection of functions related to dot-calling
 """
 from functools import partial, reduce
 import multiprocess as mp
+import logging
 
 from scipy.linalg import toeplitz
 from scipy.ndimage import convolve
@@ -18,70 +19,15 @@ from ..lib.numutils import LazyToeplitz, get_kernel
 
 import bioframe
 
-# these are the constants from HiCCUPS, that dictate how initial histogramms
-# for lambda-chunking are computed: W1 is the # of logspaced lambda bins,
-# and W2 is maximum "allowed" raw number of contacts per Hi-C heatmap bin:
-HiCCUPS_W1_MAX_INDX = 40
-# there are datasets out there that can exceed this limit.
-
-# we are not using 'W2' as we're building
-# the histograms dynamically:
-HiCCUPS_W2_MAX_INDX = 10000
+logging.basicConfig(level=logging.INFO)
 
 # this is to mitigate and parameterize the obs.raw vs count controversy:
 observed_count_name = "count"
 expected_count_name = "exp.raw"
-adjusted_exp_name = lambda kernel_name: "la_exp." + kernel_name + ".value"
-nans_inkernel_name = lambda kernel_name: "la_exp." + kernel_name + ".nnans"
+adjusted_exp_name = lambda kernel_name: f"la_exp.{kernel_name}.value"
+nans_inkernel_name = lambda kernel_name: f"la_exp.{kernel_name}.nnans"
 bin1_id_name = "bin1_id"
 bin2_id_name = "bin2_id"
-
-
-##################################
-# generic service functions:
-##################################
-
-
-def buffer_df_chunks(chunks, size=25000000):
-    """
-    A buffer that consumes "small" chunks
-    and yields larger "chunks" of an
-    approximate size "size".
-
-    Following @nvictus:
-    https://github.com/mirnylab/cooltools/issues/51#issuecomment-460091252
-
-    """
-    buf = []
-    n = 0
-    for chunk in chunks:
-        # accumulate chunks until size
-        # is reached:
-        n += len(chunk)
-        buf.append(chunk)
-        if n > size:
-            print(
-                "large chunk of size {} is ready, made up of {} chunks".format(
-                    n, len(buf)
-                )
-            )
-            yield pd.concat(buf, axis=0)
-            print("cleaning buffers ...")
-            # reset buffer and counter:
-            buf = []
-            n = 0
-    #  yield the remainder of the buffer:
-    if len(buf):
-        print(
-            "LAST chunk of size {} is ready, made up of {} chunks".format(n, len(buf))
-        )
-        yield pd.concat(buf, axis=0)
-        print("last guy shipped ...")
-
-
-##################################
-# dotfinder-specific service functions:
-##################################
 
 
 def recommend_kernel_params(binsize):
@@ -105,8 +51,8 @@ def recommend_kernel_params(binsize):
     if binsize > 28000:
         # > 30 kb - is probably too much ...
         raise ValueError(
-            "Provided cooler has resolution {} bases, "
-            "which is too coarse for analysis.".format(binsize)
+            f"Provided cooler has resolution {binsize} bases,"
+            " which is too coarse for analysis."
         )
     elif binsize >= 18000:
         # ~ 20-25 kb:
@@ -120,8 +66,8 @@ def recommend_kernel_params(binsize):
     else:
         # < 5 kb - is probably too fine ...
         raise ValueError(
-            "Provided cooler has resolution {} bases, "
-            "which is too fine for analysis.".format(binsize)
+            f"Provided cooler has resolution {binsize} bases,"
+            " which is too fine for analysis."
         )
     # return the results:
     return w, p
@@ -177,9 +123,9 @@ def annotate_pixels_with_qvalues(
     # iteration over pairs of obs, la_exp and extracting needed qvals
     # one after another ...
     for k in kernels:
-        pixels_qvalue_df["la_exp." + k + ".qval"] = [
+        pixels_qvalue_df[f"la_exp.{k}.qval"] = [
             qvalues[k].loc[o, e]
-            for o, e in pixels_df[[obs_raw_name, "la_exp." + k + ".value"]].itertuples(
+            for o, e in pixels_df[[obs_raw_name, f"la_exp.{k}.value"]].itertuples(
                 index=False
             )
         ]
@@ -280,12 +226,10 @@ def clust_2D_pixels(
         # prepare clustering summary report:
         msg = (
             "Clustering is completed:\n"
-            + "{} clusters detected\n".format(uniq_counts.size)
-            + "{:.2f}+/-{:.2f} mean size\n".format(
-                uniq_counts.mean(), uniq_counts.std()
-            )
+            + f"{uniq_counts.size} clusters detected\n"
+            + f"{uniq_counts.mean():.2f}+/-{uniq_counts.std():.2f} mean size\n"
         )
-        print(msg)
+        logging.info(msg)
 
     # create output DataFrame
     centroids_n_labels_df = pd.DataFrame(
@@ -304,83 +248,6 @@ def clust_2D_pixels(
 ##################################
 # matrix tiling and tiles-generator
 ##################################
-
-
-def diagonal_matrix_tiling(start, stop, bandwidth, edge=0, verbose=False):
-    """
-    Generate a stream of tiling coordinates that guarantee to cover a diagonal
-    area of the matrix of size 'bandwidth'. cis-signal only!
-
-    Parameters
-    ----------
-    start : int
-        Starting position of the matrix slice to be tiled (inclusive, bins,
-        0-based).
-    stop : int
-        End position of the matrix slice to be tiled (exclusive, bins, 0-based).
-    edge : int
-        Small edge around each tile to be included in the yielded coordinates.
-    bandwidth : int
-        Diagonal tiling is guaranteed to cover a diagonal are of width
-        'bandwidth'.
-
-    Yields
-    ------
-    Pairs of indices for every chunk use those indices [cstart:cstop) to fetch
-    chunks from the cooler-object:
-    >>> clr.matrix()[cstart:cstop, cstart:cstop]
-
-    Notes
-    -----
-    Specify a [start,stop) region of a matrix you want to tile diagonally.
-    Each slice is characterized by the coordinate of the top-left corner and
-    size.
-
-    * * * * * * * * * * *  0-th slice
-    *       *           *
-    *       *           *
-    *   * * * * *       *  i-th slice
-    *   *   *   *       *
-    * * * * *   *       *
-    *   *       *       *
-    *   * * * * *       *
-    *                   *
-    *              ...  *  ...
-    *                   *
-    *                   *
-    * * * * * * * * * * *
-
-    These slices are supposed to cover up a diagonal band of size 'bandwidth'.
-
-    """
-    size = stop - start
-    tiles = size // bandwidth + bool(size % bandwidth)
-
-    # matrix parameters before chunking:
-    if verbose:
-        print(
-            "matrix of size {}X{} to be split so that\n".format(size, size)
-            + "  diagonal region of size {} would be completely\n".format(bandwidth)
-            + "  covered by the tiling, additionally keeping\n"
-            + "  a small 'edge' of size w={}, to allow for\n".format(edge)
-            + "  meaningfull convolution around boundaries.\n"
-            + "  Resulting number of tiles is {}".format(tiles - 1)
-            + "  Non-edge case size of each tile is {}X{}".format(
-                2 * (bandwidth + edge), 2 * (bandwidth + edge)
-            )
-        )
-
-    # actual number of tiles is tiles-1
-    # by doing range(1, tiles) we are making sure we are processing the
-    # upper-left chunk only once:
-    for t in range(1, tiles):
-        # l = max(0,M*t-M)
-        # r = min(L,M*t+M)
-        lw = max(0, bandwidth * (t - 1) - edge)
-        rw = min(size, bandwidth * (t + 1) + edge)
-        # don't forget about the 'start' origin:
-        yield lw + start, rw + start
-
 
 def square_matrix_tiling(start, stop, step, edge, square=False, verbose=False):
     """
@@ -467,12 +334,12 @@ def square_matrix_tiling(start, stop, step, edge, square=False, verbose=False):
     tiles = size // step + bool(size % step)
 
     if verbose:
-        print(
-            "matrix of size {}X{} to be splitted\n".format(size, size)
-            + "  into square tiles of size {}.\n".format(step)
-            + "  A small 'edge' of size w={} is added, to allow for\n".format(edge)
+        logging.info(
+            f"matrix of size {size}X{size} to be splitted\n"
+            + f"  into square tiles of size {step}.\n"
+            + f"  A small 'edge' of size w={edge} is added, to allow for\n"
             + "  meaningfull convolution around boundaries.\n"
-            + "  Resulting number of tiles is {}".format(tiles * tiles)
+            + f"  Resulting number of tiles is {tiles * tiles}"
         )
 
     for tx in range(tiles):
@@ -586,16 +453,8 @@ def _convolve_and_count_nans(O_bal, E_bal, E_raw, N_bal, kernel):
 
 
 ########################################################################
-# this should be a MAIN function to get locally adjusted expected
-# Die Hauptfunktion
+# this is the MAIN function to get locally adjusted expected
 ########################################################################
-# ! use parameterized column names
-# # observed_count_name = "count"
-# # expected_count_name = "exp.raw"
-# # adjusted_exp_name = lambda kernel_name: "la_exp."+kernel_name+".value"
-# # nans_inkernel_name = lambda kernel_name: "la_exp."+kernel_name+".nnans"
-# # bin1_id_name='bin1_id'
-# # bin2_id_name='bin2_id'
 def get_adjusted_expected_tile_some_nans(
     origin, observed, expected, bal_weights, kernels, balance_factor=None, verbose=False
 ):
@@ -654,19 +513,10 @@ def get_adjusted_expected_tile_some_nans(
     observed : numpy.ndarray
         square symmetrical dense-matrix
         that contains balanced observed O_bal
-        !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-        should we switch to RAW here ?
-        it would be easy for the output ....
-        !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     expected : numpy.ndarray
         square symmetrical dense-matrix
         that contains expected, calculated
         based on balanced observed: E_bal.
-        !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-        should we switch to its 1D representation here ?
-        good for now, but expected might change later ...
-        Tanay's expected, expected with modeled TAD's etc ...
-        !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     bal_weights : numpy.ndarray or (numpy.ndarray, numpy.ndarray)
         1D vector used to turn raw observed
         into balanced observed for a slice of
@@ -685,11 +535,8 @@ def get_adjusted_expected_tile_some_nans(
         to be considered significant.
         Dictionay keys must contain names for
         each kernel.
-        !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-        Beware!: kernels are flipped and
-        only then multiplied to matrix by
-        scipy.ndimage.convolve
-        !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+        Note, scipy.ndimage.convove flips kernel
+        first and only then applies it to matrix.
     balance_factor: float
         Multiplicative Balancing factor:
         balanced matrix multiplied by this factor
@@ -839,18 +686,18 @@ def get_adjusted_expected_tile_some_nans(
             # some results of convolution and multuplt it by the
             # appropriate factor "cooler._load_attrs(‘bins/weight’)[‘scale’]" ...
             if balance_factor and (kernel_name == "lowleft"):
-                peaks_df["factor_balance." + kernel_name + ".KerObs"] = (
+                peaks_df[f"factor_balance.{kernel_name}.KerObs"] = (
                     balance_factor * KO.flatten()
                 )
                 # KO*balance_factor: to be compared with 16 ...
             if verbose:
-                print("Convolution with kernel {} is complete.".format(kernel_name))
+                logging.info(f"Convolution with kernel {kernel_name} is complete.")
             #
             # accumulation into single DataFrame:
             # store locally adjusted expected for each kernel
             # and number of NaNs in the footprint of each kernel
-            peaks_df["la_exp." + kernel_name + ".value"] = Ek_raw.flatten()
-            peaks_df["la_exp." + kernel_name + ".nnans"] = NN.flatten()
+            peaks_df[f"la_exp.{kernel_name}.value"] = Ek_raw.flatten()
+            peaks_df[f"la_exp.{kernel_name}.nnans"] = NN.flatten()
             # do all the filter/logic/masking etc on the complete DataFrame ...
     #####################################
     # downstream stuff is supposed to be
@@ -982,7 +829,7 @@ def score_tile(
 
     # (2) identify pixels that pass number of NaNs compliance test for ALL kernels:
     does_comply_nans = np.all(
-        result[["la_exp." + k + ".nnans" for k in kernels]] < nans_tolerated, axis=1
+        result[[f"la_exp.{k}.nnans" for k in kernels]] < nans_tolerated, axis=1
     )
     # so, selecting inside band and nNaNs compliant results:
     # ( drop dropping index maybe ??? ) ...
@@ -1016,8 +863,8 @@ def score_tile(
     # this would break A LOT of downstream stuff - but let it be ...
     #
     return res_df[
-        ["bin1_id", "bin2_id", "count"] + ["la_exp." + k + ".value" for k in kernels]
-    ].astype(dtype={"la_exp." + k + ".value": "float64" for k in kernels})
+        ["bin1_id", "bin2_id", "count"] + [f"la_exp.{k}.value" for k in kernels]
+    ].astype(dtype={f"la_exp.{k}.value": "float64" for k in kernels})
 
 
 def histogram_scored_pixels(
@@ -1090,14 +937,14 @@ def histogram_scored_pixels(
     for k in kernels:
         # verbose:
         if verbose:
-            print("Building a histogram for kernel-type {}".format(k))
+            logging.info(f"Building a histogram for kernel-type {k}")
         #  we would need to generate a bunch of these histograms for all of the
         # kernel types:
         # needs to be lambda-binned             : scored_df["la_exp."+k+".value"]
         # needs to be histogrammed in every bin : scored_df["obs.raw"]
         #
         # lambda-bin index for kernel-type "k":
-        lbins = pd.cut(scored_df["la_exp." + k + ".value"], ledges)
+        lbins = pd.cut(scored_df[f"la_exp.{k}.value"], ledges)
         # now for each lambda-bin construct a histogramm of "obs.raw":
         obs_hist = {}
         for lbin, grp_df in scored_df.groupby(lbins):
@@ -1233,7 +1080,7 @@ def extract_scored_pixels(
         # obs.raw -> count
         comply_fdr_k = (
             scored_df[obs_raw_name].values
-            > thresholds[k].loc[scored_df["la_exp." + k + ".value"]].values
+            > thresholds[k].loc[scored_df[f"la_exp.{k}.value"]].values
         )
         # extracting q-values for all of the pixels takes a lot of time
         # we'll do it externally for filtered_pixels only, in order to save
@@ -1263,17 +1110,16 @@ def scoring_step(
     loci_separation_bins,
     output_path,
     nproc,
-    output_mode,
     verbose,
 ):
     """
     Calculates locally adjusted expected
     for each pixel in a designated area of
-    the heatmap and dumps it chunk by chunk
-    as an HDF table.
+    the heatmap and return it as a big
+    single pixel-table (pandas.DataFrame)
     """
     if verbose:
-        print("Preparing to convolve {} tiles:".format(len(tiles)))
+        logging.info(f"Preparing to convolve {len(tiles)} tiles:")
 
     # add very_verbose to supress output from convolution of every tile
     very_verbose = False
@@ -1286,8 +1132,6 @@ def scoring_step(
         kernels=kernels,
         nans_tolerated=max_nans_tolerated,
         band_to_cover=loci_separation_bins,
-        # do not calculate dynamic-donut criteria
-        # for now.
         balance_factor=None,
         verbose=very_verbose,
     )
@@ -1297,106 +1141,23 @@ def scoring_step(
         map_ = pool.imap
         map_kwargs = dict(chunksize=int(np.ceil(len(tiles) / nproc)))
         if verbose:
-            print(
-                "creating a Pool of {} workers to tackle {} tiles".format(
-                    nproc, len(tiles)
-                )
+            logging.info(
+                f"creating a Pool of {nproc} workers to tackle {len(tiles)} tiles"
             )
     else:
         map_ = map
         if verbose:
-            print("fallback to serial implementation.")
+            logging.info("fallback to serial implementation.")
         map_kwargs = {}
     try:
-        # consider using
-        # https://github.com/mirnylab/cooler/blob/9e72ee202b0ac6f9d93fd2444d6f94c524962769/cooler/tools.py#L59
-        # here:
+        # do the work here
         chunks = map_(job, tiles, **map_kwargs)
-        ###########################################
-        #
-        # this is to be rewritten using cooler output
-        # as in https://github.com/mirnylab/cooltools/issues/51#issuecomment-458664781
-        #
-        ###########################################
-        if output_mode == "hdf":
-            print("pandas hdf output ...")
-            append = False
-            for chunk in chunks:
-                chunk.to_hdf(
-                    output_path,
-                    key="results",
-                    format="table",
-                    complevel=9,
-                    complib="blosc:snappy",
-                    append=append,
-                )
-                append = True
-            # success
-            return 0
         # ###########################################
-        # #
-        # # cooler as an output for the dump:
-        # #
-        # ###########################################
-        elif output_mode == "cooler":
-            print("cooler output ...")
-            # "create_cooler" API needs more consistency:
-            # https://github.com/mirnylab/cooler/issues/149
-            #  manually describing "data"-columns (except for bin_ids).
-            columns = [
-                "count",
-            ] + ["la_exp." + k + ".value" for k in kernels]
-            # # dtype them just in case as well:
-            # dtypes = {"la_exp."+k+".value":np.float64 for k in kernels}
-            # dtypes["count"] = np.int32
-            # create_cooler using buffered chunks iterator, to speed up
-            # cooler merge, as suggested by @nvictus
-            cooler.create_cooler(
-                output_path,
-                clr.bins()[:],
-                # iterator of larger pixel chunks ...
-                buffer_df_chunks(chunks),
-                columns=columns,
-                # dtypes=dtypes,
-                # # to be included later, copy from original clr?
-                # metadata : dict, optional
-                # assembly : str, optional
-                ordered=False,  # not ordered for sure
-                symmetric_upper=True,  # is it really ? should be
-                mode="w",
-            )
-            # success
-            return 0
-        # ###########################################
-        # #
-        # # parquet  - how do I use it with my chunks ?!
-        # #
-        # ###########################################
-        elif output_mode == "parquet":
-            print("parquet output ...")
-            bioframe.to_parquet(
-                chunks,
-                output_path,
-                # # use defaults first ...
-                # row_group_size=None,
-                # compression='snappy',
-                # use_dictionary=True,
-                # version=2.0
-            )
-            # success
-            return 0
-        # ###########################################
-        # #
         # # local - in memory copy of the dataframe (danger of RAM overuse)
-        # #
         # ###########################################
-        elif output_mode == "local":
-            print("returning local copy of the dataframe ...")
-            # reset index is required, otherwise there will be duplicate
-            # indices in the output of this function
-            return pd.concat(chunks).reset_index(drop=True)
-        else:
-            raise ValueError("{} mode is not supported".format(output_mode))
+        # reset index is required, otherwise there will be duplicate
+        # indices in the output of this function
+        return pd.concat(chunks).reset_index(drop=True)
     finally:
         if nproc > 1:
             pool.close()
@@ -1470,13 +1231,13 @@ def clustering_step(
         )
         pixel_clust_list.append(pixel_clust)
     if verbose:
-        print("Clustering is over!")
+        logging.info("Clustering is over!")
     # concatenate clustering results ...
     # indexing information persists here ...
 
     if len(pixel_clust_list) == 0:
         if verbose:
-            print("No clusters found! Output will be empty")
+            logging.info("No clusters found! Output will be empty")
         empty_output = pd.DataFrame(
             [],
             columns=list(scores_df.columns)
@@ -1568,43 +1329,6 @@ def thresholding_step(centroids, obs_raw_name=observed_count_name):
     # non-satisfying pixels:
     out = centroids[enrichment_fdr_comply]
 
-    # # # columns up for grabs, take whatever you need:
-    # chrom1
-    # start1
-    # end1
-    # weight1
-    # chrom2
-    # start2
-    # end2
-    # weight2
-    # la_exp.donut.value
-    # la_exp.donut.nnans
-    # la_exp.vertical.value
-    # la_exp.vertical.nnans
-    # la_exp.horizontal.value
-    # la_exp.horizontal.nnans
-    # la_exp.lowleft.value
-    # la_exp.lowleft.nnans
-    # la_exp.upright.value
-    # la_exp.upright.nnans
-    # exp.raw
-    # obs.raw
-    # la_exp.donut.pval
-    # la_exp.vertical.pval
-    # la_exp.horizontal.pval
-    # la_exp.lowleft.pval
-    # la_exp.upright.pval
-    # la_exp.donut.qval
-    # la_exp.vertical.qval
-    # la_exp.horizontal.qval
-    # la_exp.lowleft.qval
-    # la_exp.upright.qval
-    # comply_fdr
-    # cstart1
-    # cstart2
-    # c_label
-    # c_size
-
     # ...
     # to be added to the list of output columns:
     # "factor_balance."+"lowleft"+".KerObs"
@@ -1666,7 +1390,7 @@ def scoring_and_histogramming_step(
     single pipeline of per-chunk operations/transforms.
     """
     if verbose:
-        print("Preparing to convolve {} tiles:".format(len(tiles)))
+        logging.info(f"Preparing to convolve {len(tiles)} tiles:")
 
     # add very_verbose to supress output from convolution of every tile
     very_verbose = False
@@ -1702,15 +1426,13 @@ def scoring_and_histogramming_step(
         map_ = pool.imap
         map_kwargs = dict(chunksize=int(np.ceil(len(tiles) / nproc)))
         if verbose:
-            print(
-                "creating a Pool of {} workers to tackle {} tiles".format(
-                    nproc, len(tiles)
-                )
+            logging.info(
+                f"creating a Pool of {nproc} workers to tackle {len(tiles)} tiles"
             )
     else:
         map_ = map
         if verbose:
-            print("fallback to serial implementation.")
+            logging.info("fallback to serial implementation.")
         map_kwargs = {}
     try:
         # consider using
@@ -1755,11 +1477,10 @@ def scoring_and_histogramming_step(
         last_la_exp_bin = final_hist[k].columns[-1]
         last_la_exp_vals = final_hist[k].iloc[:, -1]
         # checking the top bin:
-        assert (
-            last_la_exp_vals.sum() == 0
-        ), "There are la_exp.{}.value in {}, please check the histogram".format(
-            k, last_la_exp_bin
-        )
+        if last_la_exp_vals.sum() != 0:
+            raise ValueError(
+                f"There are la_exp.{k}.value in {last_la_exp_bin}, please check the histogram"
+            )
         # drop that last column/bin (last_edge, +inf]:
         final_hist[k] = final_hist[k].drop(columns=last_la_exp_bin)
         # consider dropping all of the columns that have zero .sum()
@@ -1795,7 +1516,7 @@ def scoring_and_extraction_step(
 
     """
     if verbose:
-        print("Preparing to convolve {} tiles:".format(len(tiles)))
+        logging.info(f"Preparing to convolve {len(tiles)} tiles:")
 
     # add very_verbose to supress output from convolution of every tile
     very_verbose = False
@@ -1833,15 +1554,13 @@ def scoring_and_extraction_step(
         map_ = pool.imap
         map_kwargs = dict(chunksize=int(np.ceil(len(tiles) / nproc)))
         if verbose:
-            print(
-                "creating a Pool of {} workers to tackle {} tiles".format(
-                    nproc, len(tiles)
-                )
+            logging.info(
+                f"creating a Pool of {nproc} workers to tackle {len(tiles)} tiles"
             )
     else:
         map_ = map
         if verbose:
-            print("fallback to serial implementation.")
+            logging.info("fallback to serial implementation.")
         map_kwargs = {}
     try:
         # consider using
@@ -1858,11 +1577,10 @@ def scoring_and_extraction_step(
             pool.close()
     # there should be no duplicates in the "significant_pixels" DataFrame of pixels:
     significant_pixels_dups = significant_pixels.duplicated()
-    assert (
-        not significant_pixels_dups.any()
-    ), "Duplicated pixels detected during exctraction {}".format(
-        significant_pixels[significant_pixels_dups]
-    )
+    if significant_pixels_dups.any():
+        raise ValueError(
+            f"Duplicated pixels detected during exctraction {significant_pixels[significant_pixels_dups]}"
+        )
     # sort the result just in case and drop its index:
     return significant_pixels.sort_values(by=[bin1_id_name, bin2_id_name]).reset_index(
         drop=True
