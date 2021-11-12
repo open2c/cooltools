@@ -5,7 +5,7 @@ import pandas as pd
 
 import os.path as op
 
-from cooltools import dotfinder
+from cooltools.api import dotfinder
 from cooltools.lib.numutils import LazyToeplitz
 
 

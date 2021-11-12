@@ -49,7 +49,7 @@ def _get_chunk_coverage(chunk, pixel_weight_key="count"):
     return covs
 
 
-def get_coverage(
+def coverage(
     clr,
     ignore_diags=None,
     chunksize=int(1e7),

@@ -15,7 +15,7 @@ import pandas as pd
 from sklearn.cluster import Birch
 import cooler
 
-from .lib.numutils import LazyToeplitz, get_kernel
+from ..lib.numutils import LazyToeplitz, get_kernel
 
 import bioframe
 
@@ -184,7 +184,7 @@ def clust_2D_pixels(
     """
 
     # col (bin2) must precede row (bin1):
-    pixels = pixels_df[[bin1_id_name, bin2_id_name]].values.astype(np.float)
+    pixels = pixels_df[[bin1_id_name, bin2_id_name]].values.astype(np.float64)
     # added astype(float) to avoid further issues with clustering, as it
     # turned out start1/start2 genome coordinates could be int32 or int64
     # and int32 is not enough for some operations, i.e., integer overflow.
@@ -238,9 +238,9 @@ def clust_2D_pixels(
         columns=["c" + bin1_id_name, "c" + bin2_id_name],
     )
     # add labels per pixel:
-    centroids_n_labels_df[clust_label_name] = clustered_labels.astype(np.int)
+    centroids_n_labels_df[clust_label_name] = clustered_labels.astype(np.int64)
     # add cluster sizes:
-    centroids_n_labels_df[clust_size_name] = cluster_sizes.astype(np.int)
+    centroids_n_labels_df[clust_size_name] = cluster_sizes.astype(np.int64)
 
     return centroids_n_labels_df
 
@@ -427,10 +427,10 @@ def _convolve_and_count_nans(O_bal, E_bal, E_raw, N_bal, kernel):
     # N_bal is shared NaNs between O_bal E_bal,
     # is it redundant ?
     NN = convolve(
-        N_bal.astype(np.int),
+        N_bal.astype(np.int64),
         # we have to use kernel's
         # nonzero footprint:
-        (kernel != 0).astype(np.int),
+        (kernel != 0).astype(np.int64),
         mode="constant",
         # there are only NaNs
         # beyond the boundary:
@@ -662,10 +662,10 @@ def get_adjusted_expected_tile_some_nans(
             # based on the NaN-matrix N_bal.
             # N_bal is shared NaNs between O_bal E_bal,
             NN = convolve(
-                N_bal.astype(np.int),
+                N_bal.astype(np.int64),
                 # we have to use kernel's
                 # nonzero footprint:
-                (kernel != 0).astype(np.int),
+                (kernel != 0).astype(np.int64),
                 mode="constant",
                 # there are only NaNs
                 # beyond the boundary:
@@ -965,7 +965,7 @@ def histogram_scored_pixels(
             # turned out that storing W1xW2 for every "thread" requires a ton
             # of memory - that's why different sizes... @nvictus ?
         # store W1x(<=W2) hist for every kernel-type:
-        hists[k] = pd.DataFrame(obs_hist).fillna(0).astype(np.integer)
+        hists[k] = pd.DataFrame(obs_hist).fillna(0).astype(np.int64)
     # return a dict of DataFrames with a bunch of histograms:
     return hists
 
@@ -1019,7 +1019,7 @@ def determine_thresholds(kernels, ledges, gw_hist, fdr):
             fdr_diff.where(fdr_diff > 0)
             .apply(lambda col: col.first_valid_index())
             .fillna(very_high_value)
-            .astype(np.integer)
+            .astype(np.int64)
         )
         # q-values
         # bear in mind some issues with lots of NaNs and Infs after
@@ -1458,7 +1458,7 @@ def scoring_and_histogramming_step(
         # for every value of the dictionary:
         hxy = {}
         for k in kernels:
-            hxy[k] = hx[k].add(hy[k], fill_value=0).astype(np.integer)
+            hxy[k] = hx[k].add(hy[k], fill_value=0).astype(np.int64)
         # returning the sum:
         return hxy
 

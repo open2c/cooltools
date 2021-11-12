@@ -22,3 +22,12 @@ from .lib import (
     download_file,
     get_md5sum,
 )
+
+from .api.expected import expected_cis, expected_trans
+from .api.coverage import coverage
+from .api.eigdecomp import eigs_cis, eigs_trans
+from .api.saddle import digitize, saddle
+from .api.sample import sample
+from .api.snipping import pileup
+from .api.directionality import directionality
+from .api.insulation import insulation

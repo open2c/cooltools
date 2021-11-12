@@ -2,7 +2,7 @@ import cooler
 import bioframe
 import os.path as op
 
-import cooltools.snipping
+import cooltools.api
 import numpy as np
 import pandas as pd
 import pytest
@@ -21,7 +21,7 @@ def test_pileup_cli_npz(request):
     result = runner.invoke(
         cli,
         [
-            "compute-pileup",
+            "pileup",
             in_cool,
             in_features,
             "--view",
@@ -57,7 +57,7 @@ def test_pileup_cli_hdf5(request):
     result = runner.invoke(
         cli,
         [
-            "compute-pileup",
+            "pileup",
             in_cool,
             in_features,
             "--view",
@@ -102,7 +102,7 @@ def test_pileup(request):
             "end": [107_000_000, 113_000_000],
         }
     )
-    stack = cooltools.snipping.pileup(
+    stack = cooltools.api.snipping.pileup(
         clr, windows, view_df, exp, flank=None
     )
     # Check that the size of snips is OK and there are two of them:
@@ -120,7 +120,7 @@ def test_pileup(request):
             "end2": [112_000_000, 118_000_000],
         }
     )
-    stack = cooltools.snipping.pileup(
+    stack = cooltools.api.snipping.pileup(
         clr, windows, view_df, exp, flank=None
     )
     # Check that the size of snips is OK and there are two of them:
@@ -138,7 +138,7 @@ def test_pileup(request):
             "end2": [110_000_000, 115_000_000],
         }
     )
-    stack = cooltools.snipping.pileup(
+    stack = cooltools.api.snipping.pileup(
         clr, windows, view_df, exp, flank=None
     )
     # Check that the size of snips is OK and there are two of them:
@@ -156,12 +156,12 @@ def test_pileup(request):
         }
     )
     with pytest.raises(ValueError):
-        stack = cooltools.snipping.pileup(
+        stack = cooltools.api.snipping.pileup(
             clr, windows, view_df, exp, flank=None
         )
 
     # DRAFT # Should work with force=True:
-    # stack = cooltools.snipping.pileup(clr, windows, view_df, exp, flank=None, force=True)
+    # stack = cooltools.api.snipping.pileup(clr, windows, view_df, exp, flank=None, force=True)
     # # Check that the size of snips is OK and there are two of them:
     # assert stack.shape == (5, 5, 2)
 
@@ -178,12 +178,12 @@ def test_pileup(request):
         }
     )
     with pytest.raises(ValueError):
-        stack = cooltools.snipping.pileup(
+        stack = cooltools.api.snipping.pileup(
             clr, windows, view_df, exp, flank=None
         )
 
     # DRAFT # Should work with force=True:
-    # stack = cooltools.snipping.pileup(clr, windows, view_df, exp, flank=0, force=True)
+    # stack = cooltools.api.snipping.pileup(clr, windows, view_df, exp, flank=0, force=True)
     # # Check that the size of snips is OK and there are two of them:
     # assert stack.shape == (5, 5, 2)
 
@@ -199,20 +199,20 @@ def test_ondiag_pileup_legacy_with_expected(request):
         op.join(request.fspath.dirname, "data/CN.mm9.toy_regions.bed"), schema="bed4"
     )
     for snipper_class in (
-        cooltools.snipping.ObsExpSnipper,
-        cooltools.snipping.ExpectedSnipper,
+        cooltools.api.snipping.ObsExpSnipper,
+        cooltools.api.snipping.ExpectedSnipper,
     ):
         snipper = snipper_class(clr, exp, view_df=view_df)
 
         # I.
         # Example region with windows, two regions from annotated genomic regions:
-        windows = cooltools.snipping.make_bin_aligned_windows(
+        windows = cooltools.api.snipping.make_bin_aligned_windows(
             1_000_000, ["chr1", "chr1"], [102_000_000, 105_000_000], flank_bp=2_000_000
         )
-        windows = cooltools.snipping.assign_regions(windows, view_df).reset_index(
+        windows = cooltools.api.snipping.assign_regions(windows, view_df).reset_index(
             drop=True
         )
-        stack = cooltools.snipping.pileup_legacy(
+        stack = cooltools.api.snipping.pileup_legacy(
             windows, snipper.select, snipper.snip, map=map
         )
 
@@ -221,14 +221,14 @@ def test_ondiag_pileup_legacy_with_expected(request):
 
         # II.
         # Example region with windows, second window comes from unannotated genomic region:
-        windows = cooltools.snipping.make_bin_aligned_windows(
+        windows = cooltools.api.snipping.make_bin_aligned_windows(
             1_000_000, ["chr1", "chr1"], [120_000_000, 160_000_000], flank_bp=2_000_000
         )
-        windows = cooltools.snipping.assign_regions(windows, view_df).reset_index(
+        windows = cooltools.api.snipping.assign_regions(windows, view_df).reset_index(
             drop=True
         )
 
-        stack = cooltools.snipping.pileup_legacy(
+        stack = cooltools.api.snipping.pileup_legacy(
             windows, snipper.select, snipper.snip, map=map
         )
 
@@ -248,14 +248,14 @@ def test_ondiag_pileup_legacy_without_expected(request):
 
     # I.
     # Example region with windows, two regions from annotated genomic regions:
-    windows = cooltools.snipping.make_bin_aligned_windows(
+    windows = cooltools.api.snipping.make_bin_aligned_windows(
         1_000_000, ["chr1", "chr1"], [120_000_000, 160_000_000], flank_bp=2_000_000
     )
 
-    windows = cooltools.snipping.assign_regions(windows, view_df).reset_index(drop=True)
+    windows = cooltools.api.snipping.assign_regions(windows, view_df).reset_index(drop=True)
 
-    snipper = cooltools.snipping.CoolerSnipper(clr, view_df=view_df, min_diag=None)
-    stack = cooltools.snipping.pileup_legacy(
+    snipper = cooltools.api.snipping.CoolerSnipper(clr, view_df=view_df, min_diag=None)
+    stack = cooltools.api.snipping.pileup_legacy(
         windows, snipper.select, snipper.snip, map=map
     )
 
@@ -264,12 +264,12 @@ def test_ondiag_pileup_legacy_without_expected(request):
 
     # II.
     # Example region with windows, second window comes from unannotated genomic region:
-    windows = cooltools.snipping.make_bin_aligned_windows(
+    windows = cooltools.api.snipping.make_bin_aligned_windows(
         1_000_000, ["chr1", "chr1"], [120_000_000, 160_000_000], flank_bp=2_000_000
     )
-    windows = cooltools.snipping.assign_regions(windows, view_df).reset_index(drop=True)
+    windows = cooltools.api.snipping.assign_regions(windows, view_df).reset_index(drop=True)
 
-    stack = cooltools.snipping.pileup_legacy(
+    stack = cooltools.api.snipping.pileup_legacy(
         windows, snipper.select, snipper.snip, map=map
     )
 
@@ -289,28 +289,28 @@ def test_offdiag_pileup_legacy_with_expected(request):
         op.join(request.fspath.dirname, "data/CN.mm9.toy_regions.bed"), schema="bed4"
     )
     for snipper_class in (
-        cooltools.snipping.ObsExpSnipper,
-        cooltools.snipping.ExpectedSnipper,
+        cooltools.api.snipping.ObsExpSnipper,
+        cooltools.api.snipping.ExpectedSnipper,
     ):
 
         snipper = snipper_class(clr, exp, view_df=view_df)
 
         # I.
         # Example region with windows, two off-diagonal features from annotated genomic regions:
-        windows1 = cooltools.snipping.make_bin_aligned_windows(
+        windows1 = cooltools.api.snipping.make_bin_aligned_windows(
             1_000_000, ["chr1", "chr1"], [102_000_000, 105_000_000], flank_bp=2_000_000
         )
-        windows2 = cooltools.snipping.make_bin_aligned_windows(
+        windows2 = cooltools.api.snipping.make_bin_aligned_windows(
             1_000_000, ["chr1", "chr1"], [105_000_000, 109_000_000], flank_bp=2_000_000
         )
         windows = pd.merge(
             windows1, windows2, left_index=True, right_index=True, suffixes=("1", "2")
         )
-        windows = cooltools.snipping.assign_regions(windows, view_df).reset_index(
+        windows = cooltools.api.snipping.assign_regions(windows, view_df).reset_index(
             drop=True
         )
 
-        stack = cooltools.snipping.pileup_legacy(
+        stack = cooltools.api.snipping.pileup_legacy(
             windows, snipper.select, snipper.snip, map=map
         )
 
@@ -319,20 +319,20 @@ def test_offdiag_pileup_legacy_with_expected(request):
 
         # II.
         # Example region with windows, second window is between two different regions:
-        windows1 = cooltools.snipping.make_bin_aligned_windows(
+        windows1 = cooltools.api.snipping.make_bin_aligned_windows(
             1_000_000, ["chr1", "chr1"], [102_000_000, 10_000_000], flank_bp=2_000_000
         )
-        windows2 = cooltools.snipping.make_bin_aligned_windows(
+        windows2 = cooltools.api.snipping.make_bin_aligned_windows(
             1_000_000, ["chr1", "chr1"], [105_000_000, 109_000_000], flank_bp=2_000_000
         )
         windows = pd.merge(
             windows1, windows2, left_index=True, right_index=True, suffixes=("1", "2")
         )
-        windows = cooltools.snipping.assign_regions(windows, view_df).reset_index(
+        windows = cooltools.api.snipping.assign_regions(windows, view_df).reset_index(
             drop=True
         )
 
-        stack = cooltools.snipping.pileup_legacy(
+        stack = cooltools.api.snipping.pileup_legacy(
             windows, snipper.select, snipper.snip, map=map
         )
 
@@ -352,19 +352,19 @@ def test_offdiag_pileup_legacy_without_expected(request):
 
     # I.
     # Example region with windows, two regions from annotated genomic regions:
-    windows1 = cooltools.snipping.make_bin_aligned_windows(
+    windows1 = cooltools.api.snipping.make_bin_aligned_windows(
         1_000_000, ["chr1", "chr1"], [102_000_000, 105_000_000], flank_bp=2_000_000
     )
-    windows2 = cooltools.snipping.make_bin_aligned_windows(
+    windows2 = cooltools.api.snipping.make_bin_aligned_windows(
         1_000_000, ["chr1", "chr1"], [105_000_000, 109_000_000], flank_bp=2_000_000
     )
     windows = pd.merge(
         windows1, windows2, left_index=True, right_index=True, suffixes=("1", "2")
     )
-    windows = cooltools.snipping.assign_regions(windows, view_df).reset_index(drop=True)
+    windows = cooltools.api.snipping.assign_regions(windows, view_df).reset_index(drop=True)
 
-    snipper = cooltools.snipping.CoolerSnipper(clr, view_df=view_df, min_diag=None)
-    stack = cooltools.snipping.pileup_legacy(
+    snipper = cooltools.api.snipping.CoolerSnipper(clr, view_df=view_df, min_diag=None)
+    stack = cooltools.api.snipping.pileup_legacy(
         windows, snipper.select, snipper.snip, map=map
     )
 
@@ -373,18 +373,18 @@ def test_offdiag_pileup_legacy_without_expected(request):
 
     # II.
     # Example region with windows, second window comes from unannotated genomic region:
-    windows1 = cooltools.snipping.make_bin_aligned_windows(
+    windows1 = cooltools.api.snipping.make_bin_aligned_windows(
         1_000_000, ["chr1", "chr1"], [102_000_000, 10_000_000], flank_bp=2_000_000
     )
-    windows2 = cooltools.snipping.make_bin_aligned_windows(
+    windows2 = cooltools.api.snipping.make_bin_aligned_windows(
         1_000_000, ["chr1", "chr1"], [105_000_000, 109_000_000], flank_bp=2_000_000
     )
     windows = pd.merge(
         windows1, windows2, left_index=True, right_index=True, suffixes=("1", "2")
     )
-    windows = cooltools.snipping.assign_regions(windows, view_df).reset_index(drop=True)
+    windows = cooltools.api.snipping.assign_regions(windows, view_df).reset_index(drop=True)
 
-    stack = cooltools.snipping.pileup_legacy(
+    stack = cooltools.api.snipping.pileup_legacy(
         windows, snipper.select, snipper.snip, map=map
     )
 
@@ -400,8 +400,8 @@ def test_snipper_with_view_and_expected(request):
         op.join(request.fspath.dirname, "data/CN.mm9.toy_regions.bed"), schema="bed4"
     )
     for snipper_class in (
-        cooltools.snipping.ObsExpSnipper,
-        cooltools.snipping.ExpectedSnipper,
+        cooltools.api.snipping.ObsExpSnipper,
+        cooltools.api.snipping.ExpectedSnipper,
     ):
         snipper = snipper_class(clr, exp, view_df=view_df)
         matrix = snipper.select("foo", "foo")
@@ -416,7 +416,7 @@ def test_cooler_snipper_with_view(request):
     view_df = bioframe.read_table(
         op.join(request.fspath.dirname, "data/CN.mm9.toy_regions.bed"), schema="bed4"
     )
-    snipper = cooltools.snipping.CoolerSnipper(clr, view_df=view_df)
+    snipper = cooltools.api.snipping.CoolerSnipper(clr, view_df=view_df)
     matrix = snipper.select("foo", "foo")
     snippet = snipper.snip(
         matrix, "foo", "foo", (110_000_000, 120_000_000, 110_000_000, 120_000_000)

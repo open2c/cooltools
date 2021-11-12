@@ -4,7 +4,7 @@ import click
 import cooler
 
 from . import cli
-from .. import sample
+from .. import api
 
 
 @cli.command()
@@ -69,7 +69,7 @@ def random_sample(in_path, out_path, count, frac, exact, nproc, chunksize):
         map_ = map
 
     try:
-        sample.sample_cooler(
+        api.sample.sample(
             in_path,
             out_path,
             count=count,

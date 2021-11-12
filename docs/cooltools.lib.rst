@@ -1,6 +1,14 @@
 cooltools.lib package
 =====================
 
+common
+--------
+
+.. automodule:: cooltools.lib.common
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 numutils
 --------
 
@@ -25,10 +33,10 @@ plotting
    :undoc-members:
    :show-inheritance:
 
-runlength
----------
+schemas
+--------
 
-.. automodule:: cooltools.lib.runlength
-   :members:
-   :undoc-members:
-   :show-inheritance:
+.. automodule:: cooltools.lib.schemas
+  :members:
+  :undoc-members:
+  :show-inheritance:

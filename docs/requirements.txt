@@ -9,3 +9,4 @@ recommonmark
 Sphinx
 sphinx-rtd-theme
 sphinx-click
+docutils<=0.16

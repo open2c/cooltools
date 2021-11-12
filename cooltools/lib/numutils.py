@@ -495,7 +495,7 @@ def get_eig(mat, n=3, mask_zero_rows=False, subtract_mean=False, divide_by_mean=
 
         return eigvecs, eigvals
     else:
-        mat = mat.astype(np.float, copy=True)  # make a copy, ensure float
+        mat = mat.astype(np.float64, copy=True)  # make a copy, ensure float
 
         # prepare NaN-filled arrays for output in case we requested
         # more eigenvalues that can be computed (eigs/eigsh k limits)
@@ -854,7 +854,7 @@ def get_kernel(w, p, ktype):
 
     """
     width = 2 * w + 1
-    kernel = np.ones((width, width), dtype=np.int)
+    kernel = np.ones((width, width), dtype=np.int64)
     # mesh grid:
     y, x = np.ogrid[-w : w + 1, -w : w + 1]
 

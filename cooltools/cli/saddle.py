@@ -8,11 +8,11 @@ import pandas as pd
 import numpy as np
 import cooler
 import bioframe
-from .. import saddle
+from .. import api
 
 import click
 from .util import validate_csv
-from ..lib.common import assign_regions, read_expected, read_viewframe, make_cooler_view
+from ..lib import common
 from . import util
 from . import cli
 
@@ -154,7 +154,7 @@ from . import cli
 @click.option(
     "-v", "--verbose", help="Enable verbose output", is_flag=True, default=False
 )
-def compute_saddle(
+def saddle(
     cool_path,
     track_path,
     expected_path,
@@ -228,14 +228,14 @@ def compute_saddle(
 
     #### Generate viewframes ####
     # 1:cooler_view_df. Generate viewframe from clr.chromsizes:
-    cooler_view_df = make_cooler_view(clr)
+    cooler_view_df = common.make_cooler_view(clr)
 
     # 2:view_df. Define global view for calculating calling dots
     # use input "view" BED file or all chromosomes :
     if view is None:
         view_df = cooler_view_df
     else:
-        view_df = read_viewframe(view, clr, check_sorting=True)
+        view_df = common.read_viewframe(view, clr, check_sorting=True)
 
     # 3:track_view_df. Generate viewframe from track table:
     track_view_df = bioframe.make_viewframe(
@@ -247,7 +247,7 @@ def compute_saddle(
 
     #### Read expected: ####
     expected_summary_cols = [expected_value_col, ]
-    expected = read_expected(
+    expected = common.read_expected(
         expected_path,
         contact_type=contact_type,
         expected_value_cols=expected_summary_cols,
@@ -283,20 +283,20 @@ def compute_saddle(
     else:
         max_diag = -1
 
-    track = saddle.mask_bad_bins((track, track_name), (clr.bins()[:], clr_weight_name))
+    track = api.saddle.mask_bad_bins((track, track_name), (clr.bins()[:], clr_weight_name))
     if vrange[0] is None:
         vrange = None
     if qrange[0] is None:
         qrange = None
 
-    digitized, binedges = saddle.get_digitized(
+    digitized, binedges = api.saddle.digitize(
         track[["chrom", "start", "end", track_name]],
         n_bins,
         vrange=vrange,
         qrange=qrange,
         digitized_suffix=".d",
     )
-    S, C = saddle.get_saddle(
+    S, C = api.saddle.saddle(
         clr,
         expected,
         digitized[["chrom", "start", "end", track_name + ".d"]],
@@ -316,7 +316,7 @@ def compute_saddle(
     )
 
     if strength:
-        ratios = saddle.saddle_strength(S, C)
+        ratios = api.saddle.saddle_strength(S, C)
         ratios = ratios[1:-1]  # drop outlier bins
         to_save["saddle_strength"] = ratios
 
@@ -352,7 +352,7 @@ def compute_saddle(
 
         clabel = "(contact frequency / expected)"
 
-        saddle.saddleplot(
+        api.saddle.saddleplot(
             track,
             saddledata,
             n_bins,

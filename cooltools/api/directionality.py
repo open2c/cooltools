@@ -1,10 +1,10 @@
 import warnings
 import numpy as np
 import pandas as pd
-from .lib import peaks, numutils
+from ..lib import peaks, numutils
 
 
-def dirscore(pixels, bins, window=10, ignore_diags=2, balanced=True, signed_chi2=False):
+def _dirscore(pixels, bins, window=10, ignore_diags=2, balanced=True, signed_chi2=False):
     lo_bin_id = bins.index.min()
     hi_bin_id = bins.index.max() + 1
     N = hi_bin_id - lo_bin_id
@@ -159,14 +159,14 @@ def directionality(
 
         with warnings.catch_warnings():
             warnings.simplefilter("ignore", RuntimeWarning)
-            dir_track = dirscore(
+            dir_track = _dirscore(
                 chrom_pixels, chrom_bins, window=window_bins, ignore_diags=ignore_diags
             )
             dir_track[bad_bin_neighbor] = np.nan
             dir_track[~np.isfinite(dir_track)] = np.nan
             dir_chrom["directionality_ratio_{}".format(window_bp)] = dir_track
 
-            dir_track = dirscore(
+            dir_track = _dirscore(
                 chrom_pixels,
                 chrom_bins,
                 window=window_bins,

@@ -2,7 +2,7 @@ import pandas as pd
 import numpy as np
 import cooler
 import bioframe
-from .. import eigdecomp
+from ..api import eigdecomp
 from ..lib.common import make_cooler_view, read_viewframe
 
 import click
@@ -26,13 +26,6 @@ from . import cli
     " Note that '--regions' is the deprecated name of the option. Use '--view' instead. ",
     default=None,
     type=str,
-)
-@click.option(
-    "--contact-type",
-    help="Type of the contacts perform eigen-value decomposition on.",
-    type=click.Choice(["cis", "trans"]),
-    default="cis",
-    show_default=True,
 )
 @click.option(
     "--n-eigs",
@@ -59,11 +52,10 @@ from . import cli
     is_flag=True,
     default=False,
 )
-def call_compartments(
+def eigs_trans(
     cool_path,
     reference_track,
     view,
-    contact_type,
     n_eigs,
     verbose,
     out_prefix,
@@ -173,35 +165,24 @@ def call_compartments(
     # TODO: Add check that view_df has the same bins as track
 
     # it's contact_type dependent:
-    if contact_type == "cis":
-        eigvals, eigvec_table = eigdecomp.cooler_cis_eig(
-            clr=clr,
-            bins=track,
-            view_df=view_df,
-            n_eigs=n_eigs,
-            phasing_track_col=track_name,
-            clip_percentile=99.9,
-            sort_metric=None,
-        )
-    elif contact_type == "trans":
-        eigvals, eigvec_table = eigdecomp.cooler_trans_eig(
-            clr=clr,
-            bins=track,
-            n_eigs=n_eigs,
-            partition=None,
-            phasing_track_col=track_name,
-            sort_metric=None,
-        )
+    eigvals, eigvec_table = eigdecomp.eigs_trans(
+        clr=clr,
+        bins=track,
+        n_eigs=n_eigs,
+        partition=None,
+        phasing_track_col=track_name,
+        sort_metric=None,
+    )
 
     # Output
-    eigvals.to_csv(out_prefix + "." + contact_type + ".lam.txt", sep="\t", index=False)
+    eigvals.to_csv(out_prefix + ".trans" + ".lam.txt", sep="\t", index=False)
     eigvec_table.to_csv(
-        out_prefix + "." + contact_type + ".vecs.tsv", sep="\t", index=False
+        out_prefix + ".trans" + ".vecs.tsv", sep="\t", index=False
     )
     if bigwig:
         bioframe.to_bigwig(
             eigvec_table,
             clr.chromsizes,
-            out_prefix + "." + contact_type + ".bw",
+            out_prefix + ".trans" + ".bw",
             value_field="E1",
         )

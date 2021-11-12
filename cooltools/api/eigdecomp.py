@@ -3,8 +3,8 @@ import scipy
 import scipy.stats
 
 import pandas as pd
-from .lib import numutils
-from .lib.common import make_cooler_view, is_compatible_viewframe
+from ..lib import numutils
+from ..lib.common import make_cooler_view, is_compatible_viewframe
 
 import bioframe
 
@@ -287,7 +287,7 @@ def trans_eig(
     return eigvals, eigvecs
 
 
-def cooler_cis_eig(
+def eigs_cis(
     clr,
     bins,
     view_df=None,
@@ -461,7 +461,7 @@ def cooler_cis_eig(
     return eigvals_table, eigvec_table
 
 
-def cooler_trans_eig(
+def eigs_trans(
     clr,
     bins,
     n_eigs=3,
