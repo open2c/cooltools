@@ -8,7 +8,7 @@ import pandas as pd
 import os.path as op
 
 # try importing stuff from dotfinder:
-from cooltools.dotfinder import get_adjusted_expected_tile_some_nans
+from cooltools.api.dotfinder import get_adjusted_expected_tile_some_nans
 
 # adjust the path for data:
 testdir = op.realpath(op.dirname(__file__))

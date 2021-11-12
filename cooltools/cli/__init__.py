@@ -4,7 +4,6 @@ import click
 import sys
 from .. import __version__
 
-
 # Monkey patch
 click.core._verify_python3_env = lambda: None
 
@@ -46,14 +45,14 @@ def cli(verbose, debug):
 
 
 from . import (
-    diamond_insulation,
-    cis_expected,
-    trans_expected,
-    compute_pileup,
-    logbin_expected,
-    compute_saddle,
-    call_dots,
-    call_compartments,
+    expected_cis,
+    expected_trans,
+    insulation,
+    pileup,
+    eigs_cis,
+    eigs_trans,
+    saddle,
+    dots,
     genome,
-    random_sample,
+    sample,
 )

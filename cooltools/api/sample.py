@@ -43,7 +43,7 @@ def _extract_pixel_chunk(chunk):
     return chunk["pixels"]
 
 
-def sample_cooler(
+def sample(
     clr,
     out_clr_path,
     count=None,

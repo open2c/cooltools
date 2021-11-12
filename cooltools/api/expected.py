@@ -14,8 +14,8 @@ from scipy.interpolate import interp1d
 from cooler.tools import partition
 import cooler
 import bioframe
-from .lib import assign_supports, numutils
-from .lib.common import is_compatible_viewframe, is_cooler_balanced, make_cooler_view
+from ..lib import assign_supports, numutils
+from ..lib.common import is_compatible_viewframe, is_cooler_balanced, make_cooler_view
 
 where = np.flatnonzero
 concat = chain.from_iterable
@@ -978,7 +978,7 @@ def blocksum_pairwise(
 
 
 # user-friendly wrapper for diagsum_symm and diagsum_pairwise - part of new "public" API
-def get_cis_expected(
+def expected_cis(
     clr,
     view_df=None,
     intra_only=True,
@@ -1106,7 +1106,7 @@ def get_cis_expected(
 
 
 # user-friendly wrapper for diagsum_symm and diagsum_pairwise - part of new "public" API
-def get_trans_expected(
+def expected_trans(
     clr,
     view_df=None,
     clr_weight_name="weight",

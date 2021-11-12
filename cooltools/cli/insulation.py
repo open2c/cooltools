@@ -2,8 +2,10 @@ import click
 import cooler
 
 from . import cli
-from .. import insulation
+from .. import api 
+from ..lib import common
 import bioframe
+
 
 @cli.command()
 @click.argument("in_path", metavar="IN_PATH", type=str, nargs=1)
@@ -70,7 +72,7 @@ import bioframe
     is_flag=True,
     default=False,
 )
-def diamond_insulation(
+def insulation(
     in_path,
     window,
     output,
@@ -99,20 +101,20 @@ def diamond_insulation(
     clr = cooler.Cooler(in_path)
 
     # Create view:
-    cooler_view_df = make_cooler_view(clr)
+    cooler_view_df = common.make_cooler_view(clr)
     if view is None:
         # full chromosomes:
         view_df = cooler_view_df
     else:
         # read view_df dataframe, and verify against cooler
-        view_df = read_viewframe(view, clr, check_sorting=True)
+        view_df = common.read_viewframe(view, clr, check_sorting=True)
 
     # Read list with windows:
     if window_pixels:
         window = [win * clr.info["bin-size"] for win in window]
 
     # Calculate insulation score:
-    ins_table = insulation.calculate_insulation_score(
+    ins_table = api.insulation.calculate_insulation_score(
         clr,
         view_df=view_df,
         window_bp=window,
@@ -124,9 +126,8 @@ def diamond_insulation(
     )
 
     # Find boundaries:
-    ins_table = insulation.find_boundaries(
+    ins_table = api.insulation.find_boundaries(
         ins_table,
-        view_df=view_df,
         min_frac_valid_pixels=min_frac_valid_pixels,
         min_dist_bad_bin=min_dist_bad_bin,
     )

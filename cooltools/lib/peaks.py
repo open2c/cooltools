@@ -52,8 +52,8 @@ def find_peak_prominence(arr, max_dist=None):
     # For each maximum, find the position of a higher peak on the left and
     # on the right. If there are no higher peaks within the `max_dist` range,
     # just use the position `max_dist` away.
-    left_maxs = -1 * np.ones(len(loc_max_poss), dtype=np.int)
-    right_maxs = -1 * np.ones(len(loc_max_poss), dtype=np.int)
+    left_maxs = -1 * np.ones(len(loc_max_poss), dtype=np.int64)
+    right_maxs = -1 * np.ones(len(loc_max_poss), dtype=np.int64)
 
     for i, pos in enumerate(loc_max_poss):
         for j in range(pos - 1, -1, -1):

@@ -3,12 +3,11 @@ import pandas as pd
 from itertools import combinations
 import cooler
 import bioframe
-from ..expected import get_cis_expected
-from ..lib.common import make_cooler_view, read_viewframe
+from .. import api
+from ..lib import common
 
 import click
 from . import cli
-from . import util
 
 @cli.command()
 @click.argument("cool_path", metavar="COOL_PATH", type=str, nargs=1)
@@ -38,10 +37,11 @@ from . import util
 @click.option(
     "--view",
     "--regions",
-    help="Path to a 3 or 4-column BED file with genomic regions"
-    " to calculated cis-expected on. When region names are not provided"
-    " (no 4th column), UCSC-style region names are generated."
-    " Cis-expected is calculated for all chromosomes, when this is not specified."
+    help="Path to a 3 or 4-column BED file with genomic regions. Trans-expected"
+    " is calculated on all pairwise combinations of these regions."
+    " When region names are not provided (no 4th column),"
+    " UCSC-style region names are generated. Trans-expected is calculated "
+    " for all inter-chromosomal pairs, when view is not specified."
     " Note that '--regions' is the deprecated name of the option. Use '--view' instead.",
     type=click.Path(exists=True),
     required=False,
@@ -54,26 +54,18 @@ from . import util
     default="weight",
     show_default=True,
 )
-@click.option(
-    "--ignore-diags",
-    help="Number of diagonals to neglect for cis contact type",
-    type=int,
-    default=2,
-    show_default=True,
-)
-def cis_expected(
+def expected_trans(
     cool_path,
     nproc,
     chunksize,
     output,
     view,
     clr_weight_name,
-    ignore_diags,
 ):
     """
-    Calculate expected Hi-C signal for cis regions of chromosomal interaction map:
-    average of interactions separated by the same genomic distance, i.e.
-    are on the same diagonal on the cis-heatmap.
+    Calculate expected Hi-C signal for trans regions of chromosomal interaction map:
+    average of interactions in a rectangular block defined by a pair of regions, e.g.
+    inter-chromosomal blocks.
 
     When balancing weights are not applied to the data, there is no
     masking of bad bins performed.
@@ -86,19 +78,17 @@ def cis_expected(
 
     if view is None:
         # full chromosome case
-        view_df = make_cooler_view(clr)
+        view_df = common.make_cooler_view(clr)
     else:
         # Read view_df dataframe, and verify against cooler
-        view_df = read_viewframe(view, clr, check_sorting=True)
+        view_df = common.read_viewframe(view, clr, check_sorting=True)
 
-    result = get_cis_expected(
+    result = api.expected.expected_trans(
         clr,
         view_df=view_df,
-        intra_only=True,
         clr_weight_name=clr_weight_name if clr_weight_name else None,
-        ignore_diags=ignore_diags,
         chunksize=chunksize,
-        nproc=nproc
+        nproc=nproc,
     )
 
     # output to file if specified:

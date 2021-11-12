@@ -5,7 +5,7 @@ import pandas as pd
 from click.testing import CliRunner
 from cooltools.cli import cli
 
-from cooltools.insulation import (
+from cooltools.api.insulation import (
     calculate_insulation_score,
     find_boundaries,
     insul_diamond,

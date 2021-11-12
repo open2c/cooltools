@@ -1,7 +1,7 @@
 import pandas as pd
 import numpy as np
 from functools import partial
-from .. import expected
+from ..api import expected
 from ..lib.common import read_expected
 
 import click
