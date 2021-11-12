@@ -292,10 +292,10 @@ def agg_smooth_cvd(
 
     # cvd = cvd.drop(cols["contact_freq"], axis='columns', errors='ignore')
 
-    cvd = cvd.merge(
-        cvd_smoothed,
-        on=groupby + [cols["dist"]],
-        how="left",
-    )
+    # cvd = cvd.merge(
+    #     cvd_smoothed,
+    #     on=groupby + [cols["dist"]],
+    #     how="left",
+    # )
 
-    return cvd
+    return cvd_smoothed

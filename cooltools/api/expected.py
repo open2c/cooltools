@@ -1005,8 +1005,8 @@ def expected_cis(
     view_df=None,
     intra_only=True,
     smooth=False,
-    aggregate=False,
-    sigma_log10=0.1,
+    aggregate_smoothed=False,
+    smooth_sigma=0.1,
     clr_weight_name="weight",
     ignore_diags=2,  # should default to cooler info
     chunksize=10_000_000,
@@ -1039,9 +1039,9 @@ def expected_cis(
         assymetric inter-regions.
     smooth: bool
         Apply smoothing to cis-expected. Will be stored in an additional column
-    aggregate: bool
+    aggregate_smoothed: bool
         When smoothing, average over all regions, ignored without smoothing.
-    sigma_log10: float
+    smooth_sigma: float
         Control smoothing with the standard deviation of the smoothing Gaussian kernel.
         Ignored without smoothing.
     clr_weight_name : str or None
@@ -1138,18 +1138,32 @@ def expected_cis(
     for key in transforms.keys():
         result[key + ".avg"] = result[key + ".sum"] / result[_NUM_VALID]
 
+    # additional smoothing and aggregating options would add columns only, not replace them
     if smooth:
-        if aggregate:
-            result = expected_smoothing.agg_smooth_cvd(
+        result_smooth = expected_smoothing.agg_smooth_cvd(
+            result,
+            sigma_log10=smooth_sigma,
+        )
+        # add smoothed columns to the result (only balanced for now)
+        result = result.merge(
+            result_smooth[["balanced.avg.smoothed", _DIST]],
+            on=[_REGION1, _REGION2, _DIST],
+            how="left",
+        )
+        if aggregate_smoothed:
+            result_smooth_agg = expected_smoothing.agg_smooth_cvd(
                 result,
                 groupby=None,
-                sigma_log10=sigma_log10,
+                sigma_log10=smooth_sigma,
+            ).rename(columns={"balanced.avg.smoothed":"balanced.avg.smoothed.agg"})
+            # add smoothed columns to the result
+            result = result.merge(
+                result_smooth_agg[["balanced.avg.smoothed.agg", _DIST]],
+                on=[_DIST, ],
+                how="left",
             )
-        else:
-            result = expected_smoothing.agg_smooth_cvd(
-                result,
-                sigma_log10=sigma_log10,
-            )
+
+
 
     return result
 
