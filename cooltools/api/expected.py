@@ -1022,6 +1022,9 @@ def expected_cis(
     are calculated as a ratio between a corresponding sum {}.sum and the
     total number of "valid" pixels on the diagonal "n_valid".
 
+    When balancing weights (clr_weight_name=None) are not applied to the data, there is no
+    masking of bad bins performed.
+
 
     Parameters
     ----------

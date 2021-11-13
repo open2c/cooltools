@@ -30,7 +30,7 @@ def _diagsum_symm_dense(matrix, bad_bins=None):
     diags = range(len(mat))
 
     with warnings.catch_warnings():
-        warnings.filterwarnings(action='ignore', message='Mean of empty slice')
+        warnings.filterwarnings(action="ignore", message="Mean of empty slice")
         result = [np.nanmean(mat.diagonal(i)) for i in diags]
     return result
 
@@ -56,7 +56,7 @@ def _diagsum_asymm_dense(matrix, bad_bin_rows=None, bad_bin_cols=None):
     diags = range(-mrows + 1, mcols)
 
     with warnings.catch_warnings():
-        warnings.filterwarnings(action='ignore', message='Mean of empty slice')
+        warnings.filterwarnings(action="ignore", message="Mean of empty slice")
         result = [np.nanmean(mat.diagonal(i)) for i in diags]
     return result
 
@@ -231,9 +231,15 @@ def test_diagsum_pairwise(request):
     grouped = res.groupby(["region1", "region2"])
     for (name1, name2), group in grouped:
         matrix = clr.matrix(balance=weight_name).fetch(name1, name2)
-        desired_expected = _diagsum_asymm_dense(matrix) if (name1 != name2) else _diagsum_symm_dense(matrix)
+        desired_expected = (
+            _diagsum_asymm_dense(matrix)
+            if (name1 != name2)
+            else _diagsum_symm_dense(matrix)
+        )
         # fill nan for ignored diags
-        desired_expected = np.where(group["dist"] < ignore_diags, np.nan, desired_expected)
+        desired_expected = np.where(
+            group["dist"] < ignore_diags, np.nan, desired_expected
+        )
         testing.assert_allclose(
             actual=group["balanced.avg"].values,
             desired=desired_expected,
@@ -250,7 +256,7 @@ def test_expected_cis(request):
         view_df=view_df,
         clr_weight_name=weight_name,
         chunksize=chunksize,
-        ignore_diags=ignore_diags
+        ignore_diags=ignore_diags,
     )
     # check results for every block
     grouped = res_symm.groupby(["region1", "region2"])
@@ -259,7 +265,9 @@ def test_expected_cis(request):
         matrix = clr.matrix(balance=weight_name).fetch(name1)
         desired_expected = _diagsum_symm_dense(matrix)
         # fill nan for ignored diags
-        desired_expected = np.where(group["dist"] < ignore_diags, np.nan, desired_expected)
+        desired_expected = np.where(
+            group["dist"] < ignore_diags, np.nan, desired_expected
+        )
         testing.assert_allclose(
             actual=group["balanced.avg"].values,
             desired=desired_expected,
@@ -272,15 +280,21 @@ def test_expected_cis(request):
         intra_only=False,
         clr_weight_name=weight_name,
         chunksize=chunksize,
-        ignore_diags=ignore_diags
+        ignore_diags=ignore_diags,
     )
     # check results for every block
     grouped = res_all.groupby(["region1", "region2"])
     for (name1, name2), group in grouped:
         matrix = clr.matrix(balance=weight_name).fetch(name1, name2)
-        desired_expected = _diagsum_asymm_dense(matrix) if (name1 != name2) else _diagsum_symm_dense(matrix)
+        desired_expected = (
+            _diagsum_asymm_dense(matrix)
+            if (name1 != name2)
+            else _diagsum_symm_dense(matrix)
+        )
         # fill nan for ignored diags
-        desired_expected = np.where(group["dist"] < ignore_diags, np.nan, desired_expected)
+        desired_expected = np.where(
+            group["dist"] < ignore_diags, np.nan, desired_expected
+        )
         testing.assert_allclose(
             actual=group["balanced.avg"].values,
             desired=desired_expected,
@@ -414,6 +428,54 @@ def test_expected_view_cli(request, tmpdir):
             desired=desired_expected,
             equal_nan=True,
         )
+
+
+def test_expected_smooth_cli(request, tmpdir):
+    # CLI compute-expected for chrom-wide cis-data
+    in_cool = op.join(request.fspath.dirname, "data/CN.mm9.1000kb.cool")
+    out_cis_expected = op.join(tmpdir, "cis.exp.tsv")
+    runner = CliRunner()
+    result = runner.invoke(
+        cli,
+        [
+            "expected-cis",
+            "--smooth",
+            "--aggregate-smoothed",
+            "--clr-weight-name",
+            weight_name,
+            "-o",
+            out_cis_expected,
+            in_cool,
+        ],
+    )
+    assert result.exit_code == 0
+    clr = cooler.Cooler(in_cool)
+    cis_expected = pd.read_table(out_cis_expected, sep="\t")
+    grouped = cis_expected.groupby(["region1", "region2"])
+    # full chromosomes in this example:
+    for (chrom1, chrom2), group in grouped:
+        assert chrom1 == chrom2
+        # work only on "large" crhomosomes, skip chrM and such
+        if chrom1 not in ["chrM", "chrY", "chrX"]:
+            # extract dense matrix and get desired expected:
+            matrix = clr.matrix(balance=weight_name).fetch(chrom1)
+            desired_expected = np.where(
+                group["dist"] < ignore_diags,
+                np.nan,  # fill nan for ignored diags
+                _diagsum_symm_dense(matrix),
+            )
+            # do overlall tolerance instead of element by element comparison
+            # because of non-matching NaNs and "noiseness" of the non-smoothed
+            # expected
+            _delta_smooth = np.nanmax(
+                np.abs(group["balanced.avg.smoothed"].to_numpy() - desired_expected)
+            )
+            _delta_smooth_agg = np.nanmax(
+                np.abs(group["balanced.avg.smoothed.agg"].to_numpy() - desired_expected)
+            )
+            # some made up tolerances, that work for this example
+            assert _delta_smooth < 0.01
+            assert _delta_smooth_agg < 0.02
 
 
 def test_trans_expected_view_cli(request, tmpdir):

@@ -43,24 +43,24 @@ def test_call_dots_view_cli(request, tmpdir):
 
     runner = CliRunner()
     cmd = [
-            "dots",
-            "--view",
-            in_regions,
-            "-p",
-            1,
-            "--kernel-width",
-            2,
-            "--kernel-peak",
-            1,
-            "--tile-size",
-            60_000_000,
-            "--max-loci-separation",
-            100_000_000,
-            "--out-prefix",
-            out_dots,
-            in_cool,
-            in_exp,
-        ]
+        "dots",
+        "--view",
+        in_regions,
+        "-p",
+        1,
+        "--kernel-width",
+        2,
+        "--kernel-peak",
+        1,
+        "--tile-size",
+        60_000_000,
+        "--max-loci-separation",
+        100_000_000,
+        "--out-prefix",
+        out_dots,
+        in_cool,
+        in_exp,
+    ]
     result = runner.invoke(cli, cmd)
     assert result.exit_code == 0
     # make sure output is generated:

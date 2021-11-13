@@ -48,16 +48,19 @@ from . import cli
 )
 @click.option(
     "--smooth",
-    help="If set, cis-expected will be smoothed and result stored in an extra column",
+    help="If set, cis-expected is smoothed and result stored in an additional column"
+    " e.g. balanced.avg.smoothed",
     is_flag=True,
 )
 @click.option(
-    "--aggregate",
-    help="If set, smoothing cis-expected will average over all regions, ignored without smoothing",
+    "--aggregate-smoothed",
+    help="If set, cis-expected is averaged over all regions and then smoothed."
+    " Result is stored in an additional column, e.g. balanced.avg.smoothed.agg."
+    " Ignored without smoothing",
     is_flag=True,
 )
 @click.option(
-    "--sigma-log10",
+    "--smooth-sigma",
     help="Control smoothing with the standard deviation of the smoothing Gaussian kernel,"
     " ignored without smoothing.",
     type=float,
@@ -86,8 +89,8 @@ def expected_cis(
     output,
     view,
     smooth,
-    aggregate,
-    sigma_log10,
+    aggregate_smoothed,
+    smooth_sigma,
     clr_weight_name,
     ignore_diags,
 ):
@@ -117,8 +120,8 @@ def expected_cis(
         view_df=view_df,
         intra_only=True,
         smooth=smooth,
-        aggregate_smoothed=aggregate,
-        smooth_sigma=sigma_log10,
+        aggregate_smoothed=aggregate_smoothed,
+        smooth_sigma=smooth_sigma,
         clr_weight_name=clr_weight_name if clr_weight_name else None,
         ignore_diags=ignore_diags,
         chunksize=chunksize,
