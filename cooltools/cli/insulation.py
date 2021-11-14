@@ -38,7 +38,8 @@ import bioframe
 )
 @click.option(
     "--clr-weight-name",
-    help="Use balancing weight with this name. Using raw unbalanced data is not supported for insulation.",
+    help="Use balancing weight with this name. "
+         "Provide empty argument to calculate insulation on raw data (no masking bad pixels).",
     type=str,
     default="weight",
     show_default=True,
@@ -136,7 +137,7 @@ def insulation(
         view_df=view_df,
         window_bp=window,
         ignore_diags=ignore_diags,
-        clr_weight_name=clr_weight_name,
+        clr_weight_name=clr_weight_name if clr_weight_name else None,
         min_frac_valid_pixels=min_frac_valid_pixels,
         min_dist_bad_bin=min_dist_bad_bin,
         threshold=threshold,

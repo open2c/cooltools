@@ -71,7 +71,7 @@ def insul_diamond(
         artifacts.
     norm_by_median : bool
         If True, normalize the insulation score by its NaN-median.
-    clr_weight_name : str
+    clr_weight_name : str or None
         Name of balancing weight column from the cooler to use.
         Using raw unbalanced data is not supported for insulation.
     """
@@ -81,21 +81,30 @@ def insul_diamond(
     sum_counts = np.zeros(N)
     sum_balanced = np.zeros(N)
 
-    n_pixels = get_n_pixels(
-        bins[clr_weight_name].isnull().values, window=window, ignore_diags=ignore_diags
-    )
+    if clr_weight_name is None:
+        # define n_pixels
+        n_pixels = get_n_pixels(
+            np.repeat(False, len(bins)), window=window, ignore_diags=ignore_diags
+        )
+    else:
+        # calculate n_pixels
+        n_pixels = get_n_pixels(
+            bins[clr_weight_name].isnull().values, window=window, ignore_diags=ignore_diags
+        )
+        # define transform - balanced and raw ('count') for now
+        weight1 = clr_weight_name + "1"
+        weight2 = clr_weight_name + "2"
+        transform = lambda p: p["count"] * p[weight1] * p[weight2]
+
 
     for chunk_dict in pixel_query.read_chunked():
         chunk = pd.DataFrame(chunk_dict, columns=["bin1_id", "bin2_id", "count"])
         diag_pixels = chunk[chunk.bin2_id - chunk.bin1_id <= (window - 1) * 2]
 
-        diag_pixels = cooler.annotate(diag_pixels, bins[[clr_weight_name]])
-        diag_pixels["balanced"] = (
-            diag_pixels["count"]
-            * diag_pixels[f"{clr_weight_name}1"]
-            * diag_pixels[f"{clr_weight_name}2"]
-        )
-        valid_pixel_mask = ~diag_pixels["balanced"].isnull().values
+        if clr_weight_name:
+            diag_pixels = cooler.annotate(diag_pixels, bins[[clr_weight_name]])
+            diag_pixels["balanced"] = transform(diag_pixels)
+            valid_pixel_mask = ~diag_pixels["balanced"].isnull().values
 
         i = diag_pixels.bin1_id.values - lo_bin_id
         j = diag_pixels.bin2_id.values - lo_bin_id
@@ -115,16 +124,20 @@ def insul_diamond(
                     i[mask] + i_shift, diag_pixels["count"].values[mask], minlength=N
                 )
 
-                sum_balanced += np.bincount(
-                    i[mask & valid_pixel_mask] + i_shift,
-                    diag_pixels["balanced"].values[mask & valid_pixel_mask],
-                    minlength=N,
-                )
+                if clr_weight_name:
+                    sum_balanced += np.bincount(
+                        i[mask & valid_pixel_mask] + i_shift,
+                        diag_pixels["balanced"].values[mask & valid_pixel_mask],
+                        minlength=N,
+                    )
 
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
 
-        score = sum_balanced / n_pixels
+        if clr_weight_name:
+            score = sum_balanced / n_pixels
+        else:
+            score = sum_counts / n_pixels
 
         if norm_by_median:
             score /= np.nanmedian(score)
@@ -167,9 +180,9 @@ def calculate_insulation_score(
     append_raw_scores : bool
         If True, append columns with raw scores (sum_counts, sum_balanced, n_pixels)
         to the output table.
-    clr_weight_name : str
+    clr_weight_name : str or None
         Name of the column in the bin table with weight.
-        Using raw unbalanced data is not supported for insulation.
+        Using unbalanced data with `None` will avoid masking "bad" pixels.
     verbose : bool
         If True, report real-time progress.
 
@@ -194,19 +207,26 @@ def calculate_insulation_score(
             raise ValueError("view_df is not a valid viewframe or incompatible") from e
 
     # check if cooler is balanced
-    try:
-        _ = is_cooler_balanced(clr, clr_weight_name, raise_errors=True)
-    except Exception as e:
-        raise ValueError(
-            f"provided cooler is not balanced or {clr_weight_name} is missing"
-        ) from e
+    if clr_weight_name:
+        try:
+            _ = is_cooler_balanced(clr, clr_weight_name, raise_errors=True)
+        except Exception as e:
+            raise ValueError(
+                f"provided cooler is not balanced or {clr_weight_name} is missing"
+            ) from e
+
 
     bin_size = clr.info["bin-size"]
     # check if ignore_diags is valid
     if ignore_diags is None:
-        ignore_diags = clr._load_attrs(
-            clr.root.rstrip("/") + f"/bins/{clr_weight_name}"
-        )["ignore_diags"]
+        try:
+            ignore_diags = clr._load_attrs(
+                clr.root.rstrip("/") + f"/bins/{clr_weight_name}"
+            )["ignore_diags"]
+        except:
+            raise ValueError(
+                f"Please, specify ignore_diags and/or balance this cooler with {clr_weight_name}! "
+            )
     elif isinstance(ignore_diags, int):
         pass  # keep it as is
     else:
@@ -238,7 +258,7 @@ def calculate_insulation_score(
         region_bins = clr.bins().fetch(region)
         ins_region = region_bins[["chrom", "start", "end"]].copy()
         ins_region.loc[:, "region"] = name
-        ins_region[is_bad_bin_key] = region_bins[clr_weight_name].isnull()
+        ins_region[is_bad_bin_key] = region_bins[clr_weight_name].isnull() if clr_weight_name else False
 
         if min_dist_bad_bin:
             ins_region = ins_region.assign(
@@ -484,13 +504,15 @@ def _find_insulating_boundaries_dense(
 
     bin_size = clr.info["bin-size"]
 
+
     # check if cooler is balanced
-    try:
-        _ = is_cooler_balanced(clr, clr_weight_name, raise_errors=True)
-    except Exception as e:
-        raise ValueError(
-            f"provided cooler is not balanced or {clr_weight_name} is missing"
-        ) from e
+    if clr_weight_name:
+        try:
+            _ = is_cooler_balanced(clr, clr_weight_name, raise_errors=True)
+        except Exception as e:
+            raise ValueError(
+                f"provided cooler is not balanced or {clr_weight_name} is missing"
+            ) from e
 
     # check if ignore_diags is valid
     if ignore_diags is None:

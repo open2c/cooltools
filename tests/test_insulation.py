@@ -21,7 +21,24 @@ def test_insulation_cli(request, tmpdir):
     out_prefix = op.join(tmpdir, "CN.insulation.tsv")
     runner = CliRunner()
     result = runner.invoke(cli, ["insulation", "-o", out_prefix, in_cool, window])
-    print(" ".join([str(x) for x in ["insulation", "-o", out_prefix, in_cool, window]]))
+    assert result.exit_code == 1
+
+
+def test_insulation_cli_nobalance(request, tmpdir):
+
+    in_cool = op.join(request.fspath.dirname, "data/CN.mm9.1000kb.cool")
+    window = 10_000_000
+    out_prefix = op.join(tmpdir, "CN.insulation.tsv")
+    runner = CliRunner()
+    result = runner.invoke(cli, ["insulation",
+                                 "-o",
+                                 out_prefix,
+                                 "--clr-weight-name",
+                                 "",
+                                 "--ignore-diags",
+                                 1,
+                                 in_cool,
+                                 window])
     assert result.exit_code == 1
 
 
