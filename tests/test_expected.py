@@ -78,11 +78,11 @@ def _blocksum_asymm_dense(matrix, bad_bin_rows=None, bad_bin_cols=None):
 ### Test API:
 # common parameters:
 ignore_diags = 2
-weight_name = "weight"
+clr_weight_name = "weight"
 bad_bins = None
 chunksize = 10_000  # keep it small to engage chunking
-weight1 = weight_name + "1"
-weight2 = weight_name + "2"
+weight1 = clr_weight_name + "1"
+weight2 = clr_weight_name + "2"
 transforms = {"balanced": lambda p: p["count"] * p[weight1] * p[weight2]}
 assumed_binsize = 1_000_000
 
@@ -113,7 +113,7 @@ def test_diagsum_symm(request):
         clr,
         view_df=view_df,
         transforms=transforms,
-        weight_name=weight_name,
+        clr_weight_name=clr_weight_name,
         bad_bins=bad_bins,
         ignore_diags=ignore_diags,
         chunksize=chunksize,
@@ -126,7 +126,7 @@ def test_diagsum_symm(request):
         # check symmetry:
         assert name1 == name2
         # extract dense matrix and get desired expected:
-        matrix = clr.matrix(balance=weight_name).fetch(name1)
+        matrix = clr.matrix(balance=clr_weight_name).fetch(name1)
         desired_expected = np.where(
             group["dist"] < ignore_diags,
             np.nan,  # fill nan for ignored diags
@@ -147,7 +147,7 @@ def test_diagsum_symm_raw(request):
         clr,
         view_df=view_df,
         transforms={},
-        weight_name=None,
+        clr_weight_name=None,
         bad_bins=bad_bins,
         ignore_diags=ignore_diags,
         chunksize=chunksize,
@@ -182,7 +182,7 @@ def test_diagsum_symm_raw_weight_filter(request):
         clr,
         view_df=view_df,
         transforms={},
-        weight_name=weight_name,
+        clr_weight_name=clr_weight_name,
         bad_bins=bad_bins,
         ignore_diags=ignore_diags,
         chunksize=chunksize,
@@ -196,7 +196,7 @@ def test_diagsum_symm_raw_weight_filter(request):
         assert name1 == name2
         # extract dense matrix and get desired expected:
         matrix = clr.matrix(balance=False).fetch(name1).astype("float")
-        weight_mask = clr.bins()[weight_name].fetch(name1).isna().to_numpy()
+        weight_mask = clr.bins()[clr_weight_name].fetch(name1).isna().to_numpy()
         # apply filtering from weight column to raw counts
         matrix[weight_mask, :] = np.nan
         matrix[:, weight_mask] = np.nan
@@ -219,7 +219,7 @@ def test_diagsum_pairwise(request):
         clr,
         view_df=view_df,
         transforms=transforms,
-        weight_name=weight_name,
+        clr_weight_name=clr_weight_name,
         bad_bins=bad_bins,
         ignore_diags=ignore_diags,
         chunksize=chunksize,
@@ -230,7 +230,7 @@ def test_diagsum_pairwise(request):
     # should be simplified as there is 1 number per block only
     grouped = res.groupby(["region1", "region2"])
     for (name1, name2), group in grouped:
-        matrix = clr.matrix(balance=weight_name).fetch(name1, name2)
+        matrix = clr.matrix(balance=clr_weight_name).fetch(name1, name2)
         desired_expected = (
             _diagsum_asymm_dense(matrix)
             if (name1 != name2)
@@ -254,7 +254,7 @@ def test_expected_cis(request):
     res_symm = cooltools.api.expected.expected_cis(
         clr,
         view_df=view_df,
-        clr_weight_name=weight_name,
+        clr_weight_name=clr_weight_name,
         chunksize=chunksize,
         ignore_diags=ignore_diags,
     )
@@ -262,7 +262,7 @@ def test_expected_cis(request):
     grouped = res_symm.groupby(["region1", "region2"])
     for (name1, name2), group in grouped:
         assert name1 == name2
-        matrix = clr.matrix(balance=weight_name).fetch(name1)
+        matrix = clr.matrix(balance=clr_weight_name).fetch(name1)
         desired_expected = _diagsum_symm_dense(matrix)
         # fill nan for ignored diags
         desired_expected = np.where(
@@ -278,14 +278,14 @@ def test_expected_cis(request):
         clr,
         view_df=view_df,
         intra_only=False,
-        clr_weight_name=weight_name,
+        clr_weight_name=clr_weight_name,
         chunksize=chunksize,
         ignore_diags=ignore_diags,
     )
     # check results for every block
     grouped = res_all.groupby(["region1", "region2"])
     for (name1, name2), group in grouped:
-        matrix = clr.matrix(balance=weight_name).fetch(name1, name2)
+        matrix = clr.matrix(balance=clr_weight_name).fetch(name1, name2)
         desired_expected = (
             _diagsum_asymm_dense(matrix)
             if (name1 != name2)
@@ -309,7 +309,7 @@ def test_blocksum_pairwise(request):
         clr,
         view_df=view_df,
         transforms=transforms,
-        weight_name=weight_name,
+        clr_weight_name=clr_weight_name,
         bad_bins=bad_bins,
         chunksize=chunksize,
     )
@@ -319,7 +319,7 @@ def test_blocksum_pairwise(request):
     # should be simplified as there is 1 number per block only
     grouped = res.groupby(["region1", "region2"])
     for (name1, name2), group in grouped:
-        matrix = clr.matrix(balance=weight_name).fetch(name1, name2)
+        matrix = clr.matrix(balance=clr_weight_name).fetch(name1, name2)
         testing.assert_allclose(
             actual=group["balanced.avg"].values,
             desired=_blocksum_asymm_dense(matrix),
@@ -333,14 +333,14 @@ def test_expected_trans(request):
     res = cooltools.api.expected.expected_trans(
         clr,
         view_df=view_df,
-        clr_weight_name=weight_name,
+        clr_weight_name=clr_weight_name,
         chunksize=chunksize,
     )
     # check results for every block , defined as region1/2
     # should be simplified as there is 1 number per block only
     grouped = res.groupby(["region1", "region2"])
     for (name1, name2), group in grouped:
-        matrix = clr.matrix(balance=weight_name).fetch(name1, name2)
+        matrix = clr.matrix(balance=clr_weight_name).fetch(name1, name2)
         testing.assert_allclose(
             actual=group["balanced.avg"].values,
             desired=_blocksum_asymm_dense(matrix),
@@ -359,7 +359,7 @@ def test_expected_cli(request, tmpdir):
         [
             "expected-cis",
             "--clr-weight-name",
-            weight_name,
+            clr_weight_name,
             "-o",
             out_cis_expected,
             in_cool,
@@ -373,7 +373,7 @@ def test_expected_cli(request, tmpdir):
     for (chrom1, chrom2), group in grouped:
         assert chrom1 == chrom2
         # extract dense matrix and get desired expected:
-        matrix = clr.matrix(balance=weight_name).fetch(chrom1)
+        matrix = clr.matrix(balance=clr_weight_name).fetch(chrom1)
         desired_expected = np.where(
             group["dist"] < ignore_diags,
             np.nan,  # fill nan for ignored diags
@@ -398,7 +398,7 @@ def test_expected_view_cli(request, tmpdir):
         [
             "expected-cis",
             "--clr-weight-name",
-            weight_name,
+            clr_weight_name,
             "--view",
             in_view,
             "-o",
@@ -417,7 +417,7 @@ def test_expected_view_cli(request, tmpdir):
         assert region1 == region2
         ucsc_region = view_df.loc[region1].to_list()
         # extract dense matrix and get desired expected:
-        matrix = clr.matrix(balance=weight_name).fetch(ucsc_region)
+        matrix = clr.matrix(balance=clr_weight_name).fetch(ucsc_region)
         desired_expected = np.where(
             group["dist"] < ignore_diags,
             np.nan,  # fill nan for ignored diags
@@ -442,7 +442,7 @@ def test_expected_smooth_cli(request, tmpdir):
             "--smooth",
             "--aggregate-smoothed",
             "--clr-weight-name",
-            weight_name,
+            clr_weight_name,
             "-o",
             out_cis_expected,
             in_cool,
@@ -458,7 +458,7 @@ def test_expected_smooth_cli(request, tmpdir):
         # work only on "large" crhomosomes, skip chrM and such
         if chrom1 not in ["chrM", "chrY", "chrX"]:
             # extract dense matrix and get desired expected:
-            matrix = clr.matrix(balance=weight_name).fetch(chrom1)
+            matrix = clr.matrix(balance=clr_weight_name).fetch(chrom1)
             desired_expected = np.where(
                 group["dist"] < ignore_diags,
                 np.nan,  # fill nan for ignored diags
@@ -490,7 +490,7 @@ def test_trans_expected_view_cli(request, tmpdir):
         [
             "expected-trans",
             "--clr-weight-name",
-            weight_name,
+            clr_weight_name,
             "--view",
             in_view,
             "-o",
@@ -517,7 +517,7 @@ def test_trans_expected_view_cli(request, tmpdir):
         ucsc_region2 = regions2.iloc[i, :3].to_list()
         # check only trans regions !
         if ucsc_region1[0] != ucsc_region2[0]:
-            matrix = clr.matrix(balance=weight_name).fetch(ucsc_region1, ucsc_region2)
+            matrix = clr.matrix(balance=clr_weight_name).fetch(ucsc_region1, ucsc_region2)
             testing.assert_allclose(
                 actual=trans_expected.loc[(region1_name, region2_name), "balanced.avg"],
                 desired=_blocksum_asymm_dense(matrix),
@@ -537,7 +537,7 @@ def test_trans_expected_view_cli(request, tmpdir):
 #         [
 #             "cis-expected",
 #             "--clr-weight-name",
-#             weight_name,
+#             clr_weight_name,
 #             "-o",
 #             out_cis_expected,
 #             in_cool,

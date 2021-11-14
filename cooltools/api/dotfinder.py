@@ -16,6 +16,7 @@ from sklearn.cluster import Birch
 import cooler
 
 from ..lib.numutils import LazyToeplitz, get_kernel
+from ..lib.common import is_cooler_balanced
 
 import bioframe
 
@@ -743,7 +744,7 @@ def score_tile(
     clr,
     cis_exp,
     exp_v_name,
-    bal_v_name,
+    clr_weight_name,
     kernels,
     nans_tolerated,
     band_to_cover,
@@ -768,7 +769,7 @@ def score_tile(
         DataFrame with cis-expected, indexed with 'name' and 'diag'.
     exp_v_name : str
         Name of a value column in expected DataFrame
-    bal_v_name : str
+    clr_weight_name : str
         Name of a value column with balancing weights in a cooler.bins()
         DataFrame. Typically 'weight'.
     kernels : dict
@@ -809,8 +810,8 @@ def score_tile(
     # expected as a rectangular tile :
     expected = lazy_exp[slice(*tilei), slice(*tilej)]
     # slice of balance_weight for row-span and column-span :
-    bal_weight_i = clr.bins()[slice(*tilei)][bal_v_name].values
-    bal_weight_j = clr.bins()[slice(*tilej)][bal_v_name].values
+    bal_weight_i = clr.bins()[slice(*tilei)][clr_weight_name].values
+    bal_weight_j = clr.bins()[slice(*tilej)][clr_weight_name].values
 
     # do the convolutions
     result = get_adjusted_expected_tile_some_nans(
@@ -1103,7 +1104,7 @@ def scoring_step(
     clr,
     expected,
     expected_name,
-    balance_name,
+    clr_weight_name,
     tiles,
     kernels,
     max_nans_tolerated,
@@ -1121,6 +1122,14 @@ def scoring_step(
     if verbose:
         logging.info(f"Preparing to convolve {len(tiles)} tiles:")
 
+    # check if cooler is balanced
+    try:
+        _ = is_cooler_balanced(clr, clr_weight_name, raise_errors=True)
+    except Exception as e:
+        raise ValueError(
+            f"provided cooler is not balanced or {clr_weight_name} is missing"
+        ) from e
+
     # add very_verbose to supress output from convolution of every tile
     very_verbose = False
     job = partial(
@@ -1128,7 +1137,7 @@ def scoring_step(
         clr=clr,
         cis_exp=expected,
         exp_v_name=expected_name,
-        bal_v_name=balance_name,
+        clr_weight_name=clr_weight_name,
         kernels=kernels,
         nans_tolerated=max_nans_tolerated,
         band_to_cover=loci_separation_bins,
@@ -1373,7 +1382,7 @@ def scoring_and_histogramming_step(
     clr,
     expected,
     expected_name,
-    balance_name,
+    clr_weight_name,
     tiles,
     kernels,
     ledges,
@@ -1395,13 +1404,21 @@ def scoring_and_histogramming_step(
     # add very_verbose to supress output from convolution of every tile
     very_verbose = False
 
+    # check if cooler is balanced
+    try:
+        _ = is_cooler_balanced(clr, clr_weight_name, raise_errors=True)
+    except Exception as e:
+        raise ValueError(
+            f"provided cooler is not balanced or {clr_weight_name} is missing"
+        ) from e
+
     # to score per tile:
     to_score = partial(
         score_tile,
         clr=clr,
         cis_exp=expected,
         exp_v_name=expected_name,
-        bal_v_name=balance_name,
+        clr_weight_name=clr_weight_name,
         kernels=kernels,
         nans_tolerated=max_nans_tolerated,
         band_to_cover=loci_separation_bins,
@@ -1492,7 +1509,7 @@ def scoring_and_extraction_step(
     clr,
     expected,
     expected_name,
-    balance_name,
+    clr_weight_name,
     tiles,
     kernels,
     ledges,
@@ -1521,13 +1538,21 @@ def scoring_and_extraction_step(
     # add very_verbose to supress output from convolution of every tile
     very_verbose = False
 
+    # check if cooler is balanced
+    try:
+        _ = is_cooler_balanced(clr, clr_weight_name, raise_errors=True)
+    except Exception as e:
+        raise ValueError(
+            f"provided cooler is not balanced or {clr_weight_name} is missing"
+        ) from e
+
     # to score per tile:
     to_score = partial(
         score_tile,
         clr=clr,
         cis_exp=expected,
         exp_v_name=expected_name,
-        bal_v_name=balance_name,
+        clr_weight_name=clr_weight_name,
         kernels=kernels,
         nans_tolerated=max_nans_tolerated,
         band_to_cover=loci_separation_bins,

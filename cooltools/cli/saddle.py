@@ -90,7 +90,7 @@ from . import cli
 )
 @click.option(
     "--clr-weight-name",
-    help="Use balancing weight with this name.",
+    help="Use balancing weight with this name. Using raw unbalanced data is not supported for saddles.",
     type=str,
     default="weight",
     show_default=True,

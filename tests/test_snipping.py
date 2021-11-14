@@ -11,11 +11,12 @@ from click.testing import CliRunner
 from cooltools.cli import cli
 
 
-def test_pileup_cli_npz(request):
+def test_pileup_cli_npz(request, tmpdir):
     in_cool = op.join(request.fspath.dirname, "data/CN.mm9.1000kb.cool")
     in_features = op.join(request.fspath.dirname, "data/CN.mm9.toy_features.bed")
     in_regions = op.join(request.fspath.dirname, "data/CN.mm9.toy_regions.bed")
     in_expected = op.join(request.fspath.dirname, "data/CN.mm9.toy_expected.tsv")
+    out_file = op.join(tmpdir, "tmp.npz")
     runner = CliRunner()
     # Output npz file:
     result = runner.invoke(
@@ -40,17 +41,18 @@ def test_pileup_cli_npz(request):
             1,
             "--store-snips",
             "--out",
-            "tmp.npz",
+            out_file,
         ],
     )
     assert result.exit_code == 0
 
 
-def test_pileup_cli_hdf5(request):
+def test_pileup_cli_hdf5(request, tmpdir):
     in_cool = op.join(request.fspath.dirname, "data/CN.mm9.1000kb.cool")
     in_features = op.join(request.fspath.dirname, "data/CN.mm9.toy_features.bed")
     in_regions = op.join(request.fspath.dirname, "data/CN.mm9.toy_regions.bed")
     in_expected = op.join(request.fspath.dirname, "data/CN.mm9.toy_expected.tsv")
+    out_file = op.join(tmpdir, "tmp.hdf5")
     runner = CliRunner()
 
     # Output hdf5 file:
@@ -76,7 +78,7 @@ def test_pileup_cli_hdf5(request):
             1,
             "--store-snips",
             "--out",
-            "tmp.hdf5",
+            out_file,
             "--out-format",
             "HDF5",
         ],

@@ -4,7 +4,7 @@ import scipy.stats
 
 import pandas as pd
 from ..lib import numutils
-from ..lib.common import make_cooler_view, is_compatible_viewframe
+from ..lib.common import make_cooler_view, is_compatible_viewframe, is_cooler_balanced
 
 import bioframe
 
@@ -293,7 +293,7 @@ def eigs_cis(
     view_df=None,
     n_eigs=3,
     phasing_track_col="GC",
-    balance="weight",
+    clr_weight_name="weight",
     ignore_diags=None,
     bad_bins=None,
     clip_percentile=99.9,
@@ -321,7 +321,7 @@ def eigs_cis(
     phasing_track_col : str, optional
         name of the columns in `bins` table, if provided, eigenvectors are
         flipped to achieve a positive correlation with `bins[phasing_track_col]`.
-    balance : str
+    clr_weight_name : str
         name of the column with balancing weights to be used.
     ignore_diags : int, optional
         the number of diagonals to ignore. Derived from cooler metadata
@@ -381,9 +381,17 @@ def eigs_cis(
     if phasing_track_col and (phasing_track_col not in bins):
         raise ValueError(f'No column "{phasing_track_col}" in the bin table')
 
+    # check if cooler is balanced
+    try:
+        _ = is_cooler_balanced(clr, clr_weight_name, raise_errors=True)
+    except Exception as e:
+        raise ValueError(
+            f"provided cooler is not balanced or {clr_weight_name} is missing"
+        ) from e
+
     # ignore diags as in cooler inless specified
     ignore_diags = (
-        clr._load_attrs("bins/weight").get("ignore_diags", 2)
+        clr._load_attrs(f"bins/{clr_weight_name}").get("ignore_diags", 2)
         if ignore_diags is None
         else ignore_diags
     )
@@ -415,7 +423,7 @@ def eigs_cis(
             array of eigenvalues and an array eigenvectors
         """
         _region = region[:3]  # take only (chrom, start, end)
-        A = clr.matrix(balance=balance).fetch(_region)
+        A = clr.matrix(balance=clr_weight_name).fetch(_region)
 
         # filter bad_bins relevant for the _region from A
         if bad_bins is not None:
@@ -467,11 +475,19 @@ def eigs_trans(
     n_eigs=3,
     partition=None,
     phasing_track_col="GC",
-    balance="weight",
+    clr_weight_name="weight",
     sort_metric=None,
     **kwargs,
 ):
 
+    # check if cooler is balanced
+    try:
+        _ = is_cooler_balanced(clr, clr_weight_name, raise_errors=True)
+    except Exception as e:
+        raise ValueError(
+            f"provided cooler is not balanced or {clr_weight_name} is missing"
+        ) from e
+    
     if partition is None:
         partition = np.r_[
             [clr.offset(chrom) for chrom in clr.chromnames], len(clr.bins())
@@ -479,7 +495,7 @@ def eigs_trans(
 
     lo = partition[0]
     hi = partition[-1]
-    A = clr.matrix(balance=balance)[lo:hi, lo:hi]
+    A = clr.matrix(balance=clr_weight_name)[lo:hi, lo:hi]
     bins = bins[lo:hi]
 
     phasing_track = None

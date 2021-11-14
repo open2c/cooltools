@@ -6,6 +6,7 @@ import pandas as pd
 import bioframe
 
 from ..lib.common import assign_regions, is_compatible_viewframe, is_compatible_expected, make_cooler_view
+from ..lib.common import is_cooler_balanced
 from ..lib.numutils import LazyToeplitz
 import warnings
 
@@ -317,6 +318,7 @@ class CoolerSnipper:
         self.pad = True
         self.cooler_opts = {} if cooler_opts is None else cooler_opts
         self.cooler_opts.setdefault("sparse", True)
+
         if "balance" in self.cooler_opts:
             if self.cooler_opts["balance"] is True:
                 self.clr_weight_name = "weight"
@@ -736,6 +738,15 @@ def pileup(
                 )
         except Exception as e:
             raise ValueError("view_df is not a valid viewframe or incompatible") from e
+
+    if clr_weight_name not in [None, False]:
+        # check if cooler is balanced
+        try:
+            _ = is_cooler_balanced(clr, clr_weight_name, raise_errors=True)
+        except Exception as e:
+            raise ValueError(
+                f"provided cooler is not balanced or {clr_weight_name} is missing"
+            ) from e
 
     if min_diag == "auto" and clr_weight_name not in [None, False]:
         min_diag = dict(clr.open()[f"bins/{clr_weight_name}"].attrs).get(

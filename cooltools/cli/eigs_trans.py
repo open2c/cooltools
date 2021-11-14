@@ -35,6 +35,13 @@ from . import cli
     show_default=True,
 )
 @click.option(
+    "--clr-weight-name",
+    help="Use balancing weight with this name. Using raw unbalanced data is not supported for saddles.",
+    type=str,
+    default="weight",
+    show_default=True,
+)
+@click.option(
     "-v", "--verbose", help="Enable verbose output", is_flag=True, default=False
 )
 @click.option(
@@ -57,6 +64,7 @@ def eigs_trans(
     reference_track,
     view,
     n_eigs,
+    clr_weight_name,
     verbose,
     out_prefix,
     bigwig,
@@ -169,6 +177,7 @@ def eigs_trans(
         clr=clr,
         bins=track,
         n_eigs=n_eigs,
+        clr_weight_name=clr_weight_name,
         partition=None,
         phasing_track_col=track_name,
         sort_metric=None,

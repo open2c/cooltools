@@ -5,7 +5,7 @@ from cytoolz import merge
 import numpy as np
 import pandas as pd
 from ..lib import numutils
-from ..lib.common import is_compatible_viewframe, is_compatible_expected
+from ..lib.common import is_compatible_viewframe, is_compatible_expected, is_cooler_balanced
 import warnings
 
 import bioframe
@@ -172,10 +172,17 @@ def _make_trans_obsexp_fetcher(
 
     """
 
+    view_df = view_df.set_index(view_name_col)
+
     if np.isscalar(expected):
-        return lambda reg1, reg2: (
-            clr.matrix(balance=clr_weight_name).fetch(reg1, reg2) / expected
-        )
+
+        def _fetch_trans_oe(reg1, reg2):
+            reg1_coords = tuple(view_df.loc[reg1])
+            reg2_coords = tuple(view_df.loc[reg2])
+            obs_mat = clr.matrix(balance=clr_weight_name).fetch(reg1_coords, reg2_coords)
+            return obs_mat / expected
+
+        return _fetch_trans_oe
 
     elif type(expected) is pd.core.frame.DataFrame:
 
@@ -199,9 +206,11 @@ def _make_trans_obsexp_fetcher(
                 )
 
         def _fetch_trans_oe(reg1, reg2):
-            return clr.matrix(balance=clr_weight_name).fetch(
-                reg1, reg2
-            ) / _fetch_trans_exp(reg1, reg2)
+            reg1_coords = tuple(view_df.loc[reg1])
+            reg2_coords = tuple(view_df.loc[reg2])
+            obs_mat = clr.matrix(balance=clr_weight_name).fetch(reg1_coords, reg2_coords)
+            exp = _fetch_trans_exp(reg1, reg2)
+            return obs_mat / exp
 
         return _fetch_trans_oe
 
@@ -404,6 +413,7 @@ def saddle(
         Viewframe with genomic regions. If none, generate from track chromosomes.
     clr_weight_name : str
         Name of the column in the clr.bins to use as balancing weights.
+        Using raw unbalanced data is not supported for saddles.
     expected_value_col : str
         Name of the column in expected used for normalizing.
     view_name_col : str
@@ -465,6 +475,13 @@ def saddle(
     except Exception as e:
         raise ValueError("provided expected is not compatible") from e
 
+    # check if cooler is balanced
+    try:
+        _ = is_cooler_balanced(clr, clr_weight_name, raise_errors=True)
+    except Exception as e:
+        raise ValueError(
+            f"provided cooler is not balanced or {clr_weight_name} is missing"
+        ) from e
 
     digitized_tracks = {}
     for num, reg in view_df.iterrows():
@@ -665,7 +682,7 @@ def saddleplot(
         raise ValueError("Only linear and log color scaling is supported")
 
     grid["ax_heatmap"] = ax = plt.subplot(gs[4])
-    heatmap_kws_default = dict(cmap="coolwarm", rasterized=True)
+    heatmap_kws_default = dict(cmap=cmap, rasterized=True)
     heatmap_kws = merge(
         heatmap_kws_default, heatmap_kws if heatmap_kws is not None else {}
     )

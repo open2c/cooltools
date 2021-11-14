@@ -37,6 +37,13 @@ import bioframe
     show_default=True,
 )
 @click.option(
+    "--clr-weight-name",
+    help="Use balancing weight with this name. Using raw unbalanced data is not supported for insulation.",
+    type=str,
+    default="weight",
+    show_default=True,
+)
+@click.option(
     "--min-frac-valid-pixels",
     help="The minimal fraction of valid pixels in a sliding diamond. "
     "Used to mask bins during boundary detection.",
@@ -87,6 +94,7 @@ def insulation(
     output,
     view,
     ignore_diags,
+    clr_weight_name,
     min_frac_valid_pixels,
     min_dist_bad_bin,
     threshold,
@@ -128,6 +136,7 @@ def insulation(
         view_df=view_df,
         window_bp=window,
         ignore_diags=ignore_diags,
+        clr_weight_name=clr_weight_name,
         min_frac_valid_pixels=min_frac_valid_pixels,
         min_dist_bad_bin=min_dist_bad_bin,
         threshold=threshold,

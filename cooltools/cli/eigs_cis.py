@@ -35,6 +35,21 @@ from . import cli
     show_default=True,
 )
 @click.option(
+    "--clr-weight-name",
+    help="Use balancing weight with this name. Using raw unbalanced data is not supported for saddles.",
+    type=str,
+    default="weight",
+    show_default=True,
+)
+@click.option(
+    "--ignore-diags",
+    help="The number of diagonals to ignore. By default, equals"
+    " the number of diagonals ignored during IC balancing.",
+    type=int,
+    default=None,
+    show_default=True,
+)
+@click.option(
     "-v", "--verbose", help="Enable verbose output", is_flag=True, default=False
 )
 @click.option(
@@ -57,6 +72,8 @@ def eigs_cis(
     reference_track,
     view,
     n_eigs,
+    clr_weight_name,
+    ignore_diags,
     verbose,
     out_prefix,
     bigwig,
@@ -169,6 +186,8 @@ def eigs_cis(
         bins=track,
         view_df=view_df,
         n_eigs=n_eigs,
+        clr_weight_name=clr_weight_name,
+        ignore_diags=ignore_diags,
         phasing_track_col=track_name,
         clip_percentile=99.9,
         sort_metric=None,

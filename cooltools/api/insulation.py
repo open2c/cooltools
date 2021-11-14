@@ -168,7 +168,8 @@ def calculate_insulation_score(
         If True, append columns with raw scores (sum_counts, sum_balanced, n_pixels)
         to the output table.
     clr_weight_name : str
-        Name of the column in the bin table with weight
+        Name of the column in the bin table with weight.
+        Using raw unbalanced data is not supported for insulation.
     verbose : bool
         If True, report real-time progress.
 
@@ -554,11 +555,11 @@ def insulation(
     window_bp,
     view_df=None,
     ignore_diags=None,
+    clr_weight_name="weight",
     min_frac_valid_pixels=0.66,
     min_dist_bad_bin=0,
     threshold="Li",
     append_raw_scores=False,
-    clr_weight_name="weight",
     chunksize=20000000,
     verbose=False,
 ):
@@ -577,6 +578,8 @@ def insulation(
     ignore_diags : int | None
         The number of diagonals to ignore. If None, equals the number of
         diagonals ignored during IC balancing.
+    clr_weight_name : str
+        Name of the column in the bin table with weight
     min_frac_valid_pixels : float
         The minimal fraction of valid pixels in a diamond to be used in
         boundary picking and prominence calculation.
@@ -590,8 +593,6 @@ def insulation(
     append_raw_scores : bool
         If True, append columns with raw scores (sum_counts, sum_balanced, n_pixels)
         to the output table.
-    clr_weight_name : str
-        Name of the column in the bin table with weight
     verbose : bool
         If True, report real-time progress.
 

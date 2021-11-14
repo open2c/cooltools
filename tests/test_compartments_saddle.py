@@ -166,6 +166,62 @@ def test_trans_saddle_cli(request, tmpdir):
     assert cc > 0.9
 
 
+def test_trans_saddle_cli_viewframe(request, tmpdir):
+    in_cool = op.join(request.fspath.dirname, "data/CN.mm9.1000kb.cool")
+    in_regions = op.join(request.fspath.dirname, "data/CN.mm9.toy_regions.bed")
+    out_eig_prefix = op.join(tmpdir, "test.eigs")
+    out_expected = op.join(tmpdir, "test.trans.expected")
+    out_saddle_prefix = op.join(tmpdir, "test.trans.saddle")
+
+    runner = CliRunner()
+    result = runner.invoke(
+        cli,
+        ["eigs-trans",
+         "-o",
+         out_eig_prefix,
+         "--view",
+         in_regions,
+         in_cool],
+    )
+    assert result.exit_code == 0
+
+    result = runner.invoke(
+        cli,
+        ["expected-trans",
+         "-o",
+         out_expected,
+         "--view",
+         in_regions,
+         in_cool],
+    )
+    assert result.exit_code == 0
+
+    runner = CliRunner()
+    result = runner.invoke(
+        cli,
+        [
+            "saddle",
+            "-o",
+            out_saddle_prefix,
+            "--contact-type",
+            "trans",
+            "--vrange",
+            "-0.5",
+            "0.5",
+            "--n-bins",
+            "30",
+            "--scale",
+            "log",
+            "--view",
+            in_regions,
+            in_cool,
+            f"{out_eig_prefix}.trans.vecs.tsv",
+            out_expected,
+        ],
+    )
+    assert result.exit_code == 0
+
+
 def test_digitize():
     # np.nan and pd.NA get digitized to -1, suffix should be added
     df = pd.DataFrame(
