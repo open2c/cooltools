@@ -5,7 +5,11 @@ from cytoolz import merge
 import numpy as np
 import pandas as pd
 from ..lib import numutils
-from ..lib.common import is_compatible_viewframe, is_compatible_expected, is_cooler_balanced
+from ..lib.common import (
+    is_compatible_viewframe,
+    is_compatible_expected,
+    is_cooler_balanced,
+)
 import warnings
 
 import bioframe
@@ -16,6 +20,7 @@ def _is_track(track):
         raise ValueError("track must have bedFrame-like interval columns")
     if not pd.core.dtypes.common.is_numeric_dtype(track[track.columns[3]]):
         raise ValueError("track signal column must be numeric")
+
 
 def _view_from_track(track_df):
     bioframe.core.checks._verify_columns(track_df, ["chrom", "start", "end"])
@@ -120,7 +125,7 @@ def _make_cis_obsexp_fetcher(
     """
     expected = {
         k: x.values
-        for k, x in expected.groupby(["region1","region2"])[expected_value_col]
+        for k, x in expected.groupby(["region1", "region2"])[expected_value_col]
     }
     view_df = view_df.set_index(view_name_col)
 
@@ -179,7 +184,9 @@ def _make_trans_obsexp_fetcher(
         def _fetch_trans_oe(reg1, reg2):
             reg1_coords = tuple(view_df.loc[reg1])
             reg2_coords = tuple(view_df.loc[reg2])
-            obs_mat = clr.matrix(balance=clr_weight_name).fetch(reg1_coords, reg2_coords)
+            obs_mat = clr.matrix(balance=clr_weight_name).fetch(
+                reg1_coords, reg2_coords
+            )
             return obs_mat / expected
 
         return _fetch_trans_oe
@@ -208,7 +215,9 @@ def _make_trans_obsexp_fetcher(
         def _fetch_trans_oe(reg1, reg2):
             reg1_coords = tuple(view_df.loc[reg1])
             reg2_coords = tuple(view_df.loc[reg2])
-            obs_mat = clr.matrix(balance=clr_weight_name).fetch(reg1_coords, reg2_coords)
+            obs_mat = clr.matrix(balance=clr_weight_name).fetch(
+                reg1_coords, reg2_coords
+            )
             exp = _fetch_trans_exp(reg1, reg2)
             return obs_mat / exp
 
@@ -454,11 +463,11 @@ def saddle(
         # Make sure view_df is a proper viewframe
         try:
             _ = is_compatible_viewframe(
-                    view_df,
-                    clr,
-                    check_sorting=True, # just in case
-                    raise_errors=True,
-                )
+                view_df,
+                clr,
+                check_sorting=True,  # just in case
+                raise_errors=True,
+            )
         except Exception as e:
             raise ValueError("view_df is not a valid viewframe or incompatible") from e
 
@@ -469,19 +478,23 @@ def saddle(
             contact_type,
             view_df,
             verify_cooler=clr,
-            expected_value_cols=["balanced.avg", ],
-            raise_errors=True
+            expected_value_cols=[
+                "balanced.avg",
+            ],
+            raise_errors=True,
         )
     except Exception as e:
         raise ValueError("provided expected is not compatible") from e
 
     # check if cooler is balanced
-    try:
-        _ = is_cooler_balanced(clr, clr_weight_name, raise_errors=True)
-    except Exception as e:
-        raise ValueError(
-            f"provided cooler is not balanced or {clr_weight_name} is missing"
-        ) from e
+
+    if clr_weight_name:
+        try:
+            _ = is_cooler_balanced(clr, clr_weight_name, raise_errors=True)
+        except Exception as e:
+            raise ValueError(
+                f"provided cooler is not balanced or {clr_weight_name} is missing"
+            ) from e
 
     digitized_tracks = {}
     for num, reg in view_df.iterrows():
@@ -636,9 +649,7 @@ def saddleplot(
     track_value_col = track.columns[3]
     track_values = track[track_value_col].values
 
-    digitized_track, binedges = digitize(
-        track, n_bins, vrange=vrange, qrange=qrange
-    )
+    digitized_track, binedges = digitize(track, n_bins, vrange=vrange, qrange=qrange)
     x = digitized_track[digitized_track.columns[3]].values.astype(int).copy()
     x = x[(x > -1) & (x < len(binedges) + 1)]
     hist = np.bincount(x, minlength=len(binedges) + 1)

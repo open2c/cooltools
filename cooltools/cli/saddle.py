@@ -90,7 +90,7 @@ from . import cli
 )
 @click.option(
     "--clr-weight-name",
-    help="Use balancing weight with this name. Using raw unbalanced data is not supported for saddles.",
+    help="Use balancing weight with this name.",
     type=str,
     default="weight",
     show_default=True,
@@ -205,6 +205,7 @@ def saddle(
     """
     #### Read inputs: ####
     clr = cooler.Cooler(cool_path)
+
     expected_path, expected_value_col = expected_path
     track_path, track_name = track_path
 
@@ -246,7 +247,9 @@ def saddle(
     )
 
     #### Read expected: ####
-    expected_summary_cols = [expected_value_col, ]
+    expected_summary_cols = [
+        expected_value_col,
+    ]
     expected = common.read_expected(
         expected_path,
         contact_type=contact_type,
@@ -282,8 +285,10 @@ def saddle(
         max_diag = int(np.floor(max_dist / clr.binsize))
     else:
         max_diag = -1
-
-    track = api.saddle.mask_bad_bins((track, track_name), (clr.bins()[:], clr_weight_name))
+    if clr_weight_name:
+        track = api.saddle.mask_bad_bins(
+            (track, track_name), (clr.bins()[:], clr_weight_name)
+        )
     if vrange[0] is None:
         vrange = None
     if qrange[0] is None:
