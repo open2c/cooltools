@@ -101,3 +101,7 @@ tmp/
 # Downloaded data
 datasets/
 !datasets/external_test_files.tsv
+tmp.npz
+.gitignore
+tmp.hdf5
+cooltools/sandbox/test.mcool
