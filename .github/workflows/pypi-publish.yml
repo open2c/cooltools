@@ -5,7 +5,7 @@ name: Build and upload Python Package to PyPI
 
 on:
   release:
-    types: [created]
+    types: [released]
 
 jobs:
   deploy:
