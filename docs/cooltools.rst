@@ -8,74 +8,74 @@ subpackages
 
    cooltools.lib
 
-cooltools.coverage module
--------------------------
+cooltools.api.coverage module
+-----------------------------
 
-.. automodule:: cooltools.coverage
+.. automodule:: cooltools.api.coverage
    :members:
    :undoc-members:
    :show-inheritance:
 
-cooltools.directionality module
+cooltools.api.directionality module
+-----------------------------------
+
+.. automodule:: cooltools.api.directionality
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+cooltools.api.dotfinder module
+------------------------------
+
+.. automodule:: cooltools.api.dotfinder
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+cooltools.api.eigdecomp module
+------------------------------
+
+.. automodule:: cooltools.api.eigdecomp
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+cooltools.api.expected module
+-----------------------------
+
+.. automodule:: cooltools.api.expected
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+cooltools.api.insulation module
 -------------------------------
 
-.. automodule:: cooltools.directionality
+.. automodule:: cooltools.api.insulation
    :members:
    :undoc-members:
    :show-inheritance:
 
-cooltools.dotfinder module
---------------------------
-
-.. automodule:: cooltools.dotfinder
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
-cooltools.eigdecomp module
---------------------------
-
-.. automodule:: cooltools.eigdecomp
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
-cooltools.expected module
--------------------------
-
-.. automodule:: cooltools.expected
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
-cooltools.insulation module
+cooltools.api.saddle module
 ---------------------------
 
-.. automodule:: cooltools.insulation
+.. automodule:: cooltools.api.saddle
    :members:
    :undoc-members:
    :show-inheritance:
 
-cooltools.saddle module
------------------------
+cooltools.api.sample module
+---------------------------
 
-.. automodule:: cooltools.saddle
+.. automodule:: cooltools.api.sample
    :members:
    :undoc-members:
    :show-inheritance:
 
-cooltools.sample module
------------------------
+cooltools.api.snipping module
+-----------------------------
 
-.. automodule:: cooltools.sample
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
-cooltools.snipping module
--------------------------
-
-.. automodule:: cooltools.snipping
+.. automodule:: cooltools.api.snipping
    :members:
    :undoc-members:
    :show-inheritance:
