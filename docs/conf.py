@@ -43,6 +43,7 @@ MOCK_MODULES = [
     'scipy.stats',
     'sklearn',
     'sklearn.cluster',
+    'skimage'
 ]
 for mod_name in MOCK_MODULES:
     sys.modules[mod_name] = Mock()
