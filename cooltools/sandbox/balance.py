@@ -64,6 +64,7 @@ def bnewt(matvec, mask, tol=1e-6, x0=None, delta=0.1, Delta=3, fl=0):
 
     rk = 1 - v
     rho_km1 = np.dot(rk, rk)
+    rho_km2 = None # will be defined later
     rout = rho_km1
     rold = rout
 

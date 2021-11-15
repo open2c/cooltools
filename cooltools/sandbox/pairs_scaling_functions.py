@@ -5,6 +5,8 @@
 #
 ####################################
 
+import numpy as np
+from ..lib import numutils
 
 def _contact_areas(distbins, scaffold_length):
     distbins = distbins.astype(float)
