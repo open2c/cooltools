@@ -1,5 +1,6 @@
 # cooltools
 
+[![Pytest](https://github.com/open2c/cooltools/actions/workflows/pytest.yml/badge.svg)](https://github.com/open2c/cooltools/actions/workflows/pytest.yml)
 [![Documentation Status](https://readthedocs.org/projects/cooltools/badge/?version=latest)](https://cooltools.readthedocs.io/en/latest/?badge=latest)
 [![DOI](https://zenodo.org/badge/82413481.svg)](https://zenodo.org/badge/latestdoi/82413481)
 
