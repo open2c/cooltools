@@ -5,7 +5,6 @@ include requirements.txt
 include requirements-dev.txt
 include environment.yml
 
-include cooltools/io/fastsavetxt.pyx
 include cooltools/lib/_numutils.pyx
 graft tests
 graft docs
