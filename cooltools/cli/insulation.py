@@ -3,7 +3,8 @@ import cooler
 
 from . import cli
 from .. import api
-from ..lib import common
+from ..lib.common import make_cooler_view
+from ..lib.io import read_viewframe
 import bioframe
 
 
@@ -39,7 +40,7 @@ import bioframe
 @click.option(
     "--clr-weight-name",
     help="Use balancing weight with this name. "
-         "Provide empty argument to calculate insulation on raw data (no masking bad pixels).",
+    "Provide empty argument to calculate insulation on raw data (no masking bad pixels).",
     type=str,
     default="weight",
     show_default=True,
@@ -120,13 +121,13 @@ def insulation(
     clr = cooler.Cooler(in_path)
 
     # Create view:
-    cooler_view_df = common.make_cooler_view(clr)
+    cooler_view_df = make_cooler_view(clr)
     if view is None:
         # full chromosomes:
         view_df = cooler_view_df
     else:
         # read view_df dataframe, and verify against cooler
-        view_df = common.read_viewframe(view, clr, check_sorting=True)
+        view_df = read_viewframe(view, clr, check_sorting=True)
 
     # Read list with windows:
     if window_pixels:

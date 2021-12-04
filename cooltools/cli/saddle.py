@@ -12,7 +12,10 @@ from .. import api
 
 import click
 from .util import validate_csv
-from ..lib import common
+
+from ..lib.common import make_cooler_view, mask_cooler_bad_bins
+from ..lib.io import read_viewframe, read_expected
+
 from . import util
 from . import cli
 
@@ -229,14 +232,14 @@ def saddle(
 
     #### Generate viewframes ####
     # 1:cooler_view_df. Generate viewframe from clr.chromsizes:
-    cooler_view_df = common.make_cooler_view(clr)
+    cooler_view_df = make_cooler_view(clr)
 
     # 2:view_df. Define global view for calculating calling dots
     # use input "view" BED file or all chromosomes :
     if view is None:
         view_df = cooler_view_df
     else:
-        view_df = common.read_viewframe(view, clr, check_sorting=True)
+        view_df = read_viewframe(view, clr, check_sorting=True)
 
     # 3:track_view_df. Generate viewframe from track table:
     track_view_df = bioframe.make_viewframe(
@@ -250,7 +253,7 @@ def saddle(
     expected_summary_cols = [
         expected_value_col,
     ]
-    expected = common.read_expected(
+    expected = read_expected(
         expected_path,
         contact_type=contact_type,
         expected_value_cols=expected_summary_cols,
@@ -286,7 +289,7 @@ def saddle(
     else:
         max_diag = -1
     if clr_weight_name:
-        track = api.saddle.mask_bad_bins(
+        track = mask_cooler_bad_bins(
             (track, track_name), (clr.bins()[:], clr_weight_name)
         )
     if vrange[0] is None:

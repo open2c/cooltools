@@ -5,8 +5,13 @@ import numpy as np
 import pandas as pd
 import bioframe
 
-from ..lib.common import assign_regions, is_compatible_viewframe, is_compatible_expected, make_cooler_view
-from ..lib.common import is_cooler_balanced
+from ..lib.checks import (
+    is_compatible_viewframe,
+    is_cooler_balanced,
+    is_compatible_expected,
+)
+from ..lib.common import assign_regions, make_cooler_view
+
 from ..lib.numutils import LazyToeplitz
 import warnings
 
@@ -731,11 +736,11 @@ def pileup(
     else:
         try:
             _ = is_compatible_viewframe(
-                    view_df,
-                    clr,
-                    check_sorting=True,
-                    raise_errors=True,
-                )
+                view_df,
+                clr,
+                check_sorting=True,
+                raise_errors=True,
+            )
         except Exception as e:
             raise ValueError("view_df is not a valid viewframe or incompatible") from e
 

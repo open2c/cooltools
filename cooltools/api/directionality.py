@@ -4,7 +4,9 @@ import pandas as pd
 from ..lib import peaks, numutils
 
 
-def _dirscore(pixels, bins, window=10, ignore_diags=2, balanced=True, signed_chi2=False):
+def _dirscore(
+    pixels, bins, window=10, ignore_diags=2, balanced=True, signed_chi2=False
+):
     lo_bin_id = bins.index.min()
     hi_bin_id = bins.index.max() + 1
     N = hi_bin_id - lo_bin_id

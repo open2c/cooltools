@@ -5,31 +5,18 @@ from cytoolz import merge
 import numpy as np
 import pandas as pd
 from ..lib import numutils
-from ..lib.common import (
+from ..lib.checks import (
     is_compatible_viewframe,
     is_compatible_expected,
     is_cooler_balanced,
+    is_track,
 )
+from ..lib.common import (
+    view_from_track,
+)
+
 import warnings
-
 import bioframe
-
-
-def _is_track(track):
-    if not bioframe.is_bedframe(track, cols=track.columns[:3]):
-        raise ValueError("track must have bedFrame-like interval columns")
-    if not pd.core.dtypes.common.is_numeric_dtype(track[track.columns[3]]):
-        raise ValueError("track signal column must be numeric")
-
-
-def _view_from_track(track_df):
-    bioframe.core.checks._verify_columns(track_df, ["chrom", "start", "end"])
-    return bioframe.make_viewframe(
-        [
-            (chrom, df.start.min(), df.end.max())
-            for chrom, df in track_df.groupby("chrom")
-        ]
-    )
 
 
 def _ecdf(x, v, side="left"):
@@ -54,39 +41,6 @@ def _quantile(x, q, **kwargs):
     x = np.asarray(x)
     p = np.asarray(q) * 100
     return np.nanpercentile(x, p, **kwargs)
-
-
-def mask_bad_bins(track, bintable):
-    """
-    Mask (set to NaN) values in track where bin is masked in bintable.
-
-    Currently used in `cli.get_saddle()`. TODO: determine if this should be moved to cooltools.core.
-
-    Parameters
-    ----------
-    track : tuple of (DataFrame, str)
-        bedGraph-like dataframe along with the name of the value column.
-    bintable : tuple of (DataFrame, str)
-        bedGraph-like dataframe along with the name of the weight column.
-
-    Returns
-    -------
-    track : DataFrame
-        New bedGraph-like dataframe with bad bins masked in the value column
-    """
-    # TODO: update to new track format
-
-    track, name = track
-
-    bintable, clr_weight_name = bintable
-
-    track = pd.merge(
-        track[["chrom", "start", "end", name]], bintable, on=["chrom", "start", "end"]
-    )
-    track.loc[~np.isfinite(track[clr_weight_name]), name] = np.nan
-    track = track[["chrom", "start", "end", name]]
-
-    return track
 
 
 def _make_cis_obsexp_fetcher(
@@ -352,7 +306,7 @@ def digitize(
 
     if type(n_bins) is not int:
         raise ValueError("n_bins must be provided as an int")
-    _is_track(track)
+    is_track(track)
 
     digitized = track.copy()
     track_value_col = track.columns[3]
@@ -458,7 +412,7 @@ def saddle(
     n_bins = len(cats[cats > -1]) - 2
 
     if view_df is None:
-        view_df = _view_from_track(digitized_track)
+        view_df = view_from_track(digitized_track)
     else:
         # Make sure view_df is a proper viewframe
         try:

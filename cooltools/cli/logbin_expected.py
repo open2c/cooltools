@@ -2,7 +2,7 @@ import pandas as pd
 import numpy as np
 from functools import partial
 from ..api import expected
-from ..lib.common import read_expected
+from ..lib.io import read_expected
 
 import click
 from .util import validate_csv

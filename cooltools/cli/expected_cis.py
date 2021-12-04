@@ -4,7 +4,8 @@ from itertools import combinations
 import cooler
 import bioframe
 from .. import api
-from .. import lib
+from ..lib.common import make_cooler_view
+from ..lib.io import read_viewframe
 
 import click
 from . import cli
@@ -110,10 +111,10 @@ def expected_cis(
 
     if view is None:
         # full chromosome case
-        view_df = lib.common.make_cooler_view(clr)
+        view_df = make_cooler_view(clr)
     else:
         # Read view_df dataframe, and verify against cooler
-        view_df = lib.common.read_viewframe(view, clr, check_sorting=True)
+        view_df = read_viewframe(view, clr, check_sorting=True)
 
     result = api.expected.expected_cis(
         clr,
