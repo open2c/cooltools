@@ -15,7 +15,6 @@ import bioframe
 
 from . import schemas
 from .checks import (
-is_expected,
 is_compatible_expected,
 is_compatible_viewframe    )
 
@@ -295,9 +294,12 @@ def read_expected(
 
     try:
         expected_df = pd.read_table(fname)
-        _ = is_expected(expected_df,
+        _ = is_compatible_expected(
+                expected_df,
                 contact_type,
-                expected_value_cols,
+                verify_view=None,
+                verify_cooler=None,
+                expected_value_cols=expected_value_cols,
                 raise_errors=True
                 )
     except ValueError as e:

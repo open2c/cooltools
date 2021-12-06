@@ -27,7 +27,7 @@ def _is_sorted_ascending(iterable):
     # no pairs out of order returns True, i.e. iterator is sorted
     return not any(_pairs_out_of_order)
 
-def is_expected(
+def _is_expected(
         expected_df,
         contact_type="cis",
         expected_value_cols=["count.avg","balanced.avg"],
@@ -107,9 +107,10 @@ def is_expected(
             )
         # does not look like expected at all :
         else:
+            missing_columns = set(expected_columns) - set(cis_expected.columns)
             raise ValueError(
                 "expected_df does not match the expected schema:\n"
-                f"required columns {expected_columns} are missing"
+                f"columns {missing_columns} are missing"
             )
 
         # make sure there is no missing data in grouping columns
@@ -157,10 +158,16 @@ def is_expected(
         # if no exceptions were raised, it looks like expected_df
         return True
 
+def _is_expected_cataloged(expected_df, verify_view):
+    _all_expected_regions = expected_df[["region1", "region2"]].values.flatten()
+    if not np.all(verify_view["name"].isin(_all_expected_regions)):
+        raise ValueError(
+            "View regions are not in the expected table. Provide expected table for the same regions"
+        )
 
 def _is_compatible_cis_expected(
         expected_df,
-        verify_view,
+        verify_view=None,
         verify_cooler=None,
         expected_value_cols=["count.avg","balanced.avg"],
         raise_errors=False,
@@ -195,7 +202,7 @@ def _is_compatible_cis_expected(
     try:
         # make sure it looks like cis-expected in the first place
         try:
-            _ = is_expected(
+            _ = _is_expected(
                 expected_df,
                 "cis",
                 expected_value_cols,
@@ -205,15 +212,8 @@ def _is_compatible_cis_expected(
             raise ValueError("expected_df does not look like cis-expected") from e
 
         # Check that view regions are named as in expected table.
-        if not bioframe.is_cataloged(
-            expected_df,
-            verify_view,
-            df_view_col="region1",
-            view_name_col="name",
-        ):
-            raise ValueError(
-                "View regions are not in the expected table. Provide expected table for the same regions"
-            )
+        if verify_view is not None:
+            _is_expected_cataloged(expected_df, verify_view)
 
         # check if the number of diagonals is correct:
         if verify_cooler is not None:
@@ -251,7 +251,7 @@ def _is_compatible_cis_expected(
 
 def _is_compatible_trans_expected(
         expected_df,
-        verify_view,
+        verify_view=None,
         verify_cooler=None,
         expected_value_cols=["count.avg","balanced.avg"],
         raise_errors=False,
@@ -286,7 +286,7 @@ def _is_compatible_trans_expected(
     try:
         # make sure it looks like trans-expected in the first place
         try:
-            _ = is_expected(
+            _ = _is_expected(
                 expected_df,
                 "trans",
                 expected_value_cols,
@@ -297,13 +297,9 @@ def _is_compatible_trans_expected(
 
         # Check that view regions are named as in expected table.
         # Check region names:
-        _all_expected_regions = expected_df[["region1", "region2"]].values.flatten()
-        if not np.all(verify_view["name"].isin(_all_expected_regions)):
-            raise ValueError(
-                "View regions are not in the expected table. Provide expected table for the same regions"
-            )
+        if verify_cooler is not None:
+            _is_expected_cataloged(expected_df, verify_view)
 
-        # check if the number of diagonals is correct:
         if verify_cooler is not None:
             # check number of bins per region in cooler and expected table
             # compute # of bins by comparing matching indexes
@@ -336,7 +332,7 @@ def _is_compatible_trans_expected(
 def is_compatible_expected(
         expected_df,
         contact_type,
-        verify_view,
+        verify_view=None,
         verify_cooler=None,
         expected_value_cols=["count.avg","balanced.avg"],
         raise_errors=False,
@@ -370,7 +366,7 @@ def is_compatible_expected(
     if contact_type == "cis":
         return _is_compatible_cis_expected(
             expected_df,
-            verify_view,
+            verify_view=verify_view,
             verify_cooler=verify_cooler,
             expected_value_cols=expected_value_cols,
             raise_errors=raise_errors
@@ -378,7 +374,7 @@ def is_compatible_expected(
     elif contact_type == "trans":
         return _is_compatible_trans_expected(
             expected_df,
-            verify_view,
+            verify_view=verify_view,
             verify_cooler=verify_cooler,
             expected_value_cols=expected_value_cols,
             raise_errors=raise_errors
