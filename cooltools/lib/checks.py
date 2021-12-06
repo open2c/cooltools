@@ -107,7 +107,7 @@ def _is_expected(
             )
         # does not look like expected at all :
         else:
-            missing_columns = set(expected_columns) - set(cis_expected.columns)
+            missing_columns = set(expected_columns) - set(expected_df.columns)
             raise ValueError(
                 "expected_df does not match the expected schema:\n"
                 f"columns {missing_columns} are missing"
@@ -329,7 +329,7 @@ def _is_compatible_trans_expected(
         return True
 
 
-def is_compatible_expected(
+def is_valid_expected(
         expected_df,
         contact_type,
         verify_view=None,

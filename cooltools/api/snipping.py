@@ -8,7 +8,7 @@ import bioframe
 from ..lib.checks import (
     is_compatible_viewframe,
     is_cooler_balanced,
-    is_compatible_expected,
+    is_valid_expected,
 )
 from ..lib.common import assign_regions, make_cooler_view
 
@@ -447,7 +447,7 @@ class ObsExpSnipper:
                 ) from e
         # make sure expected is compatible
         try:
-            _ = is_compatible_expected(
+            _ = is_valid_expected(
                 expected,
                 "cis",
                 view_df,
@@ -593,7 +593,7 @@ class ExpectedSnipper:
                 ) from e
         # make sure expected is compatible
         try:
-            _ = is_compatible_expected(
+            _ = is_valid_expected(
                 expected,
                 "cis",
                 view_df,

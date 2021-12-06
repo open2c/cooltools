@@ -15,7 +15,7 @@ import bioframe
 
 from . import schemas
 from .checks import (
-is_compatible_expected,
+is_valid_expected,
 is_compatible_viewframe    )
 
 URL_DATA = "https://raw.githubusercontent.com/open2c/cooltools/master/datasets/external_test_files.tsv"
@@ -294,7 +294,7 @@ def read_expected_from_file(
 
     try:
         expected_df = pd.read_table(fname)
-        _ = is_compatible_expected(
+        _ = is_valid_expected(
                 expected_df,
                 contact_type,
                 verify_view=None,
@@ -312,7 +312,7 @@ def read_expected_from_file(
     # validations against cooler and view_df
     if verify_view is not None:
         try:
-            _ = is_compatible_expected(
+            _ = is_valid_expected(
                 expected_df,
                 contact_type,
                 verify_view,
