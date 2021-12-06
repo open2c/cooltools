@@ -5,7 +5,7 @@ import cooler
 import bioframe
 from .. import api
 from ..lib.common import make_cooler_view
-from ..lib.io import read_viewframe
+from ..lib.io import read_viewframe_from_file
 
 
 import click
@@ -84,7 +84,7 @@ def expected_trans(
         view_df = make_cooler_view(clr)
     else:
         # Read view_df dataframe, and verify against cooler
-        view_df = read_viewframe(view, clr, check_sorting=True)
+        view_df = read_viewframe_from_file(view, clr, check_sorting=True)
 
     result = api.expected.expected_trans(
         clr,

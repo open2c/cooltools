@@ -253,7 +253,7 @@ def print_available_datasets(url=URL_DATA):
 """.format(**data))
 
 
-def read_expected(
+def read_expected_from_file(
     fname,
     contact_type="cis",
     expected_value_cols=["count.avg","balanced.avg"],
@@ -327,7 +327,7 @@ def read_expected(
 
     return expected_df
 
-def read_viewframe(
+def read_viewframe_from_file(
     view_fname,
     verify_cooler=None,
     check_sorting=False,

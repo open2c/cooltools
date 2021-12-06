@@ -6,7 +6,7 @@ import bioframe
 from .. import api
 
 from ..lib.common import make_cooler_view
-from ..lib.io import read_viewframe, read_expected
+from ..lib.io import read_viewframe_from_file, read_expected_from_file
 
 import click
 from functools import partial
@@ -182,7 +182,7 @@ def pileup(
         view_df = cooler_view_df
     else:
         # Read view_df dataframe, and verify against cooler
-        view_df = read_viewframe(view, clr, check_sorting=True)
+        view_df = read_viewframe_from_file(view, clr, check_sorting=True)
 
     # make sure feature are compatible with the view_df
     if not bioframe.is_contained(features_df, view_df):
@@ -196,7 +196,7 @@ def pileup(
         expected_value_cols = [
             expected_value_col,
         ]
-        expected = read_expected(
+        expected = read_expected_from_file(
             expected_path,
             contact_type="cis",
             expected_value_cols=expected_value_cols,

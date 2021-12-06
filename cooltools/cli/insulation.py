@@ -4,7 +4,7 @@ import cooler
 from . import cli
 from .. import api
 from ..lib.common import make_cooler_view
-from ..lib.io import read_viewframe
+from ..lib.io import read_viewframe_from_file
 import bioframe
 
 
@@ -127,7 +127,7 @@ def insulation(
         view_df = cooler_view_df
     else:
         # read view_df dataframe, and verify against cooler
-        view_df = read_viewframe(view, clr, check_sorting=True)
+        view_df = read_viewframe_from_file(view, clr, check_sorting=True)
 
     # Read list with windows:
     if window_pixels:

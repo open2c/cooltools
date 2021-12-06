@@ -4,7 +4,7 @@ import cooler
 import bioframe
 from ..api import eigdecomp
 from ..lib.common import make_cooler_view
-from ..lib.io import read_viewframe
+from ..lib.io import read_viewframe_from_file
 
 import click
 from .util import TabularFilePath, sniff_for_header
@@ -169,7 +169,7 @@ def eigs_trans(
     if view is None:
         view_df = cooler_view_df
     else:
-        view_df = read_viewframe(view, clr, check_sorting=True)
+        view_df = read_viewframe_from_file(view, clr, check_sorting=True)
 
     # TODO: Add check that view_df has the same bins as track
 

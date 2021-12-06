@@ -14,7 +14,7 @@ import click
 from .util import validate_csv
 
 from ..lib.common import make_cooler_view, mask_cooler_bad_bins
-from ..lib.io import read_viewframe, read_expected
+from ..lib.io import read_viewframe_from_file, read_expected_from_file
 
 from . import util
 from . import cli
@@ -239,7 +239,7 @@ def saddle(
     if view is None:
         view_df = cooler_view_df
     else:
-        view_df = read_viewframe(view, clr, check_sorting=True)
+        view_df = read_viewframe_from_file(view, clr, check_sorting=True)
 
     # 3:track_view_df. Generate viewframe from track table:
     track_view_df = bioframe.make_viewframe(
@@ -253,7 +253,7 @@ def saddle(
     expected_summary_cols = [
         expected_value_col,
     ]
-    expected = read_expected(
+    expected = read_expected_from_file(
         expected_path,
         contact_type=contact_type,
         expected_value_cols=expected_summary_cols,
