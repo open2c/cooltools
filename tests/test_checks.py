@@ -1,12 +1,6 @@
 import os.path as op
-import numpy as np
 import pandas as pd
-from numpy import testing
-
-import bioframe
-import cooler
 import cooltools
-
 import pytest
 
 
@@ -16,7 +10,7 @@ def test_is_valid_expected(request, tmpdir):
     expected_df = pd.read_csv(expected_file, sep="\t")
 
     # false because need to specify that this expected only has balanced.avg not count.avg
-    assert cooltools.lib.checks.is_valid_expected(expected_df, "cis") == False
+    assert cooltools.lib.checks.is_valid_expected(expected_df, "cis") is False
 
     # true, because passing expected_value_cols that match what is in the expected table
     assert cooltools.lib.checks.is_valid_expected(
