@@ -35,6 +35,48 @@ def test_is_valid_expected(request, tmpdir):
             raise_errors=True,
         )
 
+    # raises a value error because non-unique region pairs
+    with pytest.raises(ValueError):
+        cooltools.lib.is_valid_expected(
+            expected_df_incompat,
+            "trans",
+            verify_view=None,
+            expected_value_cols=["balanced.avg"],
+            raise_errors=True,
+        )
+
+    # raises a value error because of the contact type
+    with pytest.raises(ValueError):
+        cooltools.lib.is_valid_expected(
+            expected_df,
+            "other",
+            verify_view=None,
+            expected_value_cols=["balanced.avg"],
+            raise_errors=True,
+        )
+
+    # raises a value error because not a dataframe
+    with pytest.raises(ValueError):
+        cooltools.lib.is_valid_expected(
+            expected_df.values,
+            "other",
+            verify_view=None,
+            expected_value_cols=["balanced.avg"],
+            raise_errors=True,
+        )
+
+    # raise error w/ old column names
+    expected_df_incompat = expected_df.copy()
+    expected_df_incompat.rename(columns={"region1": "region"}, inplace=True)
+    with pytest.raises(ValueError):
+        cooltools.lib.is_valid_expected(
+            expected_df_incompat,
+            "cis",
+            verify_view=None,
+            expected_value_cols=["balanced.avg"],
+            raise_errors=True,
+        )
+
     # alternate method of loading:
     expected_df = cooltools.lib.read_expected_from_file(
         expected_file, expected_value_cols=["balanced.avg"]
@@ -62,3 +104,14 @@ def test_is_valid_expected(request, tmpdir):
         )
 
     ### TODO: test with cooler as input
+
+
+# def test_is_compatible_viewframe(request, tmpdir):
+
+# def test_is_cooler_balanced(request, tmpdir):
+# good if its good!
+# value error for missing weight
+# key error for 4DN divisive
+
+
+# def test_is_track():
