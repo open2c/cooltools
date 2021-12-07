@@ -671,7 +671,7 @@ def pileup(
         Cooler with Hi-C data
     features_df : pd.DataFrame
         Dataframe in bed or bedpe format: has to have 'chrom', 'start', 'end'
-        or 'chrom1', 'start1', 'end1', 'chrom2', 'start2', 'end1' columns.
+        or 'chrom1', 'start1', 'end1', 'chrom2', 'start2', 'end2' columns.
     view_df : pd.DataFrame
         Dataframe with the genomic view for this operation (has to match the
         expected_df, if provided)
