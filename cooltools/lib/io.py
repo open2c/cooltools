@@ -14,9 +14,7 @@ import hashlib
 import bioframe
 
 from . import schemas
-from .checks import (
-is_valid_expected,
-is_compatible_viewframe    )
+from .checks import is_valid_expected, is_compatible_viewframe
 
 URL_DATA = "https://raw.githubusercontent.com/open2c/cooltools/master/datasets/external_test_files.tsv"
 
@@ -28,22 +26,24 @@ def download_file(url, local_filename=None):
     """
 
     if local_filename is None:
-        local_filename = url.split('/')[-1]
-    print('downloading:', url, 'as', local_filename)
+        local_filename = url.split("/")[-1]
+    print("downloading:", url, "as", local_filename)
     with requests.get(url, stream=True) as r:
         r.raise_for_status()
-        with open(local_filename, 'wb') as f:
+        with open(local_filename, "wb") as f:
             for chunk in r.iter_content(chunk_size=8192):
                 f.write(chunk)
     return local_filename
 
 
-def download_data(name="all",
-                  cache=True,
-                  data_dir=None,
-                  ignore_checksum=False,
-                  checksum_chunk=8192,
-                  _url_info=URL_DATA):
+def download_data(
+    name="all",
+    cache=True,
+    data_dir=None,
+    ignore_checksum=False,
+    checksum_chunk=8192,
+    _url_info=URL_DATA,
+):
     """
     Download the specified dataset or all available datasets ("all" option).
     Check available datasets with cooltools.print_available_datasets()
@@ -76,7 +76,7 @@ def download_data(name="all",
     """
 
     available_datasets = _get_datasets_info(_url_info)
-    available_keys = list(map(lambda x: x['key'], available_datasets))
+    available_keys = list(map(lambda x: x["key"], available_datasets))
 
     if name in available_keys:
         keys = [name]
@@ -87,7 +87,10 @@ def download_data(name="all",
             """Dataset {key} is not available. 
             Available datasets: {datasets}
             Use print_available_datasets() to see the details. 
-            """.format(key=name, datasets=','.join(available_keys)))
+            """.format(
+                key=name, datasets=",".join(available_keys)
+            )
+        )
 
     data_dir = get_data_dir(data_dir)
 
@@ -95,7 +98,12 @@ def download_data(name="all",
     downloaded = []
     for data in available_datasets:
 
-        key, url, local_filename, original_checksum = data["key"], data["link"], data["filename"], data["checksum"]
+        key, url, local_filename, original_checksum = (
+            data["key"],
+            data["link"],
+            data["filename"],
+            data["checksum"],
+        )
 
         if key not in keys:
             continue
@@ -105,26 +113,32 @@ def download_data(name="all",
         if cache and os.path.exists(file_path):
             if not ignore_checksum:
                 checksum = get_md5sum(file_path, chunksize=checksum_chunk)
-                assert checksum==original_checksum, \
-f"""The downloaded {key} file in {local_filename} differs from original test: {url}
+                assert (
+                    checksum == original_checksum
+                ), f"""The downloaded {key} file in {local_filename} differs from original test: {url}
 Re-reun with cache=False """
             downloaded += [file_path]
             continue
 
         elif cache:
-            print("Test dataset {} (file {}) is not in the cache directory {}".format(key, local_filename, data_dir))
+            print(
+                "Test dataset {} (file {}) is not in the cache directory {}".format(
+                    key, local_filename, data_dir
+                )
+            )
 
         file_path = download_file(url, file_path)
         if not ignore_checksum:
             checksum = get_md5sum(file_path, chunksize=checksum_chunk)
-            assert checksum == original_checksum, \
-                f"Download of {key} to {local_filename} failed. File differs from original test: {url}"
+            assert (
+                checksum == original_checksum
+            ), f"Download of {key} to {local_filename} failed. File differs from original test: {url}"
 
         downloaded += [file_path]
 
     # No files, return empty string
     if len(downloaded) == 0:
-        return ''
+        return ""
     # A single file downloaded, return its name
     elif len(downloaded) == 1:
         return downloaded[0]
@@ -189,13 +203,15 @@ def get_data_dir(data_dir=None):
     """
 
     if data_dir is None:
-        data_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'datasets/'))
+        data_dir = os.path.abspath(
+            os.path.join(os.path.dirname(__file__), "..", "..", "datasets/")
+        )
 
     data_dir = os.path.expanduser(data_dir)
     if not os.path.exists(data_dir):
         os.makedirs(data_dir)
 
-    return os.path.join(data_dir, '')
+    return os.path.join(data_dir, "")
 
 
 def _get_datasets_info(url=URL_DATA):
@@ -216,7 +232,7 @@ def _get_datasets_info(url=URL_DATA):
         datasets_metadata = requests.get(url, stream=True).iter_lines()
     # Info file is local
     else:
-        datasets_metadata = open(url, 'rb').readlines()
+        datasets_metadata = open(url, "rb").readlines()
 
     header = []
     datasets_parsed = []
@@ -226,11 +242,13 @@ def _get_datasets_info(url=URL_DATA):
             header = line_metadata.decode("utf-8")[2:].strip().split("\t")
         # Read the rest of the file:
         else:
-            if len(header)==0:
-                raise Exception(f"Data info file {url} is corrupted, no header denoted by '#'.")
+            if len(header) == 0:
+                raise Exception(
+                    f"Data info file {url} is corrupted, no header denoted by '#'."
+                )
             data_line = line_metadata.decode("utf-8").strip().split("\t")
             data = dict(zip(header, data_line))
-            data.update({'index': i})
+            data.update({"index": i})
             datasets_parsed.append(dict(data))
 
     return datasets_parsed
@@ -246,20 +264,25 @@ def print_available_datasets(url=URL_DATA):
 
     datasets_parsed = _get_datasets_info(url)
     for data in datasets_parsed:
-        print("""{index}) {key} : {comment} 
+        print(
+            """{index}) {key} : {comment} 
 \tDownloaded from {link} 
 \tStored as {filename} 
 \tOriginal md5sum: {checksum}
-""".format(**data))
+""".format(
+                **data
+            )
+        )
 
 
 def read_expected_from_file(
     fname,
     contact_type="cis",
-    expected_value_cols=["count.avg","balanced.avg"],
+    expected_value_cols=["count.avg", "balanced.avg"],
     verify_view=None,
     verify_cooler=None,
-    ):
+    raise_errors=True,
+):
     """
     Read an expected from a file.
     Expected must conform v1.0 format
@@ -289,49 +312,34 @@ def read_expected_from_file(
 
     # basic input check
     if contact_type not in ["cis", "trans"]:
-        raise ValueError(f"contact_type can be only cis or trans, {contact_type} provided")
-
+        raise ValueError(
+            f"contact_type can be only cis or trans, {contact_type} provided"
+        )
 
     try:
         expected_df = pd.read_table(fname)
         _ = is_valid_expected(
-                expected_df,
-                contact_type,
-                verify_view=None,
-                verify_cooler=None,
-                expected_value_cols=expected_value_cols,
-                raise_errors=True
-                )
+            expected_df,
+            contact_type,
+            verify_view=verify_view,
+            verify_cooler=verify_cooler,
+            expected_value_cols=expected_value_cols,
+            raise_errors=raise_errors,
+        )
     except ValueError as e:
         raise ValueError(
-            "Input expected does not match the schema\n"
-            "It has to be a tab-separated file with a header"
+            "Input expected file does not match the schema\n"
+            "Expected must be tab-separated file with a header"
         ) from e
 
-
-    # validations against cooler and view_df
-    if verify_view is not None:
-        try:
-            _ = is_valid_expected(
-                expected_df,
-                contact_type,
-                verify_view,
-                verify_cooler,
-                expected_value_cols,
-                raise_errors=True,
-            )
-        except Exception as e:
-            raise ValueError(
-                "provided expected is not compatible with the specified view and/or cooler"
-            ) from e
-
     return expected_df
+
 
 def read_viewframe_from_file(
     view_fname,
     verify_cooler=None,
     check_sorting=False,
-    ):
+):
     """
     Read a BED file with regions that conforms
     a definition of a viewframe (non-overlaping, unique names, etc).
@@ -360,11 +368,13 @@ def read_viewframe_from_file(
         try:
             view_df = bioframe.read_table(view_fname, schema="bed3", index_col=False)
         except Exception as err_bed3:
-            raise ValueError(f"{view_fname} is not a BED file with 3 or 4 columns") from err_bed4
+            raise ValueError(
+                f"{view_fname} is not a BED file with 3 or 4 columns"
+            ) from err_bed4
 
     # Convert view dataframe to viewframe:
     try:
-            view_df = bioframe.make_viewframe(view_df)
+        view_df = bioframe.make_viewframe(view_df)
     except ValueError as e:
         raise ValueError(
             "View table is incorrect, please, comply with the format. "
@@ -373,11 +383,8 @@ def read_viewframe_from_file(
     if verify_cooler is not None:
         try:
             _ = is_compatible_viewframe(
-                    view_df,
-                    verify_cooler,
-                    check_sorting,
-                    raise_errors=True
-                )
+                view_df, verify_cooler, check_sorting, raise_errors=True
+            )
         except Exception as e:
             raise ValueError("view_df is not compatible with the cooler") from e
         else:

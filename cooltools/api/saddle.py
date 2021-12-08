@@ -306,7 +306,7 @@ def digitize(
 
     if type(n_bins) is not int:
         raise ValueError("n_bins must be provided as an int")
-    is_track(track)
+    is_track(track, raise_errors=True)
 
     digitized = track.copy()
     track_value_col = track.columns[3]

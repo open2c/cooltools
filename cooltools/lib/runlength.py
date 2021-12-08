@@ -38,9 +38,11 @@ def rlencode(x, dropna=False):
     x = np.asarray(x)
     n = len(x)
     if n == 0:
-        return (np.array([], dtype=int),
-                np.array([], dtype=int),
-                np.array([], dtype=x.dtype))
+        return (
+            np.array([], dtype=int),
+            np.array([], dtype=int),
+            np.array([], dtype=x.dtype),
+        )
 
     isnumeric = np.issubdtype(x.dtype, np.number)
 

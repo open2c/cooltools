@@ -1,5 +1,6 @@
 import os.path as op
 import pandas as pd
+import cooler
 import cooltools
 import pytest
 
@@ -100,12 +101,85 @@ def test_is_valid_expected(request, tmpdir):
     ### TODO: test with cooler as input
 
 
-# def test_is_compatible_viewframe(request, tmpdir):
+def test_is_compatible_viewframe(request, tmpdir):
+    clr_file = op.join(request.fspath.dirname, "data/CN.mm9.1000kb.cool")
+    clr = cooler.Cooler(clr_file)
 
-# def test_is_cooler_balanced(request, tmpdir):
-# good if its good!
-# value error for missing weight
-# key error for 4DN divisive
+    view_file = op.join(request.fspath.dirname, "data/mm9.named_nonoverlap_regions.bed")
+    view_df = cooltools.lib.read_viewframe_from_file(view_file)
+
+    # true for base case
+    assert cooltools.lib.is_compatible_viewframe(view_df, clr)
+
+    # false if out of order & sorting is on
+    with pytest.raises(ValueError):
+        cooltools.lib.is_compatible_viewframe(
+            view_df[::-1], clr, check_sorting=True, raise_errors=True
+        )
+
+    # false if out of order & sorting is on
+    with pytest.raises(ValueError):
+        cooltools.lib.is_compatible_viewframe(
+            view_df[::-1], clr, check_sorting=True, raise_errors=True
+        )
+
+    # false if out of bounds of chromosomes
+    view_df_incompatible = view_df.copy()
+    view_df_incompatible.iloc[1, 2] += 1000000
+    with pytest.raises(ValueError):
+        cooltools.lib.is_compatible_viewframe(
+            view_df_incompatible, clr, raise_errors=True
+        )
+
+    # false if not a view (e.g. name column is missing)
+    with pytest.raises(ValueError):
+        cooltools.lib.is_compatible_viewframe(
+            view_df.iloc[:, :3], clr, raise_errors=True
+        )
 
 
-# def test_is_track():
+def test_is_cooler_balanced(request, tmpdir):
+
+    clr_file = op.join(request.fspath.dirname, "data/CN.mm9.1000kb.cool")
+    clr = cooler.Cooler(clr_file)
+
+    assert cooltools.lib.is_cooler_balanced(clr)
+
+    with pytest.raises(ValueError):
+        cooltools.lib.is_cooler_balanced(
+            clr, clr_weight_name="weight_name_not_in_bins", raise_errors=True
+        )
+
+    with pytest.raises(KeyError):
+        cooltools.lib.is_cooler_balanced(clr, clr_weight_name="KR")
+
+
+def test_is_track():
+    track = pd.DataFrame(
+        [
+            ["chr3", 0, 10, 0.3],
+            ["chr1", 0, 10, 0.1],
+            ["chr1", 10, 20, 0.1],
+            ["chr2", 0, 10, 0.2],
+        ],
+        columns=["chrom", "start", "end", "value"],
+    )
+    track.index = [5, 2, 1, 3]
+
+    assert cooltools.lib.is_track(track)
+
+    track_incompat = track.copy()
+    track_incompat.iloc[:, 0] = 10
+
+    # not bedframe in first three columns
+    assert cooltools.lib.is_track(track_incompat) is False
+
+    track_incompat = track.copy()
+    track_incompat.iloc[:, -1] = ["a", "b", "c", "d"]
+    # not numeric type in column4
+    assert cooltools.lib.is_track(track_incompat) is False
+
+    track_incompat = track.copy()
+    track_incompat.iloc[0, 0] = "chr1"
+    # overlapping
+    assert cooltools.lib.is_track(track_incompat) is False

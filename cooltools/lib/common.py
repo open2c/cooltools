@@ -19,9 +19,9 @@ def assign_regions(features, supports):
 
     index_name = features.index.name  # Store the name of index
     features = (
-        features.copy().reset_index().rename({
-            'index' if index_name is None else index_name: 'native_order'
-        }, axis=1)
+        features.copy()
+        .reset_index()
+        .rename({"index" if index_name is None else index_name: "native_order"}, axis=1)
     )  # Store the original features' order as a column with original index
 
     if "chrom" in features.columns:
@@ -33,7 +33,7 @@ def assign_regions(features, supports):
             cols2=["chrom", "start", "end"],
             keep_order=True,
             return_overlap=True,
-            suffixes=('_1', '_2')
+            suffixes=("_1", "_2"),
         )
         overlap_columns = overlap.columns  # To filter out duplicates later
         overlap["overlap_length"] = overlap["overlap_end"] - overlap["overlap_start"]
@@ -56,7 +56,7 @@ def assign_regions(features, supports):
                 cols2=[f"chrom", f"start", f"end"],
                 keep_order=True,
                 return_overlap=True,
-                suffixes=('_1', '_2')
+                suffixes=("_1", "_2"),
             )
             overlap_columns = overlap.columns  # To filter out duplicates later
             overlap[f"overlap_length{idx}"] = (
@@ -79,7 +79,7 @@ def assign_regions(features, supports):
             ["region1", "region2"], axis=1
         )  # Remove unnecessary columns
 
-    features = features.set_index('native_order')  # Restore the original index
+    features = features.set_index("native_order")  # Restore the original index
     features.index.name = index_name  # Restore original index title
     return features
 
@@ -137,8 +137,8 @@ def assign_supports(features, supports, labels=False, suffix=""):
 def assign_regions_to_bins(bin_ids, regions_span):
     regions_binsorted = (
         regions_span[(regions_span["bin_start"] >= 0) & (regions_span["bin_end"] >= 0)]
-            .sort_values(["bin_start", "bin_end"])
-            .reset_index()
+        .sort_values(["bin_start", "bin_end"])
+        .reset_index()
     )
 
     bin_reg_idx_lo = regions_span["bin_start"].searchsorted(bin_ids, "right") - 1
@@ -149,6 +149,7 @@ def assign_regions_to_bins(bin_ids, regions_span):
     region_ids[mask_assigned] = regions_span["name"][bin_reg_idx_lo[mask_assigned]]
 
     return region_ids
+
 
 def make_cooler_view(clr, ucsc_names=False):
     """
@@ -178,7 +179,6 @@ def make_cooler_view(clr, ucsc_names=False):
         return cooler_view
 
 
-
 def view_from_track(track_df):
     bioframe.core.checks._verify_columns(track_df, ["chrom", "start", "end"])
     return bioframe.make_viewframe(
@@ -188,13 +188,14 @@ def view_from_track(track_df):
         ]
     )
 
+
 def mask_cooler_bad_bins(track, bintable):
     """
     Mask (set to NaN) values in track where bin is masked in bintable.
 
-    Currently used in `cli.get_saddle()`. 
+    Currently used in `cli.get_saddle()`.
     TODO: determine if this should be used elsewhere.
-    
+
     Parameters
     ----------
     track : tuple of (DataFrame, str)
@@ -220,4 +221,3 @@ def mask_cooler_bad_bins(track, bintable):
     track = track[["chrom", "start", "end", name]]
 
     return track
-

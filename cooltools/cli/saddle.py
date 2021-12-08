@@ -288,10 +288,12 @@ def saddle(
         max_diag = int(np.floor(max_dist / clr.binsize))
     else:
         max_diag = -1
+
     if clr_weight_name:
         track = mask_cooler_bad_bins(
             (track, track_name), (clr.bins()[:], clr_weight_name)
         )
+
     if vrange[0] is None:
         vrange = None
     if qrange[0] is None:
