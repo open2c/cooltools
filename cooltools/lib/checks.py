@@ -210,7 +210,7 @@ def _is_compatible_cis_expected(
                 raise_errors=True,
             )
         except Exception as e:
-            raise ValueError("expected_df does not look like cis-expected") from e
+            raise ValueError("expected_df does not agree with schema for cis-expected") from e
 
         # Check that view regions are named as in expected table.
         if verify_view is not None:

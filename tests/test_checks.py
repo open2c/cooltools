@@ -40,7 +40,7 @@ def test_is_valid_expected(request, tmpdir):
             raise_errors=True,
         )
 
-    # raises a value error because of the contact type
+    # raises a value error because the contact type is not cis or trans
     with pytest.raises(ValueError):
         cooltools.lib.is_valid_expected(
             expected_df,
@@ -50,7 +50,7 @@ def test_is_valid_expected(request, tmpdir):
             raise_errors=True,
         )
 
-    # raises a value error because not a dataframe
+    # raises a value error because input is not a dataframe
     with pytest.raises(ValueError):
         cooltools.lib.is_valid_expected(
             expected_df.values,
@@ -98,7 +98,63 @@ def test_is_valid_expected(request, tmpdir):
             raise_errors=True,
         )
 
-    ### TODO: test with cooler as input
+    # tests with sin_eigs_mat cooler and custom armwise view as input
+    view_df = pd.DataFrame(
+        [
+            ["chr1", 0, 500, "chr1L"],
+            ["chr1", 500, 1000, "chr1R"],
+            ["chr2", 0, 1000, "chr2L"],
+            ["chr2", 1000, 2000, "chr2R"],
+            ["chr3", 0, 1500, "chr3L"],
+            ["chr3", 1500, 3000, "chr3R"],
+        ],
+        columns=["chrom", "start", "end", "name"],
+    )
+    cooler_file = op.join(request.fspath.dirname, "data/sin_eigs_mat.cool")
+    clr = cooler.Cooler(cooler_file)
+    exp_cis = cooltools.expected_cis(clr, view_df=view_df[:1])
+
+    # cis with intra_only=True does not raise ValueError with swapped region columns
+    # because region names are identical
+    assert cooltools.lib.is_valid_expected(
+        exp_cis.rename(columns={"region1": "region2", "region2": "region1"}),
+        "cis",
+        verify_view=view_df[:1],
+        verify_cooler=clr,
+    )
+
+    # cis that is shortened does not have enough diagonals
+    with pytest.raises(ValueError):
+        cooltools.lib.is_valid_expected(
+            exp_cis[::2],
+            "cis",
+            verify_view=view_df[:1],
+            verify_cooler=clr,
+            raise_errors=True,
+        )
+
+    exp_cis = cooltools.expected_cis(clr, view_df=view_df[:2], intra_only=False)
+    # cis with intra_only=False raises ValueError with swapped region columns,
+    # because this tries to query lower triangular part of cooler
+    with pytest.raises(ValueError):
+        cooltools.lib.is_valid_expected(
+            exp_cis.rename(columns={"region1": "region2", "region2": "region1"}),
+            "cis",
+            verify_view=view_df[:2],
+            verify_cooler=clr,
+            raise_errors=True,
+        )
+
+    # trans raises ValueError with swapped region columns
+    exp_trans = cooltools.expected_trans(clr, view_df=view_df)
+    with pytest.raises(ValueError):
+        cooltools.lib.is_valid_expected(
+            exp_trans.rename(columns={"region1": "region2", "region2": "region1"}),
+            "trans",
+            verify_view=view_df[::-1],
+            verify_cooler=clr,
+            raise_errors=True,
+        )
 
 
 def test_is_compatible_viewframe(request, tmpdir):
