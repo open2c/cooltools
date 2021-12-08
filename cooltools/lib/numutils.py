@@ -25,7 +25,8 @@ def get_diag(arr, i=0):
     """
     return arr.ravel()[
         max(i, -arr.shape[1] * i) : max(0, (arr.shape[1] - i))
-        * arr.shape[1] : arr.shape[1] + 1
+        * arr.shape[1] : arr.shape[1]
+        + 1
     ]
 
 
@@ -521,7 +522,7 @@ def get_eig(mat, n=3, mask_zero_rows=False, subtract_mean=False, divide_by_mean=
         # reorder according to eigvals and copy into output arrays
         order = np.argsort(-np.abs(_eigvals))
         eigvals[:_n] = _eigvals[order]
-        eigvecs[:_n,:] = _eigvecs.T[order]
+        eigvecs[:_n, :] = _eigvecs.T[order]
 
         return eigvecs, eigvals
 
@@ -1379,10 +1380,7 @@ def adaptive_coarsegrain(ar, countar, cutoff=5, max_levels=8, min_shape=8):
 
 
 def robust_gauss_filter(
-    ar,
-    sigma=2,
-    functon=scipy.ndimage.filters.gaussian_filter1d,
-    kwargs=None
+    ar, sigma=2, functon=scipy.ndimage.filters.gaussian_filter1d, kwargs=None
 ):
     """
     Implements an edge-handling mode for gaussian filter that basically ignores
@@ -1431,7 +1429,7 @@ def robust_gauss_filter(
     mask = np.isfinite(ar)
     ar[~mask] = 0
     a = functon(ar, sigma=sigma, mode="constant", **kwargs)
-    b = functon(1. * mask, sigma=sigma, mode="constant", **kwargs)
+    b = functon(1.0 * mask, sigma=sigma, mode="constant", **kwargs)
     return a / b
 
 
@@ -1456,23 +1454,29 @@ def weighted_groupby_mean(df, group_by, weigh_by, mode="mean"):
         group_by = [group_by]
     gr = df.groupby(group_by)
     if mode == "mean":
+
         def wstd(x):
             return np.average(x, weights=df.loc[x.index, weigh_by])
+
         wm = wstd
     elif mode == "std":
+
         def wstd(x):
             wm = np.average(x, weights=df.loc[x.index, weigh_by])
             dev = x - wm
-            res = np.sqrt(np.average(dev**2, weights=df.loc[x.index, weigh_by]))
+            res = np.sqrt(np.average(dev ** 2, weights=df.loc[x.index, weigh_by]))
             return res
+
         wm = wstd
     elif mode == "logstd":
+
         def wstd(x):
             x = np.log(x)
             wm = np.average(x, weights=df.loc[x.index, weigh_by])
             dev = x - wm
-            res = np.sqrt(np.average(dev**2, weights=df.loc[x.index, weigh_by]))
+            res = np.sqrt(np.average(dev ** 2, weights=df.loc[x.index, weigh_by]))
             return np.exp(res)
+
         wm = wstd
     else:
         raise NotImplementedError
@@ -1482,7 +1486,7 @@ def weighted_groupby_mean(df, group_by, weigh_by, mode="mean"):
         if i in group_by:
             continue
         elif i == weigh_by:
-            f[i] = ['sum']
+            f[i] = ["sum"]
         else:
             f[i] = [wm]
     agg = gr.agg(f)
@@ -1548,6 +1552,8 @@ def persistent_log_bins(end=10, bins_per_order_magnitude=10):
         raise ValueError("End is a log10(max_value), not the max_value itself")
     bin_float = np.logspace(0, end, end * bins_per_order_magnitude + 1)
     bin_int = np.array(np.rint(bin_float), dtype=int)  # rounding to the nearest int
-    bins = np.unique(bin_int)   # unique bins
-    bins = np.cumsum(np.sort(np.r_[1, np.diff(bins)]))  # re-ordering gaps (important step)
+    bins = np.unique(bin_int)  # unique bins
+    bins = np.cumsum(
+        np.sort(np.r_[1, np.diff(bins)])
+    )  # re-ordering gaps (important step)
     return bins

@@ -176,23 +176,13 @@ def test_trans_saddle_cli_viewframe(request, tmpdir):
     runner = CliRunner()
     result = runner.invoke(
         cli,
-        ["eigs-trans",
-         "-o",
-         out_eig_prefix,
-         "--view",
-         in_regions,
-         in_cool],
+        ["eigs-trans", "-o", out_eig_prefix, "--view", in_regions, in_cool],
     )
     assert result.exit_code == 0
 
     result = runner.invoke(
         cli,
-        ["expected-trans",
-         "-o",
-         out_expected,
-         "--view",
-         in_regions,
-         in_cool],
+        ["expected-trans", "-o", out_expected, "--view", in_regions, in_cool],
     )
     assert result.exit_code == 0
 
@@ -228,18 +218,14 @@ def test_digitize():
         [["chr1", 0, 10, np.nan]],
         columns=["chrom", "start", "end", "value"],
     )
-    digitized = saddle.digitize(df, 10, vrange=(-1, 1), digitized_suffix=".test")[
-        0
-    ]
+    digitized = saddle.digitize(df, 10, vrange=(-1, 1), digitized_suffix=".test")[0]
     assert -1 == digitized["value.test"].values
 
     df = pd.DataFrame(
         [["chr1", 0, 10, pd.NA]],
         columns=["chrom", "start", "end", "value"],
     ).astype({"value": pd.Float64Dtype()})
-    digitized = saddle.digitize(df, 10, vrange=(-1, 1), digitized_suffix=".test")[
-        0
-    ]
+    digitized = saddle.digitize(df, 10, vrange=(-1, 1), digitized_suffix=".test")[0]
     assert -1 == digitized["value.test"].values
 
     n_bins = 10
@@ -270,10 +256,9 @@ def test_digitize():
         (np.linspace(-1, 1, 10) * np.ones((4,))[:, None]).T,
         columns=["chrom", "start", "end", "value"],
     )
-    df_linspace["start"] += 1
-    df_linspace["start"] *= 10
-    df_linspace["end"] += 2
-    df_linspace["end"] *= 10
+    p = (np.arange(0, 100, 10) * np.ones((2,))[:, None]).T  # .shape
+    p[:, 1] += 10
+    df_linspace.iloc[:, 1:3] = p
     df_linspace["chrom"] = "chrX"
     df_linspace = df_linspace.astype({"chrom": "str", "start": int, "end": int})
 
@@ -343,10 +328,13 @@ def test_saddle(request, tmpdir):
     )
     assert result.exit_code == 0
 
-    track = pd.read_csv(f"{out_eig_prefix}.cis.vecs.tsv", sep="\t")[["chrom", "start", "end", "E1"]]
+    track = pd.read_csv(f"{out_eig_prefix}.cis.vecs.tsv", sep="\t")[
+        ["chrom", "start", "end", "E1"]
+    ]
     expected = pd.read_csv(out_expected, sep="\t")
 
     import cooler
+
     clr = cooler.Cooler(op.join(request.fspath.dirname, "data/sin_eigs_mat.cool"))
 
     # non-digitized track should raise an error

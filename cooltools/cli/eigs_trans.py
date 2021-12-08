@@ -3,7 +3,8 @@ import numpy as np
 import cooler
 import bioframe
 from ..api import eigdecomp
-from ..lib.common import make_cooler_view, read_viewframe
+from ..lib.common import make_cooler_view
+from ..lib.io import read_viewframe_from_file
 
 import click
 from .util import TabularFilePath, sniff_for_header
@@ -168,7 +169,7 @@ def eigs_trans(
     if view is None:
         view_df = cooler_view_df
     else:
-        view_df = read_viewframe(view, clr, check_sorting=True)
+        view_df = read_viewframe_from_file(view, clr, check_sorting=True)
 
     # TODO: Add check that view_df has the same bins as track
 
@@ -185,9 +186,7 @@ def eigs_trans(
 
     # Output
     eigvals.to_csv(out_prefix + ".trans" + ".lam.txt", sep="\t", index=False)
-    eigvec_table.to_csv(
-        out_prefix + ".trans" + ".vecs.tsv", sep="\t", index=False
-    )
+    eigvec_table.to_csv(out_prefix + ".trans" + ".vecs.tsv", sep="\t", index=False)
     if bigwig:
         bioframe.to_bigwig(
             eigvec_table,

@@ -16,7 +16,8 @@ from sklearn.cluster import Birch
 import cooler
 
 from ..lib.numutils import LazyToeplitz, get_kernel
-from ..lib.common import is_cooler_balanced
+from ..lib.checks import is_compatible_viewframe, is_cooler_balanced
+from ..lib.common import make_cooler_view
 
 import bioframe
 
@@ -249,6 +250,7 @@ def clust_2D_pixels(
 ##################################
 # matrix tiling and tiles-generator
 ##################################
+
 
 def square_matrix_tiling(start, stop, step, edge, square=False, verbose=False):
     """

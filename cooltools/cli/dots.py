@@ -10,11 +10,9 @@ import click
 from . import cli
 from .. import api
 
+from ..lib.common import make_cooler_view, assign_regions
+from ..lib.io import read_viewframe_from_file, read_expected_from_file
 
-from ..lib.common import assign_regions, \
-                        read_expected, \
-                        read_viewframe, \
-                        make_cooler_view
 
 from .util import validate_csv
 
@@ -187,11 +185,13 @@ def dots(
     if view is None:
         view_df = cooler_view_df
     else:
-        view_df = read_viewframe(view, clr, check_sorting=True)
+        view_df = read_viewframe_from_file(view, clr, check_sorting=True)
 
     #### Read expected: ####
-    expected_summary_cols = [expected_value_col, ]
-    expected = read_expected(
+    expected_summary_cols = [
+        expected_value_col,
+    ]
+    expected = read_expected_from_file(
         expected_path,
         contact_type="cis",
         expected_value_cols=expected_summary_cols,
@@ -215,7 +215,9 @@ def dots(
 
     if (kernel_width is None) or (kernel_peak is None):
         w, p = api.dotfinder.recommend_kernel_params(binsize)
-        logging.info(f"Using kernel parameters w={w}, p={p} recommended for binsize {binsize}")
+        logging.info(
+            f"Using kernel parameters w={w}, p={p} recommended for binsize {binsize}"
+        )
     else:
         w, p = kernel_width, kernel_peak
         # add some sanity check for w,p:
@@ -262,7 +264,7 @@ def dots(
     # 1. Calculate genome-wide histograms of scores.
     gw_hist = api.dotfinder.scoring_and_histogramming_step(
         clr,
-        expected.set_index(["region1","region2","dist"]),
+        expected.set_index(["region1", "region2", "dist"]),
         expected_value_col,
         clr_weight_name,
         tiles,
@@ -285,7 +287,7 @@ def dots(
     # 3. Filter using FDR thresholds calculated in the histogramming step
     filtered_pixels = api.dotfinder.scoring_and_extraction_step(
         clr,
-        expected.set_index(["region1","region2","dist"]),
+        expected.set_index(["region1", "region2", "dist"]),
         expected_value_col,
         clr_weight_name,
         tiles,

@@ -4,7 +4,8 @@ import scipy.stats
 
 import pandas as pd
 from ..lib import numutils
-from ..lib.common import make_cooler_view, is_compatible_viewframe, is_cooler_balanced
+from ..lib.checks import is_compatible_viewframe, is_cooler_balanced
+from ..lib.common import make_cooler_view
 
 import bioframe
 
@@ -369,11 +370,11 @@ def eigs_cis(
         # Make sure view_df is a proper viewframe
         try:
             _ = is_compatible_viewframe(
-                    view_df,
-                    clr,
-                    check_sorting=True,
-                    raise_errors=True,
-                )
+                view_df,
+                clr,
+                check_sorting=True,
+                raise_errors=True,
+            )
         except Exception as e:
             raise ValueError("view_df is not a valid viewframe or incompatible") from e
 
@@ -487,7 +488,7 @@ def eigs_trans(
         raise ValueError(
             f"provided cooler is not balanced or {clr_weight_name} is missing"
         ) from e
-    
+
     if partition is None:
         partition = np.r_[
             [clr.offset(chrom) for chrom in clr.chromnames], len(clr.bins())
