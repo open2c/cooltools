@@ -210,7 +210,9 @@ def _is_compatible_cis_expected(
                 raise_errors=True,
             )
         except Exception as e:
-            raise ValueError("expected_df does not agree with schema for cis-expected") from e
+            raise ValueError(
+                "expected_df does not agree with schema for cis-expected"
+            ) from e
 
         # Check that view regions are named as in expected table.
         if verify_view is not None:
@@ -218,6 +220,7 @@ def _is_compatible_cis_expected(
 
         # check if the number of diagonals is correct:
         if verify_cooler is not None:
+            verify_view = make_cooler_view(verify_cooler) if verify_view is None else verify_view
             # check number of bins per region in cooler and expected table
             # compute # of bins by comparing matching indexes
             for (name1, name2), group in expected_df.groupby(["region1", "region2"]):
@@ -304,6 +307,7 @@ def _is_compatible_trans_expected(
             _is_expected_cataloged(expected_df, verify_view)
 
         if verify_cooler is not None:
+            verify_view = make_cooler_view(verify_cooler) if verify_view is None else verify_view
             # check number of bins per region in cooler and expected table
             # compute # of bins by comparing matching indexes
             for (name1, name2), group in expected_df.groupby(["region1", "region2"]):

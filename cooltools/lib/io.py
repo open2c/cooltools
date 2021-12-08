@@ -284,7 +284,8 @@ def read_expected_from_file(
     raise_errors=True,
 ):
     """
-    Read an expected from a file.
+    Read expected dataframe from a file.
+
     Expected must conform v1.0 format
     https://github.com/open2c/cooltools/issues/217
 
@@ -309,12 +310,6 @@ def read_expected_from_file(
     expected_df : pd.DataFrame
         DataFrame with the expected
     """
-
-    # basic input check
-    if contact_type not in ["cis", "trans"]:
-        raise ValueError(
-            f"contact_type can be only cis or trans, {contact_type} provided"
-        )
 
     try:
         expected_df = pd.read_table(fname)

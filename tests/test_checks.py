@@ -98,6 +98,15 @@ def test_is_valid_expected(request, tmpdir):
             raise_errors=True,
         )
 
+    # tests with sin_eigs_mat cooler
+    cooler_file = op.join(request.fspath.dirname, "data/sin_eigs_mat.cool")
+    clr = cooler.Cooler(cooler_file)
+    exp_cis = cooltools.expected_cis(clr)
+
+    # cis with no verify_view should work!
+    assert cooltools.lib.is_valid_expected(
+        exp_cis, "cis", verify_view=None, verify_cooler=clr, raise_errors=True
+    )
     # tests with sin_eigs_mat cooler and custom armwise view as input
     view_df = pd.DataFrame(
         [
@@ -110,8 +119,7 @@ def test_is_valid_expected(request, tmpdir):
         ],
         columns=["chrom", "start", "end", "name"],
     )
-    cooler_file = op.join(request.fspath.dirname, "data/sin_eigs_mat.cool")
-    clr = cooler.Cooler(cooler_file)
+
     exp_cis = cooltools.expected_cis(clr, view_df=view_df[:1])
 
     # cis with intra_only=True does not raise ValueError with swapped region columns
