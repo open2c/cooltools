@@ -220,7 +220,9 @@ def _is_compatible_cis_expected(
 
         # check if the number of diagonals is correct:
         if verify_cooler is not None:
-            verify_view = make_cooler_view(verify_cooler) if verify_view is None else verify_view
+            verify_view = (
+                make_cooler_view(verify_cooler) if verify_view is None else verify_view
+            )
             # check number of bins per region in cooler and expected table
             # compute # of bins by comparing matching indexes
             for (name1, name2), group in expected_df.groupby(["region1", "region2"]):
@@ -307,7 +309,9 @@ def _is_compatible_trans_expected(
             _is_expected_cataloged(expected_df, verify_view)
 
         if verify_cooler is not None:
-            verify_view = make_cooler_view(verify_cooler) if verify_view is None else verify_view
+            verify_view = (
+                make_cooler_view(verify_cooler) if verify_view is None else verify_view
+            )
             # check number of bins per region in cooler and expected table
             # compute # of bins by comparing matching indexes
             for (name1, name2), group in expected_df.groupby(["region1", "region2"]):
@@ -504,7 +508,30 @@ def is_cooler_balanced(clr, clr_weight_name="weight", raise_errors=False):
         return True
 
 
-def is_track(track, raise_errors=False):
+def is_track(track, view_df=None, raise_errors=False):
+    """
+    Check if an input is a valid track dataframe.
+
+    Specifically:
+    - the first three columns satisfy requirements for a bedframe
+    - the fourth column has a numeric dtype
+    - intervals are non-overlapping
+    - intervals are sorted, either by ['chrom','start','end'] or a provided view_df
+
+    Parameters
+    ----------
+    track : pd.DataFrame
+        track dataframe to check
+    view_df : bioframe.viewframe
+        Optional view to specify sort order for the track.
+    raise_errors : bool
+        raise expection instead of returning False
+
+    Returns
+    -------
+    is_track : bool
+        True if satisfies requirements, False otherwise
+    """
     if not bioframe.is_bedframe(track, cols=track.columns[:3]):
         if raise_errors:
             raise ValueError("track must have bedFrame-like interval columns")
@@ -520,5 +547,11 @@ def is_track(track, raise_errors=False):
             raise ValueError("track intervals must not be overlapping")
         else:
             return False
-    else:
-        return True
+    if not bioframe.is_sorted(track, view_df=view_df):
+        if raise_errors:
+            raise ValueError(
+                "track must be sorted by ['chrom',start','end'] if view is not provided"
+            )
+        else:
+            return False
+    return True

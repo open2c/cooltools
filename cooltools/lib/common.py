@@ -221,3 +221,93 @@ def mask_cooler_bad_bins(track, bintable):
     track = track[["chrom", "start", "end", name]]
 
     return track
+
+
+def merge_track_with_cooler(
+    track, clr, view_df=None, clr_weight_name="weight", mask_bad_bins=True
+):
+    """
+    Merge a track dataframe to a cooler bintable.
+
+    Checks that bin sizes match between a track and a cooler,
+    merges the cooler bintable with the track,
+    and optionally propagates masked regions from a cooler bintable to a track.
+
+    Parameters
+    ----------
+    track : pd.DataFrame
+        bedGraph-like track DataFrame to check
+    clr : cooler
+        cooler object to check against
+    view_df : bioframe.viewframe or None
+        Optional viewframe of regions to check for their number of bins with assigned track values.
+        If None, constructs a view_df from cooler chromsizes.
+    clr_weight_name : str
+        Name of the column in the bin table with weight
+    mask_bad_bins : bool
+        Whether to propagate null bins from cooler bintable column clr_weight_name
+        to the 'value' column of the output clr_track. Default True.
+
+    Returns
+    -------
+    clr_track
+        track dataframe that has been merged with the cooler bintable
+        and has columns ['chrom','start','end','value']
+
+
+    """
+    from .checks import is_track, is_cooler_balanced
+
+    try:
+        is_track(track, view_df=view_df, raise_errors=True)
+    except Exception as e:
+        raise ValueError("invalid input track") from e
+
+    c, s, e, v = track.columns[:4]
+    track.rename(columns={c: "chrom", s: "start", e: "end", v: "value"}, inplace=True)
+
+    track_bin_width = (track["end"] - track["start"]).median().astype(int)
+    if not (track_bin_width == clr.binsize):
+        raise ValueError(
+            "mismatch between track and cooler bin size, check track resolution"
+        )
+
+    clr_track = (
+        (clr.bins()[:])
+        .copy()
+        .merge(track, how="left", on=["chrom", "start"], suffixes=("", "_"))
+    )
+
+    if clr_weight_name:
+        try:
+            is_cooler_balanced(clr, clr_weight_name=clr_weight_name, raise_errors=True)
+        except Exception as e:
+            raise ValueError(
+                f"no column {clr_weight_name} detected in input cooler bintable"
+            ) from e
+    else:
+        clr_track[clr_weight_name] = 1.0
+
+    valid_bins = clr_track[clr_weight_name].isna() == False
+    num_valid_bins = valid_bins.sum()
+    num_assigned_bins = (clr_track["value"][valid_bins].isna() == False).sum()
+    if num_assigned_bins < 0.5 * np.sum(valid_bins):
+        warnings.warn("less than 50% of valid bins have been assigned a value")
+    if num_assigned_bins == 0:
+        raise ValueError("no track values assigned to cooler bintable")
+
+    view_df = make_cooler_view(clr) if view_df is None else view_df
+    for chrom, start, end, name in view_df[["chrom", "start", "end", "name"]].values:
+        num_assigned_bins = (
+            bioframe.select(clr_track[valid_bins], (chrom, start, end))["value"].isna()
+            == False
+        ).sum()
+        if num_assigned_bins == 0:
+            raise ValueError(
+                f"no track values assigned to region {chrom}:{start}-{end}"
+            )  # , (chrom,start,end))
+
+    if mask_bad_bins:
+        clr_track.loc[~valid_bins, "value"] = np.nan
+
+    return clr_track[["chrom", "start", "end", "value"]]

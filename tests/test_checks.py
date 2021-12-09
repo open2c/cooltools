@@ -3,6 +3,7 @@ import pandas as pd
 import cooler
 import cooltools
 import pytest
+import bioframe
 
 
 def test_is_valid_expected(request, tmpdir):
@@ -230,9 +231,17 @@ def test_is_track():
     )
     track.index = [5, 2, 1, 3]
 
-    assert cooltools.lib.is_track(track)
+    view_df = pd.DataFrame(
+        [
+            ["chr3", 0, 20, "chr3"],
+            ["chr1", 0, 30, "chr1"],
+            ["chr2", 0, 20, "chr2"],
+        ],
+        columns=["chrom", "start", "end", "name"],
+    )
+    assert cooltools.lib.is_track(track.reset_index(drop=True), view_df=view_df)
 
-    track_incompat = track.copy()
+    track_incompat = bioframe.sort_bedframe(track.copy())
     track_incompat.iloc[:, 0] = 10
 
     # not bedframe in first three columns

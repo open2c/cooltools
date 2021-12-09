@@ -517,7 +517,9 @@ def test_trans_expected_view_cli(request, tmpdir):
         ucsc_region2 = regions2.iloc[i, :3].to_list()
         # check only trans regions !
         if ucsc_region1[0] != ucsc_region2[0]:
-            matrix = clr.matrix(balance=clr_weight_name).fetch(ucsc_region1, ucsc_region2)
+            matrix = clr.matrix(balance=clr_weight_name).fetch(
+                ucsc_region1, ucsc_region2
+            )
             testing.assert_allclose(
                 actual=trans_expected.loc[(region1_name, region2_name), "balanced.avg"],
                 desired=_blocksum_asymm_dense(matrix),
