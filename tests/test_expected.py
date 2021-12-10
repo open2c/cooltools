@@ -86,7 +86,11 @@ weight2 = clr_weight_name + "2"
 transforms = {"balanced": lambda p: p["count"] * p[weight1] * p[weight2]}
 assumed_binsize = 1_000_000
 
-chromsizes = bioframe.fetch_chromsizes("mm9")
+chromsizes_file = op.join(
+    op.dirname(op.realpath(__file__)),
+    "data/mm9.chrom.sizes.reduced",
+)
+chromsizes = bioframe.read_chromsizes(chromsizes_file)
 chromosomes = list(chromsizes.index)
 supports = [(chrom, 0, chromsizes[chrom]) for chrom in chromosomes]
 

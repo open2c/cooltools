@@ -256,3 +256,15 @@ def test_is_track():
     track_incompat.iloc[0, 0] = "chr1"
     # overlapping
     assert cooltools.lib.is_track(track_incompat) is False
+
+    # not sorted
+    track_incompat = pd.DataFrame(
+        [
+            ["chr3", 0, 10, 0.3],
+            ["chr1", 10, 20, 0.1],
+            ["chr1", 0, 10, 0.1],
+            ["chr2", 0, 10, 0.2],
+        ],
+        columns=["chrom", "start", "end", "value"],
+    )
+    assert cooltools.lib.is_track(track_incompat) is False

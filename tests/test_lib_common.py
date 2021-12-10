@@ -11,13 +11,12 @@ import pytest
 # view_from_track
 
 
-def test_align_track_to_chr(request, tmpdir):
+def test_merge_track_with_cooler(request, tmpdir):
 
     clr_file = op.join(request.fspath.dirname, "data/sin_eigs_mat.cool")
     clr = cooler.Cooler(clr_file)
 
     # valid track with three entries that can all be merged
-    # note that this may need to be changed if the definition of track becomes stricter, with sorting!
     track = pd.DataFrame(
         [
             ["chr1", 990, 995, 22],
@@ -32,7 +31,7 @@ def test_align_track_to_chr(request, tmpdir):
 
     # not a track, is not sorted
     track = pd.DataFrame(
-        [["chr3", 0, 10, 0.1], ["chr2", 20, 30, -1], ["chr1", 990, 995, 22]],
+        [["chr3", 0, 10, 0.1], ["chr2", 20, 30, -1], ["chr2", 0, 10, 21]],
         columns=["chrom", "start", "end", "value"],
     )
     with pytest.raises(ValueError):

@@ -547,11 +547,13 @@ def is_track(track, view_df=None, raise_errors=False):
             raise ValueError("track intervals must not be overlapping")
         else:
             return False
-    if not bioframe.is_sorted(track, view_df=view_df):
-        if raise_errors:
-            raise ValueError(
-                "track must be sorted by ['chrom',start','end'] if view is not provided"
-            )
-        else:
-            return False
+
+    for name, group in track.groupby(["chrom"]):
+        if not _is_sorted_ascending(group['start'].values):
+            if raise_errors:
+                raise ValueError(
+                    "track intervals must be sorted by ascending order within chromosomes"
+                    )
+            else:
+                return False
     return True

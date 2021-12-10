@@ -15,6 +15,7 @@ from .util import validate_csv
 
 from ..lib.common import make_cooler_view, mask_cooler_bad_bins
 from ..lib.io import read_viewframe_from_file, read_expected_from_file
+from ..lib.checks import is_track
 
 from . import util
 from . import cli
@@ -250,9 +251,12 @@ def saddle(
     )
 
     #### Read expected: ####
+
+ 
     expected_summary_cols = [
         expected_value_col,
     ]
+
     expected = read_expected_from_file(
         expected_path,
         contact_type=contact_type,
@@ -260,6 +264,7 @@ def saddle(
         verify_view=view_df,
         verify_cooler=clr,
     )
+
     # add checks to make sure cis-expected is symmetric
 
     #############################################
@@ -298,6 +303,9 @@ def saddle(
         vrange = None
     if qrange[0] is None:
         qrange = None
+
+    is_track(track, view_df=view_df, raise_errors=True)
+
 
     digitized, binedges = api.saddle.digitize(
         track[["chrom", "start", "end", track_name]],
