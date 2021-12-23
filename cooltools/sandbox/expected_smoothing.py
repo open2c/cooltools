@@ -1,7 +1,6 @@
 import collections
 
 import numpy as np
-import pandas as pd
 import numba
 
 
@@ -103,7 +102,7 @@ def _log_smooth_numba(
             -((cur_log_x - log_xs[lo:hi]) ** 2) / 2 / sigma_log10 / sigma_log10
         )
         for k in range(N_FUNCS):
-            ys_smoothed[k, i] = np.sum(ys[k, lo:hi] * smooth_weights)
+            ys_smoothed[k, i] = np.sum(ys[k, lo:hi] * smooth_weights) / smooth_weights.sum()
 
     return xs_thinned, ys_smoothed
 
@@ -148,9 +147,9 @@ def log_smooth(
         raise ValueError("xs must be a 1D vector")
     if ys.ndim not in (1, 2):
         raise ValueError('ys must be either a 1D vector or a "tall" 2D matrix')
-    if xs.shape[0] == ys.shape[0]:
+    if xs.shape[0] != ys.shape[-1]:
         raise ValueError(
-            "xs and ys must have the same number of elements along the 1st dimension"
+            "xs and ys must have the same number of observations"
         )
 
     ys = ys[np.newaxis, :] if ys.ndim == 1 else ys
