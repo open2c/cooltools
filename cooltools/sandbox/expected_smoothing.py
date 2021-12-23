@@ -100,9 +100,14 @@ def _log_smooth_numba(
         hi = np.searchsorted(log_xs, cur_log_x + sigma_log10 * window_sigma)
         smooth_weights = np.exp(
             -((cur_log_x - log_xs[lo:hi]) ** 2) / 2 / sigma_log10 / sigma_log10
-        )
-        for k in range(N_FUNCS):
-            ys_smoothed[k, i] = np.sum(ys[k, lo:hi] * smooth_weights) / smooth_weights.sum()
+        ) 
+        norm = smooth_weights.sum()
+        
+        if norm > 0:
+            smooth_weights /= norm
+
+            for k in range(N_FUNCS):
+                ys_smoothed[k, i] = np.sum(ys[k, lo:hi] * smooth_weights)
 
     return xs_thinned, ys_smoothed
 
