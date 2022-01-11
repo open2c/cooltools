@@ -259,14 +259,16 @@ def merge_track_with_cooler(
     from .checks import is_track, is_cooler_balanced
 
     try:
-        is_track(track, view_df=view_df, raise_errors=True)
+        is_track(track, raise_errors=True)
     except Exception as e:
         raise ValueError("invalid input track") from e
 
+    # since tracks are currently allowed to have flexible column names
     c, s, e, v = track.columns[:4]
     track.rename(columns={c: "chrom", s: "start", e: "end", v: "value"}, inplace=True)
 
-    track_bin_width = (track["end"] - track["start"]).median().astype(int)
+    # using median to allow for shorter / longer last bin on any chromosome
+    track_bin_width = int((track["end"] - track["start"]).median())
     if not (track_bin_width == clr.binsize):
         raise ValueError(
             "mismatch between track and cooler bin size, check track resolution"
@@ -288,25 +290,22 @@ def merge_track_with_cooler(
     else:
         clr_track[clr_weight_name] = 1.0
 
-    valid_bins = clr_track[clr_weight_name].isna() == False
+    valid_bins = clr_track[clr_weight_name].notna()
     num_valid_bins = valid_bins.sum()
-    num_assigned_bins = (clr_track["value"][valid_bins].isna() == False).sum()
-    if num_assigned_bins < 0.5 * np.sum(valid_bins):
-        warnings.warn("less than 50% of valid bins have been assigned a value")
+    num_assigned_bins = (clr_track["value"][valid_bins].notna()).sum()
     if num_assigned_bins == 0:
         raise ValueError("no track values assigned to cooler bintable")
+    elif num_assigned_bins < 0.5 * np.sum(valid_bins):
+        warnings.warn("less than 50% of valid bins have been assigned a value")
 
     view_df = make_cooler_view(clr) if view_df is None else view_df
-    for chrom, start, end, name in view_df[["chrom", "start", "end", "name"]].values:
-        num_assigned_bins = (
-            bioframe.select(clr_track[valid_bins], (chrom, start, end))["value"].isna()
-            == False
-        ).sum()
-        if num_assigned_bins == 0:
+    for region in view_df.itertuples(index=False):
+        track_region = bioframe.select(track, region)
+        num_assigned_region_bins = track_region["value"].notna().sum()
+        if num_assigned_region_bins == 0:
             raise ValueError(
-                f"no track values assigned to region {chrom}:{start}-{end}"
-            )  # , (chrom,start,end))
-
+                f"no track values assigned to region {bioframe.to_ucsc_string(region)}"
+            )
     if mask_bad_bins:
         clr_track.loc[~valid_bins, "value"] = np.nan
 

@@ -441,7 +441,7 @@ def is_compatible_viewframe(
 
         # is view_df contained inside cooler-chromosomes ?
         cooler_view = make_cooler_view(verify_cooler)
-        if not bioframe.is_contained(view_df, cooler_view):
+        if not bioframe.is_contained(view_df, cooler_view, raise_errors=True):
             raise ValueError(
                 "View table is out of the bounds of chromosomes in cooler."
             )
@@ -508,7 +508,7 @@ def is_cooler_balanced(clr, clr_weight_name="weight", raise_errors=False):
         return True
 
 
-def is_track(track, view_df=None, raise_errors=False):
+def is_track(track, raise_errors=False):
     """
     Check if an input is a valid track dataframe.
 
@@ -516,14 +516,12 @@ def is_track(track, view_df=None, raise_errors=False):
     - the first three columns satisfy requirements for a bedframe
     - the fourth column has a numeric dtype
     - intervals are non-overlapping
-    - intervals are sorted, either by ['chrom','start','end'] or a provided view_df
+    - intervals are sorted within chromosome
 
     Parameters
     ----------
     track : pd.DataFrame
         track dataframe to check
-    view_df : bioframe.viewframe
-        Optional view to specify sort order for the track.
     raise_errors : bool
         raise expection instead of returning False
 
@@ -548,12 +546,12 @@ def is_track(track, view_df=None, raise_errors=False):
         else:
             return False
 
-    for name, group in track.groupby(["chrom"]):
-        if not _is_sorted_ascending(group['start'].values):
+    for name, group in track.groupby([track.columns[0]]):
+        if not _is_sorted_ascending(group[track.columns[1]].values):
             if raise_errors:
                 raise ValueError(
                     "track intervals must be sorted by ascending order within chromosomes"
-                    )
+                )
             else:
                 return False
     return True
