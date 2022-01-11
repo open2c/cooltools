@@ -265,10 +265,9 @@ def merge_track_with_cooler(
 
     # since tracks are currently allowed to have flexible column names
     c, s, e, v = track.columns[:4]
-    track.rename(columns={c: "chrom", s: "start", e: "end", v: "value"}, inplace=True)
 
     # using median to allow for shorter / longer last bin on any chromosome
-    track_bin_width = int((track["end"] - track["start"]).median())
+    track_bin_width = int((track[e] - track[s]).median())
     if not (track_bin_width == clr.binsize):
         raise ValueError(
             "mismatch between track and cooler bin size, check track resolution"
@@ -277,7 +276,9 @@ def merge_track_with_cooler(
     clr_track = (
         (clr.bins()[:])
         .copy()
-        .merge(track, how="left", on=["chrom", "start"], suffixes=("", "_"))
+        .merge(
+            track.rename(columns={c: "chrom", s: "start", e: "end", v: "value"}),
+    how="left", on=["chrom", "start"], suffixes=("", "_"))
     )
 
     if clr_weight_name:
@@ -300,7 +301,7 @@ def merge_track_with_cooler(
 
     view_df = make_cooler_view(clr) if view_df is None else view_df
     for region in view_df.itertuples(index=False):
-        track_region = bioframe.select(track, region)
+        track_region = bioframe.select(clr_track, region)
         num_assigned_region_bins = track_region["value"].notna().sum()
         if num_assigned_region_bins == 0:
             raise ValueError(
@@ -308,5 +309,6 @@ def merge_track_with_cooler(
             )
     if mask_bad_bins:
         clr_track.loc[~valid_bins, "value"] = np.nan
+
 
     return clr_track[["chrom", "start", "end", "value"]]

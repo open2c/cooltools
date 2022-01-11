@@ -5,7 +5,7 @@ import scipy.stats
 import pandas as pd
 from ..lib import numutils
 from ..lib.checks import is_compatible_viewframe, is_cooler_balanced
-from ..lib.common import make_cooler_view
+from ..lib.common import make_cooler_view, merge_track_with_cooler
 
 import bioframe
 
@@ -290,10 +290,9 @@ def trans_eig(
 
 def eigs_cis(
     clr,
-    bins,
+    phasing_track=None,
     view_df=None,
     n_eigs=3,
-    phasing_track_col="GC",
     clr_weight_name="weight",
     ignore_diags=None,
     bad_bins=None,
@@ -305,23 +304,25 @@ def eigs_cis(
     Compute compartment eigenvector for a given cooler `clr` in a number of
     symmetric intra chromosomal regions defined in view_df (cis-regions), or for each
     chromosome.
+
     Note that the amplitude of compartment eigenvectors is weighted by their
-    corresponding eigenvalue
+    corresponding eigenvalue. Eigenvectors can be oriented by passing a binned
+    `phasing_track` with the same resolution as the cooler.
+
+
     Parameters
     ----------
     clr : cooler
         cooler object to fetch data from
-    bins : DataFrame
-        table of bins derived from clr with phasing track added
+    phasing_track : DataFrame
+        binned track with the same resolution as cooler bins, the fourth column is 
+        used to phase the eigenvectors, flipping them to achieve a positive correlation. 
     view_df : iterable or DataFrame, optional
         if provided, eigenvectors are calculated for the regions of the view only,
         otherwise chromosome-wide eigenvectors are computed, for chromosomes
-        specified in bins.
+        specified in phasing_trakc.
     n_eigs : int
         number of eigenvectors to compute
-    phasing_track_col : str, optional
-        name of the columns in `bins` table, if provided, eigenvectors are
-        flipped to achieve a positive correlation with `bins[phasing_track_col]`.
     clr_weight_name : str
         name of the column with balancing weights to be used.
     ignore_diags : int, optional
@@ -378,10 +379,6 @@ def eigs_cis(
         except Exception as e:
             raise ValueError("view_df is not a valid viewframe or incompatible") from e
 
-    # make sure phasing_track_col is in bins, if phasing is requested
-    if phasing_track_col and (phasing_track_col not in bins):
-        raise ValueError(f'No column "{phasing_track_col}" in the bin table')
-
     # check if cooler is balanced
     try:
         _ = is_cooler_balanced(clr, clr_weight_name, raise_errors=True)
@@ -390,12 +387,23 @@ def eigs_cis(
             f"provided cooler is not balanced or {clr_weight_name} is missing"
         ) from e
 
-    # ignore diags as in cooler inless specified
+    # ignore diags as in cooler unless specified
     ignore_diags = (
         clr._load_attrs(f"bins/{clr_weight_name}").get("ignore_diags", 2)
         if ignore_diags is None
         else ignore_diags
     )
+
+    bins = clr.bins()[:]
+
+    if phasing_track is not None:
+        phasing_track = merge_track_with_cooler(
+            phasing_track,
+            clr,
+            view_df=view_df,
+            clr_weight_name=clr_weight_name,
+            mask_bad_bins=True,
+        )
 
     # prepare output table for eigen vectors
     eigvec_table = bins.copy()
@@ -438,17 +446,17 @@ def eigs_cis(
                 A[bad_bins_region, :] = np.nan
 
         # extract phasing track relevant for the _region
-        phasing_track = (
-            bioframe.select(bins, _region)[phasing_track_col].values
-            if phasing_track_col
-            else None
-        )
+        if phasing_track is not None:
+            phasing_track_region = bioframe.select(phasing_track, _region)
+            phasing_track_region_values = phasing_track_region['value'].values
+        else:
+            phasing_track_region = None
 
         eigvals, eigvecs = cis_eig(
             A,
             n_eigs=n_eigs,
             ignore_diags=ignore_diags,
-            phasing_track=phasing_track,
+            phasing_track=phasing_track_region_values,
             clip_percentile=clip_percentile,
             sort_metric=sort_metric,
         )
