@@ -14,8 +14,9 @@ from . import cli
 @cli.command()
 @click.argument("cool_path", metavar="COOL_PATH", type=str)
 @click.option(
-    "--reference-track",
-    help="Reference track for orienting and ranking eigenvectors",
+    "--phasing-track",
+    help="Phasing track for orienting and ranking eigenvectors,"
+    "provided as /path/to/track::track_value_column_name.",
     type=TabularFilePath(exists=True, default_column_index=3),
     metavar="TRACK_PATH",
 )
@@ -62,7 +63,7 @@ from . import cli
 )
 def eigs_trans(
     cool_path,
-    reference_track,
+    phasing_track,
     view,
     n_eigs,
     clr_weight_name,
@@ -90,11 +91,11 @@ def eigs_trans(
     # full chromosome view, based on cooler
     cooler_view_df = make_cooler_view(clr)
 
-    if reference_track is not None:
+    if phasing_track is not None:
 
         # TODO: This all needs to be refactored into a more generic tabular file parser
         # Needs to handle stdin case too.
-        track_path, col = reference_track
+        track_path, col = phasing_track
         buf, names = sniff_for_header(track_path)
 
         if names is None:
@@ -143,44 +144,24 @@ def eigs_trans(
             verbose=verbose,
             **kwargs
         )
+        phasing_track = track_df
 
-        # we need to merge phasing track DataFrame with the cooler bins to get
-        # a DataFrame with phasing info aligned and validated against bins inside of
-        # the cooler file.
-        track = pd.merge(
-            left=clr.bins()[:], right=track_df, how="left", on=["chrom", "start", "end"]
-        )
 
-        # sanity check would be to check if len(bins) becomes > than nbins ...
-        # that would imply there was something in the track_df that didn't match
-        # ["chrom", "start", "end"] - keys from the c.bins()[:] .
-        if len(track) > len(clr.bins()):
-            ValueError(
-                "There is something in the {} that ".format(track_path)
-                + "couldn't be merged with cooler-bins {}".format(cool_path)
-            )
-    else:
-        # use entire bin-table from cooler, when reference-track is not provided:
-        track = clr.bins()[["chrom", "start", "end"]][:]
-        track_name = None
-
-    # define view for cis compartment-calling
+    # TODO: implement view for eigs-trans instead of current "partition"
     # use input "view" BED file or all chromosomes mentioned in "track":
     if view is None:
         view_df = cooler_view_df
     else:
-        view_df = read_viewframe_from_file(view, clr, check_sorting=True)
+        raise NotImplementedError("views are not currently implemented for CLI eigs-trans")
+        #view_df = read_viewframe_from_file(view, clr, check_sorting=True)
 
     # TODO: Add check that view_df has the same bins as track
-
-    # it's contact_type dependent:
     eigvals, eigvec_table = eigdecomp.eigs_trans(
         clr=clr,
-        bins=track,
+        phasing_track=phasing_track,
         n_eigs=n_eigs,
         clr_weight_name=clr_weight_name,
         partition=None,
-        phasing_track_col=track_name,
         sort_metric=None,
     )
 

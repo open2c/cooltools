@@ -15,7 +15,8 @@ from . import cli
 @click.argument("cool_path", metavar="COOL_PATH", type=str)
 @click.option(
     "--phasing-track",
-    help="Phasing track for orienting and ranking eigenvectors",
+    help="Phasing track for orienting and ranking eigenvectors,"
+    "provided as /path/to/track::track_value_column_name.",
     type=TabularFilePath(exists=True, default_column_index=3),
     metavar="TRACK_PATH",
 )
@@ -162,10 +163,6 @@ def eigs_cis(
         view_df = read_viewframe_from_file(view, clr, check_sorting=True)
 
     # TODO: Add check that view_df has the same bins as track
-
-
-    print(phasing_track)
-
     eigvals, eigvec_table = eigdecomp.eigs_cis(
         clr=clr,
         phasing_track=phasing_track,

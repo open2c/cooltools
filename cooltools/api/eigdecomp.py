@@ -450,7 +450,7 @@ def eigs_cis(
             phasing_track_region = bioframe.select(phasing_track, _region)
             phasing_track_region_values = phasing_track_region['value'].values
         else:
-            phasing_track_region = None
+            phasing_track_region_values = None
 
         eigvals, eigvecs = cis_eig(
             A,
@@ -480,10 +480,9 @@ def eigs_cis(
 
 def eigs_trans(
     clr,
-    bins,
+    phasing_track=None,
     n_eigs=3,
     partition=None,
-    phasing_track_col="GC",
     clr_weight_name="weight",
     sort_metric=None,
     **kwargs,
@@ -497,6 +496,13 @@ def eigs_trans(
             f"provided cooler is not balanced or {clr_weight_name} is missing"
         ) from e
 
+    # TODO: implement usage of view for eigs_trans
+    view_df = None
+    if view_df is None:
+        view_df = make_cooler_view(clr)
+    else:
+        raise NotImplementedError("views are not currently implemented for eigs_trans")
+
     if partition is None:
         partition = np.r_[
             [clr.offset(chrom) for chrom in clr.chromnames], len(clr.bins())
@@ -505,21 +511,25 @@ def eigs_trans(
     lo = partition[0]
     hi = partition[-1]
     A = clr.matrix(balance=clr_weight_name)[lo:hi, lo:hi]
-    bins = bins[lo:hi]
+    bins = clr.bins()[lo:hi].copy()
 
-    phasing_track = None
-    if phasing_track_col:
-        if phasing_track_col not in bins:
-            raise ValueError(
-                'No column "{}" in the bin table'.format(phasing_track_col)
-            )
-        phasing_track = bins[phasing_track_col].values[lo:hi]
+    if phasing_track is not None:
+        phasing_track = merge_track_with_cooler(
+            phasing_track,
+            clr,
+            view_df=view_df,
+            clr_weight_name=clr_weight_name,
+            mask_bad_bins=True,
+        )
+        phasing_track_values = phasing_track["value"].values[lo:hi]
+    else:
+        phasing_track_values = None
 
     eigvals, eigvecs = trans_eig(
         A,
         partition,
         n_eigs=n_eigs,
-        phasing_track=phasing_track,
+        phasing_track=phasing_track_values,
         sort_metric=sort_metric,
         **kwargs,
     )
