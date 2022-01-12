@@ -33,27 +33,41 @@ def test_eigs_cis(request, tmpdir):
         )
         assert r > 0.95
 
+
 def test_eigs_cis_phased(request, tmpdir):
     in_cool = op.join(request.fspath.dirname, "data/sin_eigs_mat.cool")
     in_track = op.join(request.fspath.dirname, "data/sin_eigs_track.tsv::value")
     out_eig_prefix = op.join(tmpdir, "test.eigs")
     n_eigs = 2
     runner = CliRunner()
-    result = runner.invoke(cli, ["eigs-cis", "--n-eigs",str(n_eigs), "--phasing-track", in_track, "-o", out_eig_prefix, in_cool])
+    result = runner.invoke(
+        cli,
+        [
+            "eigs-cis",
+            "--n-eigs",
+            str(n_eigs),
+            "--phasing-track",
+            in_track,
+            "-o",
+            out_eig_prefix,
+            in_cool,
+        ],
+    )
     assert result.exit_code == 0
 
-    test_eigs = pd.read_table(out_eig_prefix + ".cis.vecs.tsv", sep="\t")  
+    test_eigs = pd.read_table(out_eig_prefix + ".cis.vecs.tsv", sep="\t")
 
     # only n_eigs columns should be added to the output table
     clr = cooler.Cooler(in_cool)
     clr_bins = clr.bins()[:]
-    assert( len(test_eigs.columns)==( len(clr_bins.columns)+ n_eigs) ) 
+    assert len(test_eigs.columns) == (len(clr_bins.columns) + n_eigs)
 
     # with orientation all chromosomes should be correlated globally
-    r = np.corrcoef(
-            test_eigs.E1.values, np.sin(test_eigs.start * 2 * np.pi / 500)
-        )[0, 1]
+    r = np.corrcoef(test_eigs.E1.values, np.sin(test_eigs.start * 2 * np.pi / 500))[
+        0, 1
+    ]
     assert r > 0.95
+
 
 def test_eigs_trans_cli(request, tmpdir):
     # somehow - it is E3 that captures sin-like plaid
@@ -66,20 +80,21 @@ def test_eigs_trans_cli(request, tmpdir):
         cli,
         [
             "eigs-trans",
-            "-o", out_eig_prefix,
+            "-o",
+            out_eig_prefix,
             in_cool,
         ],
     )
     assert result.exit_code == 0
     test_trans_eigs = pd.read_table(out_eig_prefix + ".trans.vecs.tsv", sep="\t")
-    
+
     r = np.abs(
         np.corrcoef(
-            test_trans_eigs.E1.values, 
-            np.sin(test_trans_eigs.start * 2 * np.pi / 500)
+            test_trans_eigs.E1.values, np.sin(test_trans_eigs.start * 2 * np.pi / 500)
         )[0, 1]
     )
     assert r > 0.95
+
 
 def test_eigs_trans_phased_cli(request, tmpdir):
     in_cool = op.join(request.fspath.dirname, "data/sin_eigs_mat.cool")
@@ -92,24 +107,27 @@ def test_eigs_trans_phased_cli(request, tmpdir):
         cli,
         [
             "eigs-trans",
-            "--n-eigs", str(n_eigs),
-            "--phasing-track", in_track,
-            "-o", out_eig_prefix,
+            "--n-eigs",
+            str(n_eigs),
+            "--phasing-track",
+            in_track,
+            "-o",
+            out_eig_prefix,
             in_cool,
         ],
     )
     assert result.exit_code == 0
     test_trans_eigs = pd.read_table(out_eig_prefix + ".trans.vecs.tsv", sep="\t")
-    
+
     # only n_eigs columns should be added to the output table
     clr = cooler.Cooler(in_cool)
     clr_bins = clr.bins()[:]
-    assert( len(test_trans_eigs.columns)==( len(clr_bins.columns)+ n_eigs) ) 
+    assert len(test_trans_eigs.columns) == (len(clr_bins.columns) + n_eigs)
 
+    # shouldn't need the absolute value if phased
     r = np.corrcoef(
-            test_trans_eigs.E1.values, 
-            np.sin(test_trans_eigs.start * 2 * np.pi / 500)
-        )[0, 1]
+        test_trans_eigs.E1.values, np.sin(test_trans_eigs.start * 2 * np.pi / 500)
+    )[0, 1]
     assert r > 0.95
 
 
