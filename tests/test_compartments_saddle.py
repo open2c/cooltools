@@ -244,10 +244,12 @@ def test_trans_saddle_cli_viewframe(request, tmpdir):
     out_expected = op.join(tmpdir, "test.trans.expected")
     out_saddle_prefix = op.join(tmpdir, "test.trans.saddle")
 
+    # TODO: update to include view once view is implemented for eigs_trans
+    # ["eigs-trans", "-o", out_eig_prefix, "--view", in_regions, in_cool],
     runner = CliRunner()
     result = runner.invoke(
         cli,
-        ["eigs-trans", "-o", out_eig_prefix, "--view", in_regions, in_cool],
+        ["eigs-trans", "-o", out_eig_prefix, in_cool],
     )
     assert result.exit_code == 0
 
