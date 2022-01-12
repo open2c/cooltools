@@ -11,12 +11,12 @@ import pytest
 # view_from_track
 
 
-def test_merge_track_with_cooler(request, tmpdir):
+def test_align_track_with_cooler(request, tmpdir):
 
     clr_file = op.join(request.fspath.dirname, "data/sin_eigs_mat.cool")
     clr = cooler.Cooler(clr_file)
 
-    # valid track with three entries that can all be merged
+    # valid track with three entries that can all be aligned
     track = pd.DataFrame(
         [
             ["chr1", 990, 995, 22],
@@ -26,7 +26,7 @@ def test_merge_track_with_cooler(request, tmpdir):
         columns=["chrom", "start", "end", "value"],
     )
     assert (
-        ~cooltools.lib.merge_track_with_cooler(track, clr)["value"].isna()
+        ~cooltools.lib.align_track_with_cooler(track, clr)["value"].isna()
     ).sum() == 3
 
     # not a track, is not sorted
@@ -35,7 +35,7 @@ def test_merge_track_with_cooler(request, tmpdir):
         columns=["chrom", "start", "end", "value"],
     )
     with pytest.raises(ValueError):
-        cooltools.lib.merge_track_with_cooler(track, clr)
+        cooltools.lib.align_track_with_cooler(track, clr)
 
     # not a track, is overlapping
     track = pd.DataFrame(
@@ -47,7 +47,7 @@ def test_merge_track_with_cooler(request, tmpdir):
         columns=["chrom", "start", "end", "value"],
     )
     with pytest.raises(ValueError):
-        cooltools.lib.merge_track_with_cooler(track, clr)
+        cooltools.lib.align_track_with_cooler(track, clr)
 
     # bin size mismatch
     track = pd.DataFrame(
@@ -55,7 +55,7 @@ def test_merge_track_with_cooler(request, tmpdir):
         columns=["chrom", "start", "end", "value"],
     )
     with pytest.raises(ValueError):
-        cooltools.lib.merge_track_with_cooler(track, clr)
+        cooltools.lib.align_track_with_cooler(track, clr)
 
     # clr_weight_name mismatch
     track = pd.DataFrame(
@@ -67,7 +67,7 @@ def test_merge_track_with_cooler(request, tmpdir):
         columns=["chrom", "start", "end", "value"],
     )
     with pytest.raises(ValueError):
-        cooltools.lib.merge_track_with_cooler(
+        cooltools.lib.align_track_with_cooler(
             track, clr, clr_weight_name="invalid_weight_name"
         )
 
@@ -77,12 +77,12 @@ def test_merge_track_with_cooler(request, tmpdir):
         columns=["chrom", "start", "end", "value"],
     )
     with pytest.raises(ValueError):
-        cooltools.lib.merge_track_with_cooler(track, clr)
+        cooltools.lib.align_track_with_cooler(track, clr)
 
     # using a restricted view only considers chr1, avoids valueError from no assigned values
     view_df = cooltools.lib.make_cooler_view(clr)
     assert (
-        ~cooltools.lib.merge_track_with_cooler(track, clr, view_df=view_df[:1])[
+        ~cooltools.lib.align_track_with_cooler(track, clr, view_df=view_df[:1])[
             "value"
         ].isna()
     ).sum() == 3
@@ -98,7 +98,7 @@ def test_merge_track_with_cooler(request, tmpdir):
     )
     # without masking, both get assigned
     assert (
-        cooltools.lib.merge_track_with_cooler(
+        cooltools.lib.align_track_with_cooler(
             track, clr, view_df=view_df, mask_bad_bins=False
         )["value"].sum()
         == 11
@@ -106,7 +106,7 @@ def test_merge_track_with_cooler(request, tmpdir):
 
     # with masking, only the second value from the track gets assigned
     assert (
-        cooltools.lib.merge_track_with_cooler(
+        cooltools.lib.align_track_with_cooler(
             track, clr, view_df=view_df, mask_bad_bins=True
         )["value"].sum()
         == 10
