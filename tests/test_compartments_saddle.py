@@ -410,13 +410,9 @@ def test_saddle(request, tmpdir):
 
     clr = cooler.Cooler(op.join(request.fspath.dirname, "data/sin_eigs_mat.cool"))
 
-    # non-digitized track should raise an error
-    with pytest.raises(ValueError):
-        saddle.saddle(clr, expected, track, "cis")
-
     # contact_type that is not cis or trans should raise an error
     with pytest.raises(ValueError):
-        saddle.saddle(clr, expected, track, "unknown")
+        saddle.saddle(clr, expected, track, None, "unknown")
 
     # TODO: tests after adding input agreement, e.g.
     # asserting saddle.saddle(clr, cis-type-expected, track, "trans")
