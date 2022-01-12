@@ -146,14 +146,15 @@ def eigs_trans(
         )
         phasing_track = track_df
 
-
     # TODO: implement view for eigs-trans instead of current "partition"
     # use input "view" BED file or all chromosomes mentioned in "track":
     if view is None:
         view_df = cooler_view_df
     else:
-        raise NotImplementedError("views are not currently implemented for CLI eigs-trans")
-        #view_df = read_viewframe_from_file(view, clr, check_sorting=True)
+        raise NotImplementedError(
+            "views are not currently implemented for CLI eigs-trans"
+        )
+        # view_df = read_viewframe_from_file(view, clr, check_sorting=True)
 
     # TODO: Add check that view_df has the same bins as track
     eigvals, eigvec_table = eigdecomp.eigs_trans(

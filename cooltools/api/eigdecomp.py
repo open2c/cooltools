@@ -5,7 +5,7 @@ import scipy.stats
 import pandas as pd
 from ..lib import numutils
 from ..lib.checks import is_compatible_viewframe, is_cooler_balanced
-from ..lib.common import make_cooler_view, merge_track_with_cooler
+from ..lib.common import make_cooler_view, align_track_with_cooler
 
 import bioframe
 
@@ -315,8 +315,8 @@ def eigs_cis(
     clr : cooler
         cooler object to fetch data from
     phasing_track : DataFrame
-        binned track with the same resolution as cooler bins, the fourth column is 
-        used to phase the eigenvectors, flipping them to achieve a positive correlation. 
+        binned track with the same resolution as cooler bins, the fourth column is
+        used to phase the eigenvectors, flipping them to achieve a positive correlation.
     view_df : iterable or DataFrame, optional
         if provided, eigenvectors are calculated for the regions of the view only,
         otherwise chromosome-wide eigenvectors are computed, for chromosomes
@@ -397,7 +397,7 @@ def eigs_cis(
     bins = clr.bins()[:]
 
     if phasing_track is not None:
-        phasing_track = merge_track_with_cooler(
+        phasing_track = align_track_with_cooler(
             phasing_track,
             clr,
             view_df=view_df,
@@ -448,7 +448,7 @@ def eigs_cis(
         # extract phasing track relevant for the _region
         if phasing_track is not None:
             phasing_track_region = bioframe.select(phasing_track, _region)
-            phasing_track_region_values = phasing_track_region['value'].values
+            phasing_track_region_values = phasing_track_region["value"].values
         else:
             phasing_track_region_values = None
 
@@ -514,7 +514,7 @@ def eigs_trans(
     bins = clr.bins()[lo:hi].copy()
 
     if phasing_track is not None:
-        phasing_track = merge_track_with_cooler(
+        phasing_track = align_track_with_cooler(
             phasing_track,
             clr,
             view_df=view_df,

@@ -13,7 +13,7 @@ from .. import api
 import click
 from .util import validate_csv
 
-from ..lib.common import make_cooler_view, mask_cooler_bad_bins, merge_track_with_cooler
+from ..lib.common import make_cooler_view, mask_cooler_bad_bins, align_track_with_cooler
 from ..lib.io import read_viewframe_from_file, read_expected_from_file
 from ..lib.checks import is_track
 
@@ -286,9 +286,8 @@ def saddle(
     if (qrange is not None) and (vrange is not None):
         raise ValueError("only one of vrange or qrange can be supplied")
 
-
     # digitize outside of saddle so that we have binedges to save below
-    track = merge_track_with_cooler(
+    track = align_track_with_cooler(
         track,
         clr,
         view_df=view_df,
@@ -296,7 +295,7 @@ def saddle(
         mask_bad_bins=True,
     )
     digitized_track, binedges = api.saddle.digitize(
-        track.iloc[:,:4],
+        track.iloc[:, :4],
         n_bins,
         vrange=vrange,
         qrange=qrange,
@@ -322,7 +321,10 @@ def saddle(
     saddledata = S / C
 
     to_save = dict(
-        saddledata=saddledata, binedges=binedges, digitized=digitized_track, saddlecounts=C
+        saddledata=saddledata,
+        binedges=binedges,
+        digitized=digitized_track,
+        saddlecounts=C,
     )
 
     if strength:

@@ -223,7 +223,7 @@ def mask_cooler_bad_bins(track, bintable):
     return track
 
 
-def merge_track_with_cooler(
+def align_track_with_cooler(
     track, clr, view_df=None, clr_weight_name="weight", mask_bad_bins=True
 ):
     """
