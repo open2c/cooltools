@@ -56,7 +56,7 @@ from .. import api
     default=int(1e7),
     show_default=True,
 )
-def random_sample(in_path, out_path, count, frac, exact, nproc, chunksize):
+def random_sample(in_path, out_path, count, frac, cis_target, exact, nproc, chunksize):
     """
     Pick a random sample of contacts from a Hi-C map, w/o replacement.
 
