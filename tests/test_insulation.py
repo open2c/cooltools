@@ -30,15 +30,20 @@ def test_insulation_cli_nobalance(request, tmpdir):
     window = 10_000_000
     out_prefix = op.join(tmpdir, "CN.insulation.tsv")
     runner = CliRunner()
-    result = runner.invoke(cli, ["insulation",
-                                 "-o",
-                                 out_prefix,
-                                 "--clr-weight-name",
-                                 "",
-                                 "--ignore-diags",
-                                 1,
-                                 in_cool,
-                                 window])
+    result = runner.invoke(
+        cli,
+        [
+            "insulation",
+            "-o",
+            out_prefix,
+            "--clr-weight-name",
+            "",
+            "--ignore-diags",
+            1,
+            in_cool,
+            window,
+        ],
+    )
     assert result.exit_code == 1
 
 
