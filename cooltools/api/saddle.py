@@ -443,7 +443,9 @@ def saddle(
                 + "pandas categorical. See get_digitized()."
             )
         cats = digitized_track[digitized_col].dtype.categories.values
-        n_bins = len(cats[cats > -1]) - 2
+        # cats has two additional categories, 0 and n_bins+1, for values 
+        # falling outside range, as well as -1 for NAs.
+        n_bins = len(cats[cats > -1]) - 2 
     else:
         raise ValueError("n_bins must be provided as int or None")
 
