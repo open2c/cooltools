@@ -119,5 +119,5 @@ def coverage(
                     del grp["bins"][store_name]
                 h5opts = dict(compression="gzip", compression_opts=6)
                 grp["bins"].create_dataset(store_name, data=cov_arr, **h5opts)
-
+            grp.attrs.create("cis", np.sum(covs[0]), dtype=int)
     return covs

@@ -3,6 +3,7 @@ import pandas as pd
 
 import cooler
 import cooler.tools
+from .coverage import coverage
 
 
 def sample_pixels_approx(pixels, frac):
@@ -48,6 +49,7 @@ def sample(
     out_clr_path,
     count=None,
     frac=None,
+    cis_target=False,
     exact=False,
     map_func=map,
     chunksize=int(1e7),
@@ -71,6 +73,10 @@ def sample(
         The target sample size as a fraction of contacts in the original
         dataset. Mutually exclusive with `count`.
 
+    cis_target : bool
+        If True, the resulting sample will contain the specified number of cis
+        contacts, not total contacts. No effect when `frac` is specified.
+
     exact : bool
         If True, the resulting sample size will exactly match the target value.
         Exact sampling will load the whole pixel table into memory!
@@ -88,7 +94,11 @@ def sample(
         clr = cooler.Cooler(clr)
 
     if count is not None and frac is None:
-        frac = count / clr.info["sum"]
+        if cis_target:
+            cis_total = clr.info.get("cis", np.sum(coverage(clr)[0], dtype=int))
+            frac = count / cis_total
+        else:
+            frac = count / clr.info["sum"]
     elif count is None and frac is not None:
         count = np.round(frac * clr.info["sum"])
     else:
