@@ -410,23 +410,8 @@ def saddle(
         corresponding pixel of ``interaction_sum``.
     """
 
-    if n_bins is None:
-        digitized_track = track
-        digitized_col = digitized_track.columns[3]
-        is_track(track.astype({digitized_col: "float"}), raise_errors=True)
-        if (
-            type(digitized_track.dtypes[3])
-            is not pd.core.dtypes.dtypes.CategoricalDtype
-        ):
-            raise ValueError(
-                "if n_bins are not provided, then a"
-                + "digitized track, where the value column is a"
-                + "pandas categorical must be provided as input."
-                + "see get_digitized()."
-            )
-        cats = digitized_track[digitized_col].dtype.categories.values
-        n_bins = len(cats[cats > -1]) - 2
-    else:
+    if type(n_bins) is int:
+        # perform digitization
         track = align_track_with_cooler(
             track,
             clr,
@@ -442,6 +427,25 @@ def saddle(
             digitized_suffix=".d",
         )
         digitized_col = digitized_track.columns[3]
+
+    elif n_bins is None: 
+        # assume and test if track is pre-digitized
+        digitized_track = track
+        digitized_col = digitized_track.columns[3]
+        is_track(track.astype({digitized_col: "float"}), raise_errors=True)
+        if (
+            type(digitized_track.dtypes[3])
+            is not pd.core.dtypes.dtypes.CategoricalDtype
+        ):
+            raise ValueError(
+                "when n_bins=None, saddle assumes the track has been "
+                + "pre-digitized and the value column is a "
+                + "pandas categorical. See get_digitized()."
+            )
+        cats = digitized_track[digitized_col].dtype.categories.values
+        n_bins = len(cats[cats > -1]) - 2
+    else:
+        raise ValueError("n_bins must be provided as int or None")
 
     if view_df is None:
         view_df = view_from_track(digitized_track)

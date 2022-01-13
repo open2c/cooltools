@@ -441,7 +441,7 @@ def is_compatible_viewframe(
 
         # is view_df contained inside cooler-chromosomes ?
         cooler_view = make_cooler_view(verify_cooler)
-        if not bioframe.is_contained(view_df, cooler_view, raise_errors=True):
+        if not bioframe.is_contained(view_df, cooler_view, raise_errors=False):
             raise ValueError(
                 "View table is out of the bounds of chromosomes in cooler."
             )

@@ -227,11 +227,11 @@ def align_track_with_cooler(
     track, clr, view_df=None, clr_weight_name="weight", mask_bad_bins=True
 ):
     """
-    Merge a track dataframe to a cooler bintable.
+    Sync a track dataframe with a cooler bintable.
 
     Checks that bin sizes match between a track and a cooler,
-    merges the cooler bintable with the track,
-    and optionally propagates masked regions from a cooler bintable to a track.
+    merges the cooler bintable with the track, and 
+    propagates masked regions from a cooler bintable to a track.
 
     Parameters
     ----------
@@ -251,7 +251,7 @@ def align_track_with_cooler(
     Returns
     -------
     clr_track
-        track dataframe that has been merged with the cooler bintable
+        track dataframe that has been aligned with the cooler bintable
         and has columns ['chrom','start','end','value']
 
 

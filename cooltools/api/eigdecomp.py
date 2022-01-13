@@ -320,7 +320,7 @@ def eigs_cis(
     view_df : iterable or DataFrame, optional
         if provided, eigenvectors are calculated for the regions of the view only,
         otherwise chromosome-wide eigenvectors are computed, for chromosomes
-        specified in phasing_trakc.
+        specified in phasing_track.
     n_eigs : int
         number of eigenvectors to compute
     clr_weight_name : str
@@ -511,7 +511,7 @@ def eigs_trans(
     lo = partition[0]
     hi = partition[-1]
     A = clr.matrix(balance=clr_weight_name)[lo:hi, lo:hi]
-    bins = clr.bins()[lo:hi].copy()
+    bins = clr.bins()[lo:hi]
 
     if phasing_track is not None:
         phasing_track = align_track_with_cooler(
