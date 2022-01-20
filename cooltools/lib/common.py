@@ -9,6 +9,69 @@ import pandas as pd
 import bioframe
 
 
+def assign_view_2D(
+    features,
+    view_df,
+    cols=["chrom1", "start1", "end1", "chrom2", "start2", "end2"],
+    cols_view=["chrom", "start", "end"],
+    features_view_cols=["region1", "region2"],
+    view_name_col="name",
+    drop_unassigned=False,
+):
+    """Assign region names from the view to each feature
+
+    Will add two columns
+
+    Parameters
+    ----------
+    features : pd.DataFrame
+        bedpe-style dataframe
+    view_df : pandas.DataFrame
+        ViewFrame specifying region start and ends for assignment. Attempts to
+        convert dictionary and pd.Series formats to viewFrames.
+    cols : list of str
+        he names of columns containing the chromosome, start and end of the
+        genomic intervals. The default values are 'chrom', 'start', 'end'.
+    cols_view : list of str
+        The names of columns containing the chromosome, start and end of the
+        genomic intervals in the view. The default values are 'chrom', 'start', 'end'.
+    features_view_cols : list of str
+        Names of the columns where to save the assigned region names
+    view_name_col : str
+        Column of ``view_df`` with region names. Default 'name'.
+    drop_unassignes : bool
+        If True, drop intervals in df that do not overlap a region in the view.
+        Default False.
+    """
+    features = features.copy()
+    features.reset_index(inplace=True, drop=True)
+
+    bioframe.checks.is_bedframe(features, raise_errors=True, cols=cols[:3])
+    bioframe.checks.is_bedframe(features, raise_errors=True, cols=cols[3:])
+    view_df = bioframe.construction.make_viewframe(
+        view_df, view_name_col=view_name_col, cols=cols_view
+    )
+    features = bioframe.assign_view(
+        features,
+        view_df,
+        drop_unassigned=drop_unassigned,
+        df_view_col=features_view_cols[0],
+        view_name_col=view_name_col,
+        cols=cols[:3],
+        cols_view=cols_view,
+    )
+    features = bioframe.assign_view(
+        features,
+        view_df,
+        drop_unassigned=drop_unassigned,
+        df_view_col=features_view_cols[1],
+        view_name_col=view_name_col,
+        cols=cols[3:],
+        cols_view=cols_view,
+    )
+    return features
+
+
 def assign_regions(features, supports):
     """
     DEPRECATED. Will be removed in the future versions and replaced with bioframe.overlap()
