@@ -46,9 +46,9 @@ def assign_view_2D(
     features = features.copy()
     features.reset_index(inplace=True, drop=True)
 
-    bioframe.checks.is_bedframe(features, raise_errors=True, cols=cols[:3])
-    bioframe.checks.is_bedframe(features, raise_errors=True, cols=cols[3:])
-    view_df = bioframe.construction.make_viewframe(
+    bioframe.core.checks.is_bedframe(features, raise_errors=True, cols=cols[:3])
+    bioframe.core.checks.is_bedframe(features, raise_errors=True, cols=cols[3:])
+    view_df = bioframe.core.construction.make_viewframe(
         view_df, view_name_col=view_name_col, cols=cols_view
     )
     features = bioframe.assign_view(
@@ -60,6 +60,7 @@ def assign_view_2D(
         cols=cols[:3],
         cols_view=cols_view,
     )
+    features[cols[-2:]] = features[cols[-2:]].astype(int)  # gets cast to float above...
     features = bioframe.assign_view(
         features,
         view_df,
