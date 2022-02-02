@@ -214,7 +214,7 @@ def _agg_smooth_cvd(
     cvd, groupby, sigma_log10, window_sigma, points_per_sigma, cols=None
 ):
     if groupby:
-        cvd = cvd.groupby(groupby).apply(
+        cvd = cvd.set_index(groupby).groupby(groupby).apply(
             _smooth_cvd_group,
             sigma_log10=sigma_log10,
             window_sigma=window_sigma,
