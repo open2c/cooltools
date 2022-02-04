@@ -104,8 +104,10 @@ def test_pileup(request):
             "end": [107_000_000, 113_000_000],
         }
     )
+    print(view_df)
+
     stack = cooltools.api.snipping.pileup(
-        clr, windows, view_df, exp, flank=None
+        clr, windows, view_df=view_df, expected_df=exp, flank=None
     )
     # Check that the size of snips is OK and there are two of them:
     assert stack.shape == (5, 5, 2)
@@ -122,9 +124,7 @@ def test_pileup(request):
             "end2": [112_000_000, 118_000_000],
         }
     )
-    stack = cooltools.api.snipping.pileup(
-        clr, windows, view_df, exp, flank=None
-    )
+    stack = cooltools.api.snipping.pileup(clr, windows, view_df, exp, flank=None)
     # Check that the size of snips is OK and there are two of them:
     assert stack.shape == (5, 5, 2)
 
@@ -140,9 +140,7 @@ def test_pileup(request):
             "end2": [110_000_000, 115_000_000],
         }
     )
-    stack = cooltools.api.snipping.pileup(
-        clr, windows, view_df, exp, flank=None
-    )
+    stack = cooltools.api.snipping.pileup(clr, windows, view_df, exp, flank=None)
     # Check that the size of snips is OK and there are two of them:
     assert stack.shape == (5, 5, 2)
 
@@ -158,9 +156,7 @@ def test_pileup(request):
         }
     )
     with pytest.raises(ValueError):
-        stack = cooltools.api.snipping.pileup(
-            clr, windows, view_df, exp, flank=None
-        )
+        stack = cooltools.api.snipping.pileup(clr, windows, view_df, exp, flank=None)
 
     # DRAFT # Should work with force=True:
     # stack = cooltools.api.snipping.pileup(clr, windows, view_df, exp, flank=None, force=True)
@@ -180,9 +176,7 @@ def test_pileup(request):
         }
     )
     with pytest.raises(ValueError):
-        stack = cooltools.api.snipping.pileup(
-            clr, windows, view_df, exp, flank=None
-        )
+        stack = cooltools.api.snipping.pileup(clr, windows, view_df, exp, flank=None)
 
     # DRAFT # Should work with force=True:
     # stack = cooltools.api.snipping.pileup(clr, windows, view_df, exp, flank=0, force=True)
@@ -254,7 +248,9 @@ def test_ondiag_pileup_legacy_without_expected(request):
         1_000_000, ["chr1", "chr1"], [120_000_000, 160_000_000], flank_bp=2_000_000
     )
 
-    windows = cooltools.api.snipping.assign_regions(windows, view_df).reset_index(drop=True)
+    windows = cooltools.api.snipping.assign_regions(windows, view_df).reset_index(
+        drop=True
+    )
 
     snipper = cooltools.api.snipping.CoolerSnipper(clr, view_df=view_df, min_diag=None)
     stack = cooltools.api.snipping.pileup_legacy(
@@ -269,7 +265,9 @@ def test_ondiag_pileup_legacy_without_expected(request):
     windows = cooltools.api.snipping.make_bin_aligned_windows(
         1_000_000, ["chr1", "chr1"], [120_000_000, 160_000_000], flank_bp=2_000_000
     )
-    windows = cooltools.api.snipping.assign_regions(windows, view_df).reset_index(drop=True)
+    windows = cooltools.api.snipping.assign_regions(windows, view_df).reset_index(
+        drop=True
+    )
 
     stack = cooltools.api.snipping.pileup_legacy(
         windows, snipper.select, snipper.snip, map=map
@@ -363,7 +361,9 @@ def test_offdiag_pileup_legacy_without_expected(request):
     windows = pd.merge(
         windows1, windows2, left_index=True, right_index=True, suffixes=("1", "2")
     )
-    windows = cooltools.api.snipping.assign_regions(windows, view_df).reset_index(drop=True)
+    windows = cooltools.api.snipping.assign_regions(windows, view_df).reset_index(
+        drop=True
+    )
 
     snipper = cooltools.api.snipping.CoolerSnipper(clr, view_df=view_df, min_diag=None)
     stack = cooltools.api.snipping.pileup_legacy(
@@ -384,7 +384,9 @@ def test_offdiag_pileup_legacy_without_expected(request):
     windows = pd.merge(
         windows1, windows2, left_index=True, right_index=True, suffixes=("1", "2")
     )
-    windows = cooltools.api.snipping.assign_regions(windows, view_df).reset_index(drop=True)
+    windows = cooltools.api.snipping.assign_regions(windows, view_df).reset_index(
+        drop=True
+    )
 
     stack = cooltools.api.snipping.pileup_legacy(
         windows, snipper.select, snipper.snip, map=map

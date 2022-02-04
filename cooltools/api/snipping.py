@@ -10,7 +10,7 @@ from ..lib.checks import (
     is_cooler_balanced,
     is_valid_expected,
 )
-from ..lib.common import assign_regions, make_cooler_view
+from ..lib.common import assign_regions, make_cooler_view, assign_view_2D
 
 from ..lib.numutils import LazyToeplitz
 import warnings
@@ -660,6 +660,7 @@ def pileup(
     clr,
     features_df,
     view_df=None,
+    view_name_col="name",
     expected_df=None,
     expected_value_col="balanced.avg",
     flank=100_000,
@@ -713,8 +714,31 @@ def pileup(
     else:
         raise ValueError("Unknown feature_df format")
 
-    features_df = assign_regions(features_df, view_df)
-    # TODO: switch to bioframe.assign_view upon update
+    if feature_type == "bed":
+        features_df = bioframe.assign_view(
+            features_df,
+            view_df,
+            cols=["chrom", "start", "end"],
+            cols_view=["chrom", "start", "end"],
+            df_view_col="region",
+            view_name_col=view_name_col,
+            drop_unassigned=False,
+        )
+    else:
+        features_df = assign_view_2D(
+            features_df,
+            view_df,
+            cols=["chrom1", "start1", "end1", "chrom2", "start2", "end2"],
+            cols_view=["chrom", "start", "end"],
+            features_view_cols=["region1", "region2"],
+            view_name_col="name",
+            drop_unassigned=False,
+        )
+        features_df["region"] = np.where(
+            features_df["region1"] == features_df["region1"],
+            features_df["region1"],
+            None,
+        )
 
     if flank is not None:
         features_df = expand_align_features(
@@ -777,6 +801,13 @@ def pileup(
             .astype(int)
         )
     else:
+        # This is for the future, when doing trans pileups is possible (between regions)
+        # features_df["region1_offset"] = features_df["region1"].replace(
+        #     region_offsets_dict
+        # )
+        # features_df["region2_offset"] = features_df["region2"].replace(
+        #     region_offsets_dict
+        # )
         features_df[["lo1", "hi1"]] = (
             features_df[["lo1", "hi1"]]
             .subtract(

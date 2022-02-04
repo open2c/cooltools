@@ -39,7 +39,7 @@ def assign_view_2D(
         Names of the columns where to save the assigned region names
     view_name_col : str
         Column of ``view_df`` with region names. Default 'name'.
-    drop_unassignes : bool
+    drop_unassigned : bool
         If True, drop intervals in df that do not overlap a region in the view.
         Default False.
     """
