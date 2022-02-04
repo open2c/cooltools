@@ -30,12 +30,6 @@ from .. import api
     show_default=False,
 )
 @click.option(
-    "--cis-target",
-    help="If specified, the resulting sample will contain the specified number of cis"
-    "contacts, not total contacts. No effect when `frac` is specified. ",
-    is_flag=True,
-)
-@click.option(
     "--exact",
     help="If specified, use exact sampling that guarantees the size of the output sample. "
     "Otherwise, binomial sampling will be used and the sample size will be distributed around the target value. ",
@@ -80,7 +74,6 @@ def random_sample(in_path, out_path, count, frac, cis_target, exact, nproc, chun
             out_path,
             count=count,
             frac=frac,
-            cis_target=cis_target,
             exact=exact,
             chunksize=chunksize,
             map_func=map_,
