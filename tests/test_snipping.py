@@ -104,7 +104,6 @@ def test_pileup(request):
             "end": [107_000_000, 113_000_000],
         }
     )
-    print(view_df)
 
     stack = cooltools.api.snipping.pileup(
         clr, windows, view_df=view_df, expected_df=exp, flank=None
