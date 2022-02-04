@@ -3,6 +3,7 @@ import pandas as pd
 import cooler
 import cooltools
 import pytest
+import bioframe
 
 
 def test_is_valid_expected(request, tmpdir):
@@ -230,9 +231,10 @@ def test_is_track():
     )
     track.index = [5, 2, 1, 3]
 
+    # index shouldn't matter
     assert cooltools.lib.is_track(track)
 
-    track_incompat = track.copy()
+    track_incompat = bioframe.sort_bedframe(track.copy())
     track_incompat.iloc[:, 0] = 10
 
     # not bedframe in first three columns
@@ -247,3 +249,27 @@ def test_is_track():
     track_incompat.iloc[0, 0] = "chr1"
     # overlapping
     assert cooltools.lib.is_track(track_incompat) is False
+
+    # not sorted
+    track_incompat = pd.DataFrame(
+        [
+            ["chr3", 0, 10, 0.3],
+            ["chr1", 10, 20, 0.1],
+            ["chr1", 0, 10, 0.1],
+            ["chr2", 0, 10, 0.2],
+        ],
+        columns=["chrom", "start", "end", "value"],
+    )
+    assert cooltools.lib.is_track(track_incompat) is False
+
+    # not sorted
+    track = pd.DataFrame(
+        [
+            ["chr3", 0, 10, 0.3],
+            ["chr1", 0, 10, 0.1],
+            ["chr1", 10, 20, 0.1],
+            ["chr2", 0, 10, 0.2],
+        ],
+        columns=["chr", "chromStart", "chr_end", "quant"],
+    )
+    assert cooltools.lib.is_track(track)

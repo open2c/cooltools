@@ -13,8 +13,9 @@ from .. import api
 import click
 from .util import validate_csv
 
-from ..lib.common import make_cooler_view, mask_cooler_bad_bins
+from ..lib.common import make_cooler_view, mask_cooler_bad_bins, align_track_with_cooler
 from ..lib.io import read_viewframe_from_file, read_expected_from_file
+from ..lib.checks import is_track
 
 from . import util
 from . import cli
@@ -250,9 +251,11 @@ def saddle(
     )
 
     #### Read expected: ####
+
     expected_summary_cols = [
         expected_value_col,
     ]
+
     expected = read_expected_from_file(
         expected_path,
         contact_type=contact_type,
@@ -260,24 +263,6 @@ def saddle(
         verify_view=view_df,
         verify_cooler=clr,
     )
-    # add checks to make sure cis-expected is symmetric
-
-    #############################################
-    # CROSS-VALIDATE viewframes of COOLER, TRACK and EXPECTED:
-    # Scheme: view <= {track_view, expected} <= cooler_view
-    #############################################
-
-    # Track is contained in cooler bounds, but not vice versa (because cooler may have more regions):
-    if not bioframe.is_contained(track_view_df, cooler_view_df):
-        raise ValueError("Track regions are not contained in cooler chromsizes bounds")
-
-    # View is contained in track bounds, but not vice versa (because track may have more regions):
-    if not bioframe.is_contained(view_df, track_view_df):
-        raise ValueError("View table does not have some regions annotated in the track")
-
-    #############################################
-    # CROSS-VALIDATION IS COMPLETE.
-    #############################################
 
     if min_dist < 0:
         min_diag = 3
@@ -298,19 +283,33 @@ def saddle(
         vrange = None
     if qrange[0] is None:
         qrange = None
+    if (qrange is not None) and (vrange is not None):
+        raise ValueError("only one of vrange or qrange can be supplied")
 
-    digitized, binedges = api.saddle.digitize(
-        track[["chrom", "start", "end", track_name]],
+    # digitize outside of saddle so that we have binedges to save below
+    track = align_track_with_cooler(
+        track,
+        clr,
+        view_df=view_df,
+        clr_weight_name=clr_weight_name,
+        mask_bad_bins=True,
+    )
+    digitized_track, binedges = api.saddle.digitize(
+        track.iloc[:, :4],
         n_bins,
         vrange=vrange,
         qrange=qrange,
         digitized_suffix=".d",
     )
+
     S, C = api.saddle.saddle(
         clr,
         expected,
-        digitized[["chrom", "start", "end", track_name + ".d"]],
+        digitized_track,
         contact_type,
+        None,
+        vrange=None,
+        qrange=None,
         view_df=view_df,
         clr_weight_name=clr_weight_name,
         expected_value_col=expected_value_col,
@@ -322,7 +321,10 @@ def saddle(
     saddledata = S / C
 
     to_save = dict(
-        saddledata=saddledata, binedges=binedges, digitized=digitized, saddlecounts=C
+        saddledata=saddledata,
+        binedges=binedges,
+        digitized=digitized_track,
+        saddlecounts=C,
     )
 
     if strength:
@@ -332,7 +334,7 @@ def saddle(
 
     # Save data
     np.savez(out_prefix + ".saddledump", **to_save)  # .npz auto-added
-    digitized.to_csv(out_prefix + ".digitized.tsv", sep="\t", index=False)
+    digitized_track.to_csv(out_prefix + ".digitized.tsv", sep="\t", index=False)
 
     # Generate figure
     if len(fig):
