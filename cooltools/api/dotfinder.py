@@ -1113,7 +1113,6 @@ def scoring_step(
     kernels,
     max_nans_tolerated,
     loci_separation_bins,
-    output_path,
     nproc,
     verbose,
 ):
@@ -1122,6 +1121,9 @@ def scoring_step(
     for each pixel in a designated area of
     the heatmap and return it as a big
     single pixel-table (pandas.DataFrame)
+
+    Warning: this operation may run out of memory
+    very quickly when applied to large genomic regions.
     """
     if verbose:
         logging.info(f"Preparing to convolve {len(tiles)} tiles:")
@@ -1501,7 +1503,6 @@ def scoring_and_extraction_step(
     thresholds,
     max_nans_tolerated,
     loci_separation_bins,
-    output_path,
     nproc,
     verbose,
     bin1_id_name="bin1_id",
@@ -1576,10 +1577,6 @@ def scoring_and_extraction_step(
         # here:
         filtered_pix_chunks = map_(job, tiles, **map_kwargs)
         significant_pixels = pd.concat(filtered_pix_chunks, ignore_index=True)
-        if output_path is not None:
-            significant_pixels.to_csv(
-                output_path, sep="\t", header=True, index=False, compression=None
-            )
     finally:
         if nproc > 1:
             pool.close()
@@ -1793,14 +1790,14 @@ def dots(
     gw_hist = scoring_and_histogramming_step(
         clr,
         expected_df.set_index(["region1", "region2", "dist"]),
-        expected_value_col,
-        clr_weight_name,
-        tiles,
-        kernels,
-        ledges,
-        max_nans_tolerated,
-        loci_separation_bins,
-        nproc,
+        expected_name=expected_value_col,
+        clr_weight_name=clr_weight_name,
+        tiles=tiles,
+        kernels=kernels,
+        ledges=ledges,
+        max_nans_tolerated=max_nans_tolerated,
+        loci_separation_bins=loci_separation_bins,
+        nproc=nproc,
         verbose=True,
     )
 
@@ -1815,17 +1812,16 @@ def dots(
     filtered_pixels = scoring_and_extraction_step(
         clr,
         expected_df.set_index(["region1", "region2", "dist"]),
-        expected_value_col,
-        clr_weight_name,
-        tiles,
-        kernels,
-        ledges,
-        threshold_df,
-        max_nans_tolerated,
-        loci_separation_bins,
-        "enriched.tsv",
-        nproc,
-        verbose=True,
+        expected_name=expected_value_col,
+        clr_weight_name=clr_weight_name,
+        tiles=tiles,
+        kernels=kernels,
+        ledges=ledges,
+        thresholds=threshold_df,
+        max_nans_tolerated=max_nans_tolerated,
+        loci_separation_bins=loci_separation_bins,
+        nproc=nproc,
+        verbose=verbose=True,
         bin1_id_name="bin1_id",
         bin2_id_name="bin2_id",
     )
