@@ -7,9 +7,9 @@ import numpy as np
 from cooltools import api
 from cooltools.lib.common import read_expected, read_viewframe
 
+
 # test user-facing API for calling dots
 def test_dots(request):
-
     # Note that call-dots requires ucsc named expected and view
     in_cool = op.join(request.fspath.dirname, "data/CN.mm9.1000kb.cool")
     in_exp = op.join(request.fspath.dirname, "data/CN.mm9.toy_expected.tsv")
@@ -48,6 +48,7 @@ def test_dots(request):
 
     # no comparison with reference results yet
     # just checking if it runs without errors
+    assert not dot_calls_df.empty
 
 
 def test_call_dots_cli(request, tmpdir):

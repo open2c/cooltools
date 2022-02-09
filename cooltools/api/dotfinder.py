@@ -1821,7 +1821,7 @@ def dots(
         max_nans_tolerated=max_nans_tolerated,
         loci_separation_bins=loci_separation_bins,
         nproc=nproc,
-        verbose=verbose=True,
+        verbose=True,
         bin1_id_name="bin1_id",
         bin2_id_name="bin2_id",
     )
