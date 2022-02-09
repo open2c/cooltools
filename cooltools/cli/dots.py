@@ -11,7 +11,7 @@ from . import cli
 from .. import api
 
 
-from ..lib.common import assign_regions, read_expected, read_viewframe, make_cooler_view
+from ..lib.common import read_expected, read_viewframe, make_cooler_view
 
 from .util import validate_csv
 

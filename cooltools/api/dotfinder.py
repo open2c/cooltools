@@ -18,6 +18,7 @@ import cooler
 
 from ..lib.numutils import LazyToeplitz, get_kernel
 from ..lib.common import (
+    assign_regions,
     is_cooler_balanced,
     is_compatible_viewframe,
     is_compatible_expected,
@@ -1672,7 +1673,7 @@ def dots(
 
     Notes
     -----
-    'dots_clustering_radius' in Birch clustering algorithm corresponds to a
+    'clustering_radius' in Birch clustering algorithm corresponds to a
     double the clustering radius in the "greedy"-clustering used in HiCCUPS
     (to be tested).
 
@@ -1724,9 +1725,6 @@ def dots(
     binsize = clr.binsize
     loci_separation_bins = int(max_loci_separation / binsize)
     tile_size_bins = int(tile_size / binsize)
-
-    # clustering would deal with bases-units for now, so supress this for now
-    # clustering_radius_bins = int(dots_clustering_radius/binsize)
 
     # verify kernels ...
     if kernels:
@@ -1780,9 +1778,10 @@ def dots(
     )
 
     # list of tile coordinate ranges
+    kernel_half_width = int((kernel_width - 1)/2)
     tiles = list(
         heatmap_tiles_generator_diag(
-            clr, view_df, kernel_width, tile_size_bins, loci_separation_bins
+            clr, view_df, kernel_half_width, tile_size_bins, loci_separation_bins
         )
     )  # TODO check if kernel_width needs to be replaced with kernel_width/2-1?????
 
@@ -1849,7 +1848,7 @@ def dots(
     centroids = clustering_step(
         filtered_pixels_annotated,
         view_df["name"],
-        dots_clustering_radius,
+        clustering_radius,
         verbose=True,
     )
 
