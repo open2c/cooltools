@@ -471,9 +471,9 @@ def eigs_cis(
     # output table eigvec_table and eigvals_table
     for _region, _eigvals, _eigvecs in results:
         idx = bioframe.select(eigvec_table, _region).index
-        eigvec_table.at[idx, eigvec_columns] = _eigvecs.T
+        eigvec_table.loc[idx, eigvec_columns] = _eigvecs.T
         idx = bioframe.select(eigvals_table, _region).index
-        eigvals_table.at[idx, eigval_columns] = _eigvals
+        eigvals_table.loc[idx, eigval_columns] = _eigvals
 
     return eigvals_table, eigvec_table
 

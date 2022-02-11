@@ -107,7 +107,7 @@ for i in range(4):
     common_regions.append(reg1)
     common_regions.append(reg2)
 
-view_df = bioframe.make_viewframe(common_regions)
+view_df = bioframe.make_viewframe(common_regions, name_style='ucsc')
 
 
 def test_diagsum_symm(request):
