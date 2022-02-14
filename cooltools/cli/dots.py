@@ -191,7 +191,6 @@ def dots(
         cluster_filtering=None,
         tile_size=tile_size,
         nproc=nproc,
-        verbose=verbose,
     )
 
     # output results in a file, when specified

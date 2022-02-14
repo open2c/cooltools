@@ -359,7 +359,7 @@ def generate_tiles_diag_band(clr, view_df, pad_size, tile_size, band_to_cover):
     """
 
     for chrom, start, end, region_name in view_df.itertuples(index=False):
-        region_begin, region_end = clr.extent((chrom, start, end))
+        region_start, region_end = clr.extent((chrom, start, end))
         region_size = region_end - region_start
         for tile_span_i, tile_span_j in tile_square_matrix(
             matrix_size=region_size,
@@ -576,7 +576,7 @@ def get_adjusted_expected_tile_some_nans(
             # locally-adjusted expected with raw counts as values:
             Ek_raw = np.multiply(E_raw, np.divide(KO, KE))
 
-            logging.info(f"Convolution with kernel {kernel_name} is complete.")
+            logging.debug(f"Convolution with kernel {kernel_name} is done for tile @ {io} {jo}.")
             #
             # accumulation into single DataFrame:
             # store locally adjusted expected for each kernel
@@ -747,38 +747,34 @@ def histogram_scored_pixels(
     returning histograms corresponding to the chunks of scored pixels.
     """
 
-    # lambda-chunking implies different 'pval' calculation
-    # procedure with a single Poisson expected for all the
-    # hypothesis in a same "class", i.e. with the l.a. expecteds
-    # from the same histogram bin.
-
     hists = {}
     for k in kernels:
-        logging.info(f"Building a histogram for kernel-type {k}")
-        # assign lambda-bin index for kernel-type "k" to every pixel
+        #  we would need to generate a bunch of these histograms for all of the
+        # kernel types:
+        # needs to be lambda-binned             : scored_df["la_exp."+k+".value"]
+        # needs to be histogrammed in every bin : scored_df["obs.raw"]
+        #
+        # lambda-bin index for kernel-type "k":
         lbins = pd.cut(scored_df[f"la_exp.{k}.value"], ledges)
-        # now for each lambda-bin construct a 1D histogramm of "obs.raw"
-        bincount_observed = lambda _: pd.Series(np.bincount(_))
-        try:
-            # groupby lbins (lambda-chunks) and bincount raw observed counts
-            hists[k] = scored_df.groupby(lbins)[obs_raw_name] \
-                .apply(bincount_observed) \
-                .unstack() \
-                .fillna(0) \
-                .astype(np.int64) \
-                .transpose()
-        except TypeError as e:
-            raise ValueError(f"failed to bincount values of {obs_raw_name} during histogramming, check dtype") from e
-        # TODO test simplier/slower pure-groupby implementation:
-        # # scored_df.groupby([obs_raw_name, lbins]).size().unstack()
-    # return a dict of DataFrames with a bunch of 2D histograms:
+        # now for each lambda-bin construct a histogramm of "obs.raw":
+        hists[k] = scored_df.groupby(
+                [obs_raw_name, lbins],
+                dropna=False,
+                observed=False)[f"la_exp.{k}.value"] \
+            .count() \
+            .unstack() \
+            .fillna(0) \
+            .astype(np.int64)
+    # TODO make sure this alternative to bincounting works
+    # TODO add a check to make sure index is sorted
+    # return a dict of DataFrames with a bunch of histograms:
     return hists
 
 
-def determine_thresholds(gw_hist_kernels, fdr):
+def determine_thresholds(gw_hist, fdr):
     """
     given a 'gw_hist' histogram of observed counts
-    for each lambda-chunk for each kernel-type, and
+    for each lambda-chunk and for each kernel-type, and
     also given a FDR, calculate q-values for each observed
     count value in each lambda-chunk for each kernel-type.
 
@@ -804,34 +800,36 @@ def determine_thresholds(gw_hist_kernels, fdr):
     """
     qvalues = {}
     threshold_df = {}
-    for k, gw_hist in gw_hist_kernels.items():
+    for k in gw_hist:
         # Reverse cumulative histogram for kernel 'k'.
-        # First row contains total # of pixels in each lambda-chunk.
-        rcs_hist = gw_hist.iloc[::-1].cumsum(axis=0).iloc[::-1]
+        rcs_hist = gw_hist[k].iloc[::-1].cumsum(axis=0).iloc[::-1]
+        # 1st row of 'rcs_hist' contains total pixels-counts in each lambda-chunk.
+        norm = rcs_hist.iloc[0]
 
         # Assign a unit Poisson distribution to each lambda-chunk.
-        # The expected value is the upper boundary of the lambda-chunk.
+        # The expected value 'mu' is the upper boundary of each lambda-chunk:
         #   poisson.sf = 1 - poisson.cdf, but more precise
         #   poisson.sf(-1,mu) == 1.0, i.e. is equivalent to the
-        #   poisson.pmf(gw_hist.index, mu)[::-1].cumsum()[::-1]
-        rcs_Poisson = pd.DataFrame()
-        # for mu, column in zip(ledges[1:-1], gw_hist.columns):
-        for lbin in gw_hist.columns:
-            norm = rcs_hist.loc[0, lbin]
-            rcs_Poisson[lbin] = norm * poisson.sf(gw_hist.index - 1, lbin.right )
+        #   poisson.pmf(rcs_hist.index, mu)[::-1].cumsum()[::-1]
+        # unit Poisson is a collection of 1-CDF distributions for each l-chunk
+        # same dimensions as rcs_hist - matching lchunks and observed values:
+        unit_Poisson = pd.DataFrame().reindex_like(rcs_hist)
+        for lbin in rcs_hist.columns:
+            # Number of occurances in Poisson distribution for which we estimate
+            num_occurances = rcs_hist.index.to_numpy() - 1  # TODO consider loc=1 - ?why?
+            unit_Poisson[lbin] = poisson.sf(num_occurances, lbin.right)
 
         # Determine the threshold by checking the value at which 'fdr_diff'
         # first turns positive. Fill NaNs with an "unreachably" high value.
-        fdr_diff = fdr * rcs_hist - rcs_Poisson
-        very_high_value = len(rcs_hist)
+        fdr_diff = (fdr * rcs_hist) - (norm * unit_Poisson)
         threshold_df[k] = (
             fdr_diff.where(fdr_diff > 0)
             .apply(lambda col: col.first_valid_index())
-            .fillna(very_high_value)
+            .fillna(rcs_hist.index.max() + 1)  # very high value
             .astype(np.int64)
         )
         # TODO add some checks for too many NaNs/Infs
-        qvalues[k] = rcs_Poisson / rcs_hist
+        qvalues[k] = (norm * unit_Poisson) / rcs_hist
 
     return threshold_df, qvalues
 
@@ -1163,7 +1161,7 @@ def scoring_and_histogramming_step(
         # perform a DataFrame summation for every value of the dictionary:
         hxy = {}
         for k in kernels:
-            hxy[k] = hx[k].add(hy[k], fill_value=0).astype(np.int64)
+            hxy[k] = hx[k].add(hy[k], fill_value=0).fillna(0).astype(np.int64)
         # returning the sum:
         return hxy
 

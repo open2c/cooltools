@@ -43,7 +43,6 @@ def test_dots(request):
         cluster_filtering=None,
         tile_size=50_000_000,
         nproc=1,
-        verbose=True,
     )
 
     # no comparison with reference results yet

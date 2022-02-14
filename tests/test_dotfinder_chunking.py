@@ -67,9 +67,7 @@ def test_adjusted_expected_tile_some_nans_and_square_tiling():
     nnans = 1
     band_idx = int(band / b)
     res_df = pd.DataFrame([])
-    for tilei, tilej in dotfinder.square_matrix_tiling(
-        start, stop, step=40, edge=w, square=False
-    ):
+    for tilei, tilej in dotfinder.tile_square_matrix(stop - start, start, tile_size=40, pad=w):
         # define origin:
         origin = (tilei[0], tilej[0])
         # RAW observed matrix slice:
@@ -86,8 +84,6 @@ def test_adjusted_expected_tile_some_nans_and_square_tiling():
             expected=expected,
             bal_weights=(ice_weight_i, ice_weight_j),
             kernels={"donut": kernel, "footprint": np.ones_like(kernel)},
-            # nan_threshold=1,
-            verbose=False,
         )
         is_inside_band = res["bin1_id"] > (res["bin2_id"] - band_idx)
         # new style, selecting good guys:
@@ -147,9 +143,7 @@ def test_adjusted_expected_tile_some_nans_and_square_tiling_diag_band():
     nnans = 1
     band_idx = int(band / b)
     res_df = pd.DataFrame([])
-    for tilei, tilej in dotfinder.square_matrix_tiling(
-        start, stop, step=40, edge=w, square=False
-    ):
+    for tilei, tilej in dotfinder.tile_square_matrix(stop - start, start, tile_size=40, pad=w):
         # check if a given tile intersects with
         # with the diagonal band of interest ...
         diag_from = tilej[0] - tilei[1]
@@ -176,8 +170,6 @@ def test_adjusted_expected_tile_some_nans_and_square_tiling_diag_band():
                 expected=expected,
                 bal_weights=(ice_weight_i, ice_weight_j),
                 kernels={"donut": kernel, "footprint": np.ones_like(kernel)},
-                # nan_threshold=1,
-                verbose=False,
             )
             is_inside_band = res["bin1_id"] > (res["bin2_id"] - band_idx)
             # new style, selecting good guys:
