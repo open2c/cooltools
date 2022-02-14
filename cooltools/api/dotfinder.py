@@ -238,7 +238,9 @@ def clust_2D_pixels(
     centroids_per_pixel = np.take(clustered_centroids, clustered_labels, axis=0)
 
     # clustering message:
-    logging.info(f"detected {uniq_counts.size} clusters of {uniq_counts.mean():.2f}+/-{uniq_counts.std():.2f} size")
+    logging.info(
+        f"detected {uniq_counts.size} clusters of {uniq_counts.mean():.2f}+/-{uniq_counts.std():.2f} size"
+    )
 
     # create output DataFrame
     centroids_n_labels_df = pd.DataFrame(
@@ -312,9 +314,13 @@ def tile_square_matrix(matrix_size, offset, tile_size, pad=0):
     else:
         num_tiles = matrix_size // tile_size
 
-    logging.info(f" matrix {matrix_size}X{matrix_size} to be split into {num_tiles * num_tiles} tiles of {tile_size}X{tile_size}.")
+    logging.info(
+        f" matrix {matrix_size}X{matrix_size} to be split into {num_tiles * num_tiles} tiles of {tile_size}X{tile_size}."
+    )
     if pad:
-        logging.info(f" tiles are padded (width={pad}) to enable convolution near the edges")
+        logging.info(
+            f" tiles are padded (width={pad}) to enable convolution near the edges"
+        )
 
     # generate 'num_tiles X num_tiles' tiles
     for ti in range(num_tiles):
@@ -375,7 +381,9 @@ def generate_tiles_diag_band(clr, view_df, pad_size, tile_size, band_to_cover):
             band_start, band_end = 0, band_to_cover
             # we are using this >2*padding trick to exclude
             # tiles from the lower triangle from calculations ...
-            if (min(band_end, tile_diag_end) - max(band_start, tile_diag_start)) > 2 * pad_size:
+            if (
+                min(band_end, tile_diag_end) - max(band_start, tile_diag_start)
+            ) > 2 * pad_size:
                 yield region_name, tile_span_i, tile_span_j
 
 
@@ -576,7 +584,9 @@ def get_adjusted_expected_tile_some_nans(
             # locally-adjusted expected with raw counts as values:
             Ek_raw = np.multiply(E_raw, np.divide(KO, KE))
 
-            logging.debug(f"Convolution with kernel {kernel_name} is done for tile @ {io} {jo}.")
+            logging.debug(
+                f"Convolution with kernel {kernel_name} is done for tile @ {io} {jo}."
+            )
             #
             # accumulation into single DataFrame:
             # store locally adjusted expected for each kernel
@@ -757,14 +767,15 @@ def histogram_scored_pixels(
         # lambda-bin index for kernel-type "k":
         lbins = pd.cut(scored_df[f"la_exp.{k}.value"], ledges)
         # now for each lambda-bin construct a histogramm of "obs.raw":
-        hists[k] = scored_df.groupby(
-                [obs_raw_name, lbins],
-                dropna=False,
-                observed=False)[f"la_exp.{k}.value"] \
-            .count() \
-            .unstack() \
-            .fillna(0) \
+        hists[k] = (
+            scored_df.groupby([obs_raw_name, lbins], dropna=False, observed=False)[
+                f"la_exp.{k}.value"
+            ]
+            .count()
+            .unstack()
+            .fillna(0)
             .astype(np.int64)
+        )
     # TODO make sure this alternative to bincounting works
     # TODO add a check to make sure index is sorted
     # return a dict of DataFrames with a bunch of histograms:
@@ -816,7 +827,9 @@ def determine_thresholds(gw_hist, fdr):
         unit_Poisson = pd.DataFrame().reindex_like(rcs_hist)
         for lbin in rcs_hist.columns:
             # Number of occurances in Poisson distribution for which we estimate
-            num_occurances = rcs_hist.index.to_numpy() - 1  # TODO consider loc=1 - ?why?
+            num_occurances = (
+                rcs_hist.index.to_numpy() - 1
+            )  # TODO consider loc=1 - ?why?
             unit_Poisson[lbin] = poisson.sf(num_occurances, lbin.right)
 
         # Determine the threshold by checking the value at which 'fdr_diff'
@@ -834,9 +847,7 @@ def determine_thresholds(gw_hist, fdr):
     return threshold_df, qvalues
 
 
-def extract_scored_pixels(
-    scored_df, thresholds, obs_raw_name=observed_count_name
-):
+def extract_scored_pixels(scored_df, thresholds, obs_raw_name=observed_count_name):
     """
     An attempt to implement HiCCUPS-like lambda-chunking statistical procedure.
     Use FDR thresholds for different "classes" of hypothesis
@@ -861,7 +872,7 @@ def extract_scored_pixels(
 
     """
     compliant_pixel_masks = []
-    for kernel_name, threshold  in thresholds.items():
+    for kernel_name, threshold in thresholds.items():
         # loc. adj expected (lambda) of the scored pixels:
         lambda_of_pixels = scored_df[f"la_exp.{kernel_name}.value"]
         # extract lambda_threshold for every scored pixel based on its estimated lambda, using
@@ -1131,9 +1142,7 @@ def scoring_and_histogramming_step(
     )
 
     # to hist per scored chunk:
-    to_hist = partial(
-        histogram_scored_pixels, kernels=kernels, ledges=ledges
-    )
+    to_hist = partial(histogram_scored_pixels, kernels=kernels, ledges=ledges)
 
     # compose scoring and histogramming together :
     job = lambda tile: to_hist(to_score(tile))

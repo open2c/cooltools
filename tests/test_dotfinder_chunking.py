@@ -67,7 +67,9 @@ def test_adjusted_expected_tile_some_nans_and_square_tiling():
     nnans = 1
     band_idx = int(band / b)
     res_df = pd.DataFrame([])
-    for tilei, tilej in dotfinder.tile_square_matrix(stop - start, start, tile_size=40, pad=w):
+    for tilei, tilej in dotfinder.tile_square_matrix(
+        stop - start, start, tile_size=40, pad=w
+    ):
         # define origin:
         origin = (tilei[0], tilej[0])
         # RAW observed matrix slice:
@@ -143,7 +145,9 @@ def test_adjusted_expected_tile_some_nans_and_square_tiling_diag_band():
     nnans = 1
     band_idx = int(band / b)
     res_df = pd.DataFrame([])
-    for tilei, tilej in dotfinder.tile_square_matrix(stop - start, start, tile_size=40, pad=w):
+    for tilei, tilej in dotfinder.tile_square_matrix(
+        stop - start, start, tile_size=40, pad=w
+    ):
         # check if a given tile intersects with
         # with the diagonal band of interest ...
         diag_from = tilej[0] - tilei[1]
