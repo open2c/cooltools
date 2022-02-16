@@ -809,6 +809,37 @@ def determine_thresholds(gw_hist, fdr):
 
 
     """
+
+    # extracting significantly enriched interactions:
+    # We have our *null* hypothesis: intensity of a HiC pixel is Poisson-distributed
+    # with a certain expected. In this case that would be *locally-adjusted expected*.
+    #
+    # Thus for the dot-calling, we could estimate a *p*-value for every pixel based
+    # on its observed intensity and its expected intensity, e.g.:
+    # lambda = la_exp["la_exp."+k+".value"]; pvals = 1.0 - poisson.cdf(la_exp["count"], lambda)
+    # However this is technically challenging (too many pixels - genome wide) and
+    # might not be sensitive enough due to wide dyamic range of interaction counts
+    # Instead we use the *lambda*-chunking procedure from Rao et al 2014 to tackle
+    # both technicall challenges and some issues associated with the wide dynamic range
+    # of the expected for the dot-calling (due to distance decay).
+    #
+    # Some extra points:
+    # 1. simple p-value thresholding should be replaced to more "productive" FDR, which is more tractable
+    # 2. "unfair" to treat all pixels with the same stat-testing (multiple hypothesis) - too wide range of "expected"
+    # 3. (2) is addressed by spliting the pixels in the groups by their localy adjusted expected - lambda-chunks
+    # 4. upper boundary of each lambda-chunk is used as expected for every pixel that belongs to the chunk:
+    #                   - for technical/efficiency reasons - test pixels in a chunk all at once
+    #
+    # introduce tests to make sure multiple hypothesis testing is done right,
+    # see https://github.com/mirnylab/cooltools/issues/82 for details.
+
+    # - for each lambda-chunk we are calculating q-values in an efficient way, skipping calculations of p-values for each surveyed pixel
+    # - in part this is achieved by using upper boundary of each lambda-chunk as an expected for every pixel in this chunk
+    # - and in part the efficiency comes from collapsing identical observed values, i.e. histogramming
+    # - to be checked: q-values > 1.0 seem to be weird - we need to check if that is ok
+    # - also to be comared with the stats-packages implementations - just in case, e.g. `from statsmodels.stats import multitest; multitest.multipletests(pvals,alpha=0.99,method="fdr_bh")`
+
+
     qvalues = {}
     threshold_df = {}
     for k in gw_hist:
@@ -826,15 +857,17 @@ def determine_thresholds(gw_hist, fdr):
         # same dimensions as rcs_hist - matching lchunks and observed values:
         unit_Poisson = pd.DataFrame().reindex_like(rcs_hist)
         for lbin in rcs_hist.columns:
+            _norm = norm.loc[lbin]
             # Number of occurances in Poisson distribution for which we estimate
             num_occurances = (
-                rcs_hist.index.to_numpy() - 1
+                rcs_hist.index.to_numpy() #+ 1
             )  # TODO consider loc=1 - ?why?
-            unit_Poisson[lbin] = poisson.sf(num_occurances, lbin.right)
+            unit_Poisson[lbin] = _norm * poisson.sf(num_occurances, lbin.right)
 
         # Determine the threshold by checking the value at which 'fdr_diff'
         # first turns positive. Fill NaNs with an "unreachably" high value.
-        fdr_diff = (fdr * rcs_hist) - (norm * unit_Poisson)
+        fdr_diff = (fdr * rcs_hist) - unit_Poisson
+        # fdr_diff = (fdr * rcs_hist) - (norm * unit_Poisson)
         threshold_df[k] = (
             fdr_diff.where(fdr_diff > 0)
             .apply(lambda col: col.first_valid_index())
@@ -842,7 +875,7 @@ def determine_thresholds(gw_hist, fdr):
             .astype(np.int64)
         )
         # TODO add some checks for too many NaNs/Infs
-        qvalues[k] = (norm * unit_Poisson) / rcs_hist
+        qvalues[k] = unit_Poisson / rcs_hist
 
     return threshold_df, qvalues
 
