@@ -391,7 +391,7 @@ def generate_tiles_diag_band(clr, view_df, pad_size, tile_size, band_to_cover):
 # this is the MAIN function to get locally adjusted expected
 ########################################################################
 def get_adjusted_expected_tile_some_nans(
-    origin, observed, expected, bal_weights, kernels
+    origin_ij, observed, expected, bal_weights, kernels
 ):
     """
     Get locally adjusted expected for a collection of local-filters (kernels).
@@ -441,7 +441,7 @@ def get_adjusted_expected_tile_some_nans(
 
     Parameters
     ----------
-    origin : (int,int) tuple
+    origin_ij : (int,int) tuple
         tuple of interegers that specify the
         location of an observed matrix slice.
         Measured in bins, not in nucleotides.
@@ -455,10 +455,10 @@ def get_adjusted_expected_tile_some_nans(
     bal_weights : numpy.ndarray or (numpy.ndarray, numpy.ndarray)
         1D vector used to turn raw observed
         into balanced observed for a slice of
-        a matrix with the origin on the diagonal;
+        a matrix with the origin_ij on the diagonal;
         and a tuple/list of a couple of 1D arrays
         in case it is a slice with an arbitrary
-        origin.
+        origin_ij.
     kernels : dict of (str, numpy.ndarray)
         dictionary of kernels/masks to perform
         convolution of the heatmap. Kernels
@@ -482,16 +482,16 @@ def get_adjusted_expected_tile_some_nans(
         instences of such 'peaks_df' can be concatena-
         ted and deduplicated for the downstream analysis.
         Reported columns:
-        bin1_id - bin1_id index (row), adjusted to origin
-        bin2_id - bin bin2_id index, adjusted to origin
+        bin1_id - bin1_id index (row), adjusted to tile_start_i
+        bin2_id - bin bin2_id index, adjusted to tile_start_j
         la_exp - locally adjusted expected (for each kernel)
         la_nan - number of NaNs around (each kernel's footprint)
         exp.raw - global expected, rescaled to raw-counts
         obs.raw(counts) - observed values in raw-counts.
 
     """
-    # extract origin coordinate of this tile:
-    io, jo = origin
+    # extract origin_ij coordinate of this tile:
+    io, jo = origin_ij
     # let's extract full matrices and ice_vector:
     O_raw = observed  # raw observed, no need to copy, no modifications.
     E_bal = np.copy(expected)
@@ -519,7 +519,7 @@ def get_adjusted_expected_tile_some_nans(
     # and also to provide fair locally adjusted expected
     # estimation for pixels very close to diagonal, whose
     # "donuts"(kernels) would be crossing the main diagonal.
-    # The trickiest thing here would be dealing with the origin: io,jo.
+    # The trickiest thing here would be dealing with the origin_ij: io,jo.
     O_bal[np.tril_indices_from(O_bal, k=(io - jo) - 1)] = np.nan
     E_bal[np.tril_indices_from(E_bal, k=(io - jo) - 1)] = np.nan
 
@@ -621,8 +621,8 @@ def get_adjusted_expected_tile_some_nans(
 def score_tile(
     tile_cij,
     clr,
-    cis_exp,
-    exp_v_name,
+    expected_indexed,
+    expected_value_col,
     clr_weight_name,
     kernels,
     max_nans_tolerated,
@@ -642,9 +642,9 @@ def score_tile(
         tile_span_j = (start_j, end_j).
     clr : cooler
         Cooler object to use to extract Hi-C heatmap data.
-    cis_exp : pandas.DataFrame
-        DataFrame with cis-expected, indexed with 'name' and 'diag'.
-    exp_v_name : str
+    expected_indexed : pandas.DataFrame
+        DataFrame with cis-expected, indexed with 'region1', 'region2', 'dist'.
+    expected_value_col : str
         Name of a value column in expected DataFrame
     clr_weight_name : str
         Name of a value column with balancing weights in a cooler.bins()
@@ -675,7 +675,7 @@ def score_tile(
     # region_name is not known apriori (maybe move outside)
     # use .loc[region, region] for symmetric cis regions to conform with expected v1.0
     lazy_exp = LazyToeplitz(
-        cis_exp.loc[region_name, region_name][exp_v_name].to_numpy()
+        expected_indexed.loc[region_name, region_name][expected_value_col].to_numpy()
     )
 
     # RAW observed matrix slice:
@@ -688,7 +688,7 @@ def score_tile(
 
     # do the convolutions
     result = get_adjusted_expected_tile_some_nans(
-        origin=tile_start_ij,
+        origin_ij=tile_start_ij,
         observed=observed,
         expected=expected,
         bal_weights=(bal_weight_i, bal_weight_j),
@@ -912,7 +912,7 @@ def extract_scored_pixels(scored_df, thresholds, obs_raw_name=observed_count_nam
         # interval-indexed 'threshold' to query it by the lambda-values of each scored pixel
         threshold_of_pixels = threshold.loc[lambda_of_pixels]
         compliant_pixel_masks.append(
-            scored_df[obs_raw_name].to_numpy() > threshold_of_pixels.to_numpy()
+            scored_df[obs_raw_name].to_numpy() >= threshold_of_pixels.to_numpy()
         )
     # return pixels from 'scored_df' that satisfy FDR thresholds for all kernels:
     return scored_df[np.all(compliant_pixel_masks, axis=0)]
@@ -1143,8 +1143,8 @@ def cluster_filtering_hiccups(
 
 def scoring_and_histogramming_step(
     clr,
-    expected,
-    expected_name,
+    expected_indexed,
+    expected_value_col,
     clr_weight_name,
     tiles,
     kernels,
@@ -1166,8 +1166,8 @@ def scoring_and_histogramming_step(
     to_score = partial(
         score_tile,
         clr=clr,
-        cis_exp=expected,
-        exp_v_name=expected_name,
+        expected_indexed=expected_indexed,
+        expected_value_col=expected_value_col,
         clr_weight_name=clr_weight_name,
         kernels=kernels,
         max_nans_tolerated=max_nans_tolerated,
@@ -1226,8 +1226,8 @@ def scoring_and_histogramming_step(
 
 def scoring_and_extraction_step(
     clr,
-    expected,
-    expected_name,
+    expected_indexed,
+    expected_value_col,
     clr_weight_name,
     tiles,
     kernels,
@@ -1254,8 +1254,8 @@ def scoring_and_extraction_step(
     to_score = partial(
         score_tile,
         clr=clr,
-        cis_exp=expected,
-        exp_v_name=expected_name,
+        expected_indexed=expected_indexed,
+        expected_value_col=expected_value_col,
         clr_weight_name=clr_weight_name,
         kernels=kernels,
         max_nans_tolerated=max_nans_tolerated,
@@ -1304,7 +1304,7 @@ def scoring_and_extraction_step(
 # user-friendly high-level API function
 def dots(
     clr,
-    expected_df,
+    expected,
     expected_value_col="balanced.avg",
     clr_weight_name="weight",
     view_df=None,
@@ -1319,7 +1319,7 @@ def dots(
     nproc=1,
 ):
     """
-    Call dots on a cooler {clr}, using {expected_df} defined in regions specified
+    Call dots on a cooler {clr}, using {expected} defined in regions specified
     in {view_df}.
 
     All convolution kernels specified in {kernels} will be all applied to the {clr},
@@ -1333,17 +1333,17 @@ def dots(
     ----------
     clr : cooler.Cooler
         A cooler with balanced Hi-C data.
-    expected_df : DataFrame in expected format
+    expected : DataFrame in expected format
         Diagonal summary statistics for each chromosome, and name of the column
         with the values of expected to use.
     expected_value_col : str
-        Name of the column in expected_df that holds the values of expected
+        Name of the column in expected that holds the values of expected
     clr_weight_name : str
         Name of the column in the clr.bins to use as balancing weights.
         Using raw unbalanced data is not supported for dot-calling.
     view_df : viewframe
         Viewframe with genomic regions, at the moment the view has to match the
-        view used for generating expected_df. If None, generate from the cooler.
+        view used for generating expected. If None, generate from the cooler.
     kernels : { str:np.ndarray } | None
         A dictionary of convolution kernels to be used for calculating locally adjusted
         expected. If None the default kernels from HiCCUPS are going to be recommended
@@ -1416,7 +1416,7 @@ def dots(
     # make sure provided expected is compatible
     try:
         _ = is_compatible_expected(
-            expected_df,
+            expected,
             "cis",
             view_df,
             verify_cooler=clr,
@@ -1507,8 +1507,8 @@ def dots(
     # 1. Calculate genome-wide histograms of scores.
     gw_hist = scoring_and_histogramming_step(
         clr,
-        expected_df.set_index(["region1", "region2", "dist"]),
-        expected_name=expected_value_col,
+        expected.set_index(["region1", "region2", "dist"]),
+        expected_value_col=expected_value_col,
         clr_weight_name=clr_weight_name,
         tiles=tiles,
         kernels=kernels,
@@ -1526,8 +1526,8 @@ def dots(
     # 3. Filter using FDR thresholds calculated in the histogramming step
     filtered_pixels = scoring_and_extraction_step(
         clr,
-        expected_df.set_index(["region1", "region2", "dist"]),
-        expected_name=expected_value_col,
+        expected.set_index(["region1", "region2", "dist"]),
+        expected_value_col=expected_value_col,
         clr_weight_name=clr_weight_name,
         tiles=tiles,
         kernels=kernels,

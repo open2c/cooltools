@@ -6,6 +6,7 @@ from cooltools.api.dotfinder import (
     histogram_scored_pixels,
     determine_thresholds,
     annotate_pixels_with_qvalues,
+    extract_scored_pixels,
 )
 
 
@@ -100,8 +101,8 @@ def multipletests(pvals, alpha=0.1, is_sorted=False):
 
 
 # mock input data to perform some p-value calculation and correction on
-num_pixels = 1_000
-max_value = 100
+num_pixels = 250
+max_value = 10_000
 # fake kernels just for the sake of their names 'd' and 'v':
 fake_kernels = {
     "d": np.random.randint(2, size=9).reshape(3, 3),
@@ -204,7 +205,6 @@ for k in fake_kernels:
 
 
 # test functions in dotfinder using this reference from statsmodels
-
 def test_histogramming_summary():
     gw_hists = histogram_scored_pixels(
         scored_df, kernels=fake_kernels, ledges=ledges, obs_raw_name="count"
@@ -213,8 +213,34 @@ def test_histogramming_summary():
     for k, _hist in gw_hists.items():
         assert _hist.sum().sum() == num_pixels
 
+
 # test threshold and rejection tables and only then try q-values
-# they seem to be numerically unstable a bit !
+def test_thresholding():
+    # rebuild hists
+    gw_hists = histogram_scored_pixels(
+        scored_df, kernels=fake_kernels, ledges=ledges, obs_raw_name="count"
+    )
+
+    # # we have to make sure there is nothing in the last lambda-chunk
+    # # this is a temporary implementation detail, until we implement dynamic lambda-chunks
+    for k in fake_kernels:
+        last_lambda_bin = gw_hists[k].iloc[:, -1]
+        assert last_lambda_bin.sum() == 0  # should be True by construction:
+        # drop that last column/bin (last_edge, +inf]:
+        gw_hists[k] = gw_hists[k].drop(columns=last_lambda_bin.name)
+
+    # calculate q-values and rejection threshold using dotfinder built-in methods
+    # that are the reimplementation of HiCCUPS statistical procedures:
+    threshold_df, qvalues = determine_thresholds(gw_hists, FDR)
+
+    enriched_pixels_df = extract_scored_pixels(scored_df, threshold_df, obs_raw_name="count")
+
+    # all enriched pixels have their Null hypothesis rejected
+    assert enriched_pixels_df["d.rej"].all()
+    assert enriched_pixels_df["v.rej"].all()
+    # number of enriched pixels should match that number of
+    # pixels with both null-hypothesis rejected:
+    assert (scored_df["d.rej"] & scored_df["v.rej"]).sum() == len(enriched_pixels_df)
 
 
 def test_qvals():
@@ -240,8 +266,8 @@ def test_qvals():
     # pixels that pass thresholds:
     pass_df = scored_df_qvals[scored_df_qvals["d.rej"] & scored_df_qvals["v.rej"]]
 
-    assert np.allclose(pass_df["v.qval"], pass_df["la_exp.v.qval"], atol=0.0001 * FDR, rtol=1e-6)
-    assert np.allclose(pass_df["d.qval"], pass_df["la_exp.d.qval"], atol=0.0001 * FDR, rtol=1e-6)
+    assert np.allclose(pass_df["v.qval"], pass_df["la_exp.v.qval"], atol=0.0001 * FDR, rtol=1e-5)
+    assert np.allclose(pass_df["d.qval"], pass_df["la_exp.d.qval"], atol=0.0001 * FDR, rtol=1e-5)
 
     # print(closev.sum(), len(closev))
     # print(closed.sum(), len(closed))
