@@ -101,8 +101,8 @@ def multipletests(pvals, alpha=0.1, is_sorted=False):
 
 
 # mock input data to perform some p-value calculation and correction on
-num_pixels = 250
-max_value = 10_000
+num_pixels = 2500
+max_value = 99
 # fake kernels just for the sake of their names 'd' and 'v':
 fake_kernels = {
     "d": np.random.randint(2, size=9).reshape(3, 3),
@@ -111,7 +111,7 @@ fake_kernels = {
 # table with the "scored" pixel (as if they are returned by dotfinder-scoring function)
 pixel_dict = {}
 # enrich fake counts to all for more significant calls
-pixel_dict["count"] = np.random.randint(max_value, size=num_pixels) + 3
+pixel_dict["count"] = np.random.randint(max_value, size=num_pixels) + 9
 for k in fake_kernels:
     pixel_dict[f"la_exp.{k}.value"] = max_value * np.random.random(num_pixels)
 scored_df = pd.DataFrame(pixel_dict)
@@ -198,10 +198,13 @@ def get_reject_chunk(pvals_series_lchunk):
 # and rejection status using introduced statsmodels-based helper functions:
 for k in fake_kernels:
     lbin = pd.cut(scored_df[f"la_exp.{k}.value"], ledges)
-    # scored_df[f"{k}.bin"] = lbin
     scored_df[f"{k}.pval"] = scored_df.groupby(lbin)["count"].transform(get_pvals_chunk)
-    scored_df[f"{k}.qval"] = scored_df.groupby(lbin)[f"{k}.pval"].transform(get_qvals_chunk)
-    scored_df[f"{k}.rej"] = scored_df.groupby(lbin)[f"{k}.pval"].transform(get_reject_chunk)
+    scored_df[f"{k}.qval"] = scored_df.groupby(lbin)[f"{k}.pval"].transform(
+        get_qvals_chunk
+    )
+    scored_df[f"{k}.rej"] = scored_df.groupby(lbin)[f"{k}.pval"].transform(
+        get_reject_chunk
+    )
 
 
 # test functions in dotfinder using this reference from statsmodels
@@ -212,6 +215,7 @@ def test_histogramming_summary():
     # make sure total sum of the histogram yields total number of pixels:
     for k, _hist in gw_hists.items():
         assert _hist.sum().sum() == num_pixels
+        assert _hist.index.is_monotonic  # is index sorted
 
 
 # test threshold and rejection tables and only then try q-values
@@ -233,7 +237,9 @@ def test_thresholding():
     # that are the reimplementation of HiCCUPS statistical procedures:
     threshold_df, qvalues = determine_thresholds(gw_hists, FDR)
 
-    enriched_pixels_df = extract_scored_pixels(scored_df, threshold_df, obs_raw_name="count")
+    enriched_pixels_df = extract_scored_pixels(
+        scored_df, threshold_df, obs_raw_name="count"
+    )
 
     # all enriched pixels have their Null hypothesis rejected
     assert enriched_pixels_df["d.rej"].all()
@@ -261,15 +267,10 @@ def test_qvals():
     # that are the reimplementation of HiCCUPS statistical procedures:
     threshold_df, qvalues = determine_thresholds(gw_hists, FDR)
     # annotate scored pixels with q-values:
-    scored_df_qvals = annotate_pixels_with_qvalues(scored_df, qvalues, fake_kernels)
+    scored_df_qvals = annotate_pixels_with_qvalues(
+        scored_df, qvalues, obs_raw_name="count"
+    )
 
-    # pixels that pass thresholds:
-    pass_df = scored_df_qvals[scored_df_qvals["d.rej"] & scored_df_qvals["v.rej"]]
-
-    assert np.allclose(pass_df["v.qval"], pass_df["la_exp.v.qval"], atol=0.0001 * FDR, rtol=1e-5)
-    assert np.allclose(pass_df["d.qval"], pass_df["la_exp.d.qval"], atol=0.0001 * FDR, rtol=1e-5)
-
-    # print(closev.sum(), len(closev))
-    # print(closed.sum(), len(closed))
-    # print(np.abs(pass_df["d.qval"] - pass_df["la_exp.d.qval"]).max())
-    # print(np.abs(pass_df["v.qval"] - pass_df["la_exp.v.qval"]).max())
+    # our procedure in dotfiner should match these q-values exactly, including >1.0
+    assert np.allclose(scored_df_qvals["v.qval"], scored_df_qvals["la_exp.v.qval"])
+    assert np.allclose(scored_df_qvals["d.qval"], scored_df_qvals["la_exp.d.qval"])

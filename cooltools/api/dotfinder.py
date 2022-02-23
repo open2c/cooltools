@@ -98,17 +98,9 @@ def recommend_kernels(binsize):
     return kernels
 
 
-def annotate_pixels_with_qvalues(
-    pixels_df, qvalues, inplace=False, obs_raw_name=observed_count_name
-):
+def annotate_pixels_with_qvalues(pixels_df, qvalues, obs_raw_name=observed_count_name):
     """
-    Add columns with the qvalues to a DataFrame of pixels
-    ... detailed but unedited notes ...
-    Extract q-values using l-chunks and IntervalIndex.
-    we'll do it in an ugly but workign fashion, by simply
-    iteration over pairs of obs, la_exp and extracting needed qvals
-    one after another
-    ...
+    Add columns with the qvalues to a DataFrame of scored pixels
 
     Parameters
     ----------
@@ -121,37 +113,40 @@ def annotate_pixels_with_qvalues(
         storing q-values for each observed count values in each lambda-
         chunk. Colunms are Intervals defined by 'ledges' boundaries.
         Rows corresponding to a range of observed count values.
+    obs_raw_name : str
+        Name of the column/field that carry number of counts per pixel,
+        i.e. observed raw counts.
 
     Returns
     -------
     pixels_qvalue_df : pandas.DataFrame
-        DataFrame of pixels with additional columns
-        storing qvalues corresponding to the observed
-        count value of a given pixel, given kernel-type,
-        and a lambda-chunk.
-
-    Notes
-    -----
-    Should be applied to a filtered DF of pixels, otherwise would
-    be too resource-intensive.
+        DataFrame of pixels with additional columns la_exp.{k}.qval,
+        storing q-values (adjusted p-values) corresponding to the count
+        value of a pixel, its kernel, and a lambda-chunk it belongs to.
     """
-    if inplace:
-        pixels_qvalue_df = pixels_df
-    else:
-        # do it "safe" - using a copy:
-        pixels_qvalue_df = pixels_df.copy()
-    # attempting to extract q-values using l-chunks and IntervalIndex:
-    # we'll do it in an ugly but workign fashion, by simply iterating
-    # over pairs of obs, la_exp and extracting needed qvals one after another
-    for k, qval_k in qvalues.items():
-        pixels_qvalue_df[f"la_exp.{k}.qval"] = [
-            qval_k.loc[o, e]
-            for o, e in pixels_df[[obs_raw_name, f"la_exp.{k}.value"]].itertuples(
-                index=False
-            )
-        ]
+    # do it "safe" - using a copy:
+    pixels_qvalue_df = pixels_df.copy()
+    # columns to return
+    cols = list(pixels_qvalue_df.columns)
+    # will do it efficiently using "melted" qvalues table:
+    for k, qval_df in qvalues.items():
+        lbins = pd.IntervalIndex(qval_df.columns)
+        pixels_qvalue_df["lbins"] = pd.cut(
+            pixels_qvalue_df[f"la_exp.{k}.value"], bins=lbins
+        )
+        pixels_qvalue_df = pixels_qvalue_df.merge(
+            # melted qval_df columns: [counts, la_exp.k.value, value]
+            qval_df.melt(ignore_index=False).reset_index(),
+            left_on=[obs_raw_name, "lbins"],
+            right_on=[obs_raw_name, f"la_exp.{k}.value"],
+            suffixes=("", "_"),
+        )
+        qval_col_name = f"la_exp.{k}.qval"
+        pixels_qvalue_df = pixels_qvalue_df.rename(columns={"value": qval_col_name})
+        cols.append(qval_col_name)
+
     # return q-values annotated pixels
-    return pixels_qvalue_df
+    return pixels_qvalue_df.loc[:, cols]
 
 
 def clust_2D_pixels(
@@ -616,8 +611,6 @@ def get_adjusted_expected_tile_some_nans(
 ##################################
 # step-specific dot-calling functions
 ##################################
-
-
 def score_tile(
     tile_cij,
     clr,
@@ -766,7 +759,7 @@ def histogram_scored_pixels(
         #
         # lambda-bin index for kernel-type "k":
         lbins = pd.cut(scored_df[f"la_exp.{k}.value"], ledges)
-        # now for each lambda-bin construct a histogramm of "obs.raw":
+        # group scored_df by counts and lambda-bins to contructs histograms:
         hists[k] = (
             scored_df.groupby([obs_raw_name, lbins], dropna=False, observed=False)[
                 f"la_exp.{k}.value"
@@ -776,8 +769,6 @@ def histogram_scored_pixels(
             .fillna(0)
             .astype(np.int64)
         )
-    # TODO make sure this alternative to bincounting works
-    # TODO add a check to make sure index is sorted
     # return a dict of DataFrames with a bunch of histograms:
     return hists
 
@@ -829,24 +820,17 @@ def determine_thresholds(gw_hist, fdr):
     # 3. (2) is addressed by spliting the pixels in the groups by their localy adjusted expected - lambda-chunks
     # 4. upper boundary of each lambda-chunk is used as expected for every pixel that belongs to the chunk:
     #                   - for technical/efficiency reasons - test pixels in a chunk all at once
-    #
-    # introduce tests to make sure multiple hypothesis testing is done right,
-    # see https://github.com/mirnylab/cooltools/issues/82 for details.
-
-    # - for each lambda-chunk we are calculating q-values in an efficient way, skipping calculations of p-values for each surveyed pixel
-    # - in part this is achieved by using upper boundary of each lambda-chunk as an expected for every pixel in this chunk
-    # - and in part the efficiency comes from collapsing identical observed values, i.e. histogramming
-    # - to be checked: q-values > 1.0 seem to be weird - we need to check if that is ok
-    # - also to be comared with the stats-packages implementations - just in case, e.g. `from statsmodels.stats import multitest; multitest.multipletests(pvals,alpha=0.99,method="fdr_bh")`
-
+    # for each lambda-chunk q-values are calculated in an efficient way:
+    # in part, efficiency comes from collapsing identical observed values, i.e. histogramming
+    # also upper boundary of each lambda-chunk is used as an expected for every pixel in this chunk
 
     qvalues = {}
     threshold_df = {}
-    for k in gw_hist:
+    for k, _hist in gw_hist.items():
         # Reverse cumulative histogram for kernel 'k'.
-        rcs_hist = gw_hist[k].iloc[::-1].cumsum(axis=0).iloc[::-1]
+        rcs_hist = _hist.iloc[::-1].cumsum(axis=0).iloc[::-1]
         # 1st row of 'rcs_hist' contains total pixels-counts in each lambda-chunk.
-        norm = rcs_hist.iloc[0]
+        norm = rcs_hist.iloc[0, :]
 
         # Assign a unit Poisson distribution to each lambda-chunk.
         # The expected value 'mu' is the upper boundary of each lambda-chunk:
@@ -857,25 +841,27 @@ def determine_thresholds(gw_hist, fdr):
         # same dimensions as rcs_hist - matching lchunks and observed values:
         unit_Poisson = pd.DataFrame().reindex_like(rcs_hist)
         for lbin in rcs_hist.columns:
-            _norm = norm.loc[lbin]
             # Number of occurances in Poisson distribution for which we estimate
-            num_occurances = (
-                rcs_hist.index.to_numpy() #+ 1
-            )  # TODO consider loc=1 - ?why?
-            unit_Poisson[lbin] = _norm * poisson.sf(num_occurances, lbin.right)
+            _occurances = rcs_hist.index.to_numpy()
+            unit_Poisson[lbin] = poisson.sf(_occurances, lbin.right)
+        # normalize unit-Poisson distr for the total pixel counts per lambda-bin
+        unit_Poisson = norm * unit_Poisson
 
         # Determine the threshold by checking the value at which 'fdr_diff'
-        # first turns positive. Fill NaNs with an "unreachably" high value.
-        fdr_diff = (fdr * rcs_hist) - unit_Poisson
-        # fdr_diff = (fdr * rcs_hist) - (norm * unit_Poisson)
+        # first turns positive. Fill NaNs with a high value, that's out of reach.
+        _high_value = rcs_hist.index.max() + 1
+        fdr_diff = ((fdr * rcs_hist) - unit_Poisson).cummax()
+        # cummax ensures monotonic increase of differences
         threshold_df[k] = (
-            fdr_diff.where(fdr_diff > 0)
-            .apply(lambda col: col.first_valid_index())
-            .fillna(rcs_hist.index.max() + 1)  # very high value
+            fdr_diff.mask(fdr_diff < 0)  # mask negative with nans
+            .idxmin()  # index of the first positive difference
+            .fillna(_high_value)  # set high threshold if no pixels pass
             .astype(np.int64)
         )
-        # TODO add some checks for too many NaNs/Infs
-        qvalues[k] = unit_Poisson / rcs_hist
+        qvalues[k] = (unit_Poisson / rcs_hist).cummin()
+        # run cumulative min, on the array of adjusted p-values
+        # to make sure q-values are monotonously decreasing with pvals
+        qvalues[k] = qvalues[k].mask(qvalues[k] > 1.0, 1.0)
 
     return threshold_df, qvalues
 
@@ -1136,8 +1122,7 @@ def cluster_filtering_hiccups(
 
 
 ##################################
-# large CLI-helper functions wrapping smaller step-specific ones:
-# basically - the dot-calling steps - ON THE FLY - 2 PASS DOT-CALLING (HiCCUPS-style):
+# large CLI-helper functions wrapping smaller step-specific ones
 ##################################
 
 
@@ -1217,9 +1202,11 @@ def scoring_and_histogramming_step(
             raise ValueError(
                 f"There are la_exp.{k}.value in {last_lambda_bin.name}, please check the histogram"
             )
-        # drop that last column/bin (last_edge, +inf]:
-        final_hist[k] = final_hist[k].drop(columns=last_lambda_bin.name)
-        #  TODO: consider dropping all of the columns that have zero .sum()
+        # drop all lambda-chunks that do not have pixels in them:
+        final_hist[k] = final_hist[k].loc[:, final_hist[k].sum() > 0]
+        # make sure index (observed pixels counts) is sorted
+        if not final_hist[k].index.is_monotonic:
+            raise ValueError(f"Histogram for {k}-kernel is not sorted")
     # returning filtered histogram
     return final_hist
 
@@ -1545,9 +1532,7 @@ def dots(
     logging.info("preparing to extract needed q-values ...")
 
     # annotate enriched pixels
-    filtered_pixels_qvals = annotate_pixels_with_qvalues(
-        filtered_pixels, qvalues, kernels
-    )
+    filtered_pixels_qvals = annotate_pixels_with_qvalues(filtered_pixels, qvalues)
     filtered_pixels_annotated = cooler.annotate(filtered_pixels_qvals, clr.bins()[:])
     if not clustering_radius:
         # TODO: make sure returned DataFrame has the same columns as "postprocessed_calls"

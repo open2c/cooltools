@@ -63,7 +63,7 @@ def test_adjusted_expected_tile_some_nans():
     print("Running tile some nans la_exp test")
     # first, generate that locally-adjusted expected:
     res = get_adjusted_expected_tile_some_nans(
-        origin=(0, 0),
+        origin_ij=(0, 0),
         observed=mock_M_raw,  # should be RAW ...
         expected=mock_E_ice,
         bal_weights=mock_v_ice,
@@ -94,7 +94,7 @@ def test_adjusted_expected_tile_some_nans():
     # try recovering more NaNs ...
     # (allowing 1 here per pixel's footprint)...
     res = get_adjusted_expected_tile_some_nans(
-        origin=(0, 0),
+        origin_ij=(0, 0),
         observed=mock_M_raw,  # should be RAW...
         expected=mock_E_ice,
         bal_weights=mock_v_ice,
@@ -133,7 +133,7 @@ def test_adjusted_expected_tile_some_nans_and_square_tiling():
         ice_weight_j = mock_v_ice[slice(*tilej)]
         # that's the main working function from dotfinder:
         res = get_adjusted_expected_tile_some_nans(
-            origin=origin,
+            origin_ij=origin,
             observed=observed,
             expected=expected,
             bal_weights=(ice_weight_i, ice_weight_j),
@@ -221,7 +221,7 @@ def test_adjusted_expected_tile_some_nans_and_square_tiling_diag_band():
             ice_weight_j = mock_v_ice[slice(*tilej)]
             # that's the main working function from dotfinder:
             res = get_adjusted_expected_tile_some_nans(
-                origin=origin,
+                origin_ij=origin,
                 observed=observed,
                 expected=expected,
                 bal_weights=(ice_weight_i, ice_weight_j),
