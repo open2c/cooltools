@@ -1,6 +1,73 @@
 """
 Collection of functions related to dot-calling
 
+The main user-facing API function is:
+dots(
+    clr,
+    expected,
+    expected_value_col="balanced.avg",
+    clr_weight_name="weight",
+    view_df=None,
+    kernels=None,
+    max_loci_separation=10_000_000,
+    max_nans_tolerated=1,
+    n_lambda_bins=40,
+    lambda_bin_fdr=0.1,
+    clustering_radius=20_000,
+    cluster_filtering=None,
+    tile_size=5_000_000,
+    nproc=1,
+)
+
+ * the function start with some compatibility verifications
+    for the provided arguments related to `clr`, `expected` and
+    the `view` of interest.
+ * `kernels` verification or recommendation is done next.
+     We make sure custom kernels satisfy requirements: square,
+     equal size, odd size, zero in the middle, etc. By default
+     HiCCUPS style 4-donut based kernels are recommended based on
+     the binsize
+ * Lambda bins/chunks are defined next for the multiple hypothesis
+     testing for different values of locally adjusted expected.
+     For now, log binned lambda-bins are used and defined in a
+     hardcoded way with a pre-defined BASE of 2^(1/3).
+     `n_lambda_bins` controls the total number of bins being used.
+ * genomic regions in the specified `view`(all chromosomes by default)
+     are then split into smaller tiles of size `tile_size`.
+ * `scoring_and_histogramming_step` is next performed independently
+     on the genomic tiles. In this step, locally adjusted expected is
+     calculated for every pixel (in the region of interest) using the
+     convolution kernels. All surveyed pixels are histogrammed according
+     to their adjusted expected and raw observed counts. Calculated
+     locally adjusted expected is not stored in memory.
+ * Chunks of histograms are aggregated together and modified BH-FDR
+     procedure is applied to the result in `determine_thresholds`.
+     In result, thresholds of statistical significance are calculated
+     for each lambda-bin (for obseved counts), along with the adjusted
+     p-values (q-values).
+ * Calculated thresholds are used to extract statistically significant
+     pixels in `scoring_and_extraction_step`. Because locally adjusted
+     expected is not stored in memory, they have to be re-caluclated
+     again during this step, which makes it computationally intensive.
+     Locally adjusted expected values are required in order to apply
+     different thresholds of significance depending on the lambda-bin.
+ * Returned "filtered" pixels are significantly enriched relative to
+     their locally adjusted expecteds and thus can be considered of
+     biological importance. These pixels are further annotated with
+     their genomic coordinates and q-values (adjusted p-values) for
+     all applied kernels.
+ * All further steps are parts of post-processing of significantly
+     enriched interactoions (optional):
+      - enirched pixels that are within `clustering_radius` of each other
+        are clustered together and the brightest one is selected as the
+        representative.
+      - cluster-representatives along with "singletons" (enriched pixels
+        that are not part of any cluster) can be subjected to further
+        empirical filtering (HiCCUPS) in `cluster_filtering_hiccups`:
+        ensure clustered significant interactions exceed prescribed
+        enrichment thresholds and additionally singletons are "significant
+        enough", i.e. sum of their q-values does not exceed a given threshold.
+
 """
 from functools import partial, reduce
 import multiprocess as mp
@@ -36,6 +103,10 @@ adjusted_exp_name = lambda kernel_name: f"la_exp.{kernel_name}.value"
 nans_inkernel_name = lambda kernel_name: f"la_exp.{kernel_name}.nnans"
 bin1_id_name = "bin1_id"
 bin2_id_name = "bin2_id"
+
+# define basepairs to bins for clarity
+def bp_to_bins(basepairs, binsize):
+    return int(basepairs / binsize)
 
 
 def recommend_kernels(binsize):
@@ -96,6 +167,51 @@ def recommend_kernels(binsize):
     kernels = {k: get_kernel(w, p, k) for k in kernel_types}
 
     return kernels
+
+
+def is_compatible_kernels(kernels, binsize, max_nans_tolerated):
+    """
+    TODO implement checks for kernels:
+     - matrices are of the same size
+     - they should be squared (too restrictive ? maybe pad with 0 as needed)
+     - dimensions are odd, to have a center pixel to refer to
+     - they can be turned into int 1/0 ones (too restrictive ? allow weighted kernels ?)
+     - the central pixel should be zero perhaps (unless weights are allowed 4sure)
+     - maybe introduce an upper limit to the size - to avoid crazy long calculations
+     - check relative to the binsize maybe ? what's the criteria ?
+    """
+
+    # kernels must be a dict with kernel-names as keys
+    # and kernel ndarrays as values.
+    if not isinstance(kernels, dict):
+        raise ValueError(
+            "'kernels' must be a dictionary" "with name-keys and ndarrays-values."
+        )
+
+    # deduce kernel_width - overall footprint
+    kernel_widths = [len(k) for kn, k in kernels.items()]
+    # kernels must have the same width for now:
+    if min(kernel_widths) != max(kernel_widths):
+        raise ValueError(f"all 'kernels' must have the same size, now: {kernel_widths}")
+    # now extract their dimensions:
+    kernel_width = max(kernel_widths)
+    kernel_half_width = (kernel_width - 1) / 2  # former w parameter
+    if (kernel_half_width <= 0) or not kernel_half_width.is_integer():
+        raise ValueError(
+            f"Size of the convolution kernels has to be odd and > 3, currently {kernel_width}"
+        )
+
+    # once kernel parameters are setup check max_nans_tolerated
+    # to make sure kernel footprints overlaping 1 side with the
+    # NaNs filled row/column are not "allowed"
+    if not max_nans_tolerated <= kernel_width:
+        raise ValueError(
+            f"Too many NaNs allowed max_nans_tolerated={max_nans_tolerated}"
+        )
+    # may lead to scoring the same pixel twice, - i.e. duplicates.
+
+    # return True if everyhting passes
+    return True
 
 
 def annotate_pixels_with_qvalues(pixels_df, qvalues, obs_raw_name=observed_count_name):
@@ -1417,53 +1533,20 @@ def dots(
 
     # Prepare some parameters.
     binsize = clr.binsize
-    loci_separation_bins = int(max_loci_separation / binsize)
-    tile_size_bins = int(tile_size / binsize)
+    loci_separation_bins = bp_to_bins(max_loci_separation, binsize)
+    tile_size_bins = bp_to_bins(tile_size, binsize)
 
-    # verify kernels ...
-    if kernels:
-        # verify
+    # verify provided kernels or recommend them (HiCCUPS)...
+    if kernels and is_compatible_kernels(kernels, binsize, max_nans_tolerated):
         warnings.warn(
-            "There are no compatibility checks implemented yet for custom kernels, use at your own risk"
+            "Compatibility checks for 'kernels' are not fully implemented yet, use at your own risk"
         )
-        # implement checks like - in no particular order:
-        # matrices are of the same size
-        # they should be squared (should they?) - pad with 0 as needed
-        # dimensions are odd, to have a center pixel to refer to
-        # they can be turned into int 1/0 ones
-        # the central pixel should be zero perhaps
-        # maybe intrduce an upper limit to the size - to avoid crazy long calculations
-        # check relative to the binsize maybe ? what's the criteria ?
-        pass
     else:
         # recommend them (default hiccups ones for now)
         kernels = recommend_kernels(binsize)
-
-    # kernels must be a dict with kernel-names as keys
-    # and kernel ndarrays as values.
-    if not isinstance(kernels, dict):
-        raise ValueError(
-            "'kernels' must be a dictionary" "with name-keys and ndarrays-values."
-        )
-
     # deduce kernel_width - overall footprint
-    kernel_width = max(len(k) for kn, k in kernels.items())
-    kernel_half_width = (kernel_width - 1) / 2  # former w parameter
-    if kernel_half_width.is_integer() and (kernel_half_width > 0):
-        kernel_half_width = int(kernel_half_width)
-    else:
-        raise ValueError(
-            f"Size of the convolution kernels has to be odd and > 3, currently {kernel_width}"
-        )
-
-    # once kernel parameters are setup check max_nans_tolerated
-    # to make sure kernel footprints overlaping 1 side with the
-    # NaNs filled row/column are not "allowed"
-    if not max_nans_tolerated <= kernel_width:
-        raise ValueError(
-            f"Too many NaNs allowed max_nans_tolerated={max_nans_tolerated}"
-        )
-    # may lead to scoring the same pixel twice, - i.e. duplicates.
+    kernel_width = max(len(k) for k in kernels.values())  # 2*w+1
+    kernel_half_width = int((kernel_width - 1) / 2)  # former w parameter
 
     # try to guess required lambda cunks using "max" value of pixel counts
     # statistical: lambda-chunking edges ...
