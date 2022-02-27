@@ -15,7 +15,8 @@ from cooler.tools import partition
 import cooler
 import bioframe
 from ..lib import assign_supports, numutils
-from ..lib.common import is_compatible_viewframe, is_cooler_balanced, make_cooler_view
+from ..lib.checks import is_compatible_viewframe, is_cooler_balanced
+from ..lib.common import make_cooler_view
 
 from ..sandbox import expected_smoothing
 
@@ -260,7 +261,9 @@ def make_diag_table(bad_mask, span1, span2):
     return diags.astype(int)
 
 
-def make_diag_tables(clr, regions, regions2=None, clr_weight_name="weight", bad_bins=None):
+def make_diag_tables(
+    clr, regions, regions2=None, clr_weight_name="weight", bad_bins=None
+):
     """
     For every support region infer diagonals that intersect this region
     and calculate the size of these intersections in pixels, both "total" and
@@ -590,7 +593,9 @@ def diagsum_symm(
     except Exception as e:
         raise ValueError("provided view_df is not valid") from e
 
-    dtables = make_diag_tables(clr, view_df, clr_weight_name=clr_weight_name, bad_bins=bad_bins)
+    dtables = make_diag_tables(
+        clr, view_df, clr_weight_name=clr_weight_name, bad_bins=bad_bins
+    )
 
     # combine masking with existing transforms and add a "count" transform:
     if bad_bins is not None:
@@ -622,7 +627,9 @@ def diagsum_symm(
             agg_name = f"{field}.sum"
             dt[agg_name] = 0
 
-    job = partial(_diagsum_symm, clr, fields, transforms, clr_weight_name, view_df.values)
+    job = partial(
+        _diagsum_symm, clr, fields, transforms, clr_weight_name, view_df.values
+    )
     results = map(job, spans)
     for result in results:
         for i, agg in result.items():
@@ -1153,15 +1160,15 @@ def expected_cis(
                 result,
                 groupby=None,
                 sigma_log10=smooth_sigma,
-            ).rename(columns={"balanced.avg.smoothed":"balanced.avg.smoothed.agg"})
+            ).rename(columns={"balanced.avg.smoothed": "balanced.avg.smoothed.agg"})
             # add smoothed columns to the result
             result = result.merge(
                 result_smooth_agg[["balanced.avg.smoothed.agg", _DIST]],
-                on=[_DIST, ],
+                on=[
+                    _DIST,
+                ],
                 how="left",
             )
-
-
 
     return result
 

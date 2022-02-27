@@ -1,7 +1,6 @@
 import collections
 
 import numpy as np
-import pandas as pd
 import numba
 
 
@@ -101,9 +100,14 @@ def _log_smooth_numba(
         hi = np.searchsorted(log_xs, cur_log_x + sigma_log10 * window_sigma)
         smooth_weights = np.exp(
             -((cur_log_x - log_xs[lo:hi]) ** 2) / 2 / sigma_log10 / sigma_log10
-        )
-        for k in range(N_FUNCS):
-            ys_smoothed[k, i] = np.sum(ys[k, lo:hi] * smooth_weights)
+        ) 
+        norm = smooth_weights.sum()
+        
+        if norm > 0:
+            smooth_weights /= norm
+
+            for k in range(N_FUNCS):
+                ys_smoothed[k, i] = np.sum(ys[k, lo:hi] * smooth_weights)
 
     return xs_thinned, ys_smoothed
 
@@ -148,9 +152,9 @@ def log_smooth(
         raise ValueError("xs must be a 1D vector")
     if ys.ndim not in (1, 2):
         raise ValueError('ys must be either a 1D vector or a "tall" 2D matrix')
-    if xs.shape[0] == ys.shape[0]:
+    if xs.shape[0] != ys.shape[-1]:
         raise ValueError(
-            "xs and ys must have the same number of elements along the 1st dimension"
+            "xs and ys must have the same number of observations"
         )
 
     ys = ys[np.newaxis, :] if ys.ndim == 1 else ys
@@ -210,7 +214,7 @@ def _agg_smooth_cvd(
     cvd, groupby, sigma_log10, window_sigma, points_per_sigma, cols=None
 ):
     if groupby:
-        cvd = cvd.groupby(groupby).apply(
+        cvd = cvd.set_index(groupby).groupby(groupby).apply(
             _smooth_cvd_group,
             sigma_log10=sigma_log10,
             window_sigma=window_sigma,

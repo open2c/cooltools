@@ -10,6 +10,8 @@ import click
 from . import cli
 from .. import api
 
+from ..lib.common import make_cooler_view, assign_regions
+from ..lib.io import read_viewframe_from_file, read_expected_from_file
 
 from ..lib.common import read_expected, read_viewframe, make_cooler_view
 
@@ -162,13 +164,13 @@ def dots(
     if view is None:
         view_df = make_cooler_view(clr)
     else:
-        view_df = read_viewframe(view, clr, check_sorting=True)
+        view_df = read_viewframe_from_file(view, clr, check_sorting=True)
 
     #### Read expected: ####
     expected_summary_cols = [
         expected_value_col,
     ]
-    expected = read_expected(
+    expected = read_expected_from_file(
         expected_path,
         contact_type="cis",
         expected_value_cols=expected_summary_cols,

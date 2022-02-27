@@ -8,7 +8,10 @@ from skimage.filters import threshold_li, threshold_otsu
 
 from ..lib._query import CSRSelector
 from ..lib import peaks, numutils
-from ..lib.common import make_cooler_view, is_compatible_viewframe, is_cooler_balanced
+
+from ..lib.checks import is_compatible_viewframe, is_cooler_balanced
+from ..lib.common import make_cooler_view
+
 
 logging.basicConfig(level=logging.INFO)
 
@@ -89,13 +92,14 @@ def insul_diamond(
     else:
         # calculate n_pixels
         n_pixels = get_n_pixels(
-            bins[clr_weight_name].isnull().values, window=window, ignore_diags=ignore_diags
+            bins[clr_weight_name].isnull().values,
+            window=window,
+            ignore_diags=ignore_diags,
         )
         # define transform - balanced and raw ('count') for now
         weight1 = clr_weight_name + "1"
         weight2 = clr_weight_name + "2"
         transform = lambda p: p["count"] * p[weight1] * p[weight2]
-
 
     for chunk_dict in pixel_query.read_chunked():
         chunk = pd.DataFrame(chunk_dict, columns=["bin1_id", "bin2_id", "count"])
@@ -215,7 +219,6 @@ def calculate_insulation_score(
                 f"provided cooler is not balanced or {clr_weight_name} is missing"
             ) from e
 
-
     bin_size = clr.info["bin-size"]
     # check if ignore_diags is valid
     if ignore_diags is None:
@@ -258,7 +261,9 @@ def calculate_insulation_score(
         region_bins = clr.bins().fetch(region)
         ins_region = region_bins[["chrom", "start", "end"]].copy()
         ins_region.loc[:, "region"] = name
-        ins_region[is_bad_bin_key] = region_bins[clr_weight_name].isnull() if clr_weight_name else False
+        ins_region[is_bad_bin_key] = (
+            region_bins[clr_weight_name].isnull() if clr_weight_name else False
+        )
 
         if min_dist_bad_bin:
             ins_region = ins_region.assign(
@@ -503,7 +508,6 @@ def _find_insulating_boundaries_dense(
             raise ValueError("view_df is not a valid viewframe or incompatible") from e
 
     bin_size = clr.info["bin-size"]
-
 
     # check if cooler is balanced
     if clr_weight_name:

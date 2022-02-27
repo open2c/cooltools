@@ -42,12 +42,12 @@ Documentation can be found here: https://cooltools.readthedocs.io/en/latest/.
 Cooltools offers a number of tutorials to showcase analyses it enables using the [Open2c code ecosystem](https://github.com/open2c/). For users who are new to Hi-C analysis, we recommend going through example notebooks in the following order:
 
 - [Visualization](https://cooltools.readthedocs.io/en/latest/notebooks/viz.html): how to load and visualize Hi-C data stored in coolers.
-- [Contacts vs, Distance](https://cooltools.readthedocs.io/en/latest/notebooks/contacts_vs_distance.html):  how to calculate contact frequency as a function of genomic distance– the most prominent feature in Hi-C maps
+- [Contacts vs Distance](https://cooltools.readthedocs.io/en/latest/notebooks/contacts_vs_distance.html):  how to calculate contact frequency as a function of genomic distance, the most prominent feature in Hi-C maps.
 - [Compartments and Saddles](https://cooltools.readthedocs.io/en/latest/notebooks/compartments_and_saddles.html):  how to extract eigenvectors and create saddleplots reflecting A/B compartments.
 - [Insulation and Boundaries](https://cooltools.readthedocs.io/en/latest/notebooks/insulation_and_boundaries.html):  how to extract insulation profiles and call boundaries using insulation profile minima.
 - [Pileups and Average Patterns](https://cooltools.readthedocs.io/en/latest/notebooks/pileup_CTCF.html): how to create avearge maps around genomic features like CTCF.
 
-Note that these notebooks currently focus on mammalian interphase Hi-C analysis, but are readily extendible to other organisms and cellualr contexts.
+Note that these notebooks currently focus on mammalian interphase Hi-C analysis, but are readily extendible to other organisms and cellular contexts.
 
 ## Contributing
 

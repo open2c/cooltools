@@ -5,8 +5,13 @@ import numpy as np
 import pandas as pd
 import bioframe
 
-from ..lib.common import assign_regions, is_compatible_viewframe, is_compatible_expected, make_cooler_view
-from ..lib.common import is_cooler_balanced
+from ..lib.checks import (
+    is_compatible_viewframe,
+    is_cooler_balanced,
+    is_valid_expected,
+)
+from ..lib.common import assign_regions, make_cooler_view
+
 from ..lib.numutils import LazyToeplitz
 import warnings
 
@@ -442,7 +447,7 @@ class ObsExpSnipper:
                 ) from e
         # make sure expected is compatible
         try:
-            _ = is_compatible_expected(
+            _ = is_valid_expected(
                 expected,
                 "cis",
                 view_df,
@@ -588,7 +593,7 @@ class ExpectedSnipper:
                 ) from e
         # make sure expected is compatible
         try:
-            _ = is_compatible_expected(
+            _ = is_valid_expected(
                 expected,
                 "cis",
                 view_df,
@@ -671,7 +676,7 @@ def pileup(
         Cooler with Hi-C data
     features_df : pd.DataFrame
         Dataframe in bed or bedpe format: has to have 'chrom', 'start', 'end'
-        or 'chrom1', 'start1', 'end1', 'chrom2', 'start2', 'end1' columns.
+        or 'chrom1', 'start1', 'end1', 'chrom2', 'start2', 'end2' columns.
     view_df : pd.DataFrame
         Dataframe with the genomic view for this operation (has to match the
         expected_df, if provided)
@@ -731,11 +736,11 @@ def pileup(
     else:
         try:
             _ = is_compatible_viewframe(
-                    view_df,
-                    clr,
-                    check_sorting=True,
-                    raise_errors=True,
-                )
+                view_df,
+                clr,
+                check_sorting=True,
+                raise_errors=True,
+            )
         except Exception as e:
             raise ValueError("view_df is not a valid viewframe or incompatible") from e
 

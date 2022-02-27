@@ -4,7 +4,8 @@ import scipy.stats
 
 import pandas as pd
 from ..lib import numutils
-from ..lib.common import make_cooler_view, is_compatible_viewframe, is_cooler_balanced
+from ..lib.checks import is_compatible_viewframe, is_cooler_balanced
+from ..lib.common import make_cooler_view, align_track_with_cooler
 
 import bioframe
 
@@ -289,10 +290,9 @@ def trans_eig(
 
 def eigs_cis(
     clr,
-    bins,
+    phasing_track=None,
     view_df=None,
     n_eigs=3,
-    phasing_track_col="GC",
     clr_weight_name="weight",
     ignore_diags=None,
     bad_bins=None,
@@ -304,23 +304,25 @@ def eigs_cis(
     Compute compartment eigenvector for a given cooler `clr` in a number of
     symmetric intra chromosomal regions defined in view_df (cis-regions), or for each
     chromosome.
+
     Note that the amplitude of compartment eigenvectors is weighted by their
-    corresponding eigenvalue
+    corresponding eigenvalue. Eigenvectors can be oriented by passing a binned
+    `phasing_track` with the same resolution as the cooler.
+
+
     Parameters
     ----------
     clr : cooler
         cooler object to fetch data from
-    bins : DataFrame
-        table of bins derived from clr with phasing track added
+    phasing_track : DataFrame
+        binned track with the same resolution as cooler bins, the fourth column is
+        used to phase the eigenvectors, flipping them to achieve a positive correlation.
     view_df : iterable or DataFrame, optional
         if provided, eigenvectors are calculated for the regions of the view only,
         otherwise chromosome-wide eigenvectors are computed, for chromosomes
-        specified in bins.
+        specified in phasing_track.
     n_eigs : int
         number of eigenvectors to compute
-    phasing_track_col : str, optional
-        name of the columns in `bins` table, if provided, eigenvectors are
-        flipped to achieve a positive correlation with `bins[phasing_track_col]`.
     clr_weight_name : str
         name of the column with balancing weights to be used.
     ignore_diags : int, optional
@@ -369,17 +371,13 @@ def eigs_cis(
         # Make sure view_df is a proper viewframe
         try:
             _ = is_compatible_viewframe(
-                    view_df,
-                    clr,
-                    check_sorting=True,
-                    raise_errors=True,
-                )
+                view_df,
+                clr,
+                check_sorting=True,
+                raise_errors=True,
+            )
         except Exception as e:
             raise ValueError("view_df is not a valid viewframe or incompatible") from e
-
-    # make sure phasing_track_col is in bins, if phasing is requested
-    if phasing_track_col and (phasing_track_col not in bins):
-        raise ValueError(f'No column "{phasing_track_col}" in the bin table')
 
     # check if cooler is balanced
     try:
@@ -389,12 +387,23 @@ def eigs_cis(
             f"provided cooler is not balanced or {clr_weight_name} is missing"
         ) from e
 
-    # ignore diags as in cooler inless specified
+    # ignore diags as in cooler unless specified
     ignore_diags = (
         clr._load_attrs(f"bins/{clr_weight_name}").get("ignore_diags", 2)
         if ignore_diags is None
         else ignore_diags
     )
+
+    bins = clr.bins()[:]
+
+    if phasing_track is not None:
+        phasing_track = align_track_with_cooler(
+            phasing_track,
+            clr,
+            view_df=view_df,
+            clr_weight_name=clr_weight_name,
+            mask_bad_bins=True,
+        )
 
     # prepare output table for eigen vectors
     eigvec_table = bins.copy()
@@ -437,17 +446,17 @@ def eigs_cis(
                 A[bad_bins_region, :] = np.nan
 
         # extract phasing track relevant for the _region
-        phasing_track = (
-            bioframe.select(bins, _region)[phasing_track_col].values
-            if phasing_track_col
-            else None
-        )
+        if phasing_track is not None:
+            phasing_track_region = bioframe.select(phasing_track, _region)
+            phasing_track_region_values = phasing_track_region["value"].values
+        else:
+            phasing_track_region_values = None
 
         eigvals, eigvecs = cis_eig(
             A,
             n_eigs=n_eigs,
             ignore_diags=ignore_diags,
-            phasing_track=phasing_track,
+            phasing_track=phasing_track_region_values,
             clip_percentile=clip_percentile,
             sort_metric=sort_metric,
         )
@@ -462,19 +471,18 @@ def eigs_cis(
     # output table eigvec_table and eigvals_table
     for _region, _eigvals, _eigvecs in results:
         idx = bioframe.select(eigvec_table, _region).index
-        eigvec_table.at[idx, eigvec_columns] = _eigvecs.T
+        eigvec_table.loc[idx, eigvec_columns] = _eigvecs.T
         idx = bioframe.select(eigvals_table, _region).index
-        eigvals_table.at[idx, eigval_columns] = _eigvals
+        eigvals_table.loc[idx, eigval_columns] = _eigvals
 
     return eigvals_table, eigvec_table
 
 
 def eigs_trans(
     clr,
-    bins,
+    phasing_track=None,
     n_eigs=3,
     partition=None,
-    phasing_track_col="GC",
     clr_weight_name="weight",
     sort_metric=None,
     **kwargs,
@@ -487,7 +495,14 @@ def eigs_trans(
         raise ValueError(
             f"provided cooler is not balanced or {clr_weight_name} is missing"
         ) from e
-    
+
+    # TODO: implement usage of view for eigs_trans
+    view_df = None
+    if view_df is None:
+        view_df = make_cooler_view(clr)
+    else:
+        raise NotImplementedError("views are not currently implemented for eigs_trans")
+
     if partition is None:
         partition = np.r_[
             [clr.offset(chrom) for chrom in clr.chromnames], len(clr.bins())
@@ -496,21 +511,25 @@ def eigs_trans(
     lo = partition[0]
     hi = partition[-1]
     A = clr.matrix(balance=clr_weight_name)[lo:hi, lo:hi]
-    bins = bins[lo:hi]
+    bins = clr.bins()[lo:hi]
 
-    phasing_track = None
-    if phasing_track_col:
-        if phasing_track_col not in bins:
-            raise ValueError(
-                'No column "{}" in the bin table'.format(phasing_track_col)
-            )
-        phasing_track = bins[phasing_track_col].values[lo:hi]
+    if phasing_track is not None:
+        phasing_track = align_track_with_cooler(
+            phasing_track,
+            clr,
+            view_df=view_df,
+            clr_weight_name=clr_weight_name,
+            mask_bad_bins=True,
+        )
+        phasing_track_values = phasing_track["value"].values[lo:hi]
+    else:
+        phasing_track_values = None
 
     eigvals, eigvecs = trans_eig(
         A,
         partition,
         n_eigs=n_eigs,
-        phasing_track=phasing_track,
+        phasing_track=phasing_track_values,
         sort_metric=sort_metric,
         **kwargs,
     )

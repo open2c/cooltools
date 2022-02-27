@@ -2,7 +2,7 @@ import pandas as pd
 import numpy as np
 from functools import partial
 from ..api import expected
-from ..lib.common import read_expected
+from ..lib.io import read_expected_from_file
 
 import click
 from .util import validate_csv
@@ -128,7 +128,7 @@ def logbin_expected(
     if "count.sum" not in expected_summary_cols:
         expected_summary_cols.append("count.sum")
 
-    cvd = read_expected(
+    cvd = read_expected_from_file(
         expected_path,
         contact_type="cis",
         expected_value_cols=expected_summary_cols,

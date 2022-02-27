@@ -86,7 +86,11 @@ weight2 = clr_weight_name + "2"
 transforms = {"balanced": lambda p: p["count"] * p[weight1] * p[weight2]}
 assumed_binsize = 1_000_000
 
-chromsizes = bioframe.fetch_chromsizes("mm9")
+chromsizes_file = op.join(
+    op.dirname(op.realpath(__file__)),
+    "data/mm9.chrom.sizes.reduced",
+)
+chromsizes = bioframe.read_chromsizes(chromsizes_file)
 chromosomes = list(chromsizes.index)
 supports = [(chrom, 0, chromsizes[chrom]) for chrom in chromosomes]
 
@@ -103,7 +107,7 @@ for i in range(4):
     common_regions.append(reg1)
     common_regions.append(reg2)
 
-view_df = bioframe.make_viewframe(common_regions)
+view_df = bioframe.make_viewframe(common_regions, name_style='ucsc')
 
 
 def test_diagsum_symm(request):
@@ -517,7 +521,9 @@ def test_trans_expected_view_cli(request, tmpdir):
         ucsc_region2 = regions2.iloc[i, :3].to_list()
         # check only trans regions !
         if ucsc_region1[0] != ucsc_region2[0]:
-            matrix = clr.matrix(balance=clr_weight_name).fetch(ucsc_region1, ucsc_region2)
+            matrix = clr.matrix(balance=clr_weight_name).fetch(
+                ucsc_region1, ucsc_region2
+            )
             testing.assert_allclose(
                 actual=trans_expected.loc[(region1_name, region2_name), "balanced.avg"],
                 desired=_blocksum_asymm_dense(matrix),
