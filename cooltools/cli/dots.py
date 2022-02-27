@@ -13,8 +13,6 @@ from .. import api
 from ..lib.common import make_cooler_view, assign_regions
 from ..lib.io import read_viewframe_from_file, read_expected_from_file
 
-from ..lib.common import read_expected, read_viewframe, make_cooler_view
-
 from .util import validate_csv
 
 logging.basicConfig(level=logging.INFO)

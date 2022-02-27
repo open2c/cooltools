@@ -84,12 +84,11 @@ from sklearn.cluster import Birch
 import cooler
 
 from ..lib.numutils import LazyToeplitz, get_kernel
-from ..lib.common import (
-    assign_regions,
+from ..lib.common import assign_regions, make_cooler_view
+from ..lib.checks import (
     is_cooler_balanced,
     is_compatible_viewframe,
     is_compatible_expected,
-    make_cooler_view,
 )
 
 from bioframe import make_viewframe
