@@ -88,7 +88,7 @@ from ..lib.common import assign_regions, make_cooler_view
 from ..lib.checks import (
     is_cooler_balanced,
     is_compatible_viewframe,
-    is_compatible_expected,
+    is_valid_expected,
 )
 
 from bioframe import make_viewframe
@@ -1517,7 +1517,7 @@ def dots(
     # add checks to make sure cis-expected is symmetric
     # make sure provided expected is compatible
     try:
-        _ = is_compatible_expected(
+        _ = is_valid_expected(
             expected,
             "cis",
             view_df,
