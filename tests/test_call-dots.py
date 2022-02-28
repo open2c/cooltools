@@ -7,6 +7,7 @@ import numpy as np
 from cooltools import api
 from cooltools.lib.io import read_viewframe_from_file, read_expected_from_file
 
+
 # test user-facing API for calling dots
 def test_dots(request):
     # Note that call-dots requires ucsc named expected and view
