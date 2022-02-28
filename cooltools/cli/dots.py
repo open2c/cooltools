@@ -13,7 +13,6 @@ from .. import api
 from ..lib.common import make_cooler_view, assign_regions
 from ..lib.io import read_viewframe_from_file, read_expected_from_file
 
-
 from .util import validate_csv
 
 logging.basicConfig(level=logging.INFO)
@@ -86,20 +85,6 @@ logging.basicConfig(level=logging.INFO)
     show_default=True,
 )
 @click.option(
-    "--kernel-width",
-    help="Outer half-width of the convolution kernel in pixels"
-    " e.g. outer size (w) of the 'donut' kernel, with the 2*w+1"
-    " overall footprint of the 'donut'.",
-    type=int,
-)
-@click.option(
-    "--kernel-peak",
-    help="Inner half-width of the convolution kernel in pixels"
-    " e.g. inner size (p) of the 'donut' kernel, with the 2*p+1"
-    " overall footprint of the punch-hole.",
-    type=int,
-)
-@click.option(
     "--num-lambda-chunks",
     help="Number of log-spaced bins to divide your adjusted expected"
     " between. Same as HiCCUPS_W1_MAX_INDX (40) in the original HiCCUPS.",
@@ -116,7 +101,7 @@ logging.basicConfig(level=logging.INFO)
     show_default=True,
 )
 @click.option(
-    "--dots-clustering-radius",
+    "--clustering-radius",
     help="Radius for clustering dots that have been called too close to each other."
     "Typically on order of 40 kilo-bases, and >= binsize.",
     type=int,
@@ -128,10 +113,8 @@ logging.basicConfig(level=logging.INFO)
 )
 @click.option(
     "-o",
-    "--out-prefix",
-    help="Specify prefix for the output file, to store results of dot-calling:"
-    " all enriched pixels as prefix + '.enriched.tsv',"
-    " and post-processed dots (clustered,filtered) as prefix + '.postproc.bedpe'",
+    "--output",
+    help="Specify output file name to store called dots in a BEDPE-like format",
     type=str,
     required=True,
 )
@@ -144,13 +127,11 @@ def dots(
     max_loci_separation,
     max_nans_tolerated,
     tile_size,
-    kernel_width,
-    kernel_peak,
     num_lambda_chunks,
     fdr,
-    dots_clustering_radius,
+    clustering_radius,
     verbose,
-    out_prefix,
+    output,
 ):
     """
     Call dots on a Hi-C heatmap that are not larger than max_loci_separation.
@@ -176,14 +157,10 @@ def dots(
     clr = cooler.Cooler(cool_path)
     expected_path, expected_value_col = expected_path
 
-    #### Generate viewframes ####
-    # 1:cooler_view_df. Generate viewframe from clr.chromsizes:
-    cooler_view_df = make_cooler_view(clr)
-
     # 2:view_df. Define global view for calculating calling dots
     # use input "view" BED file or all chromosomes :
     if view is None:
-        view_df = cooler_view_df
+        view_df = make_cooler_view(clr)
     else:
         view_df = read_viewframe_from_file(view, clr, check_sorting=True)
 
@@ -198,145 +175,31 @@ def dots(
         verify_view=view_df,
         verify_cooler=clr,
     )
-    # add checks to make sure cis-expected is symmetric
 
-    # Prepare some parameters.
-    binsize = clr.binsize
-    loci_separation_bins = int(max_loci_separation / binsize)
-    tile_size_bins = int(tile_size / binsize)
-    balance_factor = 1.0  # clr._load_attrs("bins/weight")["scale"]
+    dot_calls_df = api.dotfinder.dots(
+        clr,
+        expected,
+        expected_value_col=expected_value_col,
+        clr_weight_name=clr_weight_name,
+        view_df=view_df,
+        kernels=None,  # engaging default HiCCUPS kernels
+        max_loci_separation=max_loci_separation,
+        max_nans_tolerated=max_nans_tolerated,  # test if this has desired behavior
+        n_lambda_bins=num_lambda_chunks,  # update this eventually
+        lambda_bin_fdr=fdr,
+        clustering_radius=clustering_radius,
+        cluster_filtering=None,
+        tile_size=tile_size,
+        nproc=nproc,
+    )
 
-    # clustering would deal with bases-units for now, so supress this for now
-    # clustering_radius_bins = int(dots_clustering_radius/binsize)
-
-    # kernels
-    # 'upright' is a symmetrical inversion of "lowleft", not needed.
-    ktypes = ["donut", "vertical", "horizontal", "lowleft"]
-
-    if (kernel_width is None) or (kernel_peak is None):
-        w, p = api.dotfinder.recommend_kernel_params(binsize)
-        logging.info(
-            f"Using kernel parameters w={w}, p={p} recommended for binsize {binsize}"
-        )
+    # output results in a file, when specified
+    if output:
+        dot_calls_df.to_csv(output, sep="\t", header=True, index=False, na_rep="nan")
+    # or print into stdout otherwise:
     else:
-        w, p = kernel_width, kernel_peak
-        # add some sanity check for w,p:
-        if not w > p:
-            raise ValueError(f"Wrong inner/outer kernel parameters w={w}, p={p}")
-        logging.info(f"Using kernel parameters w={w}, p={p} provided by user")
-
-    # once kernel parameters are setup check max_nans_tolerated
-    # to make sure kernel footprints overlaping 1 side with the
-    # NaNs filled row/column are not "allowed"
-    # this requires dynamic adjustment for the "shrinking donut"
-    if not max_nans_tolerated <= 2 * w:
-        raise ValueError("Too many NaNs allowed!")
-    # may lead to scoring the same pixel twice, - i.e. duplicates.
-
-    # generate standard kernels - consider providing custom ones
-    kernels = {k: api.dotfinder.get_kernel(w, p, k) for k in ktypes}
-
-    # list of tile coordinate ranges
-    tiles = list(
-        api.dotfinder.heatmap_tiles_generator_diag(
-            clr, view_df, w, tile_size_bins, loci_separation_bins
-        )
-    )
-
-    # lambda-chunking edges ...
-    if not 40 <= num_lambda_chunks <= 50:
-        raise ValueError("Incompatible num_lambda_chunks")
-    base = 2 ** (1 / 3)
-    ledges = np.concatenate(
-        (
-            [-np.inf],
-            np.logspace(
-                0,
-                num_lambda_chunks - 1,
-                num=num_lambda_chunks,
-                base=base,
-                dtype=np.float64,
-            ),
-            [np.inf],
-        )
-    )
-
-    # 1. Calculate genome-wide histograms of scores.
-    gw_hist = api.dotfinder.scoring_and_histogramming_step(
-        clr,
-        expected.set_index(["region1", "region2", "dist"]),
-        expected_value_col,
-        clr_weight_name,
-        tiles,
-        kernels,
-        ledges,
-        max_nans_tolerated,
-        loci_separation_bins,
-        nproc,
-        verbose,
-    )
-
-    if verbose:
-        logging.info("Done building histograms ...")
-
-    # 2. Determine the FDR thresholds.
-    threshold_df, qvalues = api.dotfinder.determine_thresholds(
-        kernels, ledges, gw_hist, fdr
-    )
-
-    # 3. Filter using FDR thresholds calculated in the histogramming step
-    filtered_pixels = api.dotfinder.scoring_and_extraction_step(
-        clr,
-        expected.set_index(["region1", "region2", "dist"]),
-        expected_value_col,
-        clr_weight_name,
-        tiles,
-        kernels,
-        ledges,
-        threshold_df,
-        max_nans_tolerated,
-        balance_factor,
-        loci_separation_bins,
-        op.join(op.dirname(out_prefix), op.basename(out_prefix) + ".enriched.tsv"),
-        nproc,
-        verbose,
-        bin1_id_name="bin1_id",
-        bin2_id_name="bin2_id",
-    )
-
-    # 4. Post-processing
-    if verbose:
-        logging.info(f"Begin post-processing of {len(filtered_pixels)} filtered pixels")
-        logging.info("preparing to extract needed q-values ...")
-
-    filtered_pixels_qvals = api.dotfinder.annotate_pixels_with_qvalues(
-        filtered_pixels, qvalues, kernels
-    )
-    # 4a. clustering
-    ########################################################################
-    # Clustering has to be done using annotated DataFrame of filtered pixels
-    # why ? - because - clustering has to be done independently for every region!
-    ########################################################################
-    filtered_pixels_annotated = cooler.annotate(filtered_pixels_qvals, clr.bins()[:])
-    filtered_pixels_annotated = assign_regions(filtered_pixels_annotated, view_df)
-    # consider reseting index here
-    centroids = api.dotfinder.clustering_step(
-        filtered_pixels_annotated,
-        view_df["name"],
-        dots_clustering_radius,
-        verbose,
-    )
-
-    # 4b. filter by enrichment and qval
-    postprocessed_calls = api.dotfinder.thresholding_step(centroids)
-
-    # Final-postprocessed result
-    if out_prefix is not None:
-
-        postprocessed_fname = op.join(
-            op.dirname(out_prefix), op.basename(out_prefix) + ".postproc.bedpe"
-        )
-
-        postprocessed_calls.to_csv(
-            postprocessed_fname, sep="\t", header=True, index=False, compression=None
+        print(
+            dot_calls_df.to_csv(
+                output, sep="\t", header=True, index=False, na_rep="nan"
+            )
         )

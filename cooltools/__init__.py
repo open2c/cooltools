@@ -32,3 +32,4 @@ from .api.sample import sample
 from .api.snipping import pileup
 from .api.directionality import directionality
 from .api.insulation import insulation
+from .api.dotfinder import dots

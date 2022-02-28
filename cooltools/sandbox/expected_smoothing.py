@@ -1,4 +1,4 @@
-import collections
+from collections.abc import Iterable
 
 import numpy as np
 import numba
@@ -276,7 +276,7 @@ def agg_smooth_cvd(
         groupby = []
     elif isinstance(groupby, str):
         groupby = [groupby]
-    elif isinstance(groupby, collections.Iterable):
+    elif isinstance(groupby, Iterable):
         groupby = list(groupby)
     else:
         raise ValueError("groupby must be a string, a list of strings, or None")
