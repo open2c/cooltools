@@ -5,8 +5,7 @@ from cooltools.cli import cli
 import cooler
 import numpy as np
 from cooltools import api
-from cooltools.lib.common import read_expected, read_viewframe
-
+from cooltools.lib.io import read_viewframe_from_file, read_expected_from_file
 
 # test user-facing API for calling dots
 def test_dots(request):
@@ -17,8 +16,8 @@ def test_dots(request):
 
     # read data for the test:
     clr = cooler.Cooler(in_cool)
-    view_df = read_viewframe(in_regions, clr, check_sorting=True)
-    expected_df = read_expected(
+    view_df = read_viewframe_from_file(in_regions, clr, check_sorting=True)
+    expected_df = read_expected_from_file(
         in_exp,
         expected_value_cols=["balanced.avg"],
         verify_view=view_df,
