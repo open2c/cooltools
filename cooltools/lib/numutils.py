@@ -2,8 +2,7 @@ import warnings
 from scipy.linalg import toeplitz
 import scipy.sparse.linalg
 import scipy.interpolate
-from scipy.ndimage.interpolation import zoom
-import scipy.ndimage.filters
+from scipy.ndimage import zoom, gaussian_filter1d
 import numpy as np
 import numba
 import cooler
@@ -1380,7 +1379,7 @@ def adaptive_coarsegrain(ar, countar, cutoff=5, max_levels=8, min_shape=8):
 
 
 def robust_gauss_filter(
-    ar, sigma=2, functon=scipy.ndimage.filters.gaussian_filter1d, kwargs=None
+    ar, sigma=2, functon=gaussian_filter1d, kwargs=None
 ):
     """
     Implements an edge-handling mode for gaussian filter that basically ignores

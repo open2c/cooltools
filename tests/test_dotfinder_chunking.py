@@ -118,7 +118,7 @@ def test_adjusted_expected_tile_some_nans_and_square_tiling():
     # first, generate that locally-adjusted expected:
     nnans = 1
     band_idx = int(band / b)
-    res_df = pd.DataFrame([])
+    res_ij = []
     for tilei, tilej in tile_square_matrix(
         stop - start, start, tile_size=40, pad=kernel_half_width
     ):
@@ -143,13 +143,12 @@ def test_adjusted_expected_tile_some_nans_and_square_tiling():
         # new style, selecting good guys:
         does_comply_nans = res["la_exp." + "footprint" + ".nnans"] < nnans
         # so, select inside band and nNaNs compliant results and append:
-        res_df = res_df.append(
-            res[is_inside_band & does_comply_nans], ignore_index=True
-        )
+        res_ij.append(res[is_inside_band & does_comply_nans])
 
     # drop dups (from overlaping tiles), sort and reset index:
     res_df = (
-        res_df.drop_duplicates()
+        pd.concat(res_ij, ignore_index=True)
+        .drop_duplicates()
         .sort_values(by=["bin1_id", "bin2_id"])
         .reset_index(drop=True)
     )
@@ -196,7 +195,7 @@ def test_adjusted_expected_tile_some_nans_and_square_tiling_diag_band():
     # first, generate that locally-adjusted expected:
     nnans = 1
     band_idx = int(band / b)
-    res_df = pd.DataFrame([])
+    res_ij = []
     for tilei, tilej in tile_square_matrix(
         stop - start, start, tile_size=40, pad=kernel_half_width
     ):
@@ -231,13 +230,12 @@ def test_adjusted_expected_tile_some_nans_and_square_tiling_diag_band():
             # new style, selecting good guys:
             does_comply_nans = res["la_exp." + "footprint" + ".nnans"] < nnans
             # so, select inside band and nNaNs compliant results and append:
-            res_df = res_df.append(
-                res[is_inside_band & does_comply_nans], ignore_index=True
-            )
+            res_ij.append(res[is_inside_band & does_comply_nans])
 
     # sort and reset index, there shouldn't be any duplicates now:
     res_df = (
-        res_df.drop_duplicates()
+        pd.concat(res_ij, ignore_index=True)
+        .drop_duplicates()
         .sort_values(by=["bin1_id", "bin2_id"])
         .reset_index(drop=True)
     )
