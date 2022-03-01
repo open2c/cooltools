@@ -157,21 +157,16 @@ def dots(
     clr = cooler.Cooler(cool_path)
     expected_path, expected_value_col = expected_path
 
-    # 2:view_df. Define global view for calculating calling dots
-    # use input "view" BED file or all chromosomes :
+    # Either use view from file or all chromosomes in the provided cooler
     if view is None:
         view_df = make_cooler_view(clr)
     else:
         view_df = read_viewframe_from_file(view, clr, check_sorting=True)
 
-    #### Read expected: ####
-    expected_summary_cols = [
-        expected_value_col,
-    ]
     expected = read_expected_from_file(
         expected_path,
         contact_type="cis",
-        expected_value_cols=expected_summary_cols,
+        expected_value_cols=[expected_value_col],
         verify_view=view_df,
         verify_cooler=clr,
     )

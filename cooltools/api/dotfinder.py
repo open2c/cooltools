@@ -18,57 +18,57 @@ dots(
     tile_size=5_000_000,
     nproc=1,
 )
+This function implements HiCCUPS-style dot calling, but enables user-specified
+modifications at multiple steps. The current implementation makes two passes
+over the input data, first to create a histogram of pixel enrichment values, 
+and second to extract significantly enriched pixels.
 
- * the function start with some compatibility verifications
-    for the provided arguments related to `clr`, `expected` and
-    the `view` of interest.
- * `kernels` verification or recommendation is done next.
-     We make sure custom kernels satisfy requirements: square,
-     equal size, odd size, zero in the middle, etc. By default
-     HiCCUPS style 4-donut based kernels are recommended based on
-     the binsize
- * Lambda bins/chunks are defined next for the multiple hypothesis
-     testing for different values of locally adjusted expected.
-     For now, log binned lambda-bins are used and defined in a
-     hardcoded way with a pre-defined BASE of 2^(1/3).
-     `n_lambda_bins` controls the total number of bins being used.
- * genomic regions in the specified `view`(all chromosomes by default)
-     are then split into smaller tiles of size `tile_size`.
- * `scoring_and_histogramming_step` is next performed independently
+ * The function starts with compatibility verifications
+    for the `clr`, `expected` and `view` of interest.
+ * Recommendation or verification for `kernels` is done next.
+     Custom kernels must satisfy properties including: square shape,
+     equal sizes, odd sizes, zeros in the middle, etc. By default,
+     HiCCUPS-style kernels are recommended based on the binsize.
+ * Lambda bins/chunks are defined for multiple hypothesis
+     testing separately for different value ranges of the locally adjusted expected.
+     Currently, log-binned lambda-bins are hardcoded using a pre-defined
+     BASE of 2^(1/3). `n_lambda_bins` controls the total number of bins.
+ * Genomic regions in the specified `view`(all chromosomes by default)
+     are split into smaller tiles of size `tile_size`.
+ * `scoring_and_histogramming_step()` is performed independently
      on the genomic tiles. In this step, locally adjusted expected is
-     calculated for every pixel (in the region of interest) using the
-     convolution kernels. All surveyed pixels are histogrammed according
-     to their adjusted expected and raw observed counts. Calculated
-     locally adjusted expected is not stored in memory.
- * Chunks of histograms are aggregated together and modified BH-FDR
-     procedure is applied to the result in `determine_thresholds`.
-     In result, thresholds of statistical significance are calculated
-     for each lambda-bin (for obseved counts), along with the adjusted
+     calculated using convolution kernels for each pixel in the tile.
+     All surveyed pixels are histogrammed according to their adjusted 
+     expected and raw observed counts. Locally adjusted expected is 
+     not stored in memory.
+ * Chunks of histograms are aggregated together and a modified BH-FDR
+     procedure is applied to the result in `determine_thresholds()`.
+     This returns thresholds for statistical significance 
+     in each lambda-bin (for observed counts), along with the adjusted
      p-values (q-values).
  * Calculated thresholds are used to extract statistically significant
-     pixels in `scoring_and_extraction_step`. Because locally adjusted
-     expected is not stored in memory, they have to be re-caluclated
-     again during this step, which makes it computationally intensive.
+     pixels in `scoring_and_extraction_step()`. Because locally adjusted
+     expected is not stored in memory, it is re-caluclated
+     during this step, which makes it computationally intensive.
      Locally adjusted expected values are required in order to apply
      different thresholds of significance depending on the lambda-bin.
- * Returned "filtered" pixels are significantly enriched relative to
-     their locally adjusted expecteds and thus can be considered of
-     biological importance. These pixels are further annotated with
-     their genomic coordinates and q-values (adjusted p-values) for
+ * Returned filtered pixels, or 'dots', are significantly enriched 
+     relative to their locally adjusted expecteds and thus have potential
+     biological interest. Dots are further annotated with their 
+     genomic coordinates and q-values (adjusted p-values) for
      all applied kernels.
- * All further steps are parts of post-processing of significantly
-     enriched interactoions (optional):
-      - enirched pixels that are within `clustering_radius` of each other
+ * All further steps perform optional post-processing on called dots
+      - enriched pixels that are within `clustering_radius` of each other
         are clustered together and the brightest one is selected as the
-        representative.
+        representative position of a dot.
       - cluster-representatives along with "singletons" (enriched pixels
         that are not part of any cluster) can be subjected to further
-        empirical filtering (HiCCUPS) in `cluster_filtering_hiccups`:
-        ensure clustered significant interactions exceed prescribed
-        enrichment thresholds and additionally singletons are "significant
-        enough", i.e. sum of their q-values does not exceed a given threshold.
-
+        empirical enrichment filtering in `cluster_filtering_hiccups()`. This 
+        both requires clustered dots exceed prescribed enrichment thresholds 
+        relative to their local neighborhoods and that singletons pass an 
+        even more stringent q-value threshold.
 """
+
 from functools import partial, reduce
 import multiprocess as mp
 import logging
@@ -110,19 +110,15 @@ def bp_to_bins(basepairs, binsize):
 
 def recommend_kernels(binsize):
     """
-    Return a set of convolution kernels that are
-    recommended for dot-calling based on the resolution
-    of the input data.
+    Return a recommended set of convolution kernels for dot-calling 
+    based on the resolution, or binsize, of the input data.
 
-    At the moment it recommends standard 4-kernels originally
-    defined for the HiCCUPS method: donut, horizontal, vertical,
-    lowerleft
-
-    Kernels are recommended for resolutions near 5 kb, 10 kb
-    and 25 kb at the moment. Typically "dots" are not visible
-    at lower resolutions (>28kb) and most datasets are too sparse
-    for higher resolutions (<4kb). So, no default kernels will be
-    recommended for the resolutions outside this range.
+    This function currently recommends the four kernels used in the HiCCUPS method:
+    donut, horizontal, vertical, lowerleft. Kernels are recommended for resolutions
+    near 5 kb, 10 kb, and 25 kb. Dots are not typically visible at lower resolutions
+    (binsize >28kb) and the majority of datasets are too sparse for dot-calling 
+    at very high resolutions (<4kb). Given this, default kernels are not
+    recommended for resolutions outside this range.
 
     Parameters
     ----------
@@ -580,8 +576,8 @@ def get_adjusted_expected_tile_some_nans(
         to be considered significant.
         Dictionay keys must contain names for
         each kernel.
-        Note, scipy.ndimage.convove flips kernel
-        first and only then applies it to matrix.
+        Note, scipy.ndimage.convolve first flips kernel 
+        and only then applies it to matrix.
 
     Returns
     -------
@@ -589,7 +585,7 @@ def get_adjusted_expected_tile_some_nans(
         DataFrame that stores results of
         locally adjusted calculations for every kernel
         for a given slice of input matrix. Multiple
-        instences of such 'peaks_df' can be concatena-
+        instances of such 'peaks_df' can be concatena-
         ted and deduplicated for the downstream analysis.
         Reported columns:
         bin1_id - bin1_id index (row), adjusted to tile_start_i
@@ -739,8 +735,8 @@ def score_tile(
     """
     The main working function that given a tile of a heatmap, applies kernels to
     perform convolution to calculate locally-adjusted expected and then
-    calculates a p-value for every meaningfull pixel against these l.a. expected
-    values.
+    calculates a p-value for every meaningfull pixel against these 
+    locally-adjusted expected (la_exp) values.
 
     Parameters
     ----------
@@ -836,7 +832,7 @@ def histogram_scored_pixels(
 
     Such histograms are subsequently used to compute FDR thresholds
     for different "classes" of hypothesis (classified by their
-    l.a. expected scores).
+    locally-adjusted expected (la_exp)).
 
     Parameters
     ----------
@@ -920,7 +916,7 @@ def determine_thresholds(gw_hist, fdr):
     # We have our *null* hypothesis: intensity of a HiC pixel is Poisson-distributed
     # with a certain expected. In this case that would be *locally-adjusted expected*.
     #
-    # Thus for the dot-calling, we could estimate a *p*-value for every pixel based
+    # Thus for dot-calling, we could estimate a *p*-value for every pixel based
     # on its observed intensity and its expected intensity, e.g.:
     # lambda = la_exp["la_exp."+k+".value"]; pvals = 1.0 - poisson.cdf(la_exp["count"], lambda)
     # However this is technically challenging (too many pixels - genome wide) and
@@ -983,10 +979,10 @@ def determine_thresholds(gw_hist, fdr):
 
 def extract_scored_pixels(scored_df, thresholds, obs_raw_name=observed_count_name):
     """
-    An attempt to implement HiCCUPS-like lambda-chunking statistical procedure.
+    Implementation of HiCCUPS-like lambda-chunking statistical procedure.
     Use FDR thresholds for different "classes" of hypothesis
-    (classified by their l.a. expected scores), in order to extract "enriched"
-    pixels.
+    (classified by their locally-adjusted expected (la_exp) scores), 
+    in order to extract "enriched" pixels.
 
     Parameters
     ----------
@@ -1026,15 +1022,13 @@ def clustering_step(
     obs_raw_name=observed_count_name,
 ):
     """
+    Group together adjacent significant pixels into clusters after 
+    the lambda-chunking multiple hypothesis testing by iterating over 
+    specified regions and calling `clust_2D_pixels`. 
 
-    This is a new "clustering" step updated for the pixels processed by lambda-
-    chunking multiple hypothesis testing.
-
-    This method assumes that 'scores_df' is a DataFrame with all of the pixels
-    that needs to be clustered, thus there is no additional 'comply_fdr' column
+    This function assumes that 'scores_df' is a DataFrame with all of the pixels
+    that need to be clustered, thus there is no additional 'comply_fdr' column
     and selection of compliant pixels.
-
-    This step is a clustering-only (using Birch from scikit).
 
     Parameters
     ----------
@@ -1128,16 +1122,13 @@ def cluster_filtering_hiccups(
     Centroids of enriched pixels can be filtered to further minimize
     the amount of false-positive dot-calls.
 
-    Here we use an empirical filtering based on enrichment relative
-    to the locally-adjusted-expected for "donut", "lowleft", "vertical"
-    and "horizontal" kernels.
-
-    Additionally, singleton pixels (pixels that do not belong toa cluster)
-    are filtered based on a combined q-values for all kernels.
-
-    This empirical filtering approach was developed in Rao et al 2014 and
-    results in a conservative dot-calls with the low rate of false-positive
-    calls.
+    First, centroids are filtered on enrichment relative to the  
+    locally-adjusted expected for the "donut", "lowleft", "vertical", 
+    and "horizontal" kernels. Additionally, singleton pixels 
+    (i.e. pixels that do not belong to a cluster) are filtered based on 
+    a combined q-values for all kernels. This empirical filtering approach 
+    was developed in Rao et al 2014 and results in a conservative dot-calls 
+    with the low rate of false-positive calls.
 
     Parameters
     ----------
@@ -1160,14 +1151,14 @@ def cluster_filtering_hiccups(
     Returns
     -------
     filtered_centroids : pd.DataFrame
-        final conservative dot-calls
+        filtered dot-calls
     """
     # make sure input DataFrame of pixels has been clustered:
     if "c_size" not in centroids.columns:
         raise ValueError(f"input dataframe of pixels does not seem to be clustered")
 
     # ad hoc filtering by enrichment, FDR for singletons etc.
-    # historically was used in original HiCCUPS Rao et al 2014
+    # employed in Rao et al 2014 HiCCUPS
     enrichment_fdr_comply = (
         (
             centroids[obs_raw_name]
@@ -1236,10 +1227,9 @@ def cluster_filtering_hiccups(
     return out[columns_for_output]
 
 
-##################################
-# large CLI-helper functions wrapping smaller step-specific ones
-##################################
-
+####################################################################
+# large helper functions wrapping smaller step-specific ones
+####################################################################
 
 def scoring_and_histogramming_step(
     clr,
@@ -1254,10 +1244,9 @@ def scoring_and_histogramming_step(
     nproc,
 ):
     """
-    This is a derivative of the 'scoring_step' which is supposed to implement
-    the 1st of the lambda-chunking procedure - histogramming.
+    This implements the 1st step of the lambda-chunking scoring procedure - histogramming.
 
-    Basically we are piping scoring operation together with histogramming into a
+    In short, this pipes a scoring operation together with histogramming into a
     single pipeline of per-chunk operations/transforms.
     """
     logging.info(f"convolving {len(tiles)} tiles to build histograms for lambda-chunks")
@@ -1342,11 +1331,10 @@ def scoring_and_extraction_step(
     bin2_id_name="bin2_id",
 ):
     """
-    This is a derivative of the 'scoring_step' which is supposed to implement
-    the 2nd of the lambda-chunking procedure - extracting pixels that are FDR
-    compliant.
+    This implements the 2nd step of the lambda-chunking scoring procedure,
+    extracting pixels that are FDR compliant.
 
-    Basically we are piping scoring operation together with extraction into a
+    In short, this combines scoring with with extraction into a
     single pipeline of per-chunk operations/transforms.
 
     """

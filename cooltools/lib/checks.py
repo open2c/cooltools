@@ -39,9 +39,9 @@ def _is_expected(
     Check if a expected_df looks like an expected
     DataFrame, i.e.:
      - has neccessary columns
-     - there are no Nulls in regions1/2, diag
-     - every trans region1/2 has a single value
-     - every cis region1/2 has at least one value
+     - there are no Nulls in the regions1, regions2, diag columns
+     - every trans pair region1 region2 has a single value
+     - every cis pair region1, region2 has at least one value
 
     Parameters
     ----------
@@ -72,7 +72,7 @@ def _is_expected(
 
     # that's what we expect as column names:
     expected_columns = [col for col in expected_dtypes]
-    # separate "structural" columns: region1/2 and diag if "cis":
+    # separate "structural" columns: region1, region2, diag if "cis":
     grouping_columns = expected_columns[:-1]
 
     # add columns with values and their dtype (float64):
@@ -124,8 +124,8 @@ def _is_expected(
         if expected_df.duplicated(subset=grouping_columns).any():
             raise ValueError(f"Values in {grouping_columns} columns must be unique")
 
-        # make sure region1/2 groups have 1 value for trans contacts
-        # and more than 1 values for cis contacts
+        # for trans expected, ensure pairs region1, region2 have 1 value
+        # for cis expected, ensure pairs region1, region2 have >=1 value
         region1_col, region2_col = grouping_columns[:2]
         for (r1, r2), df in expected_df.groupby([region1_col, region2_col]):
             if contact_type == "trans":
@@ -174,10 +174,12 @@ def _is_compatible_cis_expected(
     raise_errors=False,
 ):
     """
-    Verify expected_df to make sure it is compatible
-    with its view (viewframe) and cooler, i.e.:
-        - regions1/2 are matching names from view
-        - number of diagonals per region1/2 matches cooler
+    Verify expected_df to make sure it is compatible.
+
+    Expected tables can be verified against both
+    a view and a cooler. This includes ensuring:
+        - the entries in columns region1, region2 match names from view
+        - number of diagonals per pair of region1, region2 matches cooler
 
     Parameters
     ----------
@@ -267,8 +269,7 @@ def _is_compatible_trans_expected(
     """
     Verify expected_df to make sure it is compatible
     with its view (viewframe) and cooler, i.e.:
-        - regions1/2 are matching names from view
-        - number of diagonals per region1/2 matches cooler
+        - entries in region1 and region2 match names from view
 
     Parameters
     ----------
