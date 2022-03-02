@@ -1,6 +1,15 @@
 # Release notes
 
-## [Upcoming release](https://github.com/open2c/cooltools/compare/v0.5.0...HEAD)
+## [Upcoming release](https://github.com/open2c/cooltools/compare/v0.5.1...HEAD)
+
+## [v0.5.1](https://github.com/open2c/cooltools/compare/v0.5.0...v0.5.1)
+### API changes
+* cooltools.dots is the new user-facing function for calling dots
+
+### Maintenance
+* Compatibility with pandas 1.4
+* Strict dictinary typing for new numba versions
+
 
 ## [v0.5.0](https://github.com/open2c/cooltools/compare/v0.4.0...v0.5.0)
 
