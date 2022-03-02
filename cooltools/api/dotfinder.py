@@ -102,6 +102,15 @@ adjusted_exp_name = lambda kernel_name: f"la_exp.{kernel_name}.value"
 nans_inkernel_name = lambda kernel_name: f"la_exp.{kernel_name}.nnans"
 bin1_id_name = "bin1_id"
 bin2_id_name = "bin2_id"
+bedpe_required_cols = [
+    "chrom1",
+    "start1",
+    "end1",
+    "chrom2",
+    "start2",
+    "end2",
+]
+
 
 # define basepairs to bins for clarity
 def bp_to_bins(basepairs, binsize):
@@ -110,13 +119,13 @@ def bp_to_bins(basepairs, binsize):
 
 def recommend_kernels(binsize):
     """
-    Return a recommended set of convolution kernels for dot-calling 
+    Return a recommended set of convolution kernels for dot-calling
     based on the resolution, or binsize, of the input data.
 
     This function currently recommends the four kernels used in the HiCCUPS method:
     donut, horizontal, vertical, lowerleft. Kernels are recommended for resolutions
     near 5 kb, 10 kb, and 25 kb. Dots are not typically visible at lower resolutions
-    (binsize >28kb) and the majority of datasets are too sparse for dot-calling 
+    (binsize >28kb) and the majority of datasets are too sparse for dot-calling
     at very high resolutions (<4kb). Given this, default kernels are not
     recommended for resolutions outside this range.
 
@@ -576,24 +585,30 @@ def get_adjusted_expected_tile_some_nans(
         to be considered significant.
         Dictionay keys must contain names for
         each kernel.
-        Note, scipy.ndimage.convolve first flips kernel 
+        Note, scipy.ndimage.convolve first flips kernel
         and only then applies it to matrix.
 
     Returns
     -------
     peaks_df : pandas.DataFrame
-        DataFrame that stores results of
-        locally adjusted calculations for every kernel
-        for a given slice of input matrix. Multiple
-        instances of such 'peaks_df' can be concatena-
-        ted and deduplicated for the downstream analysis.
-        Reported columns:
+        DataFrame with the results of locally adjusted calculations
+        for every kernel for a given slice of input matrix.
+
+    Notes
+    -----
+
+    Reported columns:
         bin1_id - bin1_id index (row), adjusted to tile_start_i
         bin2_id - bin bin2_id index, adjusted to tile_start_j
         la_exp - locally adjusted expected (for each kernel)
         la_nan - number of NaNs around (each kernel's footprint)
         exp.raw - global expected, rescaled to raw-counts
         obs.raw(counts) - observed values in raw-counts.
+
+    Depending on the intial tiling of the interaction matrix,
+    concatened `peaks_df` may require "deduplication", as some pixels
+    can be evaluated in several tiles (e.g. near the tile edges).
+    Default tilitng in the `dots` functions, should avoid this problem.
 
     """
     # extract origin_ij coordinate of this tile:
@@ -735,7 +750,7 @@ def score_tile(
     """
     The main working function that given a tile of a heatmap, applies kernels to
     perform convolution to calculate locally-adjusted expected and then
-    calculates a p-value for every meaningfull pixel against these 
+    calculates a p-value for every meaningfull pixel against these
     locally-adjusted expected (la_exp) values.
 
     Parameters
@@ -981,7 +996,7 @@ def extract_scored_pixels(scored_df, thresholds, obs_raw_name=observed_count_nam
     """
     Implementation of HiCCUPS-like lambda-chunking statistical procedure.
     Use FDR thresholds for different "classes" of hypothesis
-    (classified by their locally-adjusted expected (la_exp) scores), 
+    (classified by their locally-adjusted expected (la_exp) scores),
     in order to extract "enriched" pixels.
 
     Parameters
@@ -1016,77 +1031,84 @@ def extract_scored_pixels(scored_df, thresholds, obs_raw_name=observed_count_nam
 
 
 def clustering_step(
-    scores_df,
-    expected_regions,
+    scored_df,
     dots_clustering_radius,
+    assigned_regions_name="region",
     obs_raw_name=observed_count_name,
 ):
     """
-    Group together adjacent significant pixels into clusters after 
-    the lambda-chunking multiple hypothesis testing by iterating over 
-    specified regions and calling `clust_2D_pixels`. 
-
-    This function assumes that 'scores_df' is a DataFrame with all of the pixels
-    that need to be clustered, thus there is no additional 'comply_fdr' column
-    and selection of compliant pixels.
+    Group together adjacent significant pixels into clusters after
+    the lambda-chunking multiple hypothesis testing by iterating over
+    assigned regions and calling `clust_2D_pixels`.
 
     Parameters
     ----------
-    scores_df : pandas.DataFrame
-        DataFrame that stores filtered pixels that are ready to be
-        clustered, no more 'comply_fdr' column dependency.
-    expected_regions : iterable
-        An iterable of regions to be clustered.
+    scored_df : pandas.DataFrame
+        DataFrame with enriched pixels that are ready to be
+        clustered and are annotated with their genomic  coordinates.
     dots_clustering_radius : int
         Birch-clustering threshold.
+    assigned_regions_name : str | None
+        Name of the column in scored_df to use for grouping pixels
+        before clustering. When None, full chromosome clustering is done.
+    obs_raw_name : str
+        name of the column with raw observed pixel counts
     Returns
     -------
     centroids : pandas.DataFrame
-        Pixels from 'scores_df' annotated with clustering information.
+        Pixels from 'scored_df' annotated with clustering information.
 
     Notes
     -----
     'dots_clustering_radius' in Birch clustering algorithm corresponds to a
     double the clustering radius in the "greedy"-clustering used in HiCCUPS
-    (to be tested).
 
     """
+    # make sure provided pixels are annotated with genomic corrdinates and raw counts column is present:
+    if not {"chrom1", "chrom2", "start1", "start2", obs_raw_name}.issubset(scored_df):
+        raise ValueError("Scored pixels provided for clustering are not annotated")
 
-    scores_df = scores_df.copy()
+    scored_df = scored_df.copy()
     if (
-        not "region" in scores_df.columns
+        not assigned_regions_name in scored_df.columns
     ):  # If input scores are not annotated by regions:
-        scores_df["region"] = np.where(
-            scores_df["chrom1"] == scores_df["chrom2"], scores_df["chrom1"], np.nan
+        logging.warning(
+            f"No regions assigned to the scored pixels before clustering, using chromosomes"
         )
-    # using different bin12_id_names since all
-    # pixels are annotated at this point.
-    pixel_clust_list = []
-    for region in expected_regions:
-        logging.info(f"clustering enriched pixels in region: {region}")
-        # Perform clustering for each region separately.
-        df = scores_df[((scores_df["region"].astype(str) == str(region)))]
-        if df.empty:
-            logging.warning(f"no pixels to cluster for region {region}.")
-            continue
+        scored_df[assigned_regions_name] = np.where(
+            scored_df["chrom1"] == scored_df["chrom2"], scored_df["chrom1"], np.nan
+        )
 
+    # cluster within each regions separately and accumulate the result:
+    pixel_clust_list = []
+    scored_pixels_by_region = scored_df.groupby(assigned_regions_name, observed=True)
+    for region, _df in scored_pixels_by_region:
+        logging.info(f"clustering enriched pixels in region: {region}")
+        # Using genomic corrdinated for clustering, not bin_id
         pixel_clust = clust_2D_pixels(
-            df,
+            _df,
             threshold_cluster=dots_clustering_radius,
             bin1_id_name="start1",
             bin2_id_name="start2",
         )
         pixel_clust_list.append(pixel_clust)
-
     logging.info("Clustering is complete")
+
     # concatenate clustering results ...
     # indexing information persists here ...
     if not pixel_clust_list:
         logging.warning("No clusters found for any regions! Output will be empty")
         empty_output = pd.DataFrame(
             [],
-            columns=list(scores_df.columns)
-            + ["region1", "region2", "c_label", "c_size", "cstart1", "cstart2"],
+            columns=list(scored_df.columns)
+            + [
+                assigned_regions_name + "1",
+                assigned_regions_name + "2",
+                "c_label",
+                "c_size",
+                "cstart1",
+                "cstart2",
+            ],
         )
         return empty_output  # Empty dataframe with the same columns as anticipated
     else:
@@ -1094,16 +1116,19 @@ def clustering_step(
             pixel_clust_list, ignore_index=False
         )  # Concatenate the clustering results for different regions
 
-    # now merge pixel_clust_df and scores_df DataFrame ...
-    # and merge (index-wise) with the main DataFrame:
+    # now merge pixel_clust_df and scored_df DataFrame ...
+    # TODO make a more robust merge here
     df = pd.merge(
-        scores_df, pixel_clust_df, how="left", left_index=True, right_index=True
+        scored_df, pixel_clust_df, how="left", left_index=True, right_index=True
     )
-    # prevents scores_df categorical values (all chroms, including chrM)
-    df["region1"] = df["region"].astype(str)
-    df["region2"] = df["region"].astype(str)
+    # TODO check if next str-cast is neccessary
+    df[assigned_regions_name + "1"] = df[assigned_regions_name].astype(str)
+    df[assigned_regions_name + "2"] = df[assigned_regions_name].astype(str)
     # report only centroids with highest Observed:
-    chrom_clust_group = df.groupby(["region1", "region2", "c_label"])
+    chrom_clust_group = df.groupby(
+        [assigned_regions_name + "1", assigned_regions_name + "2", "c_label"],
+        observed=True,
+    )
     centroids = df.loc[
         chrom_clust_group[obs_raw_name].idxmax()
     ]  # Select the brightest pixel in the cluster
@@ -1122,12 +1147,12 @@ def cluster_filtering_hiccups(
     Centroids of enriched pixels can be filtered to further minimize
     the amount of false-positive dot-calls.
 
-    First, centroids are filtered on enrichment relative to the  
-    locally-adjusted expected for the "donut", "lowleft", "vertical", 
-    and "horizontal" kernels. Additionally, singleton pixels 
-    (i.e. pixels that do not belong to a cluster) are filtered based on 
-    a combined q-values for all kernels. This empirical filtering approach 
-    was developed in Rao et al 2014 and results in a conservative dot-calls 
+    First, centroids are filtered on enrichment relative to the
+    locally-adjusted expected for the "donut", "lowleft", "vertical",
+    and "horizontal" kernels. Additionally, singleton pixels
+    (i.e. pixels that do not belong to a cluster) are filtered based on
+    a combined q-values for all kernels. This empirical filtering approach
+    was developed in Rao et al 2014 and results in a conservative dot-calls
     with the low rate of false-positive calls.
 
     Parameters
@@ -1154,8 +1179,32 @@ def cluster_filtering_hiccups(
         filtered dot-calls
     """
     # make sure input DataFrame of pixels has been clustered:
-    if "c_size" not in centroids.columns:
+    if not "c_size" in centroids:
         raise ValueError(f"input dataframe of pixels does not seem to be clustered")
+
+    # make sure input DataFrame of pixels has been annotated with genomic coordinates and raw counts column is present:
+    if not {"chrom1", "chrom2", "start1", "start2", obs_raw_name}.issubset(centroids):
+        raise ValueError(
+            "input dataframe of clustered pixels provided for filtering is not annotated"
+        )
+
+    # make sureinput DataFrame of pixels was scored using 4-hiccups kernels (donut, lowleft, vertical, horizontal):
+    _hiccups_kernel_cols_set = {
+        "la_exp.donut.value",
+        "la_exp.vertical.value",
+        "la_exp.horizontal.value",
+        "la_exp.lowleft.value",
+        # and q-values as well
+        "la_exp.donut.qval",
+        "la_exp.vertical.qval",
+        "la_exp.horizontal.qval",
+        "la_exp.lowleft.qval",
+    }
+    # make sure input DataFrame of pixels has been annotated with genomic coordinates and raw counts column is present:
+    if not _hiccups_kernel_cols_set.issubset(centroids):
+        raise ValueError(
+            "clustered pixels provided for filtering were not scored with 4 hiccups kernels"
+        )
 
     # ad hoc filtering by enrichment, FDR for singletons etc.
     # employed in Rao et al 2014 HiCCUPS
@@ -1200,36 +1249,13 @@ def cluster_filtering_hiccups(
         )
     )
     # use "enrichment_fdr_comply" to filter out non-satisfying pixels:
-    out = centroids[enrichment_fdr_comply]
-
-    # tentaive output columns list:
-    columns_for_output = [
-        "chrom1",
-        "start1",
-        "end1",
-        "chrom2",
-        "start2",
-        "end2",
-        "cstart1",
-        "cstart2",
-        "c_label",
-        "c_size",
-        obs_raw_name,
-        "la_exp.donut.value",
-        "la_exp.vertical.value",
-        "la_exp.horizontal.value",
-        "la_exp.lowleft.value",
-        "la_exp.donut.qval",
-        "la_exp.vertical.qval",
-        "la_exp.horizontal.qval",
-        "la_exp.lowleft.qval",
-    ]
-    return out[columns_for_output]
+    return centroids[enrichment_fdr_comply].reset_index(drop=True)
 
 
 ####################################################################
 # large helper functions wrapping smaller step-specific ones
 ####################################################################
+
 
 def scoring_and_histogramming_step(
     clr,
@@ -1379,11 +1405,10 @@ def scoring_and_extraction_step(
     finally:
         if nproc > 1:
             pool.close()
-    # there should be no duplicates in "significant_pixels" DataFrame of pixels:
-    significant_pixels_dups = significant_pixels.duplicated()
-    if significant_pixels_dups.any():
+    # same pixels should never be scored >1 times with the current tiling of the interactions matrix
+    if significant_pixels.duplicated().any():
         raise ValueError(
-            f"Duplicated pixels detected during exctraction {significant_pixels[significant_pixels_dups]}"
+            f"Some pixels were scored more than one time, matrix tiling procedure is not correct"
         )
     # sort the result just in case and drop its index:
     return significant_pixels.sort_values(by=[bin1_id_name, bin2_id_name]).reset_index(
@@ -1606,17 +1631,36 @@ def dots(
     filtered_pixels_annotated = cooler.annotate(filtered_pixels_qvals, clr.bins()[:])
     if not clustering_radius:
         # TODO: make sure returned DataFrame has the same columns as "postprocessed_calls"
-        return filtered_pixels_annotated
+        # columns to return before-clustering
+        output_cols = []
+        output_cols += bedpe_required_cols
+        output_cols += [
+            observed_count_name,
+        ]
+        output_cols += [f"la_exp.{k}.value" for k in kernels]
+        output_cols += [f"la_exp.{k}.qval" for k in kernels]
+        return filtered_pixels_annotated[output_cols]
 
     # 4a. clustering
-    # clustering has to be done on annotated pixels because
-    # it has to be done independently on every region:
+    # Clustering is done independently for every region, therefore regions must be assigned:
     filtered_pixels_annotated = assign_regions(filtered_pixels_annotated, view_df)
     centroids = clustering_step(
         filtered_pixels_annotated,
-        view_df["name"],
         clustering_radius,
     ).reset_index(drop=True)
+
+    # columns to return post-clustering
+    output_cols = []
+    output_cols += bedpe_required_cols
+    output_cols += [
+        "cstart1",
+        "cstart2",
+        "c_label",
+        "c_size",
+        observed_count_name,
+    ]
+    output_cols += [f"la_exp.{k}.value" for k in kernels]
+    output_cols += [f"la_exp.{k}.qval" for k in kernels]
 
     # 4b. filter by enrichment and qval
     if cluster_filtering is None:  # default - engage HiCCUPS filtering
