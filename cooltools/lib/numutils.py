@@ -2,8 +2,7 @@ import warnings
 from scipy.linalg import toeplitz
 import scipy.sparse.linalg
 import scipy.interpolate
-from scipy.ndimage.interpolation import zoom
-import scipy.ndimage.filters
+from scipy.ndimage import zoom, gaussian_filter1d
 import numpy as np
 import numba
 import cooler
@@ -668,6 +667,15 @@ def iterative_correction_symmetric(
     tol : float
         If less or equal to zero, will perform max_iter iterations.
 
+    Returns
+    -------
+    _x : np.ndarray
+        Corrected matrix
+    totalBias : np.ndarray
+        Vector with corrections biases
+    report : (bool, int)
+        A tuple that reports convergence
+        status and used number of iterations
     """
     N = len(x)
 
@@ -710,7 +718,7 @@ def iterative_correction_symmetric(
     corr = totalBias[~mask].mean()  # mean correction factor
     _x = _x * corr * corr  # renormalizing everything
     totalBias /= corr
-    report = {"converged": converged, "iternum": iternum}
+    report = (converged, iternum)
 
     return _x, totalBias, report
 
@@ -729,6 +737,18 @@ def iterative_correction_asymmetric(x, max_iter=1000, tol=1e-5, verbose=False):
         The number of diagonals to ignore during iterative correction.
     tol : float
         If less or equal to zero, will perform max_iter iterations.
+
+    Returns
+    -------
+    _x : np.ndarray
+        Corrected matrix
+    totalBias : np.ndarray
+        Vector with corrections biases for columns
+    totalBias2 : np.ndarray
+        Vector with corrections biases for rows
+    report : (bool, int)
+        A tuple that reports convergence
+        status and used number of iterations
     """
     N2, N = x.shape
     _x = x.copy()
@@ -777,7 +797,7 @@ def iterative_correction_asymmetric(x, max_iter=1000, tol=1e-5, verbose=False):
     _x = _x * corr * corr2  # renormalizing everything
     totalBias /= corr
     totalBias2 /= corr2
-    report = {"converged": converged, "iternum": iternum}
+    report = (converged, iternum)
 
     return _x, totalBias, totalBias2, report
 
@@ -1380,7 +1400,7 @@ def adaptive_coarsegrain(ar, countar, cutoff=5, max_levels=8, min_shape=8):
 
 
 def robust_gauss_filter(
-    ar, sigma=2, functon=scipy.ndimage.filters.gaussian_filter1d, kwargs=None
+    ar, sigma=2, functon=gaussian_filter1d, kwargs=None
 ):
     """
     Implements an edge-handling mode for gaussian filter that basically ignores
