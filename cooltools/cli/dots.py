@@ -85,7 +85,7 @@ logging.basicConfig(level=logging.INFO)
     show_default=True,
 )
 @click.option(
-    "--num-lambda-chunks",
+    "--num-lambda-bins",
     help="Number of log-spaced bins to divide your adjusted expected"
     " between. Same as HiCCUPS_W1_MAX_INDX (40) in the original HiCCUPS.",
     type=int,
@@ -127,7 +127,7 @@ def dots(
     max_loci_separation,
     max_nans_tolerated,
     tile_size,
-    num_lambda_chunks,
+    num_lambda_bins,
     fdr,
     clustering_radius,
     verbose,
@@ -180,7 +180,7 @@ def dots(
         kernels=None,  # engaging default HiCCUPS kernels
         max_loci_separation=max_loci_separation,
         max_nans_tolerated=max_nans_tolerated,  # test if this has desired behavior
-        n_lambda_bins=num_lambda_chunks,  # update this eventually
+        n_lambda_bins=num_lambda_bins,  # update this eventually
         lambda_bin_fdr=fdr,
         clustering_radius=clustering_radius,
         cluster_filtering=None,

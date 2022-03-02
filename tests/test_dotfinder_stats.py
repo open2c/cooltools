@@ -116,7 +116,7 @@ for k in fake_kernels:
     pixel_dict[f"la_exp.{k}.value"] = max_value * np.random.random(num_pixels)
 scored_df = pd.DataFrame(pixel_dict)
 
-# design lambda-chunks as in dot-calling:
+# design lambda-bins as in dot-calling:
 num_lchunks = 6
 ledges = np.r_[[-np.inf], np.linspace(0, max_value, num_lchunks), [np.inf]]
 
@@ -125,14 +125,14 @@ FDR = 0.1
 
 
 # helper functions working on a chunk of counts or pvals
-# associated with a given lambda-chunk:
+# associated with a given lambda-bin:
 def get_pvals_chunk(counts_series_lchunk):
     """
     Parameters:
     -----------
     counts_series_lchunk : pd.Series(int)
         Series of raw pixel counts where the name of the Series
-        is pd.Interval of the lambda-chunk where the pixel belong.
+        is pd.Interval of the lambda-bin where the pixel belong.
         I.e. counts_series_lchunk.name.right - is the upper limit of the chunk
         and is used as "expected" in Poisson distribution to estimate p-value.
 
@@ -154,7 +154,7 @@ def get_qvals_chunk(pvals_series_lchunk):
     -----------
     pvals_series_lchunk : pd.Series(float)
         Series of p-values calculated for each pixel, where the name
-        of the Series is pd.Interval of the lambda-chunk where the pixel belong.
+        of the Series is pd.Interval of the lambda-bin where the pixel belong.
 
     Returns:
     --------
@@ -176,7 +176,7 @@ def get_reject_chunk(pvals_series_lchunk):
     -----------
     pvals_series_lchunk : pd.Series(float)
         Series of p-values calculated for each pixel, where the name
-        of the Series is pd.Interval of the lambda-chunk where the pixel belong.
+        of the Series is pd.Interval of the lambda-bin where the pixel belong.
 
     Returns:
     --------
@@ -225,8 +225,8 @@ def test_thresholding():
         scored_df, kernels=fake_kernels, ledges=ledges, obs_raw_name="count"
     )
 
-    # # we have to make sure there is nothing in the last lambda-chunk
-    # # this is a temporary implementation detail, until we implement dynamic lambda-chunks
+    # # we have to make sure there is nothing in the last lambda-bin
+    # # this is a temporary implementation detail, until we implement dynamic lambda-bins
     for k in fake_kernels:
         last_lambda_bin = gw_hists[k].iloc[:, -1]
         assert last_lambda_bin.sum() == 0  # should be True by construction:
@@ -255,8 +255,8 @@ def test_qvals():
         scored_df, kernels=fake_kernels, ledges=ledges, obs_raw_name="count"
     )
 
-    # # we have to make sure there is nothing in the last lambda-chunk
-    # # this is a temporary implementation detail, until we implement dynamic lambda-chunks
+    # # we have to make sure there is nothing in the last lambda-bin
+    # # this is a temporary implementation detail, until we implement dynamic lambda-bins
     for k in fake_kernels:
         last_lambda_bin = gw_hists[k].iloc[:, -1]
         assert last_lambda_bin.sum() == 0  # should be True by construction:

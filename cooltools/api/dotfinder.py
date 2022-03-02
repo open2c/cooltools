@@ -29,7 +29,7 @@ and second to extract significantly enriched pixels.
      Custom kernels must satisfy properties including: square shape,
      equal sizes, odd sizes, zeros in the middle, etc. By default,
      HiCCUPS-style kernels are recommended based on the binsize.
- * Lambda bins/chunks are defined for multiple hypothesis
+ * Lambda bins are defined for multiple hypothesis
      testing separately for different value ranges of the locally adjusted expected.
      Currently, log-binned lambda-bins are hardcoded using a pre-defined
      BASE of 2^(1/3). `n_lambda_bins` controls the total number of bins.
@@ -231,7 +231,7 @@ def annotate_pixels_with_qvalues(pixels_df, qvalues, obs_raw_name=observed_count
     qvalues : dict of DataFrames
         A dictionary with keys being kernel names and values DataFrames
         storing q-values for each observed count values in each lambda-
-        chunk. Colunms are Intervals defined by 'ledges' boundaries.
+        bin. Colunms are Intervals defined by 'ledges' boundaries.
         Rows corresponding to a range of observed count values.
     obs_raw_name : str
         Name of the column/field that carry number of counts per pixel,
@@ -242,7 +242,7 @@ def annotate_pixels_with_qvalues(pixels_df, qvalues, obs_raw_name=observed_count
     pixels_qvalue_df : pandas.DataFrame
         DataFrame of pixels with additional columns la_exp.{k}.qval,
         storing q-values (adjusted p-values) corresponding to the count
-        value of a pixel, its kernel, and a lambda-chunk it belongs to.
+        value of a pixel, its kernel, and a lambda-bin it belongs to.
     """
     # do it "safe" - using a copy:
     pixels_qvalue_df = pixels_df.copy()
@@ -841,7 +841,7 @@ def histogram_scored_pixels(
     scored_df, kernels, ledges, obs_raw_name=observed_count_name
 ):
     """
-    An attempt to implement HiCCUPS-like lambda-chunking statistical procedure.
+    An attempt to implement HiCCUPS-like lambda-binning statistical procedure.
     This function aims at building up a histogram of locally adjusted
     expected scores for groups of characterized pixels.
 
@@ -857,8 +857,8 @@ def histogram_scored_pixels(
         A dictionary with keys being kernels names and values being ndarrays
         representing those kernels.
     ledges : ndarray
-        An ndarray with bin lambda-edges for groupping loc. adj. expecteds,
-        i.e., classifying statistical hypothesis into lambda-classes.
+        An ndarray with bin lambda-edges for groupping locally adjusted
+        expecteds, i.e., classifying statistical hypothesis into lambda-bins.
         Left-most bin (-inf, 1], and right-most one (value,+inf].
     obs_raw_name : str
         Name of the column/field that carry number of counts per pixel,
@@ -902,9 +902,9 @@ def histogram_scored_pixels(
 def determine_thresholds(gw_hist, fdr):
     """
     given a 'gw_hist' histogram of observed counts
-    for each lambda-chunk and for each kernel-type, and
+    for each lambda-bin and for each kernel-type, and
     also given a FDR, calculate q-values for each observed
-    count value in each lambda-chunk for each kernel-type.
+    count value in each lambda-bin for each kernel-type.
 
     Parameters
     ----------
@@ -921,7 +921,7 @@ def determine_thresholds(gw_hist, fdr):
       each chunk ...
     qvalues : dict
       A dictionary with keys being kernel names and values pandas.DataFrames
-      storing q-values: each column corresponds to a lambda-chunk,
+      storing q-values: each column corresponds to a lambda-bin,
       while rows correspond to observed pixels values.
 
 
@@ -936,33 +936,33 @@ def determine_thresholds(gw_hist, fdr):
     # lambda = la_exp["la_exp."+k+".value"]; pvals = 1.0 - poisson.cdf(la_exp["count"], lambda)
     # However this is technically challenging (too many pixels - genome wide) and
     # might not be sensitive enough due to wide dyamic range of interaction counts
-    # Instead we use the *lambda*-chunking procedure from Rao et al 2014 to tackle
+    # Instead we use the *lambda*-binning procedure from Rao et al 2014 to tackle
     # both technicall challenges and some issues associated with the wide dynamic range
     # of the expected for the dot-calling (due to distance decay).
     #
     # Some extra points:
     # 1. simple p-value thresholding should be replaced to more "productive" FDR, which is more tractable
     # 2. "unfair" to treat all pixels with the same stat-testing (multiple hypothesis) - too wide range of "expected"
-    # 3. (2) is addressed by spliting the pixels in the groups by their localy adjusted expected - lambda-chunks
-    # 4. upper boundary of each lambda-chunk is used as expected for every pixel that belongs to the chunk:
+    # 3. (2) is addressed by spliting the pixels in the groups by their localy adjusted expected - lambda-bins
+    # 4. upper boundary of each lambda-bin is used as expected for every pixel that belongs to the chunk:
     #                   - for technical/efficiency reasons - test pixels in a chunk all at once
-    # for each lambda-chunk q-values are calculated in an efficient way:
+    # for each lambda-bin q-values are calculated in an efficient way:
     # in part, efficiency comes from collapsing identical observed values, i.e. histogramming
-    # also upper boundary of each lambda-chunk is used as an expected for every pixel in this chunk
+    # also upper boundary of each lambda-bin is used as an expected for every pixel in this lambda-bin
 
     qvalues = {}
     threshold_df = {}
     for k, _hist in gw_hist.items():
         # Reverse cumulative histogram for kernel 'k'.
         rcs_hist = _hist.iloc[::-1].cumsum(axis=0).iloc[::-1]
-        # 1st row of 'rcs_hist' contains total pixels-counts in each lambda-chunk.
+        # 1st row of 'rcs_hist' contains total pixels-counts in each lambda-bin.
         norm = rcs_hist.iloc[0, :]
 
-        # Assign a unit Poisson distribution to each lambda-chunk.
-        # The expected value 'mu' is the upper boundary of each lambda-chunk:
+        # Assign a unit Poisson distribution to each lambda-bin.
+        # The expected value 'lambda' is the upper boundary of each lambda-bin:
         #   poisson.sf = 1 - poisson.cdf, but more precise
-        #   poisson.sf(-1,mu) == 1.0, i.e. is equivalent to the
-        #   poisson.pmf(rcs_hist.index, mu)[::-1].cumsum()[::-1]
+        #   poisson.sf(-1, lambda) == 1.0, i.e. is equivalent to the
+        #   poisson.pmf(rcs_hist.index, lambda)[::-1].cumsum()[::-1]
         # unit Poisson is a collection of 1-CDF distributions for each l-chunk
         # same dimensions as rcs_hist - matching lchunks and observed values:
         unit_Poisson = pd.DataFrame().reindex_like(rcs_hist)
@@ -994,7 +994,7 @@ def determine_thresholds(gw_hist, fdr):
 
 def extract_scored_pixels(scored_df, thresholds, obs_raw_name=observed_count_name):
     """
-    Implementation of HiCCUPS-like lambda-chunking statistical procedure.
+    Implementation of HiCCUPS-like lambda-binning statistical procedure.
     Use FDR thresholds for different "classes" of hypothesis
     (classified by their locally-adjusted expected (la_exp) scores),
     in order to extract "enriched" pixels.
@@ -1005,7 +1005,7 @@ def extract_scored_pixels(scored_df, thresholds, obs_raw_name=observed_count_nam
         A table with the scoring information for a group of pixels.
     thresholds : dict
         A dictionary {kernel_name : lambda_thresholds}, where 'lambda_thresholds'
-        are pd.Series with FDR thresholds indexed by lambda-chunk intervals
+        are pd.Series with FDR thresholds indexed by lambda-bin intervals
     obs_raw_name : str
         Name of the column/field with number of counts per pixel,
         i.e. observed raw counts.
@@ -1018,7 +1018,7 @@ def extract_scored_pixels(scored_df, thresholds, obs_raw_name=observed_count_nam
     """
     compliant_pixel_masks = []
     for kernel_name, threshold in thresholds.items():
-        # loc. adj expected (lambda) of the scored pixels:
+        # locally adjusted expected (lambda) of the scored pixels:
         lambda_of_pixels = scored_df[f"la_exp.{kernel_name}.value"]
         # extract lambda_threshold for every scored pixel based on its estimated lambda, using
         # interval-indexed 'threshold' to query it by the lambda-values of each scored pixel
@@ -1038,7 +1038,7 @@ def clustering_step(
 ):
     """
     Group together adjacent significant pixels into clusters after
-    the lambda-chunking multiple hypothesis testing by iterating over
+    the lambda-binning multiple hypothesis testing by iterating over
     assigned regions and calling `clust_2D_pixels`.
 
     Parameters
@@ -1270,12 +1270,12 @@ def scoring_and_histogramming_step(
     nproc,
 ):
     """
-    This implements the 1st step of the lambda-chunking scoring procedure - histogramming.
+    This implements the 1st step of the lambda-binning scoring procedure - histogramming.
 
     In short, this pipes a scoring operation together with histogramming into a
     single pipeline of per-chunk operations/transforms.
     """
-    logging.info(f"convolving {len(tiles)} tiles to build histograms for lambda-chunks")
+    logging.info(f"convolving {len(tiles)} tiles to build histograms for lambda-bins")
 
     # to score per tile:
     to_score = partial(
@@ -1324,15 +1324,15 @@ def scoring_and_histogramming_step(
 
     # TODO consider more efficient implementation to accumulate histograms:
     final_hist = reduce(_sum_hists, histogram_chunks)
-    # we have to make sure there is nothing in the last lambda-chunk
-    # this is a temporary implementation detail, until we implement dynamic lambda-chunks
+    # we have to make sure there is nothing in the last lambda-bin
+    # this is a temporary implementation detail, until we implement dynamic lambda-bins
     for k in kernels:
         last_lambda_bin = final_hist[k].iloc[:, -1]
         if last_lambda_bin.sum() != 0:
             raise ValueError(
                 f"There are la_exp.{k}.value in {last_lambda_bin.name}, please check the histogram"
             )
-        # drop all lambda-chunks that do not have pixels in them:
+        # drop all lambda-bins that do not have pixels in them:
         final_hist[k] = final_hist[k].loc[:, final_hist[k].sum() > 0]
         # make sure index (observed pixels counts) is sorted
         if not final_hist[k].index.is_monotonic:
@@ -1357,7 +1357,7 @@ def scoring_and_extraction_step(
     bin2_id_name="bin2_id",
 ):
     """
-    This implements the 2nd step of the lambda-chunking scoring procedure,
+    This implements the 2nd step of the lambda-binning scoring procedure,
     extracting pixels that are FDR compliant.
 
     In short, this combines scoring with with extraction into a
@@ -1560,8 +1560,8 @@ def dots(
     kernel_width = max(len(k) for k in kernels.values())  # 2*w+1
     kernel_half_width = int((kernel_width - 1) / 2)  # former w parameter
 
-    # try to guess required lambda cunks using "max" value of pixel counts
-    # statistical: lambda-chunking edges ...
+    # try to guess required lambda bins using "max" value of pixel counts
+    # statistical: lambda-binning edges ...
     if not 40 <= n_lambda_bins <= 50:
         raise ValueError(f"Incompatible n_lambda_bins={n_lambda_bins}")
     BASE = 2 ** (1 / 3)  # very arbitrary - parameterize !
