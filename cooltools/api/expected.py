@@ -1,10 +1,8 @@
 from itertools import chain, combinations, combinations_with_replacement
-from collections import defaultdict
 from functools import partial
 
 import warnings
 import multiprocess as mp
-
 
 import numpy as np
 import pandas as pd
@@ -19,9 +17,6 @@ from ..lib.checks import is_compatible_viewframe, is_cooler_balanced
 from ..lib.common import make_cooler_view
 
 from ..sandbox import expected_smoothing
-
-where = np.flatnonzero
-concat = chain.from_iterable
 
 # common expected_df column names
 _REGION1 = "region1"
@@ -225,6 +220,9 @@ def make_diag_table(bad_mask, span1, span2):
 
     """
 
+    # alias for np.flatnonzero inside `make_diag_table`
+    where = np.flatnonzero
+
     def _make_diag_table(n_bins, bad_locs):
         diags = pd.DataFrame(index=pd.Series(np.arange(n_bins), name=_DIST))
         diags["n_elem"] = count_all_pixels_per_diag(n_bins)
@@ -261,16 +259,13 @@ def make_diag_table(bad_mask, span1, span2):
     return diags.astype(int)
 
 
-def make_diag_tables(
-    clr, regions, regions2=None, clr_weight_name="weight", bad_bins=None
-):
+def make_diag_tables(clr, regions, regions2=None, clr_weight_name="weight"):
     """
     For every support region infer diagonals that intersect this region
     and calculate the size of these intersections in pixels, both "total" and
     "n_valid", where "n_valid" does not include "bad" bins into counting.
 
-    "Bad" pixels are inferred from the balancing weight column `clr_weight_name` or
-    provided directly in the form of an array `bad_bins`.
+    "Bad" pixels are inferred from the balancing weight column `clr_weight_name`.
 
     Setting `clr_weight_name` and `bad_bins` to `None` yields 0 "bad" pixels per
     diagonal per support region.
@@ -293,12 +288,6 @@ def make_diag_tables(
         name of the weight vector in the "bins" table,
         if clr_weight_name is None returns 0 for each block.
         Balancing weight are used to infer bad bins.
-    bad_bins : array-like
-        a list of bins to ignore. Indexes of bins must
-        be absolute, as in clr.bins()[:], as opposed to
-        being offset by chromosome start.
-        "bad_bins" will be combined with the bad bins
-        masked by balancing if there are any.
 
     Returns
     -------
@@ -307,24 +296,26 @@ def make_diag_tables(
     """
 
     try:  # Run regular viewframe conversion:
-        regions = bioframe.make_viewframe(regions, check_bounds=clr.chromsizes).values
+        regions = bioframe.make_viewframe(
+            regions, check_bounds=clr.chromsizes
+        ).to_numpy()
         if regions2 is not None:
             regions2 = bioframe.make_viewframe(
                 regions2, check_bounds=clr.chromsizes
-            ).values
+            ).to_numpy()
     except ValueError:  # If there are non-unique entries in regions1/2, possible only for asymmetric expected:
         regions = pd.concat(
             [
                 bioframe.make_viewframe([region], check_bounds=clr.chromsizes)
                 for i, region in regions.iterrows()
             ]
-        ).values
+        ).to_numpy()
         regions2 = pd.concat(
             [
                 bioframe.make_viewframe([region], check_bounds=clr.chromsizes)
                 for i, region in regions2.iterrows()
             ]
-        ).values
+        ).to_numpy()
 
     bins = clr.bins()[:]
     if clr_weight_name is None:
@@ -342,23 +333,6 @@ def make_diag_tables(
         raise ValueError(
             f"provided cooler is not balanced, or weight {clr_weight_name} is missing"
         )
-
-    # combine custom "bad_bins" with "bad_bin_dict":
-    if bad_bins is not None:
-        # check if "bad_bins" are legit:
-        try:
-            bad_bins_chrom = bins.iloc[bad_bins].reset_index(drop=False)
-        except IndexError:
-            raise ValueError("Provided `bad_bins` are incorrect or out-of-bound")
-        # group them by observed chromosomes only
-        bad_bins_grp = bad_bins_chrom[["index", "chrom"]].groupby(
-            "chrom", observed=True
-        )
-        # update "bad_bin_dict" with "bad_bins" for each chrom:
-        for chrom, bin_ids in bad_bins_grp["index"]:
-            co = clr.offset(chrom)
-            # adjust by chromosome offset
-            bad_bin_dict[chrom][bin_ids.values - co] = True
 
     diag_tables = {}
     for i, region in enumerate(regions):
@@ -391,18 +365,16 @@ def make_diag_tables(
     return diag_tables
 
 
-def make_block_table(clr, regions1, regions2, clr_weight_name="weight", bad_bins=None):
+def make_block_table(clr, regions1, regions2, clr_weight_name="weight"):
     """
     Creates a table that characterizes a set of rectangular genomic blocks
     formed by combining regions from regions1 and regions2.
     For every block calculate its "area" in pixels ("n_total"), and calculate
     number of "valid" pixels in each block ("n_valid").
     "Valid" pixels exclude "bad" pixels, which in turn inferred from the balancing
-    weight column `clr_weight_name` or provided directly in the form of an array of
-    `bad_bins`.
+    weight column `clr_weight_name`.
 
-    Setting `clr_weight_name` and `bad_bins` to `None` yields 0 "bad" pixels per
-    block.
+    When `clr_weight_name` is `None`, no "bad" pixels are excluded.
 
     Parameters
     ----------
@@ -416,39 +388,33 @@ def make_block_table(clr, regions1, regions2, clr_weight_name="weight", bad_bins
         name of the weight vector in the "bins" table,
         if clr_weight_name is None returns 0 for each block.
         Balancing weight are used to infer bad bins.
-    bad_bins : array-like
-        a list of bins to ignore. Indexes of bins must
-        be absolute, as in clr.bins()[:], as opposed to
-        being offset by chromosome start.
-        "bad_bins" will be combined with the bad bins
-        masked by balancing if there are any.
 
     Returns
     -------
     block_table : dict
         dictionary for blocks that are 0-indexed
     """
-    if bad_bins is None:
-        bad_bins = np.asarray([]).astype(int)
-    else:
-        bad_bins = np.asarray(bad_bins).astype(int)
 
     try:  # Run regular viewframe conversion:
-        regions1 = bioframe.make_viewframe(regions1, check_bounds=clr.chromsizes).values
-        regions2 = bioframe.make_viewframe(regions2, check_bounds=clr.chromsizes).values
+        regions1 = bioframe.make_viewframe(
+            regions1, check_bounds=clr.chromsizes
+        ).to_numpy()
+        regions2 = bioframe.make_viewframe(
+            regions2, check_bounds=clr.chromsizes
+        ).to_numpy()
     except ValueError:  # Might be non-unique entries in regions:
         regions1 = pd.concat(
             [
                 bioframe.make_viewframe([region], check_bounds=clr.chromsizes)
                 for i, region in regions1.iterrows()
             ]
-        ).values
+        ).to_numpy()
         regions2 = pd.concat(
             [
                 bioframe.make_viewframe([region], check_bounds=clr.chromsizes)
                 for i, region in regions2.iterrows()
             ]
-        ).values
+        ).to_numpy()
 
     # should we check for nestedness here, or that each region1 is < region2 ?
 
@@ -462,24 +428,15 @@ def make_block_table(clr, regions1, regions2, clr_weight_name="weight", bad_bins
         # width and height of a block:
         x = hi1 - lo1
         y = hi2 - lo2
-        # get "regional" bad_bins for each of the regions
-        bx = bad_bins[(bad_bins >= lo1) & (bad_bins < hi1)] - lo1
-        by = bad_bins[(bad_bins >= lo2) & (bad_bins < hi2)] - lo2
 
         # now we need to combine it with the balancing weights
         if clr_weight_name is None:
-            bad_bins_x = len(bx)
-            bad_bins_y = len(by)
+            bad_bins_x = 0
+            bad_bins_y = 0
         elif is_cooler_balanced(clr, clr_weight_name):
-            # extract "bad" bins filtered by balancing:
-            cb_bins_x = clr.bins()[clr_weight_name][lo1:hi1].isnull().values
-            cb_bins_y = clr.bins()[clr_weight_name][lo2:hi2].isnull().values
-            # combine with "bad_bins" using assignment:
-            cb_bins_x[bx] = True
-            cb_bins_y[by] = True
-            # count and yield final list of bad bins:
-            bad_bins_x = np.count_nonzero(cb_bins_x)
-            bad_bins_y = np.count_nonzero(cb_bins_y)
+            # count "bad" bins filtered by balancing:
+            bad_bins_x = clr.bins()[clr_weight_name][lo1:hi1].isnull().sum()
+            bad_bins_y = clr.bins()[clr_weight_name][lo2:hi2].isnull().sum()
         else:
             raise ValueError(
                 f"cooler is not balanced or weight {clr_weight_name} is missing"
@@ -490,8 +447,7 @@ def make_block_table(clr, regions1, regions2, clr_weight_name="weight", bad_bins
         n_bad = count_bad_pixels_per_block(x, y, bad_bins_x, bad_bins_y)
 
         # fill in "block_table" with number of valid pixels:
-        block_table[name1, name2] = defaultdict(int)
-        block_table[name1, name2][_NUM_VALID] = n_tot - n_bad
+        block_table[name1, name2] = {_NUM_VALID: n_tot - n_bad}
 
     return block_table
 
@@ -540,7 +496,6 @@ def diagsum_symm(
     view_df,
     transforms={},
     clr_weight_name="weight",
-    bad_bins=None,
     ignore_diags=2,
     chunksize=10000000,
     map=map,
@@ -563,10 +518,6 @@ def diagsum_symm(
         name of the balancing weight vector used to count
         "bad"(masked) pixels per diagonal.
         Use `None` to avoid masking "bad" pixels.
-    bad_bins : array-like
-        a list of bins to ignore per support region.
-        Combines with the list of bad bins from balacning
-        weight.
     chunksize : int, optional
         Size of pixel table chunks to process
     ignore_diags : int, optional
@@ -580,7 +531,9 @@ def diagsum_symm(
 
     """
     spans = partition(0, len(clr.pixels()), chunksize)
-    fields = ["count"] + list(transforms.keys())
+    fields = list(chain(["count"], transforms))
+    # names of summary results
+    summary_fields = [f"{field}.sum" for field in fields]
 
     # check viewframe
     try:
@@ -593,54 +546,30 @@ def diagsum_symm(
     except Exception as e:
         raise ValueError("provided view_df is not valid") from e
 
-    dtables = make_diag_tables(
-        clr, view_df, clr_weight_name=clr_weight_name, bad_bins=bad_bins
-    )
+    # prepare dtables: for every region a table with diagonals, number of valid pixels, etc
+    dtables = make_diag_tables(clr, view_df, clr_weight_name=clr_weight_name)
 
-    # combine masking with existing transforms and add a "count" transform:
-    if bad_bins is not None:
-        # turn bad_bins into a mask of size clr.bins:
-        mask_size = len(clr.bins())
-        bad_bins_mask = np.ones(mask_size, dtype=int)
-        bad_bins_mask[bad_bins] = 0
-        #
-        masked_transforms = {}
-        bin1 = "bin1_id"
-        bin2 = "bin2_id"
-        for field in fields:
-            if field in transforms:
-                # combine masking and transform, minding the scope:
-                t = transforms[field]
-                masked_transforms[field] = (
-                    lambda p, t=t, m=bad_bins_mask: t(p) * m[p[bin1]] * m[p[bin2]]
-                )
-            else:
-                # presumably field == "count", mind the scope as well:
-                masked_transforms[field] = (
-                    lambda p, f=field, m=bad_bins_mask: p[f] * m[p[bin1]] * m[p[bin2]]
-                )
-        # substitute transforms to the masked_transforms:
-        transforms = masked_transforms
-
+    # initialize columns to store summary results in dtables
     for dt in dtables.values():
-        for field in fields:
-            agg_name = f"{field}.sum"
+        for agg_name in summary_fields:
             dt[agg_name] = 0
 
+    # apply _diagsum_symm to chunks of pixels
     job = partial(
-        _diagsum_symm, clr, fields, transforms, clr_weight_name, view_df.values
+        _diagsum_symm, clr, fields, transforms, clr_weight_name, view_df.to_numpy()
     )
     results = map(job, spans)
+    # accumulate every chunk of summary results to dtables
     for result in results:
         for i, agg in result.items():
             region = view_df["name"].iat[i]
-            for field in fields:
-                agg_name = f"{field}.sum"
+            # for every field accumulate its aggregate/summary:
+            for field, agg_name in zip(fields, summary_fields):
                 dtables[region][agg_name] = dtables[region][agg_name].add(
                     agg[field], fill_value=0
                 )
 
-    # returning dataframe for API consistency
+    # returning pd.DataFrame for API consistency
     result = []
     for i, dtable in dtables.items():
         dtable = dtable.reset_index()
@@ -649,7 +578,6 @@ def diagsum_symm(
         dtable.insert(1, _REGION2, i)
         if ignore_diags:
             # fill out summary fields of ignored diagonals with NaN:
-            summary_fields = [f"{field}.sum" for field in fields]
             dtable.loc[dtable[_DIST] < ignore_diags, summary_fields] = np.nan
         result.append(dtable)
 
@@ -704,7 +632,6 @@ def diagsum_pairwise(
     view_df,
     transforms={},
     clr_weight_name="weight",
-    bad_bins=None,
     ignore_diags=2,
     chunksize=10_000_000,
     map=map,
@@ -735,10 +662,6 @@ def diagsum_pairwise(
         name of the balancing weight vector used to count
         "bad"(masked) pixels per diagonal.
         Use `None` to avoid masking "bad" pixels.
-    bad_bins : array-like
-        a list of bins to ignore per support region.
-        Combines with the list of bad bins from balacning
-        weight.
     chunksize : int, optional
         Size of pixel table chunks to process
     map : callable, optional
@@ -751,7 +674,9 @@ def diagsum_pairwise(
 
     """
     spans = partition(0, len(clr.pixels()), chunksize)
-    fields = ["count"] + list(transforms.keys())
+    fields = list(chain(["count"], transforms))
+    # names of summary results
+    summary_fields = [f"{field}.sum" for field in fields]
 
     # check viewframe
     try:
@@ -772,56 +697,31 @@ def diagsum_pairwise(
     regions1, regions2 = zip(*cis_combinations)
     regions1 = pd.DataFrame(regions1)
     regions2 = pd.DataFrame(regions2)
-    # create a table with the counts of valid pixels on each diagonal in each region:
-    dtables = make_diag_tables(
-        clr, regions1, regions2, clr_weight_name=clr_weight_name, bad_bins=bad_bins
-    )
+    # prepare dtables: for every region a table with diagonals, number of valid pixels, etc
+    dtables = make_diag_tables(clr, regions1, regions2, clr_weight_name=clr_weight_name)
 
-    # combine masking with existing transforms and add a "count" transform:
-    if bad_bins is not None:
-        # turn bad_bins into a mask of size clr.bins:
-        mask_size = len(clr.bins())
-        bad_bins_mask = np.ones(mask_size, dtype=int)
-        bad_bins_mask[bad_bins] = 0
-        #
-        masked_transforms = {}
-        bin1 = "bin1_id"
-        bin2 = "bin2_id"
-        for field in fields:
-            if field in transforms:
-                # combine masking and transform, minding the scope:
-                t = transforms[field]
-                masked_transforms[field] = (
-                    lambda p, t=t, m=bad_bins_mask: t(p) * m[p[bin1]] * m[p[bin2]]
-                )
-            else:
-                # presumably field == "count", mind the scope as well:
-                masked_transforms[field] = (
-                    lambda p, f=field, m=bad_bins_mask: p[f] * m[p[bin1]] * m[p[bin2]]
-                )
-        # substitute transforms to the masked_transforms:
-        transforms = masked_transforms
-
+    # initialize columns to store summary results in dtables
     for dt in dtables.values():
-        for field in fields:
-            agg_name = f"{field}.sum"
+        for agg_name in summary_fields:
             dt[agg_name] = 0
 
+    # apply _diagsum_pairwise to chunks of pixels
     job = partial(
         _diagsum_pairwise, clr, fields, transforms, clr_weight_name, view_df.values
     )
     results = map(job, spans)
+    # accumulate every chunk of summary results to dtables
     for result in results:
         for (i, j), agg in result.items():
             ni = view_df["name"].iat[i]
             nj = view_df["name"].iat[j]
-            for field in fields:
-                agg_name = f"{field}.sum"
+            # for every field accumulate its aggregate/summary:
+            for field, agg_name in zip(fields, summary_fields):
                 dtables[ni, nj][agg_name] = dtables[ni, nj][agg_name].add(
                     agg[field], fill_value=0
                 )
 
-    # returning a dataframe for API consistency:
+    # returning a pd.DataFrame for API consistency:
     result = []
     for (i, j), dtable in dtables.items():
         dtable = dtable.reset_index()
@@ -829,7 +729,6 @@ def diagsum_pairwise(
         dtable.insert(1, _REGION2, j)
         if ignore_diags:
             # fill out summary fields of ignored diagonals with NaN:
-            summary_fields = [f"{field}.sum" for field in fields]
             dtable.loc[dtable[_DIST] < ignore_diags, summary_fields] = np.nan
         result.append(dtable)
     return pd.concat(result).reset_index(drop=True)
@@ -885,7 +784,6 @@ def blocksum_pairwise(
     view_df,
     transforms={},
     clr_weight_name="weight",
-    bad_bins=None,
     chunksize=1000000,
     map=map,
 ):
@@ -914,10 +812,6 @@ def blocksum_pairwise(
         name of the balancing weight vector used to count
         "bad"(masked) pixels per block.
         Use `None` to avoid masking "bad" pixels.
-    bad_bins : array-like
-        a list of bins to ignore per support region.
-        Combines with the list of bad bins from balacning
-        weight.
     chunksize : int, optional
         Size of pixel table chunks to process
     map : callable, optional
@@ -941,7 +835,9 @@ def blocksum_pairwise(
         raise ValueError("provided view_df is not valid") from e
 
     spans = partition(0, len(clr.pixels()), chunksize)
-    fields = ["count"] + list(transforms.keys())
+    fields = list(chain(["count"], transforms))
+    # names of summary results
+    summary_fields = [f"{field}.sum" for field in fields]
 
     # create pairwise combinations of regions from view_df using
     # the standard zip(*bunch_of_tuples) unzipping procedure:
@@ -950,54 +846,39 @@ def blocksum_pairwise(
     regions2 = pd.DataFrame(regions2)
     # similar with diagonal summations, pre-generate a block_table listing
     # all of the rectangular blocks and "n_valid" number of pixels per each block:
-    records = make_block_table(
-        clr, regions1, regions2, clr_weight_name=clr_weight_name, bad_bins=bad_bins
-    )
+    btables = make_block_table(clr, regions1, regions2, clr_weight_name=clr_weight_name)
 
-    # combine masking with existing transforms and add a "count" transform:
-    if bad_bins is not None:
-        # turn bad_bins into a mask of size clr.bins:
-        mask_size = len(clr.bins())
-        bad_bins_mask = np.ones(mask_size, dtype=int)
-        bad_bins_mask[bad_bins] = 0
-        #
-        masked_transforms = {}
-        bin1 = "bin1_id"
-        bin2 = "bin2_id"
-        for field in fields:
-            if field in transforms:
-                # combine masking and transform, minding the scope:
-                t = transforms[field]
-                masked_transforms[field] = (
-                    lambda p, t=t, m=bad_bins_mask: t(p) * m[p[bin1]] * m[p[bin2]]
-                )
-            else:
-                # presumably field == "count", mind the scope as well:
-                masked_transforms[field] = (
-                    lambda p, f=field, m=bad_bins_mask: p[f] * m[p[bin1]] * m[p[bin2]]
-                )
-        # substitute transforms to the masked_transforms:
-        transforms = masked_transforms
+    # initialize columns to store summary results in btables
+    for bt in btables.values():
+        for agg_name in summary_fields:
+            bt[agg_name] = 0
 
+    # apply _diagsum_pairwise to chunks of pixels
     job = partial(
-        _blocksum_pairwise, clr, fields, transforms, clr_weight_name, view_df.values
+        _blocksum_pairwise, clr, fields, transforms, clr_weight_name, view_df.to_numpy()
     )
     results = map(job, spans)
+    # accumulate every chunk of summary results to dtables
     for result in results:
         for (i, j), agg in result.items():
-            for field in fields:
-                agg_name = "{}.sum".format(field)
-                s = agg[field].item()
-                if not np.isnan(s):
-                    ni = view_df["name"].iat[i]
-                    nj = view_df["name"].iat[j]
-                    records[ni, nj][agg_name] += s
+            ni = view_df["name"].iat[i]
+            nj = view_df["name"].iat[j]
+            # for every field accumulate its aggregate/summary:
+            for field, agg_name in zip(fields, summary_fields):
+                btables[ni, nj][agg_name] += np.nan_to_num(agg[field].item())
 
-    # returning a dataframe for API consistency:
+    # returning a pd.DataFrame for API consistency:
     return pd.DataFrame(
-        [{_REGION1: n1, _REGION2: n2, **rec} for (n1, n2), rec in records.items()],
-        columns=[_REGION1, _REGION2, _NUM_VALID, "count.sum"]
-        + [k + ".sum" for k in transforms.keys()],
+        [
+            {_REGION1: n1, _REGION2: n2, **btable}
+            for (n1, n2), btable in btables.items()
+        ],
+        columns=[
+            _REGION1,
+            _REGION2,
+            _NUM_VALID,
+        ]
+        + summary_fields,
     )
 
 
@@ -1118,7 +999,6 @@ def expected_cis(
                 view_df,
                 transforms=transforms,
                 clr_weight_name=clr_weight_name,
-                bad_bins=None,
                 ignore_diags=ignore_diags,
                 chunksize=chunksize,
                 map=map_,
@@ -1129,7 +1009,6 @@ def expected_cis(
                 view_df,
                 transforms=transforms,
                 clr_weight_name=clr_weight_name,
-                bad_bins=None,
                 ignore_diags=ignore_diags,
                 chunksize=chunksize,
                 map=map_,
@@ -1139,9 +1018,8 @@ def expected_cis(
             pool.close()
 
     # calculate actual averages by dividing sum by n_valid:
-    result["count.avg"] = result["count.sum"] / result[_NUM_VALID]
-    for key in transforms.keys():
-        result[key + ".avg"] = result[key + ".sum"] / result[_NUM_VALID]
+    for key in chain(["count"], transforms):
+        result[f"{key}.avg"] = result[f"{key}.sum"] / result[_NUM_VALID]
 
     # additional smoothing and aggregating options would add columns only, not replace them
     if smooth:
@@ -1263,7 +1141,6 @@ def expected_trans(
             view_df,
             transforms=transforms,
             clr_weight_name=clr_weight_name,
-            bad_bins=None,
             chunksize=chunksize,
             map=map_,
         )
@@ -1279,9 +1156,8 @@ def expected_trans(
     result = result.loc[_r1_chroms != _r2_chroms].reset_index(drop=True)
 
     # calculate actual averages by dividing sum by n_valid:
-    result["count.avg"] = result["count.sum"] / result[_NUM_VALID]
-    for key in transforms.keys():
-        result[key + ".avg"] = result[key + ".sum"] / result[_NUM_VALID]
+    for key in chain(["count"], transforms):
+        result[f"{key}.avg"] = result[f"{key}.sum"] / result[_NUM_VALID]
 
     return result
 
