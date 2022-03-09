@@ -55,4 +55,5 @@ from . import (
     dots,
     genome,
     sample,
+    coverage,
 )
