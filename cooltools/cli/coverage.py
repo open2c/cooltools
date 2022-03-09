@@ -88,12 +88,12 @@ def coverage(
         clr, ignore_diags=ignore_diags, chunksize=chunksize, store=store
     )
 
+    if nproc > 1:
+        pool.close()
+
     coverage_table = clr.bins()[:][["chrom", "start", "end"]]
     coverage_table["cis_raw_cov"] = cis_cov.astype(int)
     coverage_table["tot_raw_cov"] = tot_cov.astype(int)
-
-    if nproc > 1:
-        pool.close()
 
     # output to file if specified:
     if output:
