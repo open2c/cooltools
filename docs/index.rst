@@ -80,7 +80,7 @@ immediate live-testing any changes in the python code.
   ./notebooks/insulation_and_boundaries.ipynb
   ./notebooks/pileup_CTCF.ipynb
 
-Note that these notebooks currently focus on mammalian interphase Hi-C analysis, but are readily extendible to other organisms and cellualr contexts.
+Note that these notebooks currently focus on mammalian interphase Hi-C analysis, but are readily extendible to other organisms and cellualr contexts. To clone and work interactively with these notbooks, visit: https://github.com/open2c/open2c_examples.
 
 
 .. toctree::
