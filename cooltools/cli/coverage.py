@@ -1,14 +1,10 @@
-from calendar import c
 import click
 import cooler
-from numpy import cov
 
 from .. import coverage
 
 from . import cli
 from .. import api
-from ..lib.common import make_cooler_view
-from ..lib.io import read_viewframe_from_file
 import bioframe
 import multiprocessing as mp
 
@@ -82,12 +78,13 @@ def coverage(
     else:
         _map = map
 
-    cis_cov, tot_cov = api.coverage.coverage(
-        clr, ignore_diags=ignore_diags, chunksize=chunksize, map=_map, store=store
-    )
-
-    if nproc > 1:
-        pool.close()
+    try:
+        cis_cov, tot_cov = api.coverage.coverage(
+            clr, ignore_diags=ignore_diags, chunksize=chunksize, map=_map, store=store
+        )
+    finally:
+        if nproc > 1:
+            pool.close()
 
     coverage_table = clr.bins()[:][["chrom", "start", "end"]]
     coverage_table["cis_raw_cov"] = cis_cov.astype(int)
