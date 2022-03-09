@@ -76,8 +76,6 @@ def coverage(
 
     clr = cooler.Cooler(cool_path)
 
-    # Create view:
-    cooler_view_df = make_cooler_view(clr)
     if nproc > 1:
         pool = mp.Pool(nproc)
         _map = pool.imap
