@@ -85,7 +85,7 @@ def coverage(
         _map = map
 
     cis_cov, tot_cov = api.coverage.coverage(
-        clr, ignore_diags=ignore_diags, chunksize=chunksize, store=store
+        clr, ignore_diags=ignore_diags, chunksize=chunksize, map=_map, store=store
     )
 
     if nproc > 1:
