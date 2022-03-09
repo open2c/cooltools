@@ -124,6 +124,15 @@ def iterative_correction_symmetric(
     tolerance : float
         If less or equal to zero, will perform max_iter iterations.
 
+    Returns
+    -------
+    _x : np.ndarray
+        Corrected matrix
+    totalBias : np.ndarray
+        Vector with corrections biases
+    report : (bool, int)
+        A tuple that reports convergence
+        status and used number of iterations
     """
     cdef int N = len(x)
 
@@ -168,7 +177,7 @@ def iterative_correction_symmetric(
     corr = totalBias[s0!=0].mean()  #mean correction factor
     x  = x * corr * corr #renormalizing everything
     totalBias /= corr
-    report = {'converged':converged, 'iternum':iternum}
+    report = (converged, iternum)
 
     return x, totalBias, report
 

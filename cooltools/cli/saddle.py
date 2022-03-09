@@ -218,7 +218,7 @@ def saddle(
     track_columns = ["chrom", "start", "end", track_name]
     # specify dtype as a rudimentary form of validation:
     track_dtype = {
-        "chrom": np.str,
+        "chrom": np.str_,
         "start": np.int64,
         "end": np.int64,
         track_name: np.float64,
