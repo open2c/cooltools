@@ -38,7 +38,14 @@ import multiprocessing as mp
     " to the cooler bin table.",
     is_flag=True,
 )
-@click.option("--chunksize", help="", type=int, default=10000000, show_default=True)
+@click.option(
+    "--chunksize",
+    help="Split the contact matrix pixel records into equally sized chunks to"
+    " save memory and/or parallelize. Default is 10^7",
+    type=int,
+    default=1e7,
+    show_default=True,
+)
 @click.option(
     "--bigwig",
     help="Also save output as bigWig files for cis and total coverage"
@@ -101,11 +108,11 @@ def coverage(
             coverage_table,
             clr.chromsizes,
             f"{output}.cis.bw",
-            value_field=f"cis_raw_cov",
+            value_field="cis_raw_cov",
         )
         bioframe.to_bigwig(
             coverage_table,
             clr.chromsizes,
             f"{output}.tot.bw",
-            value_field=f"tot_raw_cov",
+            value_field="tot_raw_cov",
         )

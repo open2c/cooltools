@@ -71,8 +71,7 @@ def coverage(
         Cooler object
     chunksize : int, optional
         Split the contact matrix pixel records into equally sized chunks to
-        save memory and/or parallelize. Default is to use all the pixels at
-        once.
+        save memory and/or parallelize. Default is 10^7
     map : callable, optional
         Map function to dispatch the matrix chunks to workers.
         Default is the builtin ``map``, but alternatives include parallel map
