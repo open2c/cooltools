@@ -82,12 +82,7 @@ def expand_align_features(features_df, flank, resolution, format="bed"):
 
 
 def make_bin_aligned_windows(
-    binsize,
-    chroms,
-    centers_bp,
-    flank_bp=0,
-    region_start_bp=0,
-    ignore_index=False,
+    binsize, chroms, centers_bp, flank_bp=0, region_start_bp=0, ignore_index=False,
 ):
     """
     Convert genomic loci into bin spans on a fixed bin-segmentation of a
@@ -305,10 +300,7 @@ class CoolerSnipper:
             # Make sure view_df is a proper viewframe
             try:
                 _ = is_compatible_viewframe(
-                    view_df,
-                    clr,
-                    check_sorting=True,
-                    raise_errors=True,
+                    view_df, clr, check_sorting=True, raise_errors=True,
                 )
             except Exception as e:
                 raise ValueError(
@@ -320,6 +312,7 @@ class CoolerSnipper:
         self.binsize = self.clr.binsize
         self.offsets = {}
         self.diag_indicators = {}
+        self._isnan = {}
         self.pad = True
         self.cooler_opts = {} if cooler_opts is None else cooler_opts
         self.cooler_opts.setdefault("sparse", True)
@@ -351,19 +344,23 @@ class CoolerSnipper:
             region1_coords, region2_coords
         )
         if self.clr_weight_name:
-            self._isnan1 = np.isnan(
-                self.clr.bins()[self.clr_weight_name].fetch(region1_coords).values
-            )
-            self._isnan2 = np.isnan(
-                self.clr.bins()[self.clr_weight_name].fetch(region2_coords).values
-            )
+            if region1 not in self._isnan:
+                self._isnan[region1] = np.isnan(
+                    self.clr.bins()[self.clr_weight_name].fetch(region1_coords).values
+                )
+            if region2 not in self._isnan:
+                self._isnan[region2] = np.isnan(
+                    self.clr.bins()[self.clr_weight_name].fetch(region2_coords).values
+                )
         else:
-            self._isnan1 = np.zeros_like(
-                self.clr.bins()["start"].fetch(region1_coords).values
-            ).astype(bool)
-            self._isnan2 = np.zeros_like(
-                self.clr.bins()["start"].fetch(region2_coords).values
-            ).astype(bool)
+            if region1 not in self._isnan:
+                self._isnan[region1] = np.zeros_like(
+                    self.clr.bins()["start"].fetch(region1_coords).values
+                ).astype(bool)
+            if region2 not in self._isnan:
+                self._isnan[region2] = np.zeros_like(
+                    self.clr.bins()["start"].fetch(region2_coords).values
+                ).astype(bool)
         if self.cooler_opts["sparse"]:
             matrix = matrix.tocsr()
         if self.min_diag is not None:
@@ -408,8 +405,8 @@ class CoolerSnipper:
         #                     pad_left:pad_right] = matrix[i0:i1, j0:j1].toarray()
         else:
             snippet = matrix[lo1:hi1, lo2:hi2].toarray().astype("float")
-            snippet[self._isnan1[lo1:hi1], :] = np.nan
-            snippet[:, self._isnan2[lo2:hi2]] = np.nan
+            snippet[self._isnan[region1][lo1:hi1], :] = np.nan
+            snippet[:, self._isnan[region2][lo2:hi2]] = np.nan
         if self.min_diag is not None:
             D = self.diag_indicators[region1][lo1:hi1, lo2:hi2] < self.min_diag
             snippet[D] = np.nan
@@ -436,10 +433,7 @@ class ObsExpSnipper:
             # Make sure view_df is a proper viewframe
             try:
                 _ = is_compatible_viewframe(
-                    view_df,
-                    clr,
-                    check_sorting=True,
-                    raise_errors=True,
+                    view_df, clr, check_sorting=True, raise_errors=True,
                 )
             except Exception as e:
                 raise ValueError(
@@ -452,9 +446,7 @@ class ObsExpSnipper:
                 "cis",
                 view_df,
                 verify_cooler=clr,
-                expected_value_cols=[
-                    self.expected_value_col,
-                ],
+                expected_value_cols=[self.expected_value_col,],
                 raise_errors=True,
             )
         except Exception as e:
@@ -464,6 +456,7 @@ class ObsExpSnipper:
         self.binsize = self.clr.binsize
         self.offsets = {}
         self.diag_indicators = {}
+        self._isnan = {}
         self.pad = True
         self.cooler_opts = {} if cooler_opts is None else cooler_opts
         self.cooler_opts.setdefault("sparse", True)
@@ -498,19 +491,23 @@ class ObsExpSnipper:
         if self.cooler_opts["sparse"]:
             matrix = matrix.tocsr()
         if self.clr_weight_name:
-            self._isnan1 = np.isnan(
-                self.clr.bins()[self.clr_weight_name].fetch(region1_coords).values
-            )
-            self._isnan2 = np.isnan(
-                self.clr.bins()[self.clr_weight_name].fetch(region2_coords).values
-            )
+            if region1 not in self._isnan:
+                self._isnan[region1] = np.isnan(
+                    self.clr.bins()[self.clr_weight_name].fetch(region1_coords).values
+                )
+            if region2 not in self._isnan:
+                self._isnan[region2] = np.isnan(
+                    self.clr.bins()[self.clr_weight_name].fetch(region2_coords).values
+                )
         else:
-            self._isnan1 = np.zeros_like(
-                self.clr.bins()["start"].fetch(region1_coords).values
-            ).astype(bool)
-            self._isnan2 = np.zeros_like(
-                self.clr.bins()["start"].fetch(region2_coords).values
-            ).astype(bool)
+            if region1 not in self._isnan:
+                self._isnan[region1] = np.zeros_like(
+                    self.clr.bins()["start"].fetch(region1_coords).values
+                ).astype(bool)
+            if region2 not in self._isnan:
+                self._isnan[region2] = np.zeros_like(
+                    self.clr.bins()["start"].fetch(region2_coords).values
+                ).astype(bool)
         self._expected = LazyToeplitz(
             self.expected.groupby(["region1", "region2"])
             .get_group((region1, region2))[self.expected_value_col]
@@ -558,8 +555,8 @@ class ObsExpSnipper:
         #                     pad_left:pad_right] = matrix[i0:i1, j0:j1].toarray()
         else:
             snippet = matrix[lo1:hi1, lo2:hi2].toarray().astype("float")
-            snippet[self._isnan1[lo1:hi1], :] = np.nan
-            snippet[:, self._isnan2[lo2:hi2]] = np.nan
+            snippet[self._isnan[region1][lo1:hi1], :] = np.nan
+            snippet[:, self._isnan[region2][lo2:hi2]] = np.nan
 
         e = self._expected[lo1:hi1, lo2:hi2]
         if self.min_diag is not None:
@@ -582,10 +579,7 @@ class ExpectedSnipper:
             # Make sure view_df is a proper viewframe
             try:
                 _ = is_compatible_viewframe(
-                    view_df,
-                    clr,
-                    check_sorting=True,
-                    raise_errors=True,
+                    view_df, clr, check_sorting=True, raise_errors=True,
                 )
             except Exception as e:
                 raise ValueError(
@@ -598,9 +592,7 @@ class ExpectedSnipper:
                 "cis",
                 view_df,
                 verify_cooler=clr,
-                expected_value_cols=[
-                    self.expected_value_col,
-                ],
+                expected_value_cols=[self.expected_value_col,],
                 raise_errors=True,
             )
         except Exception as e:
@@ -736,10 +728,7 @@ def pileup(
     else:
         try:
             _ = is_compatible_viewframe(
-                view_df,
-                clr,
-                check_sorting=True,
-                raise_errors=True,
+                view_df, clr, check_sorting=True, raise_errors=True,
             )
         except Exception as e:
             raise ValueError("view_df is not a valid viewframe or incompatible") from e
@@ -770,27 +759,18 @@ def pileup(
     if feature_type == "bed":
         features_df[["lo", "hi"]] = (
             features_df[["lo", "hi"]]
-            .subtract(
-                features_df["region_offset"].fillna(0),
-                axis=0,
-            )
+            .subtract(features_df["region_offset"].fillna(0), axis=0,)
             .astype(int)
         )
     else:
         features_df[["lo1", "hi1"]] = (
             features_df[["lo1", "hi1"]]
-            .subtract(
-                features_df["region_offset"].fillna(0),
-                axis=0,
-            )
+            .subtract(features_df["region_offset"].fillna(0), axis=0,)
             .astype(int)
         )
         features_df[["lo2", "hi2"]] = (
             features_df[["lo2", "hi2"]]
-            .subtract(
-                features_df["region_offset"].fillna(0),
-                axis=0,
-            )
+            .subtract(features_df["region_offset"].fillna(0), axis=0,)
             .astype(int)
         )
 
