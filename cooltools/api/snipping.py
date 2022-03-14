@@ -82,12 +82,7 @@ def expand_align_features(features_df, flank, resolution, format="bed"):
 
 
 def make_bin_aligned_windows(
-    binsize,
-    chroms,
-    centers_bp,
-    flank_bp=0,
-    region_start_bp=0,
-    ignore_index=False,
+    binsize, chroms, centers_bp, flank_bp=0, region_start_bp=0, ignore_index=False,
 ):
     """
     Convert genomic loci into bin spans on a fixed bin-segmentation of a
@@ -203,7 +198,7 @@ def _pileup(data_select, data_snip, arg):
     return np.dstack(stack), feature_group["_rank"].values
 
 
-def pileup_legacy(features, data_select, data_snip, map=map):
+def select_snip(features, data_select, data_snip, map=map):
     """
     Handles on-diagonal and off-diagonal cases.
 
@@ -222,7 +217,9 @@ def pileup_legacy(features, data_select, data_snip, map=map):
     data_snip : callable
         Callable that takes data, mask and a 2D bin span (lo1, hi1, lo2, hi2)
         and returns a snippet from the selected support region
-
+    
+    map : callable
+        Callable that works like builtin `map`.
 
     """
     if features["region"].isnull().any():
@@ -255,48 +252,24 @@ def pileup_legacy(features, data_select, data_snip, map=map):
     return cumul_stack
 
 
-def pair_sites(sites, separation, slop):
-    """
-    Create "hand" intervals to the right and to the left of each site.
-    Then join right hands with left hands to pair sites together.
-
-    """
-    from bioframe.tools import tsv, bedtools
-
-    mids = (sites["start"] + sites["end"]) // 2
-    left_hand = sites[["chrom"]].copy()
-    left_hand["start"] = mids - separation - slop
-    left_hand["end"] = mids - separation + slop
-    left_hand["site_id"] = left_hand.index
-    left_hand["direction"] = "L"
-    left_hand["snip_mid"] = mids
-    left_hand["snip_strand"] = sites["strand"]
-
-    right_hand = sites[["chrom"]].copy()
-    right_hand["start"] = mids + separation - slop
-    right_hand["end"] = mids + separation + slop
-    right_hand["site_id"] = right_hand.index
-    right_hand["direction"] = "R"
-    right_hand["snip_mid"] = mids
-    right_hand["snip_strand"] = sites["strand"]
-
-    # ignore out-of-bounds hands
-    mask = (left_hand["start"] > 0) & (right_hand["start"] > 0)
-    left_hand = left_hand[mask].copy()
-    right_hand = right_hand[mask].copy()
-
-    # intersect right hands (left anchor site)
-    # with left hands (right anchor site)
-    with tsv(right_hand) as R, tsv(left_hand) as L:
-        out = bedtools.intersect(a=R.name, b=L.name, wa=True, wb=True)
-        out.columns = [c + "_r" for c in right_hand.columns] + [
-            c + "_l" for c in left_hand.columns
-        ]
-    return out
-
-
 class CoolerSnipper:
     def __init__(self, clr, cooler_opts=None, view_df=None, min_diag=2):
+        """Class for generating snips from a cooler
+
+        Parameters
+        ----------
+        clr : cooler.Cooler
+            Cooler object with data to use
+        cooler_opts : dict, optional
+            Options to pass to the clr.matrix() method, by default None
+            Can be used to choose the cooler weight name, e.g.
+            cooler_opts={balance='non-standard-weight'}
+        view_df : pd.DataFrame, optional
+            Genomic view to constrain the analysis, by default None and uses all
+            chromosomes present in the cooler
+        min_diag : int, optional
+            This number of short-distance diagonals is ignored, by default 2
+        """
 
         # get chromosomes from cooler, if view_df not specified:
         if view_df is None:
@@ -305,10 +278,7 @@ class CoolerSnipper:
             # Make sure view_df is a proper viewframe
             try:
                 _ = is_compatible_viewframe(
-                    view_df,
-                    clr,
-                    check_sorting=True,
-                    raise_errors=True,
+                    view_df, clr, check_sorting=True, raise_errors=True,
                 )
             except Exception as e:
                 raise ValueError(
@@ -339,6 +309,23 @@ class CoolerSnipper:
         self.min_diag = min_diag
 
     def select(self, region1, region2):
+        """Select a portion of the cooler for snipping based on two regions in the view
+
+        In addition to returning the selected portion of the data, stores necessary
+        information about it in the snipper object for future snipping
+
+        Parameters
+        ----------
+        region1 : str
+            Name of a region from the view
+        region2 : str
+            Name of another region from the view.
+
+        Returns
+        -------
+        CSR matrix
+            Sparse matrix of the selected portion of the data from the cooler
+        """
         region1_coords = self.view_df.loc[region1]
         region2_coords = self.view_df.loc[region2]
         self.offsets[region1] = self.clr.offset(region1_coords) - self.clr.offset(
@@ -372,6 +359,27 @@ class CoolerSnipper:
         return matrix
 
     def snip(self, matrix, region1, region2, tup):
+        """Extract a snippet from the matrix
+        
+        Returns a NaN-filled array for out-of-bounds regions. Fills in NaNs based on the
+        cooler weight, if using balanced data. Fills NaNs in all diagonals below min_diag
+
+        Parameters
+        ----------
+        matrix : SCR matrix
+            Output of the .select() method
+        region1 : str
+            Name of a region from the view corresponding to the matrix
+        region2 : str
+            Name of the other regions from the view corresponding to the matrix
+        tup : tuple
+            (start1, end1, start2, end2) coordinates of the requested snippet in bp
+
+        Returns
+        -------
+        np.array
+            Requested snippet.
+        """
         s1, e1, s2, e2 = tup
         offset1 = self.offsets[region1]
         offset2 = self.offsets[region2]
@@ -426,6 +434,27 @@ class ObsExpSnipper:
         min_diag=2,
         expected_value_col="balanced.avg",
     ):
+        """Class for generating expected-normalised snips from a cooler
+
+        Parameters
+        ----------
+        clr : cooler.Cooler
+            Cooler object with data to use
+        expected : pd.DataFrame
+            Dataframe containing expected interactions in the cooler
+        cooler_opts : dict, optional
+            Options to pass to the clr.matrix() method, by default None
+            Can be used to choose the cooler weight name, e.g.
+            cooler_opts={balance='non-standard-weight'}
+        view_df : pd.DataFrame, optional
+            Genomic view to constrain the analysis, by default None and uses all
+            chromosomes present in the cooler
+        min_diag : int, optional
+            This number of short-distance diagonals is ignored, by default 2
+        expected_value_col : str, optional
+            Name of the column in the expected dataframe that contains the expected
+            interaction values, by default "balanced.avg"
+        """
         self.clr = clr
         self.expected = expected
         self.expected_value_col = expected_value_col
@@ -436,10 +465,7 @@ class ObsExpSnipper:
             # Make sure view_df is a proper viewframe
             try:
                 _ = is_compatible_viewframe(
-                    view_df,
-                    clr,
-                    check_sorting=True,
-                    raise_errors=True,
+                    view_df, clr, check_sorting=True, raise_errors=True,
                 )
             except Exception as e:
                 raise ValueError(
@@ -452,9 +478,7 @@ class ObsExpSnipper:
                 "cis",
                 view_df,
                 verify_cooler=clr,
-                expected_value_cols=[
-                    self.expected_value_col,
-                ],
+                expected_value_cols=[self.expected_value_col,],
                 raise_errors=True,
             )
         except Exception as e:
@@ -482,6 +506,23 @@ class ObsExpSnipper:
         self.min_diag = min_diag
 
     def select(self, region1, region2):
+        """Select a portion of the cooler for snipping based on two regions in the view
+
+        In addition to returning the selected portion of the data, stores necessary
+        information about it in the snipper object for future snipping
+
+        Parameters
+        ----------
+        region1 : str
+            Name of a region from the view
+        region2 : str
+            Name of another region from the view.
+
+        Returns
+        -------
+        CSR matrix
+            Sparse matrix of the selected portion of the data from the cooler
+        """
         if not region1 == region2:
             raise ValueError("ObsExpSnipper is implemented for cis contacts only.")
         region1_coords = self.view_df.loc[region1]
@@ -522,6 +563,27 @@ class ObsExpSnipper:
         return matrix
 
     def snip(self, matrix, region1, region2, tup):
+        """Extract an expected-normalised snippet from the matrix
+        
+        Returns a NaN-filled array for out-of-bounds regions. Fills in NaNs based on the
+        cooler weight, if using balanced data. Fills NaNs in all diagonals below min_diag
+
+        Parameters
+        ----------
+        matrix : SCR matrix
+            Output of the .select() method
+        region1 : str
+            Name of a region from the view corresponding to the matrix
+        region2 : str
+            Name of the other regions from the view corresponding to the matrix
+        tup : tuple
+            (start1, end1, start2, end2) coordinates of the requested snippet in bp
+
+        Returns
+        -------
+        np.array
+            Requested snippet.
+        """
         s1, e1, s2, e2 = tup
         offset1 = self.offsets[region1]
         offset2 = self.offsets[region2]
@@ -572,6 +634,23 @@ class ExpectedSnipper:
     def __init__(
         self, clr, expected, view_df=None, min_diag=2, expected_value_col="balanced.avg"
     ):
+        """Class for generating expected snips
+
+        Parameters
+        ----------
+        clr : cooler.Cooler
+            Cooler object to which the data corresponds
+        expected : pd.DataFrame
+            Dataframe containing expected interactions in the cooler
+        view_df : pd.DataFrame, optional
+            Genomic view to constrain the analysis, by default None and uses all
+            chromosomes present in the cooler
+        min_diag : int, optional
+            This number of short-distance diagonals is ignored, by default 2
+        expected_value_col : str, optional
+            Name of the column in the expected dataframe that contains the expected
+            interaction values, by default "balanced.avg"
+        """
         self.clr = clr
         self.expected = expected
         self.expected_value_col = expected_value_col
@@ -582,10 +661,7 @@ class ExpectedSnipper:
             # Make sure view_df is a proper viewframe
             try:
                 _ = is_compatible_viewframe(
-                    view_df,
-                    clr,
-                    check_sorting=True,
-                    raise_errors=True,
+                    view_df, clr, check_sorting=True, raise_errors=True,
                 )
             except Exception as e:
                 raise ValueError(
@@ -598,9 +674,7 @@ class ExpectedSnipper:
                 "cis",
                 view_df,
                 verify_cooler=clr,
-                expected_value_cols=[
-                    self.expected_value_col,
-                ],
+                expected_value_cols=[self.expected_value_col,],
                 raise_errors=True,
             )
         except Exception as e:
@@ -613,6 +687,24 @@ class ExpectedSnipper:
         self.min_diag = min_diag
 
     def select(self, region1, region2):
+        """Select a portion of the expected matrix for snipping based on two regions
+        in the view
+
+        In addition to returning the selected portion of the data, stores necessary
+        information about it in the snipper object for future snipping
+
+        Parameters
+        ----------
+        region1 : str
+            Name of a region from the view
+        region2 : str
+            Name of another region from the view.
+
+        Returns
+        -------
+        CSR matrix
+            Sparse matrix of the selected portion of the data from the cooler
+        """
         if not region1 == region2:
             raise ValueError("ExpectedSnipper is implemented for cis contacts only.")
         region1_coords = self.view_df.loc[region1]
@@ -636,6 +728,27 @@ class ExpectedSnipper:
         return self._expected
 
     def snip(self, exp, region1, region2, tup):
+        """Extract an expected snippet
+        
+        Returns a NaN-filled array for out-of-bounds regions.
+        Fills NaNs in all diagonals below min_diag
+
+        Parameters
+        ----------
+        exp : SCR matrix
+            Output of the .select() method
+        region1 : str
+            Name of a region from the view corresponding to the matrix
+        region2 : str
+            Name of the other regions from the view corresponding to the matrix
+        tup : tuple
+            (start1, end1, start2, end2) coordinates of the requested snippet in bp
+
+        Returns
+        -------
+        np.array
+            Requested snippet.
+        """
         s1, e1, s2, e2 = tup
         offset1 = self.offsets[region1]
         offset2 = self.offsets[region2]
@@ -736,10 +849,7 @@ def pileup(
     else:
         try:
             _ = is_compatible_viewframe(
-                view_df,
-                clr,
-                check_sorting=True,
-                raise_errors=True,
+                view_df, clr, check_sorting=True, raise_errors=True,
             )
         except Exception as e:
             raise ValueError("view_df is not a valid viewframe or incompatible") from e
@@ -770,27 +880,18 @@ def pileup(
     if feature_type == "bed":
         features_df[["lo", "hi"]] = (
             features_df[["lo", "hi"]]
-            .subtract(
-                features_df["region_offset"].fillna(0),
-                axis=0,
-            )
+            .subtract(features_df["region_offset"].fillna(0), axis=0,)
             .astype(int)
         )
     else:
         features_df[["lo1", "hi1"]] = (
             features_df[["lo1", "hi1"]]
-            .subtract(
-                features_df["region_offset"].fillna(0),
-                axis=0,
-            )
+            .subtract(features_df["region_offset"].fillna(0), axis=0,)
             .astype(int)
         )
         features_df[["lo2", "hi2"]] = (
             features_df[["lo2", "hi2"]]
-            .subtract(
-                features_df["region_offset"].fillna(0),
-                axis=0,
-            )
+            .subtract(features_df["region_offset"].fillna(0), axis=0,)
             .astype(int)
         )
 
@@ -818,7 +919,7 @@ def pileup(
         mymap = pool.map
     else:
         mymap = map
-    stack = pileup_legacy(features_df, snipper.select, snipper.snip, map=mymap)
+    stack = select_snip(features_df, snipper.select, snipper.snip, map=mymap)
     if feature_type == "bed":
         stack = np.nansum([stack, np.transpose(stack, axes=(1, 0, 2))], axis=0)
 
