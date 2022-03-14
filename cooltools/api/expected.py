@@ -15,14 +15,15 @@ import bioframe
 from ..lib import assign_supports, numutils
 from ..lib.checks import is_compatible_viewframe, is_cooler_balanced
 from ..lib.common import make_cooler_view
+from ..lib.schemas import diag_expected_dtypes, block_expected_dtypes
 
 from ..sandbox import expected_smoothing
 
-# common expected_df column names
-_REGION1 = "region1"
-_REGION2 = "region2"
-_DIST = "dist"
-_NUM_VALID = "n_valid"
+# common expected_df column names, take from schemas
+_REGION1 = list(diag_expected_dtypes)[0]
+_REGION2 = list(diag_expected_dtypes)[1]
+_DIST = list(diag_expected_dtypes)[2]
+_NUM_VALID = list(diag_expected_dtypes)[3]
 
 
 def lattice_pdist_frequencies(n, points):
@@ -261,14 +262,12 @@ def make_diag_table(bad_mask, span1, span2):
 
 def make_diag_tables(clr, regions, regions2=None, clr_weight_name="weight"):
     """
-    For every support region infer diagonals that intersect this region
-    and calculate the size of these intersections in pixels, both "total" and
-    "n_valid", where "n_valid" does not include "bad" bins into counting.
+    For every region infer diagonals that intersect this region and calculate
+    the size of these intersections in pixels, both "total" and "n_valid",
+    where "n_valid" does not count "bad" pixels.
 
     "Bad" pixels are inferred from the balancing weight column `clr_weight_name`.
-
-    Setting `clr_weight_name` and `bad_bins` to `None` yields 0 "bad" pixels per
-    diagonal per support region.
+    When `clr_weight_name` is None, raw data is used, and no "bad" pixels are exclued.
 
     When `regions2` are provided, all intersecting diagonals are reported for
     each rectangular and asymmetric block defined by combinations of matching
@@ -285,14 +284,14 @@ def make_diag_tables(clr, regions, regions2=None, clr_weight_name="weight"):
     regions2 : viewframe or viewframe-like dataframe
         viewframe without repeated entries or viewframe-like dataframe with repeated entries
     clr_weight_name : str
-        name of the weight vector in the "bins" table,
-        if clr_weight_name is None returns 0 for each block.
-        Balancing weight are used to infer bad bins.
+        name of the weight column in the clr bin-table,
+        Balancing weight is used to infer bad bins, set to
+        `None` is masking bad bins is not desired for raw data.
 
     Returns
     -------
     diag_tables : dict
-        dictionary with DataFrames of relevant diagonals for every support.
+        dictionary with DataFrames of relevant diagonals for every region.
     """
 
     try:  # Run regular viewframe conversion:
@@ -367,27 +366,27 @@ def make_diag_tables(clr, regions, regions2=None, clr_weight_name="weight"):
 
 def make_block_table(clr, regions1, regions2, clr_weight_name="weight"):
     """
-    Creates a table that characterizes a set of rectangular genomic blocks
-    formed by combining regions from regions1 and regions2.
+    Creates a table of total and valid pixels for a set of rectangular genomic blocks
+    defined by regions1 and regions2.
     For every block calculate its "area" in pixels ("n_total"), and calculate
-    number of "valid" pixels in each block ("n_valid").
-    "Valid" pixels exclude "bad" pixels, which in turn inferred from the balancing
+    number of "valid" pixels ("n_valid").
+    Valid pixels exclude "bad" pixels, which are inferred from the balancing
     weight column `clr_weight_name`.
 
-    When `clr_weight_name` is `None`, no "bad" pixels are excluded.
+    When `clr_weight_name` is None, raw data is used, and no "bad" pixels are exclued.
 
     Parameters
     ----------
     clr : cooler.Cooler
         Input cooler
-    regions1 : viewframe or viewframe-like dataframe
-        a viewframe without repeated entries or viewframe-like dataframe with repeated entries
-    regions2 : viewframe or viewframe-like dataframe
-        a viewframe without repeated entries or viewframe-like dataframe with repeated entries
+    regions1 : viewframe-like dataframe
+        viewframe-like dataframe, where repeated entries are allowed
+    regions2 : viewframe-like dataframe
+        viewframe-like dataframe, where repeated entries are allowed
     clr_weight_name : str
-        name of the weight vector in the "bins" table,
-        if clr_weight_name is None returns 0 for each block.
-        Balancing weight are used to infer bad bins.
+        name of the weight column in the cooler bins-table, used
+        for masking bad pixels.
+        When clr_weight_name is None, no bad pixels are masked.
 
     Returns
     -------
@@ -508,16 +507,16 @@ def diagsum_symm(
     ----------
     clr : cooler.Cooler
         Cooler object
-    view_df : viewframe (or depreated: sequence of genomic range tuples)
-        Support view_df for intra-chromosomal diagonal summation
+    view_df : viewframe
+        view_dfof regions for intra-chromosomal diagonal summation
     transforms : dict of str -> callable, optional
         Transformations to apply to pixels. The result will be assigned to
         a temporary column with the name given by the key. Callables take
         one argument: the current chunk of the (annotated) pixel dataframe.
     clr_weight_name : str
-        name of the balancing weight vector used to count
-        "bad"(masked) pixels per diagonal.
-        Use `None` to avoid masking "bad" pixels.
+        name of the balancing weight vector used to count "bad"
+        pixels per diagonal. Set to `None` not to mask
+        "bad" pixels (raw data only).
     chunksize : int, optional
         Size of pixel table chunks to process
     ignore_diags : int, optional
@@ -651,17 +650,17 @@ def diagsum_pairwise(
     ----------
     clr : cooler.Cooler
         Cooler object
-    view_df : viewframe (or depreated: sequence of genomic range tuples)
-        Support view_df for intra-chromosomal diagonal summation, has to
+    view_df : viewframe
+        view_df of regions for intra-chromosomal diagonal summation, has to
         be sorted according to the order of chromosomes in cooler.
     transforms : dict of str -> callable, optional
         Transformations to apply to pixels. The result will be assigned to
         a temporary column with the name given by the key. Callables take
         one argument: the current chunk of the (annotated) pixel dataframe.
     clr_weight_name : str
-        name of the balancing weight vector used to count
-        "bad"(masked) pixels per diagonal.
-        Use `None` to avoid masking "bad" pixels.
+        name of the balancing weight vector used to count "bad"
+        pixels per diagonal. Set to `None` not to mask
+        "bad" pixels (raw data only).
     chunksize : int, optional
         Size of pixel table chunks to process
     map : callable, optional
@@ -801,17 +800,17 @@ def blocksum_pairwise(
     ----------
     clr : cooler.Cooler
         Cooler object
-    view_df : viewframe (or depreated: sequence of genomic range tuples)
-        Support view_df defining blocks for summary calculations,
+    view_df : viewframe
+        view_df of regions defining blocks for summary calculations,
         has to be sorted according to the order of chromosomes in clr.
     transforms : dict of str -> callable, optional
         Transformations to apply to pixels. The result will be assigned to
         a temporary column with the name given by the key. Callables take
         one argument: the current chunk of the (annotated) pixel dataframe.
     clr_weight_name : str
-        name of the balancing weight vector used to count
-        "bad"(masked) pixels per block.
-        Use `None` to avoid masking "bad" pixels.
+        name of the balancing weight column in cooler bin-table used
+        to count "bad" pixels per block. Set to `None` not ot mask
+        "bad" pixels (raw data only).
     chunksize : int, optional
         Size of pixel table chunks to process
     map : callable, optional
@@ -873,12 +872,7 @@ def blocksum_pairwise(
             {_REGION1: n1, _REGION2: n2, **btable}
             for (n1, n2), btable in btables.items()
         ],
-        columns=[
-            _REGION1,
-            _REGION2,
-            _NUM_VALID,
-        ]
-        + summary_fields,
+        columns=list(block_expected_dtypes) + summary_fields,
     )
 
 
