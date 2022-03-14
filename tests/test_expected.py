@@ -79,7 +79,6 @@ def _blocksum_asymm_dense(matrix, bad_bin_rows=None, bad_bin_cols=None):
 # common parameters:
 ignore_diags = 2
 clr_weight_name = "weight"
-bad_bins = None
 chunksize = 10_000  # keep it small to engage chunking
 weight1 = clr_weight_name + "1"
 weight2 = clr_weight_name + "2"
@@ -107,7 +106,7 @@ for i in range(4):
     common_regions.append(reg1)
     common_regions.append(reg2)
 
-view_df = bioframe.make_viewframe(common_regions, name_style='ucsc')
+view_df = bioframe.make_viewframe(common_regions, name_style="ucsc")
 
 
 def test_diagsum_symm(request):
@@ -118,7 +117,6 @@ def test_diagsum_symm(request):
         view_df=view_df,
         transforms=transforms,
         clr_weight_name=clr_weight_name,
-        bad_bins=bad_bins,
         ignore_diags=ignore_diags,
         chunksize=chunksize,
     )
@@ -152,7 +150,6 @@ def test_diagsum_symm_raw(request):
         view_df=view_df,
         transforms={},
         clr_weight_name=None,
-        bad_bins=bad_bins,
         ignore_diags=ignore_diags,
         chunksize=chunksize,
     )
@@ -187,7 +184,6 @@ def test_diagsum_symm_raw_weight_filter(request):
         view_df=view_df,
         transforms={},
         clr_weight_name=clr_weight_name,
-        bad_bins=bad_bins,
         ignore_diags=ignore_diags,
         chunksize=chunksize,
     )
@@ -224,7 +220,6 @@ def test_diagsum_pairwise(request):
         view_df=view_df,
         transforms=transforms,
         clr_weight_name=clr_weight_name,
-        bad_bins=bad_bins,
         ignore_diags=ignore_diags,
         chunksize=chunksize,
     )
@@ -314,7 +309,6 @@ def test_blocksum_pairwise(request):
         view_df=view_df,
         transforms=transforms,
         clr_weight_name=clr_weight_name,
-        bad_bins=bad_bins,
         chunksize=chunksize,
     )
     # calculate average:
