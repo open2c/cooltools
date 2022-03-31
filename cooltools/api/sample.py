@@ -117,7 +117,7 @@ def sample(
         )
 
     if exact:
-        count = np.round(frac * clr.info["sum"])
+        count = np.round(frac * clr.info["sum"]).astype(int)
         pixels = sample_pixels_exact(clr.pixels()[:], count)
         cooler.create_cooler(out_clr_path, clr.bins()[:], pixels, ordered=True)
 
