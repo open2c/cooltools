@@ -9,18 +9,19 @@ import pandas as pd
 import bioframe
 
 
-def assign_view_2D(
+def assign_view_paired(
     features,
     view_df,
-    cols=["chrom1", "start1", "end1", "chrom2", "start2", "end2"],
+    cols_paired=["chrom1", "start1", "end1", "chrom2", "start2", "end2"],
     cols_view=["chrom", "start", "end"],
     features_view_cols=["region1", "region2"],
     view_name_col="name",
     drop_unassigned=False,
 ):
     """Assign region names from the view to each feature
-
-    Will add two columns
+    
+    Assigns a regular 1D view independently to each side of a bedpe-style dataframe.
+    Will add two columns with region names (`features_view_cols`)
 
     Parameters
     ----------
@@ -29,7 +30,7 @@ def assign_view_2D(
     view_df : pandas.DataFrame
         ViewFrame specifying region start and ends for assignment. Attempts to
         convert dictionary and pd.Series formats to viewFrames.
-    cols : list of str
+    cols_paired : list of str
         he names of columns containing the chromosome, start and end of the
         genomic intervals. The default values are 'chrom', 'start', 'end'.
     cols_view : list of str
@@ -46,8 +47,11 @@ def assign_view_2D(
     features = features.copy()
     features.reset_index(inplace=True, drop=True)
 
-    bioframe.core.checks.is_bedframe(features, raise_errors=True, cols=cols[:3])
-    bioframe.core.checks.is_bedframe(features, raise_errors=True, cols=cols[3:])
+    cols_left = cols_paired[:3]
+    cols_right = cols_paired[3:]
+
+    bioframe.core.checks.is_bedframe(features, raise_errors=True, cols=cols_left)
+    bioframe.core.checks.is_bedframe(features, raise_errors=True, cols=cols_right)
     view_df = bioframe.core.construction.make_viewframe(
         view_df, view_name_col=view_name_col, cols=cols_view
     )
@@ -57,17 +61,19 @@ def assign_view_2D(
         drop_unassigned=drop_unassigned,
         df_view_col=features_view_cols[0],
         view_name_col=view_name_col,
-        cols=cols[:3],
+        cols=cols_left,
         cols_view=cols_view,
     )
-    features[cols[-2:]] = features[cols[-2:]].astype(int)  # gets cast to float above...
+    features[cols_right[1:]] = features[cols_right[1:]].astype(
+        int
+    )  # gets cast to float above...
     features = bioframe.assign_view(
         features,
         view_df,
         drop_unassigned=drop_unassigned,
         df_view_col=features_view_cols[1],
         view_name_col=view_name_col,
-        cols=cols[3:],
+        cols=cols_right,
         cols_view=cols_view,
     )
     return features
@@ -342,7 +348,10 @@ def align_track_with_cooler(
         .copy()
         .merge(
             track.rename(columns={c: "chrom", s: "start", e: "end", v: "value"}),
-    how="left", on=["chrom", "start"], suffixes=("", "_"))
+            how="left",
+            on=["chrom", "start"],
+            suffixes=("", "_"),
+        )
     )
 
     if clr_weight_name:
@@ -373,6 +382,5 @@ def align_track_with_cooler(
             )
     if mask_bad_bins:
         clr_track.loc[~valid_bins, "value"] = np.nan
-
 
     return clr_track[["chrom", "start", "end", "value"]]
