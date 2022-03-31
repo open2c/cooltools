@@ -48,8 +48,8 @@ def sample(
     clr,
     out_clr_path,
     count=None,
+    cis_count=None,
     frac=None,
-    cis_target=False,
     exact=False,
     map_func=map,
     chunksize=int(1e7),
@@ -65,13 +65,17 @@ def sample(
     out_clr_path : str
         A path/URI to the output.
 
-    count : float
+    count : int
         The target number of contacts in the sample.
-        Mutually exclusive with `frac`.
+        Mutually exclusive with `cis_count` and `frac`.
+
+    cis_count : int
+        The target number of cis contacts in the sample.
+        Mutually exclusive with `count` and `frac`.
 
     frac : float
         The target sample size as a fraction of contacts in the original
-        dataset. Mutually exclusive with `count`.
+        dataset. Mutually exclusive with `count` and `cis_count`.
 
     cis_target : bool
         If True, the resulting sample will contain the specified number of cis
@@ -93,16 +97,18 @@ def sample(
     if issubclass(type(clr), str):
         clr = cooler.Cooler(clr)
 
-    if count is not None and frac is None:
-        if cis_target:
-            cis_total = clr.info.get("cis", np.sum(coverage(clr)[0], dtype=int))
-            frac = count / cis_total
-        else:
-            frac = count / clr.info["sum"]
-    elif count is None and frac is not None:
-        count = np.round(frac * clr.info["sum"])
+    if frac is not None and count is None and cis_count is None:
+        pass
+    elif frac is None and count is not None and cis_count is None:
+        frac = count / clr.info["sum"]
+    elif frac is None and count is None and cis_count is not None:
+        cis_total = clr.info.get("cis", np.sum(coverage(clr)[0], dtype=int))
+        frac = count / cis_total
     else:
-        raise ValueError("Either frac or tot_count must be specified!")
+        raise ValueError(
+            "Please specify exactly one argument among `count`, `cis_count`"
+            " and `frac`"
+        )
 
     if frac >= 1.0:
         raise ValueError(
@@ -111,6 +117,7 @@ def sample(
         )
 
     if exact:
+        count = np.round(frac * clr.info["sum"])
         pixels = sample_pixels_exact(clr.pixels()[:], count)
         cooler.create_cooler(out_clr_path, clr.bins()[:], pixels, ordered=True)
 
