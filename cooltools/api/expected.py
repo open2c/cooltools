@@ -316,7 +316,8 @@ def make_diag_tables(clr, regions, regions2=None, clr_weight_name="weight"):
             ]
         ).to_numpy()
 
-    bins = clr.bins()[:]
+    bins = clr.bins()
+    bins = bins[:len(bins)-1]
     if clr_weight_name is None:
         # ignore bad bins
         sizes = dict(bins.groupby("chrom").size())
@@ -462,7 +463,8 @@ def _diagsum_symm(clr, fields, transforms, clr_weight_name, regions, span):
     genomic regions as keys.
     """
     lo, hi = span
-    bins = clr.bins()[:]
+    bins = clr.bins()
+    bins = bins[:len(bins)-1]
     pixels = clr.pixels()[lo:hi]
     pixels = cooler.annotate(pixels, bins, replace=False)
     # pre-filter cis-only pixels to speed up calculations
@@ -595,7 +597,8 @@ def _diagsum_pairwise(clr, fields, transforms, clr_weight_name, regions, span):
     genomic regions as keys.
     """
     lo, hi = span
-    bins = clr.bins()[:]
+    bins = clr.bins()
+    bins = bins[:len(bins)-1]
     pixels = clr.pixels()[lo:hi]
     pixels = cooler.annotate(pixels, bins, replace=False)
     # pre-filter cis-only pixels to speed up calculations
@@ -751,7 +754,8 @@ def _blocksum_pairwise(clr, fields, transforms, clr_weight_name, regions, span):
 
     """
     lo, hi = span
-    bins = clr.bins()[:]
+    bins = clr.bins()
+    bins = bins[:len(bins)-1]
     pixels = clr.pixels()[lo:hi]
     pixels = cooler.annotate(pixels, bins, replace=False)
 
