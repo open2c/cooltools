@@ -15,7 +15,16 @@ from .. import api
     "--count",
     help="The target number of contacts in the sample. "
     "The resulting sample size will not match it precisely. "
-    "Mutually exclusive with --frac",
+    "Mutually exclusive with --frac and --cis-count",
+    type=int,
+    default=None,
+    show_default=False,
+)
+@click.option(
+    "--cis-count",
+    help="The target number of cis contacts in the sample. "
+    "The resulting sample size will not match it precisely. "
+    "Mutually exclusive with --count and --frac",
     type=int,
     default=None,
     show_default=False,
@@ -24,16 +33,10 @@ from .. import api
     "-f",
     "--frac",
     help="The target sample size as a fraction of contacts in the original dataset. "
-    "Mutually exclusive with --count",
+    "Mutually exclusive with --count and --cis-count",
     type=float,
     default=None,
     show_default=False,
-)
-@click.option(
-    "--cis-target",
-    help="If specified, the resulting sample will contain the specified number of cis"
-    "contacts, not total contacts. No effect when `frac` is specified. ",
-    is_flag=True,
 )
 @click.option(
     "--exact",
@@ -56,7 +59,7 @@ from .. import api
     default=int(1e7),
     show_default=True,
 )
-def random_sample(in_path, out_path, count, frac, cis_target, exact, nproc, chunksize):
+def random_sample(in_path, out_path, count, cis_count, frac, exact, nproc, chunksize):
     """
     Pick a random sample of contacts from a Hi-C map, w/o replacement.
 
@@ -79,8 +82,8 @@ def random_sample(in_path, out_path, count, frac, cis_target, exact, nproc, chun
             in_path,
             out_path,
             count=count,
+            cis_count=cis_count,
             frac=frac,
-            cis_target=cis_target,
             exact=exact,
             chunksize=chunksize,
             map_func=map_,

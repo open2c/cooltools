@@ -103,7 +103,7 @@ def sample(
         frac = count / clr.info["sum"]
     elif frac is None and count is None and cis_count is not None:
         cis_total = clr.info.get("cis", np.sum(coverage(clr)[0], dtype=int))
-        frac = count / cis_total
+        frac = cis_count / cis_total
     else:
         raise ValueError(
             "Please specify exactly one argument among `count`, `cis_count`"
