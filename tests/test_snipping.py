@@ -113,7 +113,7 @@ def test_pileup(request):
     assert stack.shape == (5, 5, 2)
 
     # II.
-    # Example off-diagonal features, two regions from annotated genomic regions:
+    # Example off-diagonal features, two features from annotated genomic regions:
     windows = pd.DataFrame(
         {
             "chrom1": ["chr1", "chr1"],
@@ -124,7 +124,9 @@ def test_pileup(request):
             "end2": [112_000_000, 118_000_000],
         }
     )
-    stack = cooltools.api.snipping.pileup(clr, windows, view_df, exp, flank=None)
+    stack = cooltools.api.snipping.pileup(
+        clr, windows, view_df=view_df, expected_df=exp, flank=None
+    )
     # Check that the size of snips is OK and there are two of them:
     assert stack.shape == (5, 5, 2)
 
@@ -140,7 +142,9 @@ def test_pileup(request):
             "end2": [110_000_000, 115_000_000],
         }
     )
-    stack = cooltools.api.snipping.pileup(clr, windows, view_df, exp, flank=None)
+    stack = cooltools.api.snipping.pileup(
+        clr, windows, view_df=view_df, expected_df=exp, flank=None
+    )
     # Check that the size of snips is OK and there are two of them:
     assert stack.shape == (5, 5, 2)
 
@@ -176,7 +180,9 @@ def test_pileup(request):
         }
     )
     with pytest.raises(ValueError):
-        stack = cooltools.api.snipping.pileup(clr, windows, view_df, exp, flank=None)
+        stack = cooltools.api.snipping.pileup(
+            clr, windows, view_df=view_df, expected_df=exp, flank=None
+        )
 
     # DRAFT # Should work with force=True:
     # stack = cooltools.api.snipping.pileup(clr, windows, view_df, exp, flank=0, force=True)

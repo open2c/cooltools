@@ -705,7 +705,7 @@ def pileup(
             features_df, view_df, view_name_col=view_name_col
         )
         # Now we consolidate the region annotations into one column `region`
-        # Features that cross between regions get region `None``
+        # Features that cross between regions get region `None`
         # The rest get the `region1` value assigned to a new column `region`
         features_df["region"] = np.where(
             features_df["region1"] == features_df["region1"],
