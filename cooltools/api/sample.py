@@ -77,10 +77,6 @@ def sample(
         The target sample size as a fraction of contacts in the original
         dataset. Mutually exclusive with `count` and `cis_count`.
 
-    cis_target : bool
-        If True, the resulting sample will contain the specified number of cis
-        contacts, not total contacts. No effect when `frac` is specified.
-
     exact : bool
         If True, the resulting sample size will exactly match the target value.
         Exact sampling will load the whole pixel table into memory!
