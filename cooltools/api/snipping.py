@@ -701,7 +701,9 @@ def pileup(
             features_df, view_df, df_view_col="region", view_name_col=view_name_col,
         )
     else:
-        features_df = assign_view_paired(features_df, view_df,)
+        features_df = assign_view_paired(
+            features_df, view_df, view_name_col=view_name_col
+        )
         # Now we consolidate the region annotations into one column `region`
         # Features that cross between regions get region `None``
         # The rest get the `region1` value assigned to a new column `region`
