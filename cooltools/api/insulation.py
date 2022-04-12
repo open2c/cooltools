@@ -589,7 +589,11 @@ def insulation(
     chunksize=20000000,
     verbose=False,
 ):
-    """Calculate the diamond insulation scores for all bins in a cooler.
+    """Find insulating boundaries in a contact map via the diamond insulation score. 
+    
+    For a given cooler, this function (a) calculates the diamond insulation score track, 
+    (b) detects all insulating boundaries, and (c) removes weak boundaries via an automated
+    thresholding algorithm. 
 
     Parameters
     ----------
