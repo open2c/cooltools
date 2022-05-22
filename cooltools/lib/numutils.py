@@ -46,7 +46,7 @@ def set_diag(arr, x, i=0, copy=False):
         lower diagonals are negative.
     copy : bool, optional
         Return a copy. Diagonal is written in-place if false.
-        Default is True.
+        Default is False.
 
     Returns
     -------
