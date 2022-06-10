@@ -368,7 +368,7 @@ def align_track_with_cooler(
     num_valid_bins = valid_bins.sum()
     num_assigned_bins = (clr_track["value"][valid_bins].notna()).sum()
     if num_assigned_bins == 0:
-        raise ValueError("no track values assigned to cooler bintable")
+        warnings.warn("no track values assigned to cooler bintable")
     elif num_assigned_bins < 0.5 * np.sum(valid_bins):
         warnings.warn("less than 50% of valid bins have been assigned a value")
 
@@ -377,9 +377,7 @@ def align_track_with_cooler(
         track_region = bioframe.select(clr_track, region)
         num_assigned_region_bins = track_region["value"].notna().sum()
         if num_assigned_region_bins == 0:
-            raise ValueError(
-                f"no track values assigned to region {bioframe.to_ucsc_string(region)}"
-            )
+            warnings.warn(f"no track values assigned to region {bioframe.to_ucsc_string(region)}")
     if mask_bad_bins:
         clr_track.loc[~valid_bins, "value"] = np.nan
 
