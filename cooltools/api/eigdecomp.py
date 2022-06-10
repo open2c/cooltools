@@ -398,6 +398,7 @@ def eigs_cis(
             view_df=view_df,
             clr_weight_name=clr_weight_name,
             mask_bad_bins=True,
+            ignore_missing_values=True # this adds check for chromosomes that have all missing values
         )
 
     # prepare output table for eigen vectors
@@ -504,6 +505,7 @@ def eigs_trans(
             view_df=view_df,
             clr_weight_name=clr_weight_name,
             mask_bad_bins=True,
+            ignore_missing_values=True # this adds check for chromosomes that have all missing values
         )
         phasing_track_values = phasing_track["value"].values[lo:hi]
     else:
