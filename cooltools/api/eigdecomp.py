@@ -402,7 +402,7 @@ def eigs_cis(
         )
 
     # prepare output table for eigen vectors
-    eigvec_table = bins.copy()
+    eigvec_table = pd.concat([bioframe.select(bins, r) for i, r in view_df.iterrows()])
     eigvec_columns = [f"E{i + 1}" for i in range(n_eigs)]
     for ev_col in eigvec_columns:
         eigvec_table[ev_col] = np.nan
