@@ -18,7 +18,7 @@ import bioframe
 
 
 def _ecdf(x, v, side="left"):
-    """
+    """mask_bad_bins
     Return array `x`'s empirical CDF value(s) at the points in `v`.
     This is based on the :func:`statsmodels.distributions.ECDF` step function.
     This is the inverse of `quantile`.
@@ -347,7 +347,7 @@ def saddle(
     max_diag=-1,
     trim_outliers=False,
     verbose=False,
-    ignore_missing_values=False,
+    drop_track_nas=False,
 ):
     """
     Get a matrix of average interactions between genomic bin
@@ -401,8 +401,8 @@ def saddle(
         Remove first and last row and column from the output matrix.
     verbose : bool, optional
         If True then reports progress.
-    ignore_missing_values : bool, optional
-        If True then ignores NaNs in input track (as if they are missing),
+    drop_track_nas : bool, optional
+        If True then drops NaNs in input track (as if they were missing),
         If False then counts NaNs as present in dataframe.
         In general, this only adds check form chromosomes that have all missing values, but does not affect the results.
     Returns
@@ -422,8 +422,8 @@ def saddle(
             clr,
             view_df=view_df,
             clr_weight_name=clr_weight_name,
-            mask_bad_bins=True,
-            ignore_missing_values=ignore_missing_values, # this adds check for chromosomes that have all missing values
+            mask_clr_bad_bins=True,
+            drop_track_nas=drop_track_nas, # this adds check for chromosomes that have all missing values
         )
         digitized_track, binedges = digitize(
             track.iloc[:, :4],
