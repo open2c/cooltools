@@ -294,7 +294,7 @@ def mask_cooler_bad_bins(track, bintable):
 
 
 def align_track_with_cooler(
-    track, clr, view_df=None, clr_weight_name="weight", mask_clr_bad_bins=True, drop_track_nas=True
+    track, clr, view_df=None, clr_weight_name="weight", mask_clr_bad_bins=True, drop_track_na=True
 ):
     """
     Sync a track dataframe with a cooler bintable.
@@ -317,7 +317,7 @@ def align_track_with_cooler(
     mask_clr_bad_bins : bool
         Whether to propagate null bins from cooler bintable column clr_weight_name
         to the 'value' column of the output clr_track. Default True.
-    drop_track_nas : bool
+    drop_track_na : bool
         Whether to ignore missing values in the track (as if they are absent).
         Important for raising errors for unassigned regions and warnings for partial assignment.
         Default True, so NaN values are treated as not assigned.
@@ -372,7 +372,7 @@ def align_track_with_cooler(
 
     valid_bins = clr_track[clr_weight_name].notna()
     num_valid_bins = valid_bins.sum()
-    if drop_track_nas:
+    if drop_track_na:
         num_assigned_bins = (clr_track["value"][valid_bins].notna()).sum()
     else:
         num_assigned_bins = len(clr_track.query("_merge=='both'")["value"][valid_bins])
@@ -384,7 +384,7 @@ def align_track_with_cooler(
     view_df = make_cooler_view(clr) if view_df is None else view_df
     for region in view_df.itertuples(index=False):
         track_region = bioframe.select(clr_track, region)
-        if drop_track_nas:
+        if drop_track_na:
             num_assigned_region_bins = track_region["value"].notna().sum()
         else:
             num_assigned_region_bins = len(track_region["value"])
