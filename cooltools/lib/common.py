@@ -294,13 +294,13 @@ def mask_cooler_bad_bins(track, bintable):
 
 
 def align_track_with_cooler(
-    track, clr, view_df=None, clr_weight_name="weight", mask_bad_bins=True
+    track, clr, view_df=None, clr_weight_name="weight", mask_clr_bad_bins=True, drop_track_na=True
 ):
     """
     Sync a track dataframe with a cooler bintable.
 
     Checks that bin sizes match between a track and a cooler,
-    merges the cooler bintable with the track, and 
+    merges the cooler bintable with the track, and
     propagates masked regions from a cooler bintable to a track.
 
     Parameters
@@ -314,9 +314,14 @@ def align_track_with_cooler(
         If None, constructs a view_df from cooler chromsizes.
     clr_weight_name : str
         Name of the column in the bin table with weight
-    mask_bad_bins : bool
+    mask_clr_bad_bins : bool
         Whether to propagate null bins from cooler bintable column clr_weight_name
         to the 'value' column of the output clr_track. Default True.
+    drop_track_na : bool
+        Whether to ignore missing values in the track (as if they are absent).
+        Important for raising errors for unassigned regions and warnings for partial assignment.
+        Default True, so NaN values are treated as not assigned.
+        False means that NaN values are treated as assigned.
 
     Returns
     -------
@@ -351,6 +356,7 @@ def align_track_with_cooler(
             how="left",
             on=["chrom", "start"],
             suffixes=("", "_"),
+            indicator=True
         )
     )
 
@@ -366,21 +372,25 @@ def align_track_with_cooler(
 
     valid_bins = clr_track[clr_weight_name].notna()
     num_valid_bins = valid_bins.sum()
-    num_assigned_bins = (clr_track["value"][valid_bins].notna()).sum()
+    if drop_track_na:
+        num_assigned_bins = (clr_track["value"][valid_bins].notna()).sum()
+    else:
+        num_assigned_bins = len(clr_track.query("_merge=='both'")["value"][valid_bins])
     if num_assigned_bins == 0:
         raise ValueError("no track values assigned to cooler bintable")
-    elif num_assigned_bins < 0.5 * np.sum(valid_bins):
+    elif num_assigned_bins < 0.5 * num_valid_bins:
         warnings.warn("less than 50% of valid bins have been assigned a value")
 
     view_df = make_cooler_view(clr) if view_df is None else view_df
     for region in view_df.itertuples(index=False):
         track_region = bioframe.select(clr_track, region)
-        num_assigned_region_bins = track_region["value"].notna().sum()
+        if drop_track_na:
+            num_assigned_region_bins = track_region["value"].notna().sum()
+        else:
+            num_assigned_region_bins = len(track_region["value"])
         if num_assigned_region_bins == 0:
-            raise ValueError(
-                f"no track values assigned to region {bioframe.to_ucsc_string(region)}"
-            )
-    if mask_bad_bins:
+            raise ValueError(f"no track values assigned to region {bioframe.to_ucsc_string(region)}")
+    if mask_clr_bad_bins:
         clr_track.loc[~valid_bins, "value"] = np.nan
 
     return clr_track[["chrom", "start", "end", "value"]]
