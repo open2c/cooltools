@@ -1,5 +1,6 @@
 import re
 import logging
+
 logging.basicConfig(level=logging.INFO)
 
 import warnings
@@ -279,28 +280,25 @@ def calculate_insulation_score(
         if nproc > 1:
             pool.close()
 
-    # Note that we need to guarantee the initial order after concatenation.
-
     ins_table = pd.concat(ins_region_tables)
     return ins_table
 
 
 def _get_region_insulation(
-        clr,
-        is_bad_bin_key,
-        clr_weight_name,
-        chunksize,
-        window_bp,
-        min_dist_bad_bin,
-        ignore_diags,
-        append_raw_scores,
-        verbose,
-        region):
+    clr,
+    is_bad_bin_key,
+    clr_weight_name,
+    chunksize,
+    window_bp,
+    min_dist_bad_bin,
+    ignore_diags,
+    append_raw_scores,
+    verbose,
+    region,
+):
     """
     Auxilary function to make calculate_insulation_score parallel.
     """
-    if verbose:
-        logging.info(f"Processing region {name}")
 
     # XXX -- Use a delayed query executor
     nbins = len(clr.bins())
@@ -321,6 +319,9 @@ def _get_region_insulation(
     ins_region[is_bad_bin_key] = (
         region_bins[clr_weight_name].isnull() if clr_weight_name else False
     )
+
+    if verbose:
+        logging.info(f"Processing region {name}")
 
     if min_dist_bad_bin:
         ins_region = ins_region.assign(
@@ -352,9 +353,7 @@ def _get_region_insulation(
 
         if min_dist_bad_bin:
             mask_bad = ins_region.dist_bad_bin.values < min_dist_bad_bin
-            ins_region.loc[
-                mask_bad, f"log2_insulation_score_{window_bp[j]}"
-            ] = np.nan
+            ins_region.loc[mask_bad, f"log2_insulation_score_{window_bp[j]}"] = np.nan
 
         if append_raw_scores:
             ins_region[f"sum_counts_{window_bp[j]}"] = sum_counts
@@ -644,11 +643,11 @@ def insulation(
     verbose=False,
     nproc=1,
 ):
-    """Find insulating boundaries in a contact map via the diamond insulation score. 
-    
-    For a given cooler, this function (a) calculates the diamond insulation score track, 
+    """Find insulating boundaries in a contact map via the diamond insulation score.
+
+    For a given cooler, this function (a) calculates the diamond insulation score track,
     (b) detects all insulating boundaries, and (c) removes weak boundaries via an automated
-    thresholding algorithm. 
+    thresholding algorithm.
 
     Parameters
     ----------
