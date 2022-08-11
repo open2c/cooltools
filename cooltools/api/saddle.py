@@ -566,7 +566,7 @@ def saddleplot(
     saddledata,
     n_bins,
     vrange=None,
-    qrange=(0.0, 1.0),
+    qrange=None,
     cmap="coolwarm",
     scale="log",
     vmin=0.5,
@@ -646,13 +646,13 @@ def saddleplot(
     track_value_col = track.columns[3]
     track_values = track[track_value_col].values
 
+    if vrange is None and qrange is None:
+        qrange = (0.0, 1.0)
     digitized_track, binedges = digitize(track, n_bins, vrange=vrange, qrange=qrange)
     x = digitized_track[digitized_track.columns[3]].values.astype(int).copy()
     x = x[(x > -1) & (x < len(binedges) + 1)]
     hist = np.bincount(x, minlength=len(binedges) + 1)
-    if qrange is not None:
-        lo, hi = qrange
-        binedges = np.linspace(lo, hi, n_bins + 1)
+    lo, hi = binedges[0], binedges[-1]
 
     # Histogram and saddledata are flanked by outlier bins
     n = saddledata.shape[0]
