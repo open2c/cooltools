@@ -171,9 +171,9 @@ def calculate_insulation_score(
     ----------
     clr : cooler.Cooler
         A cooler with balanced Hi-C data.
-    window_bp : int or list
+    window_bp : int or list of integers
         The size of the sliding diamond window used to calculate the insulation
-        score. If a list is provided, then a insulation score if done for each
+        score. If a list is provided, then a insulation score if calculated for each
         value of window_bp.
     view_df : bioframe.viewframe or None
         Viewframe for independent calculation of insulation scores for regions
@@ -234,16 +234,16 @@ def calculate_insulation_score(
             )["ignore_diags"]
         except:
             raise ValueError(
-                f"Please, specify ignore_diags and/or balance this cooler with {clr_weight_name}! "
+                f"ignore_diags not provided, and not found in cooler balancing weights {clr_weight_name}"
             )
     elif isinstance(ignore_diags, int):
         pass  # keep it as is
     else:
-        raise ValueError(f"provided ignore_diags {ignore_diags} is not int or None")
+        raise ValueError(f"ignore_diags must be int or None, got {ignore_diags}")
 
-    if isinstance(window_bp, int):
+    if np.isscalar(window_bp):
         window_bp = [window_bp]
-    window_bp = np.array(window_bp)
+    window_bp = np.array(window_bp, dtype=int)
 
     bad_win_sizes = window_bp % bin_size != 0
     if np.any(bad_win_sizes):
@@ -653,7 +653,7 @@ def insulation(
     ----------
     clr : cooler.Cooler
         A cooler with balanced Hi-C data.
-    window_bp : int or list
+    window_bp : int or list of integers
         The size of the sliding diamond window used to calculate the insulation
         score. If a list is provided, then a insulation score if done for each
         value of window_bp.
@@ -704,10 +704,6 @@ def insulation(
             )
         except Exception as e:
             raise ValueError("view_df is not a valid viewframe or incompatible") from e
-
-    if isinstance(window_bp, int):
-        window_bp = [window_bp]
-    window_bp = np.array(window_bp)
 
     if threshold == "Li":
         thresholding_func = lambda x: x >= threshold_li(x)
