@@ -646,12 +646,17 @@ def saddleplot(
     track_value_col = track.columns[3]
     track_values = track[track_value_col].values
 
+    # Digitize the track and calculate histogram
     digitized_track, binedges = digitize(track, n_bins, vrange=vrange, qrange=qrange)
     x = digitized_track[digitized_track.columns[3]].values.astype(int).copy()
     x = x[(x > -1) & (x < len(binedges) + 1)]
     hist = np.bincount(x, minlength=len(binedges) + 1)
+
+    if vrange is not None:
+        lo, hi = vrange
     if qrange is not None:
         lo, hi = qrange
+        # Reset the binedges for plotting
         binedges = np.linspace(lo, hi, n_bins + 1)
 
     # Histogram and saddledata are flanked by outlier bins
