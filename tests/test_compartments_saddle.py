@@ -158,6 +158,8 @@ def test_saddle_cli(request, tmpdir):
             "30",
             "--scale",
             "log",
+            "--fig",
+            "png",
             in_cool,
             f"{out_eig_prefix}.cis.vecs.tsv",
             out_expected,
