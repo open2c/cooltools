@@ -10,10 +10,12 @@ import numpy as np
 def test_coverage_symmetric_upper(request):
     # perform test:
     clr = cooler.Cooler(op.join(request.fspath.dirname, "data/CN.mm9.1000kb.cool"))
-    cov = cooltools.api.coverage.coverage(clr, ignore_diags=2, chunksize=int(1e7))
+    cis_cov, tot_cov = cooltools.api.coverage.coverage(
+        clr, ignore_diags=2, chunksize=int(1e7)
+    )
 
     # Test that minimal coverage is larger than 0.5
-    assert cov[cov > 0].min() >= 1
+    assert tot_cov[tot_cov > 0].min() >= 1
 
     # Test that dense matrix marginal is the same:
     mtx = clr.matrix(balance=False, as_pixels=False)[:]
@@ -22,7 +24,5 @@ def test_coverage_symmetric_upper(request):
     np.fill_diagonal(mtx[:, 1:], 0)
     cov_dense = np.sum(mtx, axis=1)
     testing.assert_allclose(
-        actual=cov[1],
-        desired=cov_dense,
-        equal_nan=True,
+        actual=tot_cov, desired=cov_dense, equal_nan=True,
     )

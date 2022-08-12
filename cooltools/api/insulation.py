@@ -1,6 +1,12 @@
 import re
 import logging
+
+logging.basicConfig(level=logging.INFO)
+
 import warnings
+import multiprocess as mp
+from functools import partial
+
 import numpy as np
 import pandas as pd
 import cooler
@@ -11,9 +17,6 @@ from ..lib import peaks, numutils
 
 from ..lib.checks import is_compatible_viewframe, is_cooler_balanced
 from ..lib.common import make_cooler_view
-
-
-logging.basicConfig(level=logging.INFO)
 
 
 def get_n_pixels(bad_bin_mask, window=10, ignore_diags=2):
@@ -160,6 +163,7 @@ def calculate_insulation_score(
     chunksize=20000000,
     clr_weight_name="weight",
     verbose=False,
+    nproc=1,
 ):
     """Calculate the diamond insulation scores for all bins in a cooler.
 
@@ -189,6 +193,8 @@ def calculate_insulation_score(
         Using unbalanced data with `None` will avoid masking "bad" pixels.
     verbose : bool
         If True, report real-time progress.
+    nproc : int, optional
+        How many processes to use for calculation
 
     Returns
     -------
@@ -238,7 +244,6 @@ def calculate_insulation_score(
     if isinstance(window_bp, int):
         window_bp = [window_bp]
     window_bp = np.array(window_bp)
-    window_bins = window_bp // bin_size
 
     bad_win_sizes = window_bp % bin_size != 0
     if np.any(bad_win_sizes):
@@ -246,67 +251,115 @@ def calculate_insulation_score(
             f"The window sizes {window_bp[bad_win_sizes]} has to be a multiple of the bin size {bin_size}"
         )
 
+    # Calculate insulation score for each region separately.
+    # Define mapper depending on requested number of threads:
+    if nproc > 1:
+        pool = mp.Pool(nproc)
+        map_ = pool.map
+    else:
+        map_ = map
+
+    # Using try-clause to close mp.Pool properly
+    try:
+        # Apply get_region_insulation:
+        job = partial(
+            _get_region_insulation,
+            clr,
+            is_bad_bin_key,
+            clr_weight_name,
+            chunksize,
+            window_bp,
+            min_dist_bad_bin,
+            ignore_diags,
+            append_raw_scores,
+            verbose,
+        )
+        ins_region_tables = map_(job, view_df[["chrom", "start", "end", "name"]].values)
+
+    finally:
+        if nproc > 1:
+            pool.close()
+
+    ins_table = pd.concat(ins_region_tables)
+    return ins_table
+
+
+def _get_region_insulation(
+    clr,
+    is_bad_bin_key,
+    clr_weight_name,
+    chunksize,
+    window_bp,
+    min_dist_bad_bin,
+    ignore_diags,
+    append_raw_scores,
+    verbose,
+    region,
+):
+    """
+    Auxilary function to make calculate_insulation_score parallel.
+    """
+
     # XXX -- Use a delayed query executor
     nbins = len(clr.bins())
     selector = CSRSelector(
         clr.open("r"), shape=(nbins, nbins), field="count", chunksize=chunksize
     )
 
-    ins_region_tables = []
-    for chrom, start, end, name in view_df[["chrom", "start", "end", "name"]].values:
-        if verbose:
-            logging.info(f"Processing region {name}")
+    # Convert window sizes to bins:
+    bin_size = clr.info["bin-size"]
+    window_bins = window_bp // bin_size
 
-        region = [chrom, start, end]
-        region_bins = clr.bins().fetch(region)
-        ins_region = region_bins[["chrom", "start", "end"]].copy()
-        ins_region.loc[:, "region"] = name
-        ins_region[is_bad_bin_key] = (
-            region_bins[clr_weight_name].isnull() if clr_weight_name else False
+    # Parse region and set up insulation table for the region:
+    chrom, start, end, name = region
+    region = [chrom, start, end]
+    region_bins = clr.bins().fetch(region)
+    ins_region = region_bins[["chrom", "start", "end"]].copy()
+    ins_region.loc[:, "region"] = name
+    ins_region[is_bad_bin_key] = (
+        region_bins[clr_weight_name].isnull() if clr_weight_name else False
+    )
+
+    if verbose:
+        logging.info(f"Processing region {name}")
+
+    if min_dist_bad_bin:
+        ins_region = ins_region.assign(
+            dist_bad_bin=numutils.dist_to_mask(ins_region[is_bad_bin_key])
         )
 
-        if min_dist_bad_bin:
-            ins_region = ins_region.assign(
-                dist_bad_bin=numutils.dist_to_mask(ins_region[is_bad_bin_key])
+    # XXX --- Create a delayed selection
+    c0, c1 = clr.extent(region)
+    region_query = selector[c0:c1, c0:c1]
+
+    for j, win_bin in enumerate(window_bins):
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", RuntimeWarning)
+            # XXX -- updated insul_diamond
+            ins_track, n_pixels, sum_balanced, sum_counts = insul_diamond(
+                region_query,
+                region_bins,
+                window=win_bin,
+                ignore_diags=ignore_diags,
+                clr_weight_name=clr_weight_name,
             )
+            ins_track[ins_track == 0] = np.nan
+            ins_track = np.log2(ins_track)
 
-        # XXX --- Create a delayed selection
-        c0, c1 = clr.extent(region)
-        region_query = selector[c0:c1, c0:c1]
+        ins_track[~np.isfinite(ins_track)] = np.nan
 
-        for j, win_bin in enumerate(window_bins):
-            with warnings.catch_warnings():
-                warnings.simplefilter("ignore", RuntimeWarning)
-                # XXX -- updated insul_diamond
-                ins_track, n_pixels, sum_balanced, sum_counts = insul_diamond(
-                    region_query,
-                    region_bins,
-                    window=win_bin,
-                    ignore_diags=ignore_diags,
-                    clr_weight_name=clr_weight_name,
-                )
-                ins_track[ins_track == 0] = np.nan
-                ins_track = np.log2(ins_track)
+        ins_region[f"log2_insulation_score_{window_bp[j]}"] = ins_track
+        ins_region[f"n_valid_pixels_{window_bp[j]}"] = n_pixels
 
-            ins_track[~np.isfinite(ins_track)] = np.nan
+        if min_dist_bad_bin:
+            mask_bad = ins_region.dist_bad_bin.values < min_dist_bad_bin
+            ins_region.loc[mask_bad, f"log2_insulation_score_{window_bp[j]}"] = np.nan
 
-            ins_region[f"log2_insulation_score_{window_bp[j]}"] = ins_track
-            ins_region[f"n_valid_pixels_{window_bp[j]}"] = n_pixels
+        if append_raw_scores:
+            ins_region[f"sum_counts_{window_bp[j]}"] = sum_counts
+            ins_region[f"sum_balanced_{window_bp[j]}"] = sum_balanced
 
-            if min_dist_bad_bin:
-                mask_bad = ins_region.dist_bad_bin.values < min_dist_bad_bin
-                ins_region.loc[
-                    mask_bad, f"log2_insulation_score_{window_bp[j]}"
-                ] = np.nan
-
-            if append_raw_scores:
-                ins_region[f"sum_counts_{window_bp[j]}"] = sum_counts
-                ins_region[f"sum_balanced_{window_bp[j]}"] = sum_balanced
-
-        ins_region_tables.append(ins_region)
-
-    ins_table = pd.concat(ins_region_tables)
-    return ins_table
+    return ins_region
 
 
 def find_boundaries(
@@ -588,8 +641,13 @@ def insulation(
     append_raw_scores=False,
     chunksize=20000000,
     verbose=False,
+    nproc=1,
 ):
-    """Calculate the diamond insulation scores for all bins in a cooler.
+    """Find insulating boundaries in a contact map via the diamond insulation score.
+
+    For a given cooler, this function (a) calculates the diamond insulation score track,
+    (b) detects all insulating boundaries, and (c) removes weak boundaries via an automated
+    thresholding algorithm.
 
     Parameters
     ----------
@@ -621,6 +679,8 @@ def insulation(
         to the output table.
     verbose : bool
         If True, report real-time progress.
+    nproc : int, optional
+        How many processes to use for calculation
 
     Returns
     -------
@@ -672,6 +732,7 @@ def insulation(
         clr_weight_name=clr_weight_name,
         chunksize=chunksize,
         verbose=verbose,
+        nproc=nproc,
     )
 
     # Find boundaries:

@@ -10,7 +10,7 @@ from ..lib.checks import (
     is_cooler_balanced,
     is_valid_expected,
 )
-from ..lib.common import assign_regions, make_cooler_view
+from ..lib.common import assign_regions, make_cooler_view, assign_view_paired
 
 from ..lib.numutils import LazyToeplitz
 import warnings
@@ -82,12 +82,7 @@ def expand_align_features(features_df, flank, resolution, format="bed"):
 
 
 def make_bin_aligned_windows(
-    binsize,
-    chroms,
-    centers_bp,
-    flank_bp=0,
-    region_start_bp=0,
-    ignore_index=False,
+    binsize, chroms, centers_bp, flank_bp=0, region_start_bp=0, ignore_index=False,
 ):
     """
     Convert genomic loci into bin spans on a fixed bin-segmentation of a
@@ -305,10 +300,7 @@ class CoolerSnipper:
             # Make sure view_df is a proper viewframe
             try:
                 _ = is_compatible_viewframe(
-                    view_df,
-                    clr,
-                    check_sorting=True,
-                    raise_errors=True,
+                    view_df, clr, check_sorting=True, raise_errors=True,
                 )
             except Exception as e:
                 raise ValueError(
@@ -436,10 +428,7 @@ class ObsExpSnipper:
             # Make sure view_df is a proper viewframe
             try:
                 _ = is_compatible_viewframe(
-                    view_df,
-                    clr,
-                    check_sorting=True,
-                    raise_errors=True,
+                    view_df, clr, check_sorting=True, raise_errors=True,
                 )
             except Exception as e:
                 raise ValueError(
@@ -452,9 +441,7 @@ class ObsExpSnipper:
                 "cis",
                 view_df,
                 verify_cooler=clr,
-                expected_value_cols=[
-                    self.expected_value_col,
-                ],
+                expected_value_cols=[self.expected_value_col,],
                 raise_errors=True,
             )
         except Exception as e:
@@ -582,10 +569,7 @@ class ExpectedSnipper:
             # Make sure view_df is a proper viewframe
             try:
                 _ = is_compatible_viewframe(
-                    view_df,
-                    clr,
-                    check_sorting=True,
-                    raise_errors=True,
+                    view_df, clr, check_sorting=True, raise_errors=True,
                 )
             except Exception as e:
                 raise ValueError(
@@ -598,9 +582,7 @@ class ExpectedSnipper:
                 "cis",
                 view_df,
                 verify_cooler=clr,
-                expected_value_cols=[
-                    self.expected_value_col,
-                ],
+                expected_value_cols=[self.expected_value_col,],
                 raise_errors=True,
             )
         except Exception as e:
@@ -660,6 +642,7 @@ def pileup(
     clr,
     features_df,
     view_df=None,
+    view_name_col="name",
     expected_df=None,
     expected_value_col="balanced.avg",
     flank=100_000,
@@ -713,8 +696,22 @@ def pileup(
     else:
         raise ValueError("Unknown feature_df format")
 
-    features_df = assign_regions(features_df, view_df)
-    # TODO: switch to bioframe.assign_view upon update
+    if feature_type == "bed":
+        features_df = bioframe.assign_view(
+            features_df, view_df, df_view_col="region", view_name_col=view_name_col,
+        )
+    else:
+        features_df = assign_view_paired(
+            features_df, view_df, view_name_col=view_name_col
+        )
+        # Now we consolidate the region annotations into one column `region`
+        # Features that cross between regions get region `None`
+        # The rest get the `region1` value assigned to a new column `region`
+        features_df["region"] = np.where(
+            features_df["region1"] == features_df["region1"],
+            features_df["region1"],
+            None,
+        )
 
     if flank is not None:
         features_df = expand_align_features(
@@ -736,10 +733,7 @@ def pileup(
     else:
         try:
             _ = is_compatible_viewframe(
-                view_df,
-                clr,
-                check_sorting=True,
-                raise_errors=True,
+                view_df, clr, check_sorting=True, raise_errors=True,
             )
         except Exception as e:
             raise ValueError("view_df is not a valid viewframe or incompatible") from e
@@ -770,27 +764,18 @@ def pileup(
     if feature_type == "bed":
         features_df[["lo", "hi"]] = (
             features_df[["lo", "hi"]]
-            .subtract(
-                features_df["region_offset"].fillna(0),
-                axis=0,
-            )
+            .subtract(features_df["region_offset"].fillna(0), axis=0,)
             .astype(int)
         )
     else:
         features_df[["lo1", "hi1"]] = (
             features_df[["lo1", "hi1"]]
-            .subtract(
-                features_df["region_offset"].fillna(0),
-                axis=0,
-            )
+            .subtract(features_df["region_offset"].fillna(0), axis=0,)
             .astype(int)
         )
         features_df[["lo2", "hi2"]] = (
             features_df[["lo2", "hi2"]]
-            .subtract(
-                features_df["region_offset"].fillna(0),
-                axis=0,
-            )
+            .subtract(features_df["region_offset"].fillna(0), axis=0,)
             .astype(int)
         )
 

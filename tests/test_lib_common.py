@@ -99,7 +99,7 @@ def test_align_track_with_cooler(request, tmpdir):
     # without masking, both get assigned
     assert (
         cooltools.lib.align_track_with_cooler(
-            track, clr, view_df=view_df, mask_bad_bins=False
+            track, clr, view_df=view_df, mask_clr_bad_bins=False
         )["value"].sum()
         == 11
     )
@@ -107,7 +107,7 @@ def test_align_track_with_cooler(request, tmpdir):
     # with masking, only the second value from the track gets assigned
     assert (
         cooltools.lib.align_track_with_cooler(
-            track, clr, view_df=view_df, mask_bad_bins=True
+            track, clr, view_df=view_df, mask_clr_bad_bins=True
         )["value"].sum()
         == 10
     )
