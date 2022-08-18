@@ -6,10 +6,12 @@ It includes 2 functions.
 expected_full - is a convenience function that calculates cis and trans-expected
     and "stitches" them togeter. Such a stitched expected that "covers"
     entire Hi-C heatmap can be easily merged with the pixel table.
-obs_over_exp_generator - is a function/generator(lazy iterator) that merges
-    pre-calculated full expected with the pixel table in clr and yields chunks
-    of observed/expected pixel table. Such a "stream" can be used in cooler.create
-    as a "pixels" argument to write obs/exp cooler-file.
+obs_over_exp - is a function that merges pre-calculated full expected with the pixel
+    table in pd.DataFrame or dask.DataFrame formats.
+obs_over_exp_generator - is a function/generator(lazy iterator) that wraps
+    `obs_over_exp` function and yields chunks of observed/expected pixel table.
+    Such a "stream" can be used in cooler.create as a "pixels" argument to write
+    obs/exp cooler-file.
 """
 import time
 import logging
@@ -174,17 +176,107 @@ def expected_full(
     return expected_df
 
 
+def obs_over_exp(
+    pixels,
+    bins,
+    expected_full,
+    view_column_name="r",
+    expected_column_name="expected",
+    clr_weight_name='weight',
+    oe_column_name="oe",
+):
+    """
+    A function that returns pixel table with observed over expected.
+    It takes a DataFrame of pixels (complete or a chunk, in pandas or dask formats),
+    and merges it with the `expected_full` DataFrame, in order to assign appropriate
+    expected for each pixels. This assignment is done according to the pixels' location,
+    specifically - which combination of regions in the view and genomic distance for
+    cis-pixels.
+
+    Parameters
+    ----------
+    pixels: pd.DataFrame | dask.DataFrame
+        DataFrame of pixels
+    bins : pd.DataFrame
+        A bin table with a view column annotation.
+    expected_full : pd.DataFrame
+        DataFrame expected for all regions in the view used for annotation of bins.
+    view_column_name : str
+        Name of the column with the view annotations in `bins` and `expected_full`
+    expected_column_name : str
+        Name of the column with the expected values in `expected_full`
+    clr_weight_name : str or None
+        Name of balancing weight column from the cooler to use.
+        Use raw unbalanced data, when None.
+    oe_column_name : str
+        Name of the column to store observed over expected in.
+
+    Returns
+    -------
+    pixels_oe : pd.DataFrame | dask.DataFrame
+        DataFrame of pixels with observed/expected
+    """
+
+    # use balanced data, when clr_weight is provided - otherwise raw counts
+    if clr_weight_name:
+        observed_column_name = "balanced"
+        weight_col1 = f"{clr_weight_name}1"
+        weight_col2 = f"{clr_weight_name}2"
+    else:
+        observed_column_name = "count"
+
+    # names of the view
+    view_col1 = f"{view_column_name}1"
+    view_col2 = f"{view_column_name}2"
+
+    # labeling with the view-labels view_column_name1/view_column_name2:
+    pixels_oe = cooler.annotate(pixels, bins, replace=False)
+
+    # calculate balanced pixel values and drop NAs for bad bins
+    # as well as pixels_oe not covered by the view (i.e. with view_column annotation as NA)
+    if clr_weight_name:
+        pixels_oe[observed_column_name] = pixels_oe["count"] * pixels_oe[weight_col1] * pixels_oe[weight_col2]
+        pixels_oe = pixels_oe.dropna( subset=[view_col1, view_col1, weight_col1, weight_col2] )
+    else:
+        pixels_oe = pixels_oe.dropna( subset=[view_col1, view_col1] )
+
+    # cast to int, as there are no more NaNs among view_column_name1/view_column_name2
+    pixels_oe = pixels_oe.astype({view_col1 : int, view_col1 : int})
+
+    # trans pixels_oe will have "feature"-dist of 0 (or some other special value)
+    pixels_oe["dist"] = 0
+
+    # cis pixels_oe will have "feature"-dist "bind2_id - bin1_id"
+    # dask-compatible notation using `where`, as assign to iloc/loc isn't supported
+    cis_mask = (pixels_oe["chrom1"] == pixels_oe["chrom2"])
+    pixels_oe["dist"] = pixels_oe["dist"].where(
+        ~cis_mask,
+        pixels_oe.loc[cis_mask, "bin2_id"] - pixels_oe.loc[cis_mask, "bin1_id"]
+    )
+
+    # merge pixels_oe with the expected_full - to assign appropriate expected to each pixel
+    # dask-compatible notation instead of pd.merge
+    pixels_oe = pixels_oe.merge(
+        expected_full[[view_col1, view_col2, "dist", expected_column_name]],
+        how="left",
+        on=[view_col1, view_col2, "dist"],
+    )
+
+    # observed over expected = observed / expected
+    pixels_oe[oe_column_name] = pixels_oe[observed_column_name] / pixels_oe[expected_column_name]
+
+    return pixels_oe
+
+
 def obs_over_exp_generator(
-        clr,
-        expected_full,
-        view_df=None,
-        expected_column_name="expected",
-        oe_column_name="count",  # how to store obs/exp
-        clr_weight_name='weight',
-        chunksize = 1_000_000,
-        # todo: consider yielding cis-only, trans-only
-        # todo: consider yielding fully annotated chunks
-    ):
+    clr,
+    expected_full,
+    view_df=None,
+    expected_column_name="expected",
+    clr_weight_name='weight',
+    oe_column_name="count",
+    chunksize = 1_000_000
+):
     """
     Generator yielding chunks of pixels with
     pre-caluclated observed over expected.
@@ -211,8 +303,7 @@ def obs_over_exp_generator(
     ------
     pixel_df: pd.DataFrame
         chunks of pixels with observed over expected
-"""
-
+    """
     # use the same view that was used to calculate full expected
     if view_df is None:
         view_array = make_cooler_view(clr).to_numpy()
@@ -220,59 +311,24 @@ def obs_over_exp_generator(
         view_array = view_df.to_numpy()
 
     # extract and pre-process cooler bintable
-    bins = clr.bins()[:]
-    bins["r"] = assign_supports(bins, view_array)  # astype float
-    # todo: try the same trick for the future version of "expected_full"
-    # where expected_full will be calculated in one pass, instead of
-    # separate expected_cis and expected_trans calls
-
-    # use balanced data, when clr_weight is provided - otherwise raw counts
-    if clr_weight_name:
-        observed_column_name = "balanced"
-        weight_col1 = f"{clr_weight_name}1"
-        weight_col2 = f"{clr_weight_name}2"
-    else:
-        observed_column_name = "count"
+    view_column_name = "r"
+    bins_view = clr.bins()[:]
+    bins_view[view_column_name] = assign_supports(bins_view, view_array)  # astype float
 
     # define chunks of pixels to work on
     spans = partition(0, len(clr.pixels()), chunksize)
     for span in spans:
         lo, hi = span
-        pixels = clr.pixels()[lo:hi]
-        # full re-annotation may not be needed - to be optimized
-        # labeling with the regions-labels r1/r2 is happening here:
-        pixels = cooler.annotate(pixels, bins, replace=False)
-
-        logging.info(f"Calculating observed over expected for pixels [{lo}:{hi}]")
-
-        # calculate balanced pixel values
-        if clr_weight_name:
-            pixels[observed_column_name] = pixels["count"] * pixels[weight_col1] * pixels[weight_col2]
-
-        # consider dropping NAs if view_df covers only part of the genome and for "bad" bins
-        if clr_weight_name:
-            pixels = pixels.dropna( subset=["r1", "r2", weight_col1, weight_col2] )
-        else:
-            pixels = pixels.dropna( subset=["r1", "r2"] )
-
-        # cast to int, as there are no more NaNs among r1/r2
-        pixels = pixels.astype({"r1":int, "r2":int})
-
-        # trans pixels will have "feature"-dist of 0
-        pixels["dist"] = 0
-        # cis pixels will have "feature"-dist "bind2_id - bin1_id"
-        cis_mask = (pixels["chrom1"] == pixels["chrom2"])
-        pixels.loc[cis_mask,"dist"] = pixels.loc[cis_mask,"bin2_id"] - pixels.loc[cis_mask,"bin1_id"]
-
-        # merge observed (i.e. all_pixels) with the expected
-        pixels = pd.merge(
-            pixels,
-            expected_full[["r1","r2","dist",expected_column_name]],
-            how="left",
-            on=["r1","r2","dist"],
+        # logging.info(f"Calculating observed over expected for pixels [{lo}:{hi}]")
+        oe_chunk = obs_over_exp(
+            clr.pixels()[lo:hi],
+            bins_view,
+            expected_full,
+            view_column_name=view_column_name,
+            expected_column_name=expected_column_name,
+            clr_weight_name=clr_weight_name,
+            oe_column_name=oe_column_name,
         )
 
-        pixels[oe_column_name] = pixels[observed_column_name] / pixels[expected_column_name]
-
         # yield pixel-table-like chunks of observed over expected
-        yield pixels[["bin1_id", "bin2_id", oe_column_name]]
+        yield oe_chunk[["bin1_id", "bin2_id", oe_column_name]]
