@@ -79,3 +79,4 @@ def virtual4c(
             )
     else:
         print(v4c.to_csv(sep="\t", index=False, na_rep="nan"))
+    return

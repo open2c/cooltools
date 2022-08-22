@@ -29,7 +29,7 @@ def extract_profile(chrom, clr, clr_weight_name, viewpoint):
     pxls1[["end2"]] = viewpoint[2]
 
     pxls1 = (
-        pxls1.groupby(["chrom1", "start1", "end1"], observed=True)["balanced"]
+        pxls1.groupby(["chrom1", "start1", "end1"], observed=True)[colname]
         .mean()
         .reset_index()
     )
@@ -44,7 +44,7 @@ def extract_profile(chrom, clr, clr_weight_name, viewpoint):
     pxls2[["start1"]] = viewpoint[1]
     pxls2[["end1"]] = viewpoint[2]
     pxls2 = (
-        pxls2.groupby(["chrom2", "start2", "end2"], observed=True)["balanced"]
+        pxls2.groupby(["chrom2", "start2", "end2"], observed=True)[colname]
         .mean()
         .reset_index()
     )
@@ -108,18 +108,28 @@ def virtual4c(
         counts = list(map(f, clr.chromnames))
 
     if len(counts) == 0:
-        v4c = clr.bins()[:]
+        v4c = clr.bins()[:][["chrom", "start", "end"]]
         v4c[colname] = np.nan
         logging.warn(f"No contacts found for viewpoint {viewpoint}")
     else:
         v4c = bioframe.sort_bedframe(
             pd.concat(counts, ignore_index=True),
             view_df=bioframe.make_viewframe(clr.chromsizes),
-        )
+        )  # Concatenate all chromsome dfs into one and sort it according clr.chromsizes order
     v4c.loc[
         (v4c["chrom"] == viewpoint[0])
         & (v4c["start"] >= viewpoint[1])
         & (v4c["end"] <= viewpoint[2]),
         colname,
-    ] = np.nan
+    ] = np.nan  # Set within-viewpoint bins to nan
+    v4c = (
+        pd.merge(
+            clr.bins()[:][["chrom", "start", "end"]],
+            v4c,
+            on=["chrom", "start", "end"],
+            how="left",
+        )
+        .drop_duplicates()
+        .reset_index(drop=True)
+    )  # Ensure we return all bins even if empty
     return v4c
