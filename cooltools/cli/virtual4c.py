@@ -72,7 +72,7 @@ def virtual4c(
         v4c.to_csv(out_prefix + ".tsv", sep="\t", index=False, na_rep="nan")
         if bigwig:
             bioframe.to_bigwig(
-                v4c,
+                v4c.dropna(),
                 clr.chromsizes,
                 out_prefix + ".bw",
                 value_field=v4c.columns[3],
