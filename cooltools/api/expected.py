@@ -1016,6 +1016,7 @@ def expected_cis(
         result[f"{key}.avg"] = result[f"{key}.sum"] / result[_NUM_VALID]
 
     # additional smoothing and aggregating options would add columns only, not replace them
+    smoothed_columns = []
     if smooth:
         result_smooth = expected_smoothing.agg_smooth_cvd(
             result,
@@ -1027,21 +1028,25 @@ def expected_cis(
             on=[_REGION1, _REGION2, _DIST],
             how="left",
         )
-        if aggregate_smoothed:
-            result_smooth_agg = expected_smoothing.agg_smooth_cvd(
-                result,
-                groupby=None,
-                sigma_log10=smooth_sigma,
-            ).rename(columns={"balanced.avg.smoothed": "balanced.avg.smoothed.agg"})
-            # add smoothed columns to the result
-            result = result.merge(
-                result_smooth_agg[["balanced.avg.smoothed.agg", _DIST]],
-                on=[
-                    _DIST,
-                ],
-                how="left",
-            )
-
+        smoothed_columns.append("balanced.avg.smoothed")
+    if aggregate_smoothed:
+        result_smooth_agg = expected_smoothing.agg_smooth_cvd(
+            result,
+            groupby=None,
+            sigma_log10=smooth_sigma,
+        ).rename(columns={"balanced.avg.smoothed": "balanced.avg.smoothed.agg"})
+        # add smoothed columns to the result
+        result = result.merge(
+            result_smooth_agg[["balanced.avg.smoothed.agg", _DIST]],
+            on=[
+                _DIST,
+            ],
+            how="left",
+        )
+        smoothed_columns.append("balanced.avg.smoothed.agg")
+    # propagate nan
+    for key in smoothed_columns:
+        result[key].iloc[ result['balanced.avg'].isna().values ] = np.nan
     return result
 
 
