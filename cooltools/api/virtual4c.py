@@ -82,6 +82,11 @@ def virtual4c(
     v4C_table : pandas.DataFrame
         A table containing the interaction frequency of the viewpoint with the rest of
         the genome
+
+    Note
+    ----
+    Note: this is a new (experimental) function, the interface or output might change in
+    a future version.
     """
     if clr_weight_name not in [None, False]:
         # check if cooler is balanced

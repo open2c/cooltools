@@ -57,6 +57,8 @@ def virtual4c(
     VIEWPOINT : the viewpoint to use for the virtual 4C profile. Provide as a UCSC-string
     (e.g. chr1:1-1000)
 
+    Note: this is a new (experimental) tool, the interface or output might change in a
+    future version.
     """
     clr = cooler.Cooler(cool_path)
 
