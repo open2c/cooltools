@@ -98,7 +98,8 @@ def sample(
     elif frac is None and count is not None and cis_count is None:
         frac = count / clr.info["sum"]
     elif frac is None and count is None and cis_count is not None:
-        cis_total = clr.info.get("cis", np.sum(coverage(clr)[0], dtype=int))
+        # note division by two, since coverage() counts each side separately
+        cis_total = clr.info.get("cis", np.sum(coverage(clr)[0] // 2, dtype=int))
         frac = cis_count / cis_total
     else:
         raise ValueError(
@@ -126,4 +127,9 @@ def sample(
             .pipe(sample_pixels_approx, frac=frac)
         )
 
-        cooler.create_cooler(out_clr_path, clr.bins()[:], iter(pipeline), ordered=True)
+        cooler.create_cooler(
+            out_clr_path,
+            clr.bins()[:][["chrom", "start", "end"]],
+            iter(pipeline),
+            ordered=True,
+        )

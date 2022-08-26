@@ -121,5 +121,5 @@ def coverage(
                 grp["bins"].create_dataset(
                     store_name, data=cov_arr, **h5opts, dtype=int
                 )
-            grp.attrs.create("cis", np.sum(covs[0]), dtype=int)
+            grp.attrs.create("cis", np.sum(covs[0]) // 2, dtype=int)
     return covs
