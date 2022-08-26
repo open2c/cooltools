@@ -54,8 +54,10 @@ def virtual4c(
 
     COOL_PATH : the paths to a .cool file with a Hi-C map. Use the '::' syntax to
     specify a group path in a multicooler file.
+
     VIEWPOINT : the viewpoint to use for the virtual 4C profile. Provide as a UCSC-string
     (e.g. chr1:1-1000)
+    
 
     Note: this is a new (experimental) tool, the interface or output might change in a
     future version.

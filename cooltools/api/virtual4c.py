@@ -15,7 +15,7 @@ import bioframe
 from ..lib.checks import is_cooler_balanced
 
 
-def extract_profile(chrom, clr, clr_weight_name, viewpoint):
+def _extract_profile(chrom, clr, clr_weight_name, viewpoint):
     to_return = []
     if clr_weight_name:
         colname = "balanced"
@@ -103,7 +103,7 @@ def virtual4c(
     viewpoint = bioframe.core.stringops.parse_region(viewpoint)
 
     f = partial(
-        extract_profile, clr=clr, clr_weight_name=clr_weight_name, viewpoint=viewpoint
+        _extract_profile, clr=clr, clr_weight_name=clr_weight_name, viewpoint=viewpoint
     )
 
     if nproc > 1:
