@@ -180,7 +180,7 @@ def test_pileup(request):
     # assert stack.shape == (5, 5, 2)
 
 
-def test_ondiag_select_snip_with_expected(request):
+def test_ondiag__pileup_with_expected(request):
     """
     Test the snipping on matrix:
     """
@@ -204,7 +204,7 @@ def test_ondiag_select_snip_with_expected(request):
         windows = cooltools.api.snipping.assign_regions(windows, view_df).reset_index(
             drop=True
         )
-        stack = cooltools.api.snipping.select_snip(
+        stack = cooltools.api.snipping._pileup(
             windows, snipper.select, snipper.snip, map=map
         )
 
@@ -220,7 +220,7 @@ def test_ondiag_select_snip_with_expected(request):
             drop=True
         )
 
-        stack = cooltools.api.snipping.select_snip(
+        stack = cooltools.api.snipping._pileup(
             windows, snipper.select, snipper.snip, map=map
         )
 
@@ -228,7 +228,7 @@ def test_ondiag_select_snip_with_expected(request):
         assert np.all(np.isnan(stack[:, :, 1]))
 
 
-def test_ondiag_select_snip_without_expected(request):
+def test_ondiag__pileup_without_expected(request):
     """
     Test the snipping on matrix:
     """
@@ -249,7 +249,7 @@ def test_ondiag_select_snip_without_expected(request):
     )
 
     snipper = cooltools.api.snipping.CoolerSnipper(clr, view_df=view_df, min_diag=None)
-    stack = cooltools.api.snipping.select_snip(
+    stack = cooltools.api.snipping._pileup(
         windows, snipper.select, snipper.snip, map=map
     )
 
@@ -265,7 +265,7 @@ def test_ondiag_select_snip_without_expected(request):
         drop=True
     )
 
-    stack = cooltools.api.snipping.select_snip(
+    stack = cooltools.api.snipping._pileup(
         windows, snipper.select, snipper.snip, map=map
     )
 
@@ -274,7 +274,7 @@ def test_ondiag_select_snip_without_expected(request):
     assert np.all(np.isnan(stack[:, :, 1]))
 
 
-def test_offdiag_select_snip_with_expected(request):
+def test_offdiag__pileup_with_expected(request):
     """
     Test the snipping on matrix:
     """
@@ -306,7 +306,7 @@ def test_offdiag_select_snip_with_expected(request):
             drop=True
         )
 
-        stack = cooltools.api.snipping.select_snip(
+        stack = cooltools.api.snipping._pileup(
             windows, snipper.select, snipper.snip, map=map
         )
 
@@ -328,7 +328,7 @@ def test_offdiag_select_snip_with_expected(request):
             drop=True
         )
 
-        stack = cooltools.api.snipping.select_snip(
+        stack = cooltools.api.snipping._pileup(
             windows, snipper.select, snipper.snip, map=map
         )
 
@@ -336,7 +336,7 @@ def test_offdiag_select_snip_with_expected(request):
         assert np.all(np.isnan(stack[:, :, 1]))
 
 
-def test_offdiag_select_snip_without_expected(request):
+def test_offdiag__pileup_without_expected(request):
     """
     Test the snipping on matrix:
     """
@@ -362,7 +362,7 @@ def test_offdiag_select_snip_without_expected(request):
     )
 
     snipper = cooltools.api.snipping.CoolerSnipper(clr, view_df=view_df, min_diag=None)
-    stack = cooltools.api.snipping.select_snip(
+    stack = cooltools.api.snipping._pileup(
         windows, snipper.select, snipper.snip, map=map
     )
 
@@ -384,7 +384,7 @@ def test_offdiag_select_snip_without_expected(request):
         drop=True
     )
 
-    stack = cooltools.api.snipping.select_snip(
+    stack = cooltools.api.snipping._pileup(
         windows, snipper.select, snipper.snip, map=map
     )
 

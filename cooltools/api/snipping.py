@@ -82,7 +82,12 @@ def expand_align_features(features_df, flank, resolution, format="bed"):
 
 
 def make_bin_aligned_windows(
-    binsize, chroms, centers_bp, flank_bp=0, region_start_bp=0, ignore_index=False,
+    binsize,
+    chroms,
+    centers_bp,
+    flank_bp=0,
+    region_start_bp=0,
+    ignore_index=False,
 ):
     """
     Convert genomic loci into bin spans on a fixed bin-segmentation of a
@@ -146,7 +151,7 @@ def make_bin_aligned_windows(
     return windows
 
 
-def _pileup(data_select, data_snip, arg):
+def _extract_stack(data_select, data_snip, arg):
     support, feature_group = arg
     # return empty snippets if region is unannotated:
     if len(support) == 0:
@@ -198,7 +203,7 @@ def _pileup(data_select, data_snip, arg):
     return np.dstack(stack), feature_group["_rank"].values
 
 
-def select_snip(features, data_select, data_snip, map=map):
+def _pileup(features, data_select, data_snip, map=map):
     """
     Handles on-diagonal and off-diagonal cases.
 
@@ -217,7 +222,7 @@ def select_snip(features, data_select, data_snip, map=map):
     data_snip : callable
         Callable that takes data, mask and a 2D bin span (lo1, hi1, lo2, hi2)
         and returns a snippet from the selected support region
-    
+
     map : callable
         Callable that works like builtin `map`.
 
@@ -237,7 +242,7 @@ def select_snip(features, data_select, data_snip, map=map):
     # orig_rank = []
     cumul_stack, orig_rank = zip(
         *map(
-            partial(_pileup, data_select, data_snip),
+            partial(_extract_stack, data_select, data_snip),
             # Note that unannotated regions will form a separate group
             features.groupby("region", sort=False),
         )
@@ -278,7 +283,10 @@ class CoolerSnipper:
             # Make sure view_df is a proper viewframe
             try:
                 _ = is_compatible_viewframe(
-                    view_df, clr, check_sorting=True, raise_errors=True,
+                    view_df,
+                    clr,
+                    check_sorting=True,
+                    raise_errors=True,
                 )
             except Exception as e:
                 raise ValueError(
@@ -360,7 +368,7 @@ class CoolerSnipper:
 
     def snip(self, matrix, region1, region2, tup):
         """Extract a snippet from the matrix
-        
+
         Returns a NaN-filled array for out-of-bounds regions. Fills in NaNs based on the
         cooler weight, if using balanced data. Fills NaNs in all diagonals below min_diag
 
@@ -465,7 +473,10 @@ class ObsExpSnipper:
             # Make sure view_df is a proper viewframe
             try:
                 _ = is_compatible_viewframe(
-                    view_df, clr, check_sorting=True, raise_errors=True,
+                    view_df,
+                    clr,
+                    check_sorting=True,
+                    raise_errors=True,
                 )
             except Exception as e:
                 raise ValueError(
@@ -478,7 +489,9 @@ class ObsExpSnipper:
                 "cis",
                 view_df,
                 verify_cooler=clr,
-                expected_value_cols=[self.expected_value_col,],
+                expected_value_cols=[
+                    self.expected_value_col,
+                ],
                 raise_errors=True,
             )
         except Exception as e:
@@ -564,7 +577,7 @@ class ObsExpSnipper:
 
     def snip(self, matrix, region1, region2, tup):
         """Extract an expected-normalised snippet from the matrix
-        
+
         Returns a NaN-filled array for out-of-bounds regions. Fills in NaNs based on the
         cooler weight, if using balanced data. Fills NaNs in all diagonals below min_diag
 
@@ -661,7 +674,10 @@ class ExpectedSnipper:
             # Make sure view_df is a proper viewframe
             try:
                 _ = is_compatible_viewframe(
-                    view_df, clr, check_sorting=True, raise_errors=True,
+                    view_df,
+                    clr,
+                    check_sorting=True,
+                    raise_errors=True,
                 )
             except Exception as e:
                 raise ValueError(
@@ -674,7 +690,9 @@ class ExpectedSnipper:
                 "cis",
                 view_df,
                 verify_cooler=clr,
-                expected_value_cols=[self.expected_value_col,],
+                expected_value_cols=[
+                    self.expected_value_col,
+                ],
                 raise_errors=True,
             )
         except Exception as e:
@@ -729,7 +747,7 @@ class ExpectedSnipper:
 
     def snip(self, exp, region1, region2, tup):
         """Extract an expected snippet
-        
+
         Returns a NaN-filled array for out-of-bounds regions.
         Fills NaNs in all diagonals below min_diag
 
@@ -782,6 +800,26 @@ def pileup(
 ):
     """
     Pileup features over the cooler.
+
+    The user-facing function of the module, it performs pileups internally using
+    snippers and other functions defined in the module.  The concept is the following:
+
+    - A snipper can `select` a particular region of a genome-wide matrix, meaning it
+      stores its sparse representation in memory. This chould be whole chromosomes or
+      chromosome arms.
+    - A snipper can `snip` a small area of a selected region, meaning it will extract
+      and return a dense representation of this area.
+    - We apply a function that selects a region, and then snips all required areas
+      within the region, over all regions,
+    - This creates a stack (a 3D array) of all required snippets, which then can be
+      averaged to create a single pileup
+
+    This procedure achieves a good tradeoff between speed and RAM. Extracting each
+    individual snippet directly from disk would be extremely slow due to slow IO.
+    Extracting the whole chromosomes into dense matrices is not an option due to huge
+    memory requirements. As a warning, deeply sequenced data can still require a
+    substantial amount of RAM at high resolution even as a sparse matrix, but typically
+    it's not a problem.
 
     Parameters
     ----------
@@ -849,7 +887,10 @@ def pileup(
     else:
         try:
             _ = is_compatible_viewframe(
-                view_df, clr, check_sorting=True, raise_errors=True,
+                view_df,
+                clr,
+                check_sorting=True,
+                raise_errors=True,
             )
         except Exception as e:
             raise ValueError("view_df is not a valid viewframe or incompatible") from e
@@ -880,18 +921,27 @@ def pileup(
     if feature_type == "bed":
         features_df[["lo", "hi"]] = (
             features_df[["lo", "hi"]]
-            .subtract(features_df["region_offset"].fillna(0), axis=0,)
+            .subtract(
+                features_df["region_offset"].fillna(0),
+                axis=0,
+            )
             .astype(int)
         )
     else:
         features_df[["lo1", "hi1"]] = (
             features_df[["lo1", "hi1"]]
-            .subtract(features_df["region_offset"].fillna(0), axis=0,)
+            .subtract(
+                features_df["region_offset"].fillna(0),
+                axis=0,
+            )
             .astype(int)
         )
         features_df[["lo2", "hi2"]] = (
             features_df[["lo2", "hi2"]]
-            .subtract(features_df["region_offset"].fillna(0), axis=0,)
+            .subtract(
+                features_df["region_offset"].fillna(0),
+                axis=0,
+            )
             .astype(int)
         )
 
@@ -919,7 +969,7 @@ def pileup(
         mymap = pool.map
     else:
         mymap = map
-    stack = select_snip(features_df, snipper.select, snipper.snip, map=mymap)
+    stack = _pileup(features_df, snipper.select, snipper.snip, map=mymap)
     if feature_type == "bed":
         stack = np.nansum([stack, np.transpose(stack, axes=(1, 0, 2))], axis=0)
 
