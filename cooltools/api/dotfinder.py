@@ -1,8 +1,9 @@
 """
 Collection of functions related to dot-calling
 
-The main user-facing API function is:::
+The main user-facing API function is:
 
+.. code-block:: python
 
     dots(
         clr,
