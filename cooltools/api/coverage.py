@@ -110,6 +110,7 @@ def coverage(
 
     n_bins = clr.info["nbins"]
     covs = chunks.pipe(_get_chunk_coverage).reduce(np.add, np.zeros((2, n_bins)))
+    covs = covs[0].astype(int), covs[1].astype(int)
 
     if store:
         with clr.open("r+") as grp:
@@ -117,6 +118,8 @@ def coverage(
                 if store_name in grp["bins"]:
                     del grp["bins"][store_name]
                 h5opts = dict(compression="gzip", compression_opts=6)
-                grp["bins"].create_dataset(store_name, data=cov_arr, **h5opts)
-
+                grp["bins"].create_dataset(
+                    store_name, data=cov_arr, **h5opts, dtype=int
+                )
+            grp.attrs.create("cis", np.sum(covs[0]) // 2, dtype=int)
     return covs

@@ -18,7 +18,7 @@ import bioframe
 
 
 def _ecdf(x, v, side="left"):
-    """
+    """mask_bad_bins
     Return array `x`'s empirical CDF value(s) at the points in `v`.
     This is based on the :func:`statsmodels.distributions.ECDF` step function.
     This is the inverse of `quantile`.
@@ -347,6 +347,7 @@ def saddle(
     max_diag=-1,
     trim_outliers=False,
     verbose=False,
+    drop_track_na=False,
 ):
     """
     Get a matrix of average interactions between genomic bin
@@ -400,6 +401,10 @@ def saddle(
         Remove first and last row and column from the output matrix.
     verbose : bool, optional
         If True then reports progress.
+    drop_track_na : bool, optional
+        If True then drops NaNs in input track (as if they were missing),
+        If False then counts NaNs as present in dataframe.
+        In general, this only adds check form chromosomes that have all missing values, but does not affect the results.
     Returns
     -------
     interaction_sum : 2D array
@@ -417,7 +422,8 @@ def saddle(
             clr,
             view_df=view_df,
             clr_weight_name=clr_weight_name,
-            mask_bad_bins=True,
+            mask_clr_bad_bins=True,
+            drop_track_na=drop_track_na, # this adds check for chromosomes that have all missing values
         )
         digitized_track, binedges = digitize(
             track.iloc[:, :4],
@@ -640,12 +646,17 @@ def saddleplot(
     track_value_col = track.columns[3]
     track_values = track[track_value_col].values
 
+    # Digitize the track and calculate histogram
     digitized_track, binedges = digitize(track, n_bins, vrange=vrange, qrange=qrange)
     x = digitized_track[digitized_track.columns[3]].values.astype(int).copy()
     x = x[(x > -1) & (x < len(binedges) + 1)]
     hist = np.bincount(x, minlength=len(binedges) + 1)
+
+    if vrange is not None:
+        lo, hi = vrange
     if qrange is not None:
         lo, hi = qrange
+        # Reset the binedges for plotting
         binedges = np.linspace(lo, hi, n_bins + 1)
 
     # Histogram and saddledata are flanked by outlier bins

@@ -75,6 +75,7 @@ from functools import partial, reduce
 import multiprocess as mp
 import logging
 import warnings
+import time
 
 from scipy.linalg import toeplitz
 from scipy.ndimage import convolve
@@ -95,6 +96,7 @@ from ..lib.checks import (
 
 from bioframe import make_viewframe
 
+warnings.simplefilter(action="ignore", category=pd.errors.PerformanceWarning)
 logging.basicConfig(level=logging.INFO)
 
 # this is to mitigate and parameterize the obs.raw vs count controversy:
@@ -990,6 +992,8 @@ def determine_thresholds(gw_hist, fdr):
         # run cumulative min, on the array of adjusted p-values
         # to make sure q-values are monotonously decreasing with pvals
         qvalues[k] = qvalues[k].mask(qvalues[k] > 1.0, 1.0)
+        # cast categorical index of dtype-interval to proper interval index
+        threshold_df[k].index = pd.IntervalIndex(threshold_df[k].index)
 
     return threshold_df, qvalues
 
@@ -1022,9 +1026,12 @@ def extract_scored_pixels(scored_df, thresholds, obs_raw_name=observed_count_nam
     for kernel_name, threshold in thresholds.items():
         # locally adjusted expected (lambda) of the scored pixels:
         lambda_of_pixels = scored_df[f"la_exp.{kernel_name}.value"]
-        # extract lambda_threshold for every scored pixel based on its estimated lambda, using
-        # interval-indexed 'threshold' to query it by the lambda-values of each scored pixel
-        threshold_of_pixels = threshold.loc[lambda_of_pixels]
+        # reconstruct edges of lambda bins from threshold's index:
+        ledges_reconstruct = np.r_[threshold.index.left, threshold.index.right[-1]]
+        # find indices of lambda-bins where pixels belong
+        lbin_idx = pd.cut(lambda_of_pixels, ledges_reconstruct, labels=False)
+        # extract threholds for every pixel, based on lambda-bin each of the belongs
+        threshold_of_pixels = threshold.iloc[lbin_idx]
         compliant_pixel_masks.append(
             scored_df[obs_raw_name].to_numpy() >= threshold_of_pixels.to_numpy()
         )
@@ -1250,6 +1257,11 @@ def cluster_filtering_hiccups(
             )
         )
     )
+
+    logging.info(
+        f"filtered {enrichment_fdr_comply.sum()} out of {len(centroids)} centroids to reduce the number of false-positives"
+    )
+
     # use "enrichment_fdr_comply" to filter out non-satisfying pixels:
     return centroids[enrichment_fdr_comply].reset_index(drop=True)
 
@@ -1589,6 +1601,7 @@ def dots(
     )
 
     # 1. Calculate genome-wide histograms of scores.
+    time_start = time.perf_counter()
     gw_hist = scoring_and_histogramming_step(
         clr,
         expected.set_index(["region1", "region2", "dist"]),
@@ -1601,13 +1614,15 @@ def dots(
         loci_separation_bins=loci_separation_bins,
         nproc=nproc,
     )
-
-    logging.info("Done building histograms ...")
+    elapsed_time = time.perf_counter() - time_start
+    logging.info(f"Done building histograms in {elapsed_time:.3f} sec ...")
 
     # 2. Determine the FDR thresholds.
     threshold_df, qvalues = determine_thresholds(gw_hist, lambda_bin_fdr)
+    logging.info("Determined thresholds for every lambda-bin ...")
 
     # 3. Filter using FDR thresholds calculated in the histogramming step
+    time_start = time.perf_counter()
     filtered_pixels = scoring_and_extraction_step(
         clr,
         expected.set_index(["region1", "region2", "dist"]),
@@ -1623,6 +1638,8 @@ def dots(
         bin1_id_name="bin1_id",
         bin2_id_name="bin2_id",
     )
+    elapsed_time = time.perf_counter() - time_start
+    logging.info(f"Done extracting enriched pixels in {elapsed_time:.3f} sec ...")
 
     # 4. Post-processing
     logging.info(f"Begin post-processing of {len(filtered_pixels)} filtered pixels")
@@ -1630,7 +1647,9 @@ def dots(
 
     # annotate enriched pixels
     filtered_pixels_qvals = annotate_pixels_with_qvalues(filtered_pixels, qvalues)
-    filtered_pixels_annotated = cooler.annotate(filtered_pixels_qvals, clr.bins()[:])
+    filtered_pixels_annotated = cooler.annotate(
+        filtered_pixels_qvals, clr.bins()[["chrom", "start", "end"]], replace=True
+    )
     if not clustering_radius:
         # TODO: make sure returned DataFrame has the same columns as "postprocessed_calls"
         # columns to return before-clustering
@@ -1665,7 +1684,8 @@ def dots(
     output_cols += [f"la_exp.{k}.qval" for k in kernels]
 
     # 4b. filter by enrichment and qval
-    if cluster_filtering is None:  # default - engage HiCCUPS filtering
+    if (cluster_filtering is None) or cluster_filtering:
+        # default - engage HiCCUPS filtering
         postprocessed_calls = cluster_filtering_hiccups(centroids)
     elif not cluster_filtering:
         postprocessed_calls = centroids

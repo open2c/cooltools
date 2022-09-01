@@ -12,6 +12,14 @@ import bioframe
 @click.argument("in_path", metavar="IN_PATH", type=str, nargs=1)
 @click.argument("window", nargs=-1, metavar="WINDOW", type=int)
 @click.option(
+    "--nproc",
+    "-p",
+    help="Number of processes to split the work between."
+    "[default: 1, i.e. no process pool]",
+    default=1,
+    type=int,
+)
+@click.option(
     "--output",
     "-o",
     help="Specify output file name to store the insulation in a tsv format.",
@@ -105,6 +113,7 @@ def insulation(
     chunksize,
     verbose,
     bigwig,
+    nproc,
 ):
     """
     Calculate the diamond insulation scores and call insulating boundaries.
@@ -145,6 +154,7 @@ def insulation(
         append_raw_scores=append_raw_scores,
         chunksize=chunksize,
         verbose=verbose,
+        nproc=nproc,
     )
 
     # output to file if specified:

@@ -292,7 +292,7 @@ def saddle(
         clr,
         view_df=view_df,
         clr_weight_name=clr_weight_name,
-        mask_bad_bins=True,
+        mask_clr_bad_bins=True,
     )
     digitized_track, binedges = api.saddle.digitize(
         track.iloc[:, :4],

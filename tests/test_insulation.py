@@ -13,7 +13,6 @@ from cooltools.api.insulation import (
 )
 import cooler
 
-
 def test_insulation_cli(request, tmpdir):
 
     in_cool = op.join(request.fspath.dirname, "data/CN.mm9.1000kb.cool")
@@ -80,6 +79,10 @@ def test_calculate_insulation_score(request):
         clr, 10_000_000, min_dist_bad_bin=0, view_df=region
     )
     assert len(insulation) == 10
+
+    # IV. Insulation with string or float inputs for window sizes should work.
+    calculate_insulation_score(clr, '10_000_000')
+    
 
 
 def test_find_boundaries(request):

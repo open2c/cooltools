@@ -78,9 +78,10 @@ immediate live-testing any changes in the python code.
   ./notebooks/contacts_vs_distance.ipynb
   ./notebooks/compartments_and_saddles.ipynb
   ./notebooks/insulation_and_boundaries.ipynb
+  ./notebooks/dots.ipynb
   ./notebooks/pileup_CTCF.ipynb
 
-Note that these notebooks currently focus on mammalian interphase Hi-C analysis, but are readily extendible to other organisms and cellualr contexts. To clone and work interactively with these notbooks, visit: https://github.com/open2c/open2c_examples.
+Note that these notebooks currently focus on mammalian interphase Hi-C analysis, but are readily extendible to other organisms and cellular contexts. To clone and work interactively with these notebooks, visit: https://github.com/open2c/open2c_examples.
 
 
 .. toctree::
