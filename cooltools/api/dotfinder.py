@@ -2,6 +2,7 @@
 Collection of functions related to dot-calling
 
 The main user-facing API function is:
+```
 dots(
     clr,
     expected,
@@ -18,45 +19,46 @@ dots(
     tile_size=5_000_000,
     nproc=1,
 )
+```
 This function implements HiCCUPS-style dot calling, but enables user-specified
 modifications at multiple steps. The current implementation makes two passes
 over the input data, first to create a histogram of pixel enrichment values, 
 and second to extract significantly enriched pixels.
 
- * The function starts with compatibility verifications  
-    for the `clr`, `expected` and `view` of interest.
+ * The function starts with compatibility verifications   
+   for the `clr`, `expected` and `view` of interest.
  * Recommendation or verification for `kernels` is done next.  
-     Custom kernels must satisfy properties including: square shape,
-     equal sizes, odd sizes, zeros in the middle, etc. By default,
-     HiCCUPS-style kernels are recommended based on the binsize.
+   Custom kernels must satisfy properties including: square shape,
+   equal sizes, odd sizes, zeros in the middle, etc. By default,
+   HiCCUPS-style kernels are recommended based on the binsize.
  * Lambda bins are defined for multiple hypothesis  
-     testing separately for different value ranges of the locally adjusted expected.
-     Currently, log-binned lambda-bins are hardcoded using a pre-defined
-     BASE of 2^(1/3). `n_lambda_bins` controls the total number of bins.
+   testing separately for different value ranges of the locally adjusted expected.
+   Currently, log-binned lambda-bins are hardcoded using a pre-defined
+   BASE of 2^(1/3). `n_lambda_bins` controls the total number of bins.
  * Genomic regions in the specified `view`(all chromosomes by default)  
-     are split into smaller tiles of size `tile_size`.
+   are split into smaller tiles of size `tile_size`.
  * `scoring_and_histogramming_step()` is performed independently  
-     on the genomic tiles. In this step, locally adjusted expected is
-     calculated using convolution kernels for each pixel in the tile.
-     All surveyed pixels are histogrammed according to their adjusted 
-     expected and raw observed counts. Locally adjusted expected is 
-     not stored in memory.
+   on the genomic tiles. In this step, locally adjusted expected is
+   calculated using convolution kernels for each pixel in the tile.
+   All surveyed pixels are histogrammed according to their adjusted 
+   expected and raw observed counts. Locally adjusted expected is 
+   not stored in memory.
  * Chunks of histograms are aggregated together and a modified BH-FDR  
-     procedure is applied to the result in `determine_thresholds()`.
-     This returns thresholds for statistical significance 
-     in each lambda-bin (for observed counts), along with the adjusted
-     p-values (q-values).
+   procedure is applied to the result in `determine_thresholds()`.
+   This returns thresholds for statistical significance 
+   in each lambda-bin (for observed counts), along with the adjusted
+   p-values (q-values).
  * Calculated thresholds are used to extract statistically significant  
-     pixels in `scoring_and_extraction_step()`. Because locally adjusted
-     expected is not stored in memory, it is re-caluclated
-     during this step, which makes it computationally intensive.
-     Locally adjusted expected values are required in order to apply
-     different thresholds of significance depending on the lambda-bin.
+   pixels in `scoring_and_extraction_step()`. Because locally adjusted
+   expected is not stored in memory, it is re-caluclated
+   during this step, which makes it computationally intensive.
+   Locally adjusted expected values are required in order to apply
+   different thresholds of significance depending on the lambda-bin.
  * Returned filtered pixels, or 'dots', are significantly enriched  
-     relative to their locally adjusted expecteds and thus have potential
-     biological interest. Dots are further annotated with their 
-     genomic coordinates and q-values (adjusted p-values) for
-     all applied kernels.
+   relative to their locally adjusted expecteds and thus have potential
+   biological interest. Dots are further annotated with their 
+   genomic coordinates and q-values (adjusted p-values) for
+   all applied kernels.
  * All further steps perform optional post-processing on called dots  
       - enriched pixels that are within `clustering_radius` of each other  
         are clustered together and the brightest one is selected as the
