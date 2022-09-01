@@ -295,7 +295,6 @@ def eigs_cis(
     n_eigs=3,
     clr_weight_name="weight",
     ignore_diags=None,
-    bad_bins=None,
     clip_percentile=99.9,
     sort_metric=None,
     map=map,
@@ -328,10 +327,6 @@ def eigs_cis(
     ignore_diags : int, optional
         the number of diagonals to ignore. Derived from cooler metadata
         if not specified.
-    bad_bins : array-like
-        a list of bins to ignore. Indexes of bins must be absolute,
-        as in clr.bins()[:], as opposed to being offset by chromosome start.
-        `bad_bins` will be combined with the bad bins masked by balancing.
     clip_percentile : float
         if >0 and <100, clip pixels with diagonal-normalized values
         higher than the specified percentile of matrix-wide values.
@@ -361,7 +356,7 @@ def eigs_cis(
               not reflect the compartment structure, but instead describes
               chromosomal arms or translocation blowouts. Possible mitigations:
               employ `view_df` (e.g. arms) to avoid issues with chromosomal arms,
-              use `bad_bins` to ignore small transolcations.
+              consider blacklisting regions with translocations during balancing.
     """
 
     # get chromosomes from cooler, if view_df not specified:
@@ -402,11 +397,13 @@ def eigs_cis(
             clr,
             view_df=view_df,
             clr_weight_name=clr_weight_name,
-            mask_bad_bins=True,
+            mask_clr_bad_bins=True,
+            drop_track_na=True # this adds check for chromosomes that have all missing values
         )
 
     # prepare output table for eigen vectors
-    eigvec_table = bins.copy()
+    eigvec_table = bioframe.assign_view(bins, view_df).dropna(subset=["view_region"], axis=0)
+    eigvec_table = eigvec_table.loc[:, bins.columns]
     eigvec_columns = [f"E{i + 1}" for i in range(n_eigs)]
     for ev_col in eigvec_columns:
         eigvec_table[ev_col] = np.nan
@@ -433,17 +430,6 @@ def eigs_cis(
         """
         _region = region[:3]  # take only (chrom, start, end)
         A = clr.matrix(balance=clr_weight_name).fetch(_region)
-
-        # filter bad_bins relevant for the _region from A
-        if bad_bins is not None:
-            # filter bad_bins for the _region and turn relative:
-            lo, hi = clr.extent(_region)
-            bad_bins_region = bad_bins[(bad_bins >= lo) & (bad_bins < hi)]
-            bad_bins_region -= lo
-            if len(bad_bins_region) > 0:
-                # apply bad bins to symmetric matrix A:
-                A[:, bad_bins_region] = np.nan
-                A[bad_bins_region, :] = np.nan
 
         # extract phasing track relevant for the _region
         if phasing_track is not None:
@@ -519,7 +505,8 @@ def eigs_trans(
             clr,
             view_df=view_df,
             clr_weight_name=clr_weight_name,
-            mask_bad_bins=True,
+            mask_clr_bad_bins=True,
+            drop_track_na=True # this adds check for chromosomes that have all missing values
         )
         phasing_track_values = phasing_track["value"].values[lo:hi]
     else:
@@ -536,10 +523,10 @@ def eigs_trans(
 
     eigvec_table = bins.copy()
     for i, eigvec in enumerate(eigvecs):
-        eigvec_table["E{}".format(i + 1)] = eigvec
+        eigvec_table[f"E{i + 1}"] = eigvec
 
     eigvals = pd.DataFrame(
         data=np.atleast_2d(eigvals),
-        columns=["eigval" + str(i + 1) for i in range(n_eigs)],
+        columns=[f"eigval{i + 1}" for i in range(n_eigs)],
     )
     return eigvals, eigvec_table
