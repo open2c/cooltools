@@ -4,25 +4,25 @@ Collections of classes and functions used for snipping and creation of pileups
 The main user-facing function of this module is `pileup`, it performs pileups using
 snippers and other functions defined in the module.  The concept is the following:
 
-- First, the provided features are annotated with the regions from a view (or simply
-    whole chromosomes, if no view is provided). They are assigned to the region that
-    contains it, or the one with the largest overlap.
-- Then the features are expanded using the `flank` argument, and aligned to the bins
-    of the cooler
-- Depending on the requested operation (whether the normalization to expected is
-    required), the appropriate snipper object is created
-- A snipper can `select` a particular region of a genome-wide matrix, meaning it
-    stores its sparse representation in memory. This could be whole chromosomes or
-    chromosome arms, for example
-- A snipper can `snip` a small area of a selected region, meaning it will extract
-    and return a dense representation of this area
-- For each region present, it is first `select`ed, and then all features within it are
-    `snip`ped, creating a stack: a 3D array containing all snippets for this region
-- For features that are not assigned to any region, an empty snippet is returned
-- All per-region stacks are then combined into one, which then can be averaged to create
-    a single pileup
-- The order of snippets in the stack matches the order of features, this way the stack
-    can also be used for analysis of any subsets of original features
+- First, the provided features are annotated with the regions from a view (or simply  
+  whole chromosomes, if no view is provided). They are assigned to the region that
+  contains it, or the one with the largest overlap.
+- Then the features are expanded using the `flank` argument, and aligned to the bins  
+  of the cooler
+- Depending on the requested operation (whether the normalization to expected is  
+  required), the appropriate snipper object is created
+- A snipper can `select` a particular region of a genome-wide matrix, meaning it  
+  stores its sparse representation in memory. This could be whole chromosomes or
+  chromosome arms, for example
+- A snipper can `snip` a small area of a selected region, meaning it will extract  
+  and return a dense representation of this area
+- For each region present, it is first `select`ed, and then all features within it are  
+  `snip`ped, creating a stack: a 3D array containing all snippets for this region
+- For features that are not assigned to any region, an empty snippet is returned  
+- All per-region stacks are then combined into one, which then can be averaged to create  
+  a single pileup
+- The order of snippets in the stack matches the order of features, this way the stack  
+  can also be used for analysis of any subsets of original features
 
 This procedure achieves a good tradeoff between speed and RAM. Extracting each
 individual snippet directly from disk would be extremely slow due to slow IO.
