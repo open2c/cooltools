@@ -1,5 +1,5 @@
 """
-Collections of classes and functions used for snipping and creation of pileups
+Collection of classes and functions used for snipping and creation of pileups
 (averaging of multiple small 2D regions)
 The main user-facing function of this module is `pileup`, it performs pileups using
 snippers and other functions defined in the module.  The concept is the following:
