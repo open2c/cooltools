@@ -1,26 +1,26 @@
 """
 Collection of functions related to dot-calling
 
-The main user-facing API function is:
+The main user-facing API function is:::
 
-```
-dots(
-    clr,
-    expected,
-    expected_value_col="balanced.avg",
-    clr_weight_name="weight",
-    view_df=None,
-    kernels=None,
-    max_loci_separation=10_000_000,
-    max_nans_tolerated=1,
-    n_lambda_bins=40,
-    lambda_bin_fdr=0.1,
-    clustering_radius=20_000,
-    cluster_filtering=None,
-    tile_size=5_000_000,
-    nproc=1,
-)
-```
+
+    dots(
+        clr,
+        expected,
+        expected_value_col="balanced.avg",
+        clr_weight_name="weight",
+        view_df=None,
+        kernels=None,
+        max_loci_separation=10_000_000,
+        max_nans_tolerated=1,
+        n_lambda_bins=40,
+        lambda_bin_fdr=0.1,
+        clustering_radius=20_000,
+        cluster_filtering=None,
+        tile_size=5_000_000,
+        nproc=1,
+    )
+
 
 This function implements HiCCUPS-style dot calling, but enables user-specified
 modifications at multiple steps. The current implementation makes two passes
