@@ -1,3 +1,36 @@
+"""
+Collections of classes and functions used for snipping and creation of pileups
+(averaging of multiple small 2D regions)
+The main user-facing function of this module is `pileup`, it performs pileups using
+snippers and other functions defined in the module.  The concept is the following:
+
+- First, the provided features are annotated with the regions from a view (or simply
+    whole chromosomes, if no view is provided). They are assigned to the region that
+    contains it, or the one with the largest overlap.
+- Then the features are expanded using the `flank` argument, and aligned to the bins
+    of the cooler
+- Depending on the requested operation (whether the normalization to expected is
+    required), the appropriate snipper object is created
+- A snipper can `select` a particular region of a genome-wide matrix, meaning it
+    stores its sparse representation in memory. This could be whole chromosomes or
+    chromosome arms, for example
+- A snipper can `snip` a small area of a selected region, meaning it will extract
+    and return a dense representation of this area
+- For each region present, it is first `select`ed, and then all features within it are
+    `snip`ped, creating a stack: a 3D array containing all snippets for this region
+- For features that are not assigned to any region, an empty snippet is returned
+- All per-region stacks are then combined into one, which then can be averaged to create
+    a single pileup
+- The order of snippets in the stack matches the order of features, this way the stack
+    can also be used for analysis of any subsets of original features
+
+This procedure achieves a good tradeoff between speed and RAM. Extracting each
+individual snippet directly from disk would be extremely slow due to slow IO.
+Extracting the whole chromosomes into dense matrices is not an option due to huge
+memory requirements. As a warning, deeply sequenced data can still require a
+substantial amount of RAM at high resolution even as a sparse matrix, but typically
+it's not a problem.
+"""
 from functools import partial
 import warnings
 
@@ -116,7 +149,7 @@ def make_bin_aligned_windows(
 
     """
     if not (flank_bp % binsize == 0):
-        raise ValueError("Flanking distance must be divisible by the bin size.")
+        raise ValueError("Flanking distance must be divisible by binsize.")
 
     if isinstance(chroms, pd.Series) and not ignore_index:
         index = chroms.index
@@ -159,9 +192,7 @@ def _extract_stack(data_select, data_snip, arg):
             lo = feature_group["lo"].values
             hi = feature_group["hi"].values
             s = hi - lo  # Shape of individual snips
-            assert (
-                s.max() == s.min()
-            ), "Pileup accepts only the windows of the same size"
+            assert s.max() == s.min(), "Pileup accepts only windows of the same size"
             stack = np.full((s[0], s[0], len(feature_group)), np.nan)
         else:  # off-diagonal off-region case:
             lo1 = feature_group["lo1"].values
@@ -170,12 +201,8 @@ def _extract_stack(data_select, data_snip, arg):
             hi2 = feature_group["hi2"].values
             s1 = hi1 - lo1  # Shape of individual snips
             s2 = hi1 - lo1
-            assert (
-                s1.max() == s1.min()
-            ), "Pileup accepts only the windows of the same size"
-            assert (
-                s2.max() == s2.min()
-            ), "Pileup accepts only the windows of the same size"
+            assert s1.max() == s1.min(), "Pileup accepts only windows of the same size"
+            assert s2.max() == s2.min(), "Pileup accepts only windows of the same size"
             stack = np.full((s1[0], s2[0], len(feature_group)), np.nan)
 
         return stack, feature_group["_rank"].values
@@ -800,26 +827,6 @@ def pileup(
 ):
     """
     Pileup features over the cooler.
-
-    The user-facing function of the module, it performs pileups internally using
-    snippers and other functions defined in the module.  The concept is the following:
-
-    - A snipper can `select` a particular region of a genome-wide matrix, meaning it
-      stores its sparse representation in memory. This chould be whole chromosomes or
-      chromosome arms.
-    - A snipper can `snip` a small area of a selected region, meaning it will extract
-      and return a dense representation of this area.
-    - We apply a function that selects a region, and then snips all required areas
-      within the region, over all regions,
-    - This creates a stack (a 3D array) of all required snippets, which then can be
-      averaged to create a single pileup
-
-    This procedure achieves a good tradeoff between speed and RAM. Extracting each
-    individual snippet directly from disk would be extremely slow due to slow IO.
-    Extracting the whole chromosomes into dense matrices is not an option due to huge
-    memory requirements. As a warning, deeply sequenced data can still require a
-    substantial amount of RAM at high resolution even as a sparse matrix, but typically
-    it's not a problem.
 
     Parameters
     ----------
