@@ -62,6 +62,7 @@ and second to extract significantly enriched pixels.
   genomic coordinates and q-values (adjusted p-values) for
   all applied kernels.
 - All further steps perform optional post-processing on called dots
+
   - enriched pixels that are within `clustering_radius` of each other  
     are clustered together and the brightest one is selected as the
     representative position of a dot.
