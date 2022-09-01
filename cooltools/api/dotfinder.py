@@ -2,6 +2,7 @@
 Collection of functions related to dot-calling
 
 The main user-facing API function is:
+
 ```
 dots(
     clr,
@@ -20,6 +21,7 @@ dots(
     nproc=1,
 )
 ```
+
 This function implements HiCCUPS-style dot calling, but enables user-specified
 modifications at multiple steps. The current implementation makes two passes
 over the input data, first to create a histogram of pixel enrichment values, 
