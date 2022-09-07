@@ -79,3 +79,11 @@ cooltools.api.snipping module
    :members:
    :undoc-members:
    :show-inheritance:
+
+cooltools.api.virtual4c module
+-----------------------------
+
+.. automodule:: cooltools.api.virtual4c
+   :members:
+   :undoc-members:
+   :show-inheritance:
