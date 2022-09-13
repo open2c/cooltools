@@ -50,6 +50,13 @@ import multiprocessing as mp
     default=False,
 )
 @click.option(
+    "--clr_weight_name",
+    help="Name of the weight column. Specify if wanting to wanting to calculate balanced coverage.",
+    type=str,
+    default="",
+    show_default=False,
+)
+@click.option(
     "-p",
     "--nproc",
     help="Number of processes to split the work between."
@@ -58,7 +65,7 @@ import multiprocessing as mp
     type=int,
 )
 def coverage(
-    cool_path, output, ignore_diags, store, chunksize, bigwig, nproc,
+    cool_path, output, ignore_diags, store, chunksize, bigwig, clr_weight_name, nproc,
 ):
     """
     Calculate the sums of cis and genome-wide contacts (aka coverage aka marginals) for
@@ -79,9 +86,14 @@ def coverage(
         _map = map
 
     try:
-        cis_cov, tot_cov = api.coverage.coverage(
-            clr, ignore_diags=ignore_diags, chunksize=chunksize, map=_map, store=store
-        )
+        if clr_weight_name != "":
+            cis_cov, tot_cov, cis_cov_weight, tot_cov_weight  = api.coverage.coverage(
+                clr, ignore_diags=ignore_diags, chunksize=chunksize, clr_weight_name=clr_weight_name, map=_map, store=store
+            )
+        else:
+            cis_cov, tot_cov = api.coverage.coverage(
+                clr, ignore_diags=ignore_diags, chunksize=chunksize, map=_map, store=store
+            )
     finally:
         if nproc > 1:
             pool.close()
@@ -89,6 +101,9 @@ def coverage(
     coverage_table = clr.bins()[:][["chrom", "start", "end"]]
     coverage_table["cis_raw_cov"] = cis_cov.astype(int)
     coverage_table["tot_raw_cov"] = tot_cov.astype(int)
+    if clr_weight_name != "":
+        coverage_table["cis_raw_cov"+str("_"+clr_weight_name)] = cis_cov_weight.astype(float)
+        coverage_table["tot_raw_cov"+str("_"+clr_weight_name)] = tot_cov_weight.astype(float)
 
     # output to file if specified:
     if output:

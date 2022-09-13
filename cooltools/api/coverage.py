@@ -1,6 +1,6 @@
 import numpy as np
 import cooler.tools
-
+from functools import partial
 
 def _zero_diags(chunk, n_diags):
     if n_diags > 0:
@@ -9,8 +9,7 @@ def _zero_diags(chunk, n_diags):
 
     return chunk
 
-
-def _get_chunk_coverage(chunk, pixel_weight_key="count"):
+def _get_chunk_coverage(chunk, pixel_weight_key="count", clr_weight_name=""):
     """
     Compute cis and total coverages of a cooler chunk.
     Every interaction is contributing to the "coverage" twice:
@@ -32,7 +31,10 @@ def _get_chunk_coverage(chunk, pixel_weight_key="count"):
     bins = chunk["bins"]
     pixels = chunk["pixels"]
     n_bins = len(bins["chrom"])
-    covs = np.zeros((2, n_bins))
+    if clr_weight_name != "":
+        covs = np.zeros((4, n_bins))
+    else:
+        covs = np.zeros((2, n_bins))
     pixel_weights = pixels[pixel_weight_key]
 
     cis_mask = bins["chrom"][pixels["bin1_id"]] == bins["chrom"][pixels["bin2_id"]]
@@ -45,7 +47,33 @@ def _get_chunk_coverage(chunk, pixel_weight_key="count"):
 
     covs[1] += np.bincount(pixels["bin1_id"], weights=pixel_weights, minlength=n_bins)
     covs[1] += np.bincount(pixels["bin2_id"], weights=pixel_weights, minlength=n_bins)
-
+    
+    if clr_weight_name != "":
+        try: 
+            bins[clr_weight_name]
+        except:
+            raise ValueError(f"No weight column named {clr_weight_name}")
+        balance_weights = bins[clr_weight_name][pixels["bin1_id"]] * bins[clr_weight_name][pixels["bin2_id"]]
+        balance_weights[np.isnan(balance_weights)] = 0
+        covs[2] = np.nansum([covs[2],
+                            np.bincount(pixels["bin1_id"], 
+                                        weights=pixel_weights * cis_mask * balance_weights, 
+                                        minlength=n_bins)], axis=0)
+        covs[2] = np.nansum([covs[2],
+                            np.bincount(pixels["bin2_id"], 
+                                    weights=pixel_weights * cis_mask * balance_weights, 
+                                    minlength=n_bins)], axis=0)
+        covs[3] = np.nansum([covs[3], 
+                           np.bincount(pixels["bin1_id"], 
+                                       weights=pixel_weights * balance_weights, 
+                                       minlength=n_bins)], axis=0)
+        covs[3] = np.nansum([covs[3], 
+                           np.bincount(pixels["bin2_id"], 
+                                       weights=pixel_weights * balance_weights, 
+                                       minlength=n_bins)], axis=0)
+        covs[2,np.isnan(bins[clr_weight_name])] = np.nan
+        covs[3,np.isnan(bins[clr_weight_name])] = np.nan
+    
     return covs
 
 
@@ -55,6 +83,7 @@ def coverage(
     chunksize=int(1e7),
     map=map,
     use_lock=False,
+    clr_weight_name="",
     store=False,
     store_names=["cis_raw_cov", "tot_raw_cov"],
 ):
@@ -109,17 +138,24 @@ def coverage(
         chunks = chunks.pipe(_zero_diags, n_diags=ignore_diags)
 
     n_bins = clr.info["nbins"]
-    covs = chunks.pipe(_get_chunk_coverage).reduce(np.add, np.zeros((2, n_bins)))
-    covs = covs[0].astype(int), covs[1].astype(int)
+    get_chunk_coverage = partial(_get_chunk_coverage, clr_weight_name=clr_weight_name)
+    if clr_weight_name != "":
+        store_names = store_names + [s + str("_"+clr_weight_name) for s in store_names]
+    empty = np.zeros((len(store_names), n_bins))
+    covs = chunks.pipe(get_chunk_coverage).reduce(np.add, empty)
+    covs[:2] = covs[0].astype(int), covs[1].astype(int)
 
     if store:
         with clr.open("r+") as grp:
-            for store_name, cov_arr in zip(store_names, covs):
+            dtypes = [int, int]
+            if clr_weight_name != "":
+                dtypes = dtypes + [float, float]
+            for store_name, cov_arr, dtype in zip(store_names, covs, dtypes):
                 if store_name in grp["bins"]:
                     del grp["bins"][store_name]
                 h5opts = dict(compression="gzip", compression_opts=6)
                 grp["bins"].create_dataset(
-                    store_name, data=cov_arr, **h5opts, dtype=int
+                    store_name, data=cov_arr, **h5opts, dtype=dtype
                 )
             grp.attrs.create("cis", np.sum(covs[0]) // 2, dtype=int)
     return covs
