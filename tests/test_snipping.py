@@ -190,7 +190,7 @@ def test_pileup(request):
     # assert stack.shape == (5, 5, 2)
 
 
-def test_ondiag_pileup_legacy_with_expected(request):
+def test_ondiag__pileup_with_expected(request):
     """
     Test the snipping on matrix:
     """
@@ -211,7 +211,7 @@ def test_ondiag_pileup_legacy_with_expected(request):
         windows = cooltools.api.snipping.make_bin_aligned_windows(
             1_000_000, ["chr1", "chr1"], [102_000_000, 105_000_000], flank_bp=2_000_000
         )
-        windows = cooltools.api.snipping.assign_regions(windows, view_df).reset_index(
+        windows = cooltools.lib.common.assign_view_auto(windows, view_df).reset_index(
             drop=True
         )
         stack = cooltools.api.snipping._pileup(
@@ -226,7 +226,7 @@ def test_ondiag_pileup_legacy_with_expected(request):
         windows = cooltools.api.snipping.make_bin_aligned_windows(
             1_000_000, ["chr1", "chr1"], [120_000_000, 160_000_000], flank_bp=2_000_000
         )
-        windows = cooltools.api.snipping.assign_regions(windows, view_df).reset_index(
+        windows = cooltools.lib.common.assign_view_auto(windows, view_df).reset_index(
             drop=True
         )
 
@@ -238,7 +238,7 @@ def test_ondiag_pileup_legacy_with_expected(request):
         assert np.all(np.isnan(stack[:, :, 1]))
 
 
-def test_ondiag_pileup_legacy_without_expected(request):
+def test_ondiag__pileup_without_expected(request):
     """
     Test the snipping on matrix:
     """
@@ -254,10 +254,9 @@ def test_ondiag_pileup_legacy_without_expected(request):
         1_000_000, ["chr1", "chr1"], [120_000_000, 160_000_000], flank_bp=2_000_000
     )
 
-    windows = cooltools.api.snipping.assign_regions(windows, view_df).reset_index(
+    windows = cooltools.lib.common.assign_view_auto(windows, view_df).reset_index(
         drop=True
     )
-
     snipper = cooltools.api.snipping.CoolerSnipper(clr, view_df=view_df, min_diag=None)
     stack = cooltools.api.snipping._pileup(
         windows, snipper.select, snipper.snip, map=map
@@ -271,7 +270,7 @@ def test_ondiag_pileup_legacy_without_expected(request):
     windows = cooltools.api.snipping.make_bin_aligned_windows(
         1_000_000, ["chr1", "chr1"], [120_000_000, 160_000_000], flank_bp=2_000_000
     )
-    windows = cooltools.api.snipping.assign_regions(windows, view_df).reset_index(
+    windows = cooltools.lib.common.assign_view_auto(windows, view_df).reset_index(
         drop=True
     )
 
@@ -284,7 +283,7 @@ def test_ondiag_pileup_legacy_without_expected(request):
     assert np.all(np.isnan(stack[:, :, 1]))
 
 
-def test_offdiag_pileup_legacy_with_expected(request):
+def test_offdiag__pileup_with_expected(request):
     """
     Test the snipping on matrix:
     """
@@ -312,7 +311,7 @@ def test_offdiag_pileup_legacy_with_expected(request):
         windows = pd.merge(
             windows1, windows2, left_index=True, right_index=True, suffixes=("1", "2")
         )
-        windows = cooltools.api.snipping.assign_regions(windows, view_df).reset_index(
+        windows = cooltools.lib.common.assign_view_auto(windows, view_df).reset_index(
             drop=True
         )
 
@@ -334,7 +333,7 @@ def test_offdiag_pileup_legacy_with_expected(request):
         windows = pd.merge(
             windows1, windows2, left_index=True, right_index=True, suffixes=("1", "2")
         )
-        windows = cooltools.api.snipping.assign_regions(windows, view_df).reset_index(
+        windows = cooltools.lib.common.assign_view_auto(windows, view_df).reset_index(
             drop=True
         )
 
@@ -346,7 +345,7 @@ def test_offdiag_pileup_legacy_with_expected(request):
         assert np.all(np.isnan(stack[:, :, 1]))
 
 
-def test_offdiag_pileup_legacy_without_expected(request):
+def test_offdiag__pileup_without_expected(request):
     """
     Test the snipping on matrix:
     """
@@ -367,7 +366,7 @@ def test_offdiag_pileup_legacy_without_expected(request):
     windows = pd.merge(
         windows1, windows2, left_index=True, right_index=True, suffixes=("1", "2")
     )
-    windows = cooltools.api.snipping.assign_regions(windows, view_df).reset_index(
+    windows = cooltools.lib.common.assign_view_auto(windows, view_df).reset_index(
         drop=True
     )
 
@@ -390,7 +389,7 @@ def test_offdiag_pileup_legacy_without_expected(request):
     windows = pd.merge(
         windows1, windows2, left_index=True, right_index=True, suffixes=("1", "2")
     )
-    windows = cooltools.api.snipping.assign_regions(windows, view_df).reset_index(
+    windows = cooltools.lib.common.assign_view_auto(windows, view_df).reset_index(
         drop=True
     )
 

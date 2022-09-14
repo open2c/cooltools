@@ -43,7 +43,7 @@ from ..lib.checks import (
     is_cooler_balanced,
     is_valid_expected,
 )
-from ..lib.common import assign_regions, make_cooler_view
+from ..lib.common import assign_view_auto, make_cooler_view
 
 from ..lib.numutils import LazyToeplitz
 import warnings
@@ -179,8 +179,8 @@ def make_bin_aligned_windows(
     windows["chrom"] = chroms
     windows["start"] = lo * binsize
     windows["end"] = hi * binsize
-    windows["lo"] = lo
-    windows["hi"] = hi
+    windows["lo"] = lo.astype(int)
+    windows["hi"] = hi.astype(int)
     return windows
 
 
@@ -191,7 +191,7 @@ def _extract_stack(data_select, data_snip, arg):
         if "start" in feature_group:  # on-diagonal off-region case:
             lo = feature_group["lo"].values
             hi = feature_group["hi"].values
-            s = hi - lo  # Shape of individual snips
+            s = (hi - lo).astype(int)  # Shape of individual snips
             assert s.max() == s.min(), "Pileup accepts only windows of the same size"
             stack = np.full((s[0], s[0], len(feature_group)), np.nan)
         else:  # off-diagonal off-region case:
@@ -199,8 +199,8 @@ def _extract_stack(data_select, data_snip, arg):
             hi1 = feature_group["hi1"].values
             lo2 = feature_group["lo2"].values
             hi2 = feature_group["hi2"].values
-            s1 = hi1 - lo1  # Shape of individual snips
-            s2 = hi1 - lo1
+            s1 = (hi1 - lo1).astype(int)  # Shape of individual snips
+            s2 = (hi2 - lo2).astype(int)
             assert s1.max() == s1.min(), "Pileup accepts only windows of the same size"
             assert s2.max() == s2.min(), "Pileup accepts only windows of the same size"
             stack = np.full((s1[0], s2[0], len(feature_group)), np.nan)
@@ -878,7 +878,7 @@ def pileup(
     else:
         raise ValueError("Unknown feature_df format")
 
-    features_df = assign_regions(features_df, view_df)
+    features_df = assign_view_auto(features_df, view_df)
     # TODO: switch to bioframe.assign_view upon update
 
     if flank is not None:
