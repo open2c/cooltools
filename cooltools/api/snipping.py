@@ -232,7 +232,12 @@ def _extract_stack(data_select, data_snip, arg):
 
 def _pileup(features, data_select, data_snip, map=map):
     """
+    Creates a stackup of snippets (a 3D array) by selecting each region present in the
+    `features` (using the `data_select` function) and then extracting all snippets from
+    the region (using `data_snip`).
     Handles on-diagonal and off-diagonal cases.
+
+    Internal, so assumes correctly formatted input created by `pileup`.
 
     Parameters
     ----------
@@ -286,7 +291,7 @@ def _pileup(features, data_select, data_snip, map=map):
 
 class CoolerSnipper:
     def __init__(self, clr, cooler_opts=None, view_df=None, min_diag=2):
-        """Class for generating snips from a cooler
+        """Class for generating snips with "observed" data from a cooler
 
         Parameters
         ----------
@@ -295,7 +300,8 @@ class CoolerSnipper:
         cooler_opts : dict, optional
             Options to pass to the clr.matrix() method, by default None
             Can be used to choose the cooler weight name, e.g.
-            cooler_opts={balance='non-standard-weight'}
+            cooler_opts={balance='non-standard-weight'}, or use unbalanced data with
+            cooler_opts={balance=False}
         view_df : pd.DataFrame, optional
             Genomic view to constrain the analysis, by default None and uses all
             chromosomes present in the cooler
@@ -480,7 +486,8 @@ class ObsExpSnipper:
         cooler_opts : dict, optional
             Options to pass to the clr.matrix() method, by default None
             Can be used to choose the cooler weight name, e.g.
-            cooler_opts={balance='non-standard-weight'}
+            cooler_opts={balance='non-standard-weight'}, or use unbalanced data with
+            cooler_opts={balance=False}
         view_df : pd.DataFrame, optional
             Genomic view to constrain the analysis, by default None and uses all
             chromosomes present in the cooler
