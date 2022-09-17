@@ -51,9 +51,10 @@ import multiprocessing as mp
 )
 @click.option(
     "--clr_weight_name",
-    help="Name of the weight column. Specify if wanting to wanting to calculate balanced coverage.",
+    help="Name of the weight column. Specify if wanting to calculate"
+    " balanced coverage. In this case, cis counts will not be stored.",
     type=str,
-    default="",
+    default=None,
     show_default=False,
 )
 @click.option(
@@ -86,24 +87,20 @@ def coverage(
         _map = map
 
     try:
-        if clr_weight_name != "":
-            cis_cov, tot_cov, cis_cov_weight, tot_cov_weight  = api.coverage.coverage(
-                clr, ignore_diags=ignore_diags, chunksize=chunksize, clr_weight_name=clr_weight_name, map=_map, store=store
-            )
-        else:
-            cis_cov, tot_cov = api.coverage.coverage(
-                clr, ignore_diags=ignore_diags, chunksize=chunksize, map=_map, store=store
-            )
+        cis_cov, tot_cov = api.coverage.coverage(
+            clr, ignore_diags=ignore_diags, chunksize=chunksize, map=_map, store=store, clr_weight_name=clr_weight_name
+        )
     finally:
         if nproc > 1:
             pool.close()
 
     coverage_table = clr.bins()[:][["chrom", "start", "end"]]
-    coverage_table["cis_raw_cov"] = cis_cov.astype(int)
-    coverage_table["tot_raw_cov"] = tot_cov.astype(int)
-    if clr_weight_name != "":
-        coverage_table["cis_raw_cov"+str("_"+clr_weight_name)] = cis_cov_weight.astype(float)
-        coverage_table["tot_raw_cov"+str("_"+clr_weight_name)] = tot_cov_weight.astype(float)
+    if clr_weight_name is None:
+        coverage_table["cis_raw_cov"] = cis_cov.astype(int)
+        coverage_table["tot_raw_cov"] = tot_cov.astype(int)
+    else:
+        coverage_table["cis_raw_cov"+str("_"+clr_weight_name)] = cis_cov.astype(float)
+        coverage_table["tot_raw_cov"+str("_"+clr_weight_name)] = tot_cov.astype(float)
 
     # output to file if specified:
     if output:
