@@ -1,7 +1,16 @@
 import numpy as np
 import cooler.tools
-from functools import partial
 from ..lib.checks import is_cooler_balanced
+
+def _apply_balancing(chunk, bias, balanced_column_name='balanced'):
+    """
+    Multiply raw pixel counts by the balancing bias and return a modified
+    chunk with an additional column named balanced_column_name
+    """
+    pixels = chunk["pixels"]
+    chunk['pixels'][balanced_column_name] = bias[pixels["bin1_id"]] * bias[pixels["bin2_id"]] * pixels["count"]
+    # returning modified chunks with an additional column
+    return chunk
 
 def _zero_diags(chunk, n_diags):
     if n_diags > 0:
@@ -10,7 +19,7 @@ def _zero_diags(chunk, n_diags):
 
     return chunk
 
-def _get_chunk_coverage(chunk, pixel_weight_key="count", clr_weight_name=None):
+def _get_chunk_coverage(chunk, pixel_weight_key="count"):
     """
     Compute cis and total coverages of a cooler chunk.
     Every interaction is contributing to the "coverage" twice:
@@ -37,36 +46,14 @@ def _get_chunk_coverage(chunk, pixel_weight_key="count", clr_weight_name=None):
 
     cis_mask = bins["chrom"][pixels["bin1_id"]] == bins["chrom"][pixels["bin2_id"]]
     
-    if clr_weight_name is None:
-        covs[0] += np.bincount(
-            pixels["bin1_id"], weights=pixel_weights * cis_mask, minlength=n_bins
-        )
-        covs[0] += np.bincount(
-            pixels["bin2_id"], weights=pixel_weights * cis_mask, minlength=n_bins
-        )
-        covs[1] += np.bincount(pixels["bin1_id"], weights=pixel_weights, minlength=n_bins)
-        covs[1] += np.bincount(pixels["bin2_id"], weights=pixel_weights, minlength=n_bins)
-    else:
-        balance_weights = bins[clr_weight_name][pixels["bin1_id"]] * bins[clr_weight_name][pixels["bin2_id"]]
-        balance_weights[np.isnan(balance_weights)] = 0
-        covs[0] = np.nansum([covs[0],
-                            np.bincount(pixels["bin1_id"], 
-                                        weights=pixel_weights * cis_mask * balance_weights, 
-                                        minlength=n_bins)], axis=0)
-        covs[0] = np.nansum([covs[0],
-                            np.bincount(pixels["bin2_id"], 
-                                    weights=pixel_weights * cis_mask * balance_weights, 
-                                    minlength=n_bins)], axis=0)
-        covs[1] = np.nansum([covs[1], 
-                           np.bincount(pixels["bin1_id"], 
-                                       weights=pixel_weights * balance_weights, 
-                                       minlength=n_bins)], axis=0)
-        covs[1] = np.nansum([covs[1], 
-                           np.bincount(pixels["bin2_id"], 
-                                       weights=pixel_weights * balance_weights, 
-                                       minlength=n_bins)], axis=0)
-        covs[0, np.isnan(bins[clr_weight_name])] = np.nan
-        covs[1, np.isnan(bins[clr_weight_name])] = np.nan
+    covs[0] += np.bincount(
+        pixels["bin1_id"], weights=pixel_weights * cis_mask, minlength=n_bins
+    )
+    covs[0] += np.bincount(
+        pixels["bin2_id"], weights=pixel_weights * cis_mask, minlength=n_bins
+    )
+    covs[1] += np.bincount(pixels["bin1_id"], weights=pixel_weights, minlength=n_bins)
+    covs[1] += np.bincount(pixels["bin2_id"], weights=pixel_weights, minlength=n_bins)
     
     return covs
 
@@ -79,14 +66,15 @@ def coverage(
     use_lock=False,
     clr_weight_name=None,
     store=False,
-    store_names=["cis_raw_cov", "tot_raw_cov"],
+    store_prefix="cov",
 ):
 
     """
     Calculate the sums of cis and genome-wide contacts (aka coverage aka marginals) for
     a sparse Hi-C contact map in Cooler HDF5 format.
     Note that the sum(tot_cov) from this function is two times the number of reads
-    contributing to the cooler, as each side contributes to the coverage.
+    contributing to the cooler, as each side contributes to the coverage 
+    (this only applies if clr_weight_name=None).
 
     Parameters
     ----------
@@ -105,8 +93,9 @@ def coverage(
         If None, equals the number of diagonals ignored during IC balancing.
     store : bool, optional
         If True, store the results in the file when finished. Default is False.
-    store_names : list, optional
-        Names of the columns of the bin table to save cis and total coverages.
+    prefixes : str, optional
+        Name prefix of the columns of the bin table to save cis and total coverages. 
+        Will add suffixes _cis and _tot, as well as _raw in the default case or _clr_weight_name if specified.
 
     Returns
     -------
@@ -132,26 +121,34 @@ def coverage(
             raise ValueError(
                 f"provided cooler is not balanced or {clr_weight_name} is missing"
             ) from e
-            
+        bias = clr.bins()[clr_weight_name][:]
+        bias_na_mask = np.isnan(bias)  # remember masked bins
+        bias = np.nan_to_num(bias)
+        
     chunks = cooler.tools.split(clr, chunksize=chunksize, map=map, use_lock=use_lock)
 
     if ignore_diags:
         chunks = chunks.pipe(_zero_diags, n_diags=ignore_diags)
 
+    if clr_weight_name is not None:
+        pixel_weight_key = "balanced"
+        chunks = chunks.pipe(_apply_balancing, bias=bias, balanced_column_name=pixel_weight_key)
+    else:
+        pixel_weight_key = "count"    
+        
     n_bins = clr.info["nbins"]
-    get_chunk_coverage = partial(_get_chunk_coverage, clr_weight_name=clr_weight_name)
-    covs = chunks.pipe(get_chunk_coverage).reduce(np.add, np.zeros((2, n_bins)))
+    covs = chunks.pipe(_get_chunk_coverage, pixel_weight_key=pixel_weight_key).reduce(np.add, np.zeros(n_bins))
     if clr_weight_name is None:
-        covs = covs[0].astype(int), covs[1].astype(int)
-    elif store_names == ["cis_raw_cov", "tot_raw_cov"]:
-        store_names = [s + str("_"+clr_weight_name) for s in store_names]
-
+        covs = covs.astype(int)
+        store_names = [f"{store_prefix}_cis_raw", f"{store_prefix}_tot_raw" ]
+    else:
+        covs[0, bias_na_mask] = np.nan
+        covs[1, bias_na_mask] = np.nan
+        store_names = [f"{store_prefix}_cis_{clr_weight_name}", f"{store_prefix}_tot_{clr_weight_name}" ]
+        
     if store:
         with clr.open("r+") as grp:
-            if clr_weight_name is None:
-                dtype = int
-            else:
-                dtype = float
+            dtype = int if clr_weight_name is None else float
             for store_name, cov_arr in zip(store_names, covs):
                 if store_name in grp["bins"]:
                     del grp["bins"][store_name]

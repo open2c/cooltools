@@ -96,11 +96,11 @@ def coverage(
 
     coverage_table = clr.bins()[:][["chrom", "start", "end"]]
     if clr_weight_name is None:
-        coverage_table["cis_raw_cov"] = cis_cov.astype(int)
-        coverage_table["tot_raw_cov"] = tot_cov.astype(int)
+        coverage_table["cov_cis_raw"] = cis_cov.astype(int)
+        coverage_table["cov_tot_raw"] = tot_cov.astype(int)
     else:
-        coverage_table["cis_raw_cov"+str("_"+clr_weight_name)] = cis_cov.astype(float)
-        coverage_table["tot_raw_cov"+str("_"+clr_weight_name)] = tot_cov.astype(float)
+        coverage_table[f"cov_cis_{clr_weight_name}"] = cis_cov.astype(float)
+        coverage_table[f"cov_tot_{clr_weight_name}"] = tot_cov.astype(float)
 
     # output to file if specified:
     if output:
