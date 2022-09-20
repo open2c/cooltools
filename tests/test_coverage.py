@@ -65,18 +65,24 @@ def test_coverage_weight(request):
     assert np.nanmean(tot_cov_weight) == 1.0
     
     # Generate test matrix with weights
-    bins = pd.DataFrame(
-        [["chr1", 0, 1, 0.5], ["chr1", 1, 2, 1], ["chrX", 1, 2, 0.2]],
-        columns=["chrom", "start", "end", "weight"],
+    bins=pd.DataFrame(
+        [["chr1", 0, 1, 0.5], 
+         ["chr1", 1, 2, 1], 
+         ["chrX", 1, 2, 0.2],
+         ["chrX", 2, 3, np.nan]],
+    columns=["chrom", "start", "end", "weight"],
     )
 
     pixels = pd.DataFrame(
-        [[0, 1, 1], [0, 2, 2]], columns=["bin1_id", "bin2_id", "count"]
+        [[0, 1, 1], [0, 2, 2], [1, 3, 2], [2, 3, 1]], 
+        columns=["bin1_id", "bin2_id", "count"]
     )
 
     clr_file = op.join(request.fspath.dirname, "data/test_coverage.cool")
     cooler.create_cooler(clr_file, bins, pixels)
     clr = cooler.Cooler(clr_file)
     cis_cov_weight, tot_cov_weight = cooltools.coverage(clr, ignore_diags=0, store=True, clr_weight_name="weight")
-    assert (cis_cov_weight == np.array([0.5, 0.5, 0])).all()
-    assert (tot_cov_weight == np.array([0.7, 0.5, 0.2])).all()
+    assert np.allclose(cis_cov_weight, np.array([0.5, 0.5, 0, np.nan]),
+                       equal_nan=True)
+    assert np.allclose(tot_cov_weight, np.array([0.7, 0.5, 0.2, np.nan]),
+                      equal_nan=True)

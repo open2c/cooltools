@@ -30,8 +30,9 @@ import multiprocessing as mp
 )
 @click.option(
     "--store",
-    help="Append columns with coverage (cis_raw_cov, tot_raw_cov) "
-    " to the cooler bin table.",
+    help="Append columns with coverage (cis_raw_cov, tot_raw_cov)"
+    " to the cooler bin table. If clr_weight_name=None, also stores"
+    " total cis counts in the cooler info",
     is_flag=True,
 )
 @click.option(
@@ -51,8 +52,8 @@ import multiprocessing as mp
 )
 @click.option(
     "--clr_weight_name",
-    help="Name of the weight column. Specify if wanting to calculate"
-    " balanced coverage. In this case, cis counts will not be stored.",
+    help="Name of the weight column. Specify to calculate coverage of"
+    " balanced cooler.",
     type=str,
     default=None,
     show_default=False,
@@ -96,11 +97,13 @@ def coverage(
 
     coverage_table = clr.bins()[:][["chrom", "start", "end"]]
     if clr_weight_name is None:
-        coverage_table["cov_cis_raw"] = cis_cov.astype(int)
-        coverage_table["cov_tot_raw"] = tot_cov.astype(int)
+        store_names = ["cov_cis_raw", "cov_tot_raw"]
+        coverage_table[store_names[0]] = cis_cov.astype(int)
+        coverage_table[store_names[1]] = tot_cov.astype(int)
     else:
-        coverage_table[f"cov_cis_{clr_weight_name}"] = cis_cov.astype(float)
-        coverage_table[f"cov_tot_{clr_weight_name}"] = tot_cov.astype(float)
+        store_names = [f"cov_cis_{clr_weight_name}", f"cov_tot_{clr_weight_name}"]
+        coverage_table[store_names[0]] = cis_cov.astype(float)
+        coverage_table[store_names[1]] = tot_cov.astype(float)
 
     # output to file if specified:
     if output:
@@ -115,11 +118,11 @@ def coverage(
             coverage_table,
             clr.chromsizes,
             f"{output}.cis.bw",
-            value_field="cis_raw_cov",
+            value_field=store_names[0],
         )
         bioframe.to_bigwig(
             coverage_table,
             clr.chromsizes,
             f"{output}.tot.bw",
-            value_field="tot_raw_cov",
+            value_field=store_names[1],
         )

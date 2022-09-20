@@ -2,6 +2,7 @@ import numpy as np
 import cooler.tools
 from ..lib.checks import is_cooler_balanced
 
+
 def _apply_balancing(chunk, bias, balanced_column_name='balanced'):
     """
     Multiply raw pixel counts by the balancing bias and return a modified
@@ -12,12 +13,14 @@ def _apply_balancing(chunk, bias, balanced_column_name='balanced'):
     # returning modified chunks with an additional column
     return chunk
 
+
 def _zero_diags(chunk, n_diags):
     if n_diags > 0:
         mask = np.abs(chunk["pixels"]["bin1_id"] - chunk["pixels"]["bin2_id"]) < n_diags
         chunk["pixels"]["count"][mask] = 0
 
     return chunk
+
 
 def _get_chunk_coverage(chunk, pixel_weight_key="count"):
     """
@@ -45,16 +48,16 @@ def _get_chunk_coverage(chunk, pixel_weight_key="count"):
     pixel_weights = pixels[pixel_weight_key]
 
     cis_mask = bins["chrom"][pixels["bin1_id"]] == bins["chrom"][pixels["bin2_id"]]
-    
     covs[0] += np.bincount(
         pixels["bin1_id"], weights=pixel_weights * cis_mask, minlength=n_bins
     )
     covs[0] += np.bincount(
         pixels["bin2_id"], weights=pixel_weights * cis_mask, minlength=n_bins
     )
+
     covs[1] += np.bincount(pixels["bin1_id"], weights=pixel_weights, minlength=n_bins)
     covs[1] += np.bincount(pixels["bin2_id"], weights=pixel_weights, minlength=n_bins)
-    
+
     return covs
 
 
@@ -72,9 +75,9 @@ def coverage(
     """
     Calculate the sums of cis and genome-wide contacts (aka coverage aka marginals) for
     a sparse Hi-C contact map in Cooler HDF5 format.
-    Note that the sum(tot_cov) from this function is two times the number of reads
-    contributing to the cooler, as each side contributes to the coverage 
-    (this only applies if clr_weight_name=None).
+    Note that for raw coverage (i.e. clr_weight_name=None) the sum(tot_cov) from this 
+    function is two times the number of reads contributing to the cooler, 
+    as each side contributes to the coverage.
 
     Parameters
     ----------
@@ -87,13 +90,16 @@ def coverage(
         Map function to dispatch the matrix chunks to workers.
         Default is the builtin ``map``, but alternatives include parallel map
         implementations from a multiprocessing pool.
+    clr_weight_name : str
+        Name of the weight column. Specify to calculate coverage of balanced cooler.
     ignore_diags : int, optional
         Drop elements occurring on the first ``ignore_diags`` diagonals of the
         matrix (including the main diagonal).
         If None, equals the number of diagonals ignored during IC balancing.
     store : bool, optional
-        If True, store the results in the file when finished. Default is False.
-    prefixes : str, optional
+        If True, store the results in the input cooler file when finished. If clr_weight_name=None, 
+        also stores total cis counts in the cooler info. Default is False.
+    store_prefix : str, optional
         Name prefix of the columns of the bin table to save cis and total coverages. 
         Will add suffixes _cis and _tot, as well as _raw in the default case or _clr_weight_name if specified.
 
@@ -114,16 +120,21 @@ def coverage(
         raise ValueError(
             "Please, specify ignore_diags and/or IC balance this cooler! Cannot access the value used in IC balancing. "
         )
-    if clr_weight_name is not None:
-        try:
-            _ = is_cooler_balanced(clr, clr_weight_name, raise_errors=True)
-        except Exception as e:
-            raise ValueError(
-                f"provided cooler is not balanced or {clr_weight_name} is missing"
-            ) from e
+    if clr_weight_name is None:
+        # summing raw pixel counts
+        pixel_weight_key = "count"
+    elif is_cooler_balanced(clr, clr_weight_name):
+        # initialize balancing bias and masking
         bias = clr.bins()[clr_weight_name][:]
         bias_na_mask = np.isnan(bias)  # remember masked bins
         bias = np.nan_to_num(bias)
+        # summing balanced pixels
+        pixel_weight_key = "balanced"
+    else:
+        raise ValueError(
+            "cooler is not balanced, or"
+            f"balancing weight {clr_weight_name} is not available in the cooler."
+        )
         
     chunks = cooler.tools.split(clr, chunksize=chunksize, map=map, use_lock=use_lock)
 
@@ -142,8 +153,7 @@ def coverage(
         covs = covs.astype(int)
         store_names = [f"{store_prefix}_cis_raw", f"{store_prefix}_tot_raw" ]
     else:
-        covs[0, bias_na_mask] = np.nan
-        covs[1, bias_na_mask] = np.nan
+        covs[:, bias_na_mask] = np.nan
         store_names = [f"{store_prefix}_cis_{clr_weight_name}", f"{store_prefix}_tot_{clr_weight_name}" ]
         
     if store:
