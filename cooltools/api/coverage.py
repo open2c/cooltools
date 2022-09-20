@@ -142,10 +142,7 @@ def coverage(
         chunks = chunks.pipe(_zero_diags, n_diags=ignore_diags)
 
     if clr_weight_name is not None:
-        pixel_weight_key = "balanced"
-        chunks = chunks.pipe(_apply_balancing, bias=bias, balanced_column_name=pixel_weight_key)
-    else:
-        pixel_weight_key = "count"    
+        chunks = chunks.pipe(_apply_balancing, bias=bias, balanced_column_name=pixel_weight_key)  
         
     n_bins = clr.info["nbins"]
     covs = chunks.pipe(_get_chunk_coverage, pixel_weight_key=pixel_weight_key).reduce(np.add, np.zeros(n_bins))
