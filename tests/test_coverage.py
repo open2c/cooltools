@@ -54,7 +54,7 @@ def test_coverage_symmetric_upper(request):
     assert clr.info["cis"] == 1
     assert clr.info["sum"] == 3
     
-def test_coverage_weight(request):
+def test_balanced_coverage(request):
     # perform test:
     clr = cooler.Cooler(op.join(request.fspath.dirname, "data/CN.mm9.1000kb.cool"))
     cis_cov_weight, tot_cov_weight = cooltools.api.coverage.coverage(
