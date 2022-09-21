@@ -2,14 +2,29 @@
 This module enables construction of observed over expected pixels tables and
 storing them inside a cooler.
 
-It includes 2 functions.
+It includes 3 main functions.
 expected_full - is a convenience function that calculates cis and trans-expected
     and "stitches" them togeter. Such a stitched expected that "covers"
     entire Hi-C heatmap can be easily merged with the pixel table.
+expected_full_fast - generated the same output as `expected_full` but ~2x faster.
+    Efficiency is achieved through calculating cis and trans expected in one
+    pass of the pixel table. Post-processing is not fully implemented yet.
 obs_over_exp_generator - is a function/generator(lazy iterator) that merges
     pre-calculated full expected with the pixel table in clr and yields chunks
     of observed/expected pixel table. Such a "stream" can be used in cooler.create
     as a "pixels" argument to write obs/exp cooler-file.
+
+It also includes 3 helper functions (used in `expected_full_fast`):
+make_pairwise_expected_table - a function that creates an empty table for the
+    full expected with all the right sizes and number of valid pixels pre-filled.
+    Combines functionality of `make_diag_tables` and `make_block_tables` from the API.
+sum_pairwise - a function that calculates the full pixel summary for all pairwise
+    combinations of the regions in the view, and for each genomic separation for
+    cis-combinations of regions. In a nutshell - it calls `make_pairwise_expected_table`
+    to generate empty table for expected, and it gets filled by applying `_sum_` to the
+    pixels table.
+_sum_ - a function that does the actual summing of pixel values grouped by regions
+    and genomic separations - can work on a chunk of pixel table.
 """
 import time
 import logging
@@ -50,12 +65,15 @@ from cooltools.lib.schemas import (
     block_expected_dtypes
 )
 
+from cooltools.sandbox import expected_smoothing
 
 # common expected_df column names, take from schemas
-_REGION1 = list(diag_expected_dtypes)[0]
-_REGION2 = list(diag_expected_dtypes)[1]
-_DIST = list(diag_expected_dtypes)[2]
-_NUM_VALID = list(diag_expected_dtypes)[3]
+_REGION1_NAME = list(diag_expected_dtypes)[0]
+_REGION2_NAME = list(diag_expected_dtypes)[1]
+_DIST_NAME = list(diag_expected_dtypes)[2]
+_NUM_VALID_NAME = list(diag_expected_dtypes)[3]
+
+TRANS_DIST_VALUE = -1  # special value for the "genomic distance" for the trans data
 
 logging.basicConfig(level=logging.INFO)
 
@@ -146,9 +164,8 @@ def expected_full(
         chunksize=chunksize,
         nproc=nproc,
     )
-    # pretend that they also have a "dist"
-    # to make them mergeable with cvd
-    cpb["dist"] = -1
+    # pretend that they also have a "dist" to make them mergeable with cvd
+    cpb["dist"] = TRANS_DIST_VALUE
     time_elapsed = time.perf_counter() - time_start
     logging.info(f"Done calculating trans expected in {time_elapsed:.3f} sec ...")
 
@@ -241,13 +258,13 @@ def make_pairwise_expected_table(clr, view_df, clr_weight_name):
                     df = dtables[(name1, name2)].reset_index()
                     df.insert(0, "r2", _r2)
                     df.insert(0, "r1", _r1)
-                    _tables.append(df.set_index(["r1", "r2", _DIST]))
+                    _tables.append(df.set_index(["r1", "r2", _DIST_NAME]))
                 if (chrom1 != chrom2):
                     df = pd.DataFrame(btables[(name1, name2)], index=[0])
-                    df.insert(0, _DIST, -1)  # special trans-value for distance
+                    df.insert(0, _DIST_NAME, TRANS_DIST_VALUE)  # special trans-value for distance
                     df.insert(0, "r2", _r2)
                     df.insert(0, "r1", _r1)
-                    _tables.append(df.set_index(["r1", "r2", _DIST]))
+                    _tables.append(df.set_index(["r1", "r2", _DIST_NAME]))
 
     # return all concatenated DataFrame for cis and trans blocks:
     return pd.concat( _tables )
@@ -291,17 +308,17 @@ def _sum_(clr, fields, transforms, clr_weight_name, regions, span):
     # create a cis-mask, trans-mask
     cis_mask = pixels["chrom1"] == pixels["chrom2"]
 
-    # initialize _DIST as 0 for all pixels
+    # initialize _DIST_NAME as 0 for all pixels
     # consider using -1 as a special value to distinguish trans data easily ...
-    pixels.loc[:, _DIST] = -1
-    # calculate actual genomic _DIST for cis-pixels:
-    pixels.loc[cis_mask, _DIST] = pixels.loc[cis_mask, "bin2_id"] - pixels.loc[cis_mask, "bin1_id"]
+    pixels.loc[:, _DIST_NAME] = TRANS_DIST_VALUE
+    # calculate actual genomic _DIST_NAME for cis-pixels:
+    pixels.loc[cis_mask, _DIST_NAME] = pixels.loc[cis_mask, "bin2_id"] - pixels.loc[cis_mask, "bin1_id"]
     # apply requested transforms, e.g. balancing:
     for field, t in transforms.items():
         pixels[field] = t(pixels)
     
-    # perform aggregation by r1, r2 and _DIST
-    _blocks = pixels.groupby(["r1", "r2", _DIST])
+    # perform aggregation by r1, r2 and _DIST_NAME
+    _blocks = pixels.groupby(["r1", "r2", _DIST_NAME])
     
     # calculate summaries and add ".sum" suffix to field column-names
     return _blocks[fields].sum().add_suffix(".sum")
@@ -386,19 +403,19 @@ def sum_pairwise(
     # accumulate every chunk of summary results to exp_table
     result_df = reduce(lambda df1,df2: df1.add(df2, fill_value=0), results, exp_table)
 
-    # following can be done easily, when _DIST has a special value for trans ...
+    # following can be done easily, when _DIST_NAME has a special value for trans ...
     if ignore_diags:
         for _d in range(ignore_diags):
             # extract fist "ignore_diags" from DataFrame and fill them with NaNs
-            _idx = result_df.xs(_d, level=_DIST, drop_level=False).index
+            _idx = result_df.xs(_d, level=_DIST_NAME, drop_level=False).index
             result_df.loc[_idx, summary_fields] = np.nan
 
     # # returning a pd.DataFrame for API consistency:
-    result_df.reset_index(level=_DIST, inplace=True)
+    result_df.reset_index(level=_DIST_NAME, inplace=True)
     # region1 for the final table
-    result_df.insert(0, _REGION1, view_df.loc[result_df.index.get_level_values("r1"), "name"].to_numpy())
+    result_df.insert(0, _REGION1_NAME, view_df.loc[result_df.index.get_level_values("r1"), "name"].to_numpy())
     # region2 for the final table
-    result_df.insert(1, _REGION2, view_df.loc[result_df.index.get_level_values("r2"), "name"].to_numpy())
+    result_df.insert(1, _REGION2_NAME, view_df.loc[result_df.index.get_level_values("r2"), "name"].to_numpy())
     # drop r1/r2 region labels
     result_df.reset_index(level=["r1", "r2"], drop=True, inplace=True)
 
@@ -409,7 +426,7 @@ def expected_full_fast(
         clr,
         view_df=None,
         smooth_cis=False,
-        aggregate_smoothed=False,
+        aggregate_cis=False,
         smooth_sigma=0.1,
         aggregate_trans=False,
         expected_column_name="expected",
@@ -482,14 +499,23 @@ def expected_full_fast(
             raise ValueError("view_df is not a valid viewframe or incompatible") from e
 
     # define transforms - balanced and raw ('count') for now
+    cols = {
+        "dist": _DIST_NAME,
+        "n_pixels": _NUM_VALID_NAME,
+        "smooth_suffix": ".smooth",
+    }
     if clr_weight_name is None:
         # no transforms
         transforms = {}
+        cols["n_contacts"] = "count.sum"
+        cols["contact_freq"] = "count.avg"
     elif is_cooler_balanced(clr, clr_weight_name):
         # define balanced data transform:
         weight1 = clr_weight_name + "1"
         weight2 = clr_weight_name + "2"
         transforms = {"balanced": lambda p: p["count"] * p[weight1] * p[weight2]}
+        cols["n_contacts"] = "balanced.sum"
+        cols["contact_freq"] = "balanced.avg"
     else:
         raise ValueError(
             "cooler is not balanced, or"
@@ -503,7 +529,8 @@ def expected_full_fast(
     else:
         map_ = map
 
-    # using try-clause to close mp.Pool properly
+    # using try-clause to close mp.Pool properly ans start the timer
+    time_start = time.perf_counter()
     try:
         result = sum_pairwise(
             clr,
@@ -518,88 +545,112 @@ def expected_full_fast(
         if nproc > 1:
             pool.close()
 
-
     # calculate actual averages by dividing sum by n_valid:
-    for key in chain(["count"], transforms):
-        result[f"{key}.avg"] = result[f"{key}.sum"] / result[_NUM_VALID]
+    result[cols["contact_freq"]] = result[cols["n_contacts"]].divide(
+        result[cols["n_pixels"]]
+    )
 
-    # # additional smoothing and aggregating options would add columns only, not replace them
-    # if smooth:
-    #     result_smooth = expected_smoothing.agg_smooth_cvd(
-    #         result,
-    #         sigma_log10=smooth_sigma,
-    #     )
-    #     # add smoothed columns to the result (only balanced for now)
-    #     result = result.merge(
-    #         result_smooth[["balanced.avg.smoothed", _DIST]],
-    #         on=[_REGION1, _REGION2, _DIST],
-    #         how="left",
-    #     )
-    #     if aggregate_smoothed:
-    #         result_smooth_agg = expected_smoothing.agg_smooth_cvd(
-    #             result,
-    #             groupby=None,
-    #             sigma_log10=smooth_sigma,
-    #         ).rename(columns={"balanced.avg.smoothed": "balanced.avg.smoothed.agg"})
-    #         # add smoothed columns to the result
-    #         result = result.merge(
-    #             result_smooth_agg[["balanced.avg.smoothed.agg", _DIST]],
-    #             on=[
-    #                 _DIST,
-    #             ],
-    #             how="left",
-    #         )
+    # annotate result with the region index and chromosomes
+    view_label = view_df \
+                .reset_index() \
+                .rename(columns={"index":"r"}) \
+                .set_index("name")
+
+    # add r1 r2 labels to the final dataframe for obs/exp merging
+    result["r1"] = view_label.loc[result["region1"], "r"].to_numpy()
+    result["r2"] = view_label.loc[result["region2"], "r"].to_numpy()
+
+    # initialize empty column with the final name of expected
+    result.insert(loc=len(result.columns), column=expected_column_name, value=np.nan)
+
+    # annotate result with chromosomes in case chrom-level aggregation is requested
+    if "chrom" in [aggregate_trans, aggregate_cis]:
+        result["chrom1"] = view_label.loc[result["region1"], "chrom"].to_numpy()
+        result["chrom2"] = view_label.loc[result["region2"], "chrom"].to_numpy()
+
+    if aggregate_cis:
+        if aggregate_cis == "chrom":
+            grp_columns = ["chrom1", "chrom2"]  # chrom-level aggregation
+        elif aggregate_cis == "genome":
+            grp_columns = None  # genome-wide level aggregation
+        else:
+            raise ValueError("aggregate_cis could be only chrom, genome or False")
+    else:
+        grp_columns = [_REGION1_NAME, _REGION2_NAME]  # no aggregation, keep as in view_df
+
+    # prepare cis/trans masks for smoothing, aggregation and/or simply copying values
+    # to the final column:
+    _cis_mask = result[_DIST_NAME] != TRANS_DIST_VALUE
+    _trans_mask = result[_DIST_NAME] == TRANS_DIST_VALUE
+
+    # additive columns for aggregation
+    additive_cols = [ cols["n_pixels"], cols["n_contacts"] ]
+
+    # additional smoothing and aggregating options would add columns only, not replace them
+    if smooth_cis:
+        # smooth and aggregate
+        _smooth_df = expected_smoothing.agg_smooth_cvd(
+            result.loc[_cis_mask],
+            groupby=grp_columns,
+            sigma_log10=smooth_sigma,
+            cols=cols,
+        )
+        _smooth_col_name = cols["contact_freq"] + cols["smooth_suffix"]
+        # add smoothed columns to the result
+        result = result.merge(
+            _smooth_df[[ _DIST_NAME, _smooth_col_name ]],
+            on=[*(grp_columns or []), _DIST_NAME],
+            how="left",
+        )
+        # add the results to the expected column
+        result.loc[_cis_mask, expected_column_name] = result.loc[_cis_mask, _smooth_col_name]
+    elif aggregate_cis:
+        # aggregate only if requested:
+        _agg_df = results.loc[_cis_mask] \
+            .groupby([*(grp_columns or []), _DIST_NAME])[additive_cols] \
+            .transform("sum") \
+            .add_suffix(".agg")
+        # calculate new average
+        _agg_df[expected_column_name] = _agg_df[f"""{cols["n_contacts"]}.agg"""].divide(
+            _agg_df[f"""{cols["n_pixels"]}.agg"""]
+        )
+        # add aggregated result to the result df
+        result.loc[_cis_mask, expected_column_name] = _agg_df[expected_column_name]
+    else:
+        # just copy unchanged result to expected_column_name
+        result.loc[_cis_mask, expected_column_name] = result.loc[_cis_mask, cols["contact_freq"]]
+
+    # aggregate trans on requested level and copy result into final expected column:
+    if aggregate_trans:
+        if aggregate_trans == "chrom":
+            # groupby chromosomes and sum up additive values:
+            _trans_agg_df = result.loc[_trans_mask] \
+                .groupby(["chrom1", "chrom2"])[additive_cols] \
+                .transform("sum") \
+                .add_suffix(".agg")
+        elif aggregate_trans == "genome":
+            # genome-wide transform :
+            _trans_df = result.loc[_trans_mask]
+            _trans_agg_df = result.loc[_trans_mask, additive_cols] \
+                .transform("sum") \
+                .add_suffix(".agg")
+        else:
+            raise ValueError("aggregate_trans could be only chrom, genome or False")
+        # complete aggregation by recalculating new average:
+        _trans_agg_df[expected_column_name] = _trans_agg_df[f"""{cols["n_contacts"]}.agg"""].divide(
+            _trans_agg_df[f"""{cols["n_pixels"]}.agg"""]
+        )
+        # and adding aggregated result to the result df:
+        result.loc[_trans_mask, expected_column_name] = _trans_agg_df[expected_column_name]
+    else:
+        # just copy unchanged result to expected_column_name
+        result.loc[_trans_mask, expected_column_name] = result.loc[_trans_mask, cols["contact_freq"]]
+
+    # time is up
+    time_elapsed = time.perf_counter() - time_start
+    logging.info(f"Done calculating full expected {time_elapsed:.3f} sec ...")
 
     return result
-
-
-    # # annotate expected_df with the region index and chromosomes
-    # view_label = view_df \
-    #             .reset_index() \
-    #             .rename(columns={"index":"r"}) \
-    #             .set_index("name")
-
-    # # which expected column to use, based on requested "modifications":
-    # cis_expected_name = "balanced.avg" if clr_weight_name else "count.avg"
-    # if smooth_cis:
-    #     cis_expected_name = f"{cis_expected_name}.smoothed"
-    #     if aggregate_smoothed:
-    #         cis_expected_name = f"{cis_expected_name}.agg"
-    # # copy to the prescribed column for the final output:
-    # cvd[expected_column_name] = cvd[cis_expected_name].copy()
-
-    # # aggregate trans if requested and deide which trans-expected column to use:
-    # trans_expected_name = "balanced.avg" if clr_weight_name else "count.avg"
-    # if aggregate_trans:
-    #     trans_expected_name = f"{trans_expected_name}.agg"
-    #     additive_cols = ["n_valid","count.sum"]
-    #     if clr_weight_name:
-    #         additive_cols.append("balanced.sum")
-    #     # groupby chrom1, chrom2 and aggregate additive fields (sums and n_valid):
-    #     _cpb_agg = cpb.groupby(
-    #         [
-    #             view_label["chrom"].loc[cpb["region1"]].to_numpy(),  # chrom1
-    #             view_label["chrom"].loc[cpb["region2"]].to_numpy(),  # chrom2
-    #         ]
-    #     )[additive_cols].transform("sum")
-    #     # recalculate aggregated averages:
-    #     cpb["count.avg.agg"] = _cpb_agg["count.sum"]/_cpb_agg["n_valid"]
-    #     if clr_weight_name:
-    #         cpb["balanced.avg.agg"] = _cpb_agg["balanced.sum"]/_cpb_agg["n_valid"]
-    # # copy to the prescribed column for the final output:
-    # cpb[expected_column_name] = cpb[trans_expected_name].copy()
-
-    # # concatenate cvd and cpb (cis and trans):
-    # expected_df = pd.concat([cvd, cpb], ignore_index=True)
-
-    # # add r1 r2 labels to the final dataframe for obs/exp merging
-    # expected_df["r1"] = view_label["r"].loc[expected_df["region1"]].to_numpy()
-    # expected_df["r2"] = view_label["r"].loc[expected_df["region2"]].to_numpy()
-
-    # # and return joined cis/trans expected in the same format
-    # logging.info(f"Returning combined expected DataFrame.")
-    # # consider purging unneccessary columns here
-    # return expected_df
 
 
 def obs_over_exp_generator(
@@ -639,7 +690,7 @@ def obs_over_exp_generator(
     ------
     pixel_df: pd.DataFrame
         chunks of pixels with observed over expected
-"""
+    """
 
     # use the same view that was used to calculate full expected
     if view_df is None:
@@ -687,7 +738,7 @@ def obs_over_exp_generator(
         pixels = pixels.astype({"r1":int, "r2":int})
 
         # trans pixels will have "feature"-dist of 0
-        pixels["dist"] = 0
+        pixels["dist"] = TRANS_DIST_VALUE
         # cis pixels will have "feature"-dist "bind2_id - bin1_id"
         cis_mask = (pixels["chrom1"] == pixels["chrom2"])
         pixels.loc[cis_mask,"dist"] = pixels.loc[cis_mask,"bin2_id"] - pixels.loc[cis_mask,"bin1_id"]
