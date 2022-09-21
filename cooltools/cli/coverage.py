@@ -30,9 +30,10 @@ import multiprocessing as mp
 )
 @click.option(
     "--store",
-    help="Append columns with coverage (cis_raw_cov, tot_raw_cov)"
-    " to the cooler bin table. If clr_weight_name=None, also stores"
-    " total cis counts in the cooler info",
+    help="Append columns with coverage (cov_cis_raw, cov_tot_raw), or"
+    " (cov_cis_clr_weight_name, cov_tot_clr_weight_name) if calculating"
+    " balanced coverage, to the cooler bin table. If clr_weight_name=None,"
+    " also stores total cis counts in the cooler info",
     is_flag=True,
 )
 @click.option(
