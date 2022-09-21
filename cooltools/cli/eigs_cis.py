@@ -24,7 +24,7 @@ from . import cli
     "--view",
     "--regions",
     help="Path to a BED file which defines which regions of the chromosomes to use"
-    " (only implemented for cis contacts)"
+    " (only implemented for cis contacts)."
     " Note that '--regions' is the deprecated name of the option. Use '--view' instead. ",
     default=None,
     type=str,

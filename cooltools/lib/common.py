@@ -19,7 +19,7 @@ def assign_view_paired(
     drop_unassigned=False,
 ):
     """Assign region names from the view to each feature
-    
+
     Assigns a regular 1D view independently to each side of a bedpe-style dataframe.
     Will add two columns with region names (`features_view_cols`)
 
@@ -31,15 +31,16 @@ def assign_view_paired(
         ViewFrame specifying region start and ends for assignment. Attempts to
         convert dictionary and pd.Series formats to viewFrames.
     cols_paired : list of str
-        he names of columns containing the chromosome, start and end of the
-        genomic intervals. The default values are 'chrom', 'start', 'end'.
+        The names of columns containing the chromosome, start and end of the
+        genomic intervals. The default values are `"chrom1", "start1", "end1", "chrom2",
+        "start2", "end2"`.
     cols_view : list of str
         The names of columns containing the chromosome, start and end of the
-        genomic intervals in the view. The default values are 'chrom', 'start', 'end'.
+        genomic intervals in the view. The default values are `"chrom", "start", "end"`.
     features_view_cols : list of str
         Names of the columns where to save the assigned region names
     view_name_col : str
-        Column of ``view_df`` with region names. Default 'name'.
+        Column of ``view_df`` with region names. Default "name".
     drop_unassigned : bool
         If True, drop intervals in df that do not overlap a region in the view.
         Default False.
@@ -76,6 +77,93 @@ def assign_view_paired(
         cols=cols_right,
         cols_view=cols_view,
     )
+    return features
+
+
+def assign_view_auto(
+    features,
+    view_df,
+    cols_unpaired=["chrom", "start", "end"],
+    cols_paired=["chrom1", "start1", "end1", "chrom2", "start2", "end2"],
+    cols_view=["chrom", "start", "end"],
+    features_view_col_unpaired="region",
+    features_view_cols_paired=["region1", "region2"],
+    view_name_col="name",
+    drop_unassigned=False,
+    combined_assignments_column="region",
+):
+    """Assign region names from the view to each feature
+
+    Determines whether the `features` are unpaired (1D, bed-like) or paired (2D,
+    bedpe-like) based on presence of column names (`cols_unpaired` vs `cols_paired`)
+    Assigns a regular 1D view, independently to each side in case of paired features.
+    Will add one or two columns with region names (`features_view_col_unpaired` or
+    `features_view_cols_paired`) respectively, in case of unpaired and paired features.
+
+    Parameters
+    ----------
+    features : pd.DataFrame
+        bedpe-style dataframe
+    view_df : pandas.DataFrame
+        ViewFrame specifying region start and ends for assignment. Attempts to
+        convert dictionary and pd.Series formats to viewFrames.
+    cols_unpaired : list of str
+        The names of columns containing the chromosome, start and end of the
+        genomic intervals for unpaired features.
+        The default values are `"chrom", "start", "end"`.
+    cols_paired : list of str
+        The names of columns containing the chromosome, start and end of the
+        genomic intervals for paired features.
+        The default values are `"chrom1", "start1", "end1", "chrom2", "start2", "end2"`.
+    cols_view : list of str
+        The names of columns containing the chromosome, start and end of the
+        genomic intervals in the view. The default values are `"chrom", "start", "end"`.
+    features_view_cols_unpaired : str
+        Name of the column where to save the assigned region name for unpaired features
+    features_view_cols_paired : list of str
+        Names of the columns where to save the assigned region names for paired features
+    view_name_col : str
+        Column of ``view_df`` with region names. Default "name".
+    drop_unassigned : bool
+        If True, drop intervals in `features` that do not overlap a region in the view.
+        Default False.
+    combined_assignments_column : str or None
+        If set to a string value, will combine assignments from two sides of paired
+        features when they match into column with this name: region name when regions
+        assigned to both sides match, np.nan if not.
+        Default "region"
+    """
+    if set(cols_unpaired).issubset(features.columns.astype(str)):
+        features = bioframe.assign_view(
+            features,
+            view_df,
+            df_view_col=features_view_col_unpaired,
+            view_name_col=view_name_col,
+            cols=cols_unpaired,
+            cols_view=cols_view,
+            drop_unassigned=drop_unassigned,
+        )
+    elif set(cols_paired).issubset(features.columns.astype(str)):
+        features = assign_view_paired(
+            features=features,
+            view_df=view_df,
+            cols_paired=cols_paired,
+            cols_view=cols_view,
+            features_view_cols=features_view_cols_paired,
+            view_name_col=view_name_col,
+            drop_unassigned=drop_unassigned,
+        )
+        if combined_assignments_column:
+            features[combined_assignments_column] = np.where(
+                features[features_view_cols_paired[0]]
+                == features[features_view_cols_paired[1]],
+                features[features_view_cols_paired[0]],
+                np.nan,
+            )
+    else:
+        raise ValueError(
+            "Could not determine whether features are paired using provided column names"
+        )
     return features
 
 
@@ -294,13 +382,18 @@ def mask_cooler_bad_bins(track, bintable):
 
 
 def align_track_with_cooler(
-    track, clr, view_df=None, clr_weight_name="weight", mask_bad_bins=True
+    track,
+    clr,
+    view_df=None,
+    clr_weight_name="weight",
+    mask_clr_bad_bins=True,
+    drop_track_na=True,
 ):
     """
     Sync a track dataframe with a cooler bintable.
 
     Checks that bin sizes match between a track and a cooler,
-    merges the cooler bintable with the track, and 
+    merges the cooler bintable with the track, and
     propagates masked regions from a cooler bintable to a track.
 
     Parameters
@@ -314,9 +407,14 @@ def align_track_with_cooler(
         If None, constructs a view_df from cooler chromsizes.
     clr_weight_name : str
         Name of the column in the bin table with weight
-    mask_bad_bins : bool
+    mask_clr_bad_bins : bool
         Whether to propagate null bins from cooler bintable column clr_weight_name
         to the 'value' column of the output clr_track. Default True.
+    drop_track_na : bool
+        Whether to ignore missing values in the track (as if they are absent).
+        Important for raising errors for unassigned regions and warnings for partial assignment.
+        Default True, so NaN values are treated as not assigned.
+        False means that NaN values are treated as assigned.
 
     Returns
     -------
@@ -351,6 +449,7 @@ def align_track_with_cooler(
             how="left",
             on=["chrom", "start"],
             suffixes=("", "_"),
+            indicator=True,
         )
     )
 
@@ -366,21 +465,27 @@ def align_track_with_cooler(
 
     valid_bins = clr_track[clr_weight_name].notna()
     num_valid_bins = valid_bins.sum()
-    num_assigned_bins = (clr_track["value"][valid_bins].notna()).sum()
+    if drop_track_na:
+        num_assigned_bins = (clr_track["value"][valid_bins].notna()).sum()
+    else:
+        num_assigned_bins = len(clr_track.query("_merge=='both'")["value"][valid_bins])
     if num_assigned_bins == 0:
         raise ValueError("no track values assigned to cooler bintable")
-    elif num_assigned_bins < 0.5 * np.sum(valid_bins):
+    elif num_assigned_bins < 0.5 * num_valid_bins:
         warnings.warn("less than 50% of valid bins have been assigned a value")
 
     view_df = make_cooler_view(clr) if view_df is None else view_df
     for region in view_df.itertuples(index=False):
         track_region = bioframe.select(clr_track, region)
-        num_assigned_region_bins = track_region["value"].notna().sum()
+        if drop_track_na:
+            num_assigned_region_bins = track_region["value"].notna().sum()
+        else:
+            num_assigned_region_bins = len(track_region["value"])
         if num_assigned_region_bins == 0:
             raise ValueError(
                 f"no track values assigned to region {bioframe.to_ucsc_string(region)}"
             )
-    if mask_bad_bins:
+    if mask_clr_bad_bins:
         clr_track.loc[~valid_bins, "value"] = np.nan
 
     return clr_track[["chrom", "start", "end", "value"]]

@@ -33,3 +33,4 @@ from .api.snipping import pileup
 from .api.directionality import directionality
 from .api.insulation import insulation
 from .api.dotfinder import dots
+from .api.virtual4c import virtual4c

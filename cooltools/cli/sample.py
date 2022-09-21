@@ -61,7 +61,7 @@ from .. import api
 )
 def random_sample(in_path, out_path, count, cis_count, frac, exact, nproc, chunksize):
     """
-    Pick a random sample of contacts from a Hi-C map, w/o replacement.
+    Pick a random sample of contacts from a Hi-C map.
 
     IN_PATH : Input cooler path or URI.
 

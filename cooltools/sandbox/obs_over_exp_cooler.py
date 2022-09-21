@@ -654,16 +654,14 @@ def expected_full_fast(
 
 
 def obs_over_exp_generator(
-        clr,
-        expected_full,
-        view_df=None,
-        expected_column_name="expected",
-        oe_column_name="count",  # how to store obs/exp
-        clr_weight_name='weight',
-        chunksize = 1_000_000,
-        # todo: consider yielding cis-only, trans-only
-        # todo: consider yielding fully annotated chunks
-    ):
+    clr,
+    expected_full,
+    view_df=None,
+    expected_column_name="expected",
+    clr_weight_name='weight',
+    oe_column_name="count",
+    chunksize = 1_000_000
+):
     """
     Generator yielding chunks of pixels with
     pre-caluclated observed over expected.
@@ -691,7 +689,6 @@ def obs_over_exp_generator(
     pixel_df: pd.DataFrame
         chunks of pixels with observed over expected
     """
-
     # use the same view that was used to calculate full expected
     if view_df is None:
         view_array = make_cooler_view(clr).to_numpy()
@@ -699,19 +696,9 @@ def obs_over_exp_generator(
         view_array = view_df.to_numpy()
 
     # extract and pre-process cooler bintable
-    bins = clr.bins()[:]
-    bins["r"] = assign_supports(bins, view_array)  # astype float
-    # todo: try the same trick for the future version of "expected_full"
-    # where expected_full will be calculated in one pass, instead of
-    # separate expected_cis and expected_trans calls
-
-    # use balanced data, when clr_weight is provided - otherwise raw counts
-    if clr_weight_name:
-        observed_column_name = "balanced"
-        weight_col1 = f"{clr_weight_name}1"
-        weight_col2 = f"{clr_weight_name}2"
-    else:
-        observed_column_name = "count"
+    view_column_name = "r"
+    bins_view = clr.bins()[:]
+    bins_view[view_column_name] = assign_supports(bins_view, view_array)  # astype float
 
     # define chunks of pixels to work on
     spans = partition(0, len(clr.pixels()), chunksize)
@@ -737,7 +724,7 @@ def obs_over_exp_generator(
         # cast to int, as there are no more NaNs among r1/r2
         pixels = pixels.astype({"r1":int, "r2":int})
 
-        # trans pixels will have "feature"-dist of 0
+        # trans pixels will have "feature"-dist of -1
         pixels["dist"] = TRANS_DIST_VALUE
         # cis pixels will have "feature"-dist "bind2_id - bin1_id"
         cis_mask = (pixels["chrom1"] == pixels["chrom2"])
@@ -751,7 +738,5 @@ def obs_over_exp_generator(
             on=["r1","r2","dist"],
         )
 
-        pixels[oe_column_name] = pixels[observed_column_name] / pixels[expected_column_name]
-
         # yield pixel-table-like chunks of observed over expected
-        yield pixels[["bin1_id", "bin2_id", oe_column_name]]
+        yield oe_chunk[["bin1_id", "bin2_id", oe_column_name]]

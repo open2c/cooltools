@@ -30,8 +30,10 @@ import multiprocessing as mp
 )
 @click.option(
     "--store",
-    help="Append columns with coverage (cis_raw_cov, tot_raw_cov) "
-    " to the cooler bin table.",
+    help="Append columns with coverage (cov_cis_raw, cov_tot_raw), or"
+    " (cov_cis_clr_weight_name, cov_tot_clr_weight_name) if calculating"
+    " balanced coverage, to the cooler bin table. If clr_weight_name=None,"
+    " also stores total cis counts in the cooler info",
     is_flag=True,
 )
 @click.option(
@@ -50,6 +52,14 @@ import multiprocessing as mp
     default=False,
 )
 @click.option(
+    "--clr_weight_name",
+    help="Name of the weight column. Specify to calculate coverage of"
+    " balanced cooler.",
+    type=str,
+    default=None,
+    show_default=False,
+)
+@click.option(
     "-p",
     "--nproc",
     help="Number of processes to split the work between."
@@ -58,7 +68,7 @@ import multiprocessing as mp
     type=int,
 )
 def coverage(
-    cool_path, output, ignore_diags, store, chunksize, bigwig, nproc,
+    cool_path, output, ignore_diags, store, chunksize, bigwig, clr_weight_name, nproc,
 ):
     """
     Calculate the sums of cis and genome-wide contacts (aka coverage aka marginals) for
@@ -80,15 +90,21 @@ def coverage(
 
     try:
         cis_cov, tot_cov = api.coverage.coverage(
-            clr, ignore_diags=ignore_diags, chunksize=chunksize, map=_map, store=store
+            clr, ignore_diags=ignore_diags, chunksize=chunksize, map=_map, store=store, clr_weight_name=clr_weight_name
         )
     finally:
         if nproc > 1:
             pool.close()
 
     coverage_table = clr.bins()[:][["chrom", "start", "end"]]
-    coverage_table["cis_raw_cov"] = cis_cov.astype(int)
-    coverage_table["tot_raw_cov"] = tot_cov.astype(int)
+    if clr_weight_name is None:
+        store_names = ["cov_cis_raw", "cov_tot_raw"]
+        coverage_table[store_names[0]] = cis_cov.astype(int)
+        coverage_table[store_names[1]] = tot_cov.astype(int)
+    else:
+        store_names = [f"cov_cis_{clr_weight_name}", f"cov_tot_{clr_weight_name}"]
+        coverage_table[store_names[0]] = cis_cov.astype(float)
+        coverage_table[store_names[1]] = tot_cov.astype(float)
 
     # output to file if specified:
     if output:
@@ -103,11 +119,11 @@ def coverage(
             coverage_table,
             clr.chromsizes,
             f"{output}.cis.bw",
-            value_field="cis_raw_cov",
+            value_field=store_names[0],
         )
         bioframe.to_bigwig(
             coverage_table,
             clr.chromsizes,
             f"{output}.tot.bw",
-            value_field="tot_raw_cov",
+            value_field=store_names[1],
         )

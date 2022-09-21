@@ -56,4 +56,5 @@ from . import (
     genome,
     sample,
     coverage,
+    virtual4c,
 )

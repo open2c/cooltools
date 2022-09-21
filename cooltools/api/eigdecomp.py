@@ -397,11 +397,13 @@ def eigs_cis(
             clr,
             view_df=view_df,
             clr_weight_name=clr_weight_name,
-            mask_bad_bins=True,
+            mask_clr_bad_bins=True,
+            drop_track_na=True # this adds check for chromosomes that have all missing values
         )
 
     # prepare output table for eigen vectors
-    eigvec_table = bins.copy()
+    eigvec_table = bioframe.assign_view(bins, view_df).dropna(subset=["view_region"], axis=0)
+    eigvec_table = eigvec_table.loc[:, bins.columns]
     eigvec_columns = [f"E{i + 1}" for i in range(n_eigs)]
     for ev_col in eigvec_columns:
         eigvec_table[ev_col] = np.nan
@@ -503,7 +505,8 @@ def eigs_trans(
             clr,
             view_df=view_df,
             clr_weight_name=clr_weight_name,
-            mask_bad_bins=True,
+            mask_clr_bad_bins=True,
+            drop_track_na=True # this adds check for chromosomes that have all missing values
         )
         phasing_track_values = phasing_track["value"].values[lo:hi]
     else:
