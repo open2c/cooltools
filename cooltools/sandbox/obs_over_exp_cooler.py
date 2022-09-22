@@ -608,7 +608,7 @@ def expected_full_fast(
         result.loc[_cis_mask, expected_column_name] = result.loc[_cis_mask, _smooth_col_name]
     elif aggregate_cis:
         # aggregate only if requested:
-        _agg_df = results.loc[_cis_mask] \
+        _agg_df = result.loc[_cis_mask] \
             .groupby([*(grp_columns or []), _DIST_NAME])[additive_cols] \
             .transform("sum") \
             .add_suffix(".agg")
