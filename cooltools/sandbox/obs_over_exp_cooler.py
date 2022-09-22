@@ -52,7 +52,7 @@ from cooltools import (
 )
 from cooltools.lib.common import (
     assign_supports,
-    make_cooler_view,
+    make_cooler_view
 )
 
 from cooltools.lib import (
@@ -671,6 +671,7 @@ def obs_over_exp(
     expected for each pixels. This assignment is done according to the pixels' location,
     specifically - which combination of regions in the view and genomic distance for
     cis-pixels.
+
     Parameters
     ----------
     pixels: pd.DataFrame | dask.DataFrame
@@ -688,6 +689,7 @@ def obs_over_exp(
         Use raw unbalanced data, when None.
     oe_column_name : str
         Name of the column to store observed over expected in.
+
     Returns
     -------
     pixels_oe : pd.DataFrame | dask.DataFrame
@@ -757,6 +759,7 @@ def obs_over_exp_generator(
     """
     Generator yielding chunks of pixels with
     pre-caluclated observed over expected.
+
     Parameters
     ----------
     clr : cooler.Cooler
@@ -774,6 +777,7 @@ def obs_over_exp_generator(
         Use raw unbalanced data, when None.
     chunksize : int, optional
         Size of pixel table chunks to process and output
+
     Yields
     ------
     pixel_df: pd.DataFrame
