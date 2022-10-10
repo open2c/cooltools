@@ -47,6 +47,9 @@ Cooltools offers a number of tutorials using the [Open2c code ecosystem](https:/
 - [Insulation and Boundaries](https://cooltools.readthedocs.io/en/latest/notebooks/insulation_and_boundaries.html):  how to extract insulation profiles and call boundaries using insulation profile minima.
 - [Pileups and Average Patterns](https://cooltools.readthedocs.io/en/latest/notebooks/pileup_CTCF.html): how to create avearge maps around genomic features like CTCF.
 
+For users interested in running analyses from the commmand line:
+- [Command line interface](https://cooltools.readthedocs.io/en/latest/notebooks/command_line_interface.html): how to use the cooltools CLI.
+
 Note that these notebooks currently focus on mammalian interphase Hi-C analysis, but are readily extendible to other organisms and cellular contexts. To clone notebooks for interactive analysis, visit https://github.com/open2c/open2c_examples. Docs for cooltools are built directly from these notebooks.
 
 ## Contributing
