@@ -71,7 +71,7 @@ def _obsexp_cis_dense(A, ignore_diags=2, clip_percentile=0):
 
     Returns
     -------
-    eigenvalues, eigenvectors: ndarray
+    2D array or None
 
     """
     A = np.array(A)
@@ -80,10 +80,7 @@ def _obsexp_cis_dense(A, ignore_diags=2, clip_percentile=0):
     mask = A.sum(axis=0) > 0
 
     if A.shape[0] <= ignore_diags + 3 or mask.sum() <= ignore_diags + 3:
-        return (
-            np.array([np.nan for i in range(n_eigs)]),
-            np.array([np.ones(A.shape[0]) * np.nan for i in range(n_eigs)]),
-        )
+        return None
 
     if ignore_diags:
         for d in range(-ignore_diags + 1, ignore_diags):
@@ -250,26 +247,29 @@ def eigs_cis(
         A = clr.matrix(balance=clr_weight_name).fetch(_region)
 
         OE = _obsexp_cis_dense(A, ignore_diags, clip_percentile)
+        if OE is None:
+            eigvals = np.array([np.nan for i in range(n_eigs)])
+            eigvecs = np.array([np.ones(A.shape[0]) * np.nan for i in range(n_eigs)])
+        else:
+            eigvecs, eigvals = numutils.get_eig(OE, n_eigs, mask_zero_rows=True)
+            eigvecs /= np.sqrt(np.nansum(eigvecs ** 2, axis=1))[:, None]
+            eigvecs *= np.sqrt(np.abs(eigvals))[:, None]
 
-        eigvecs, eigvals = numutils.get_eig(OE, n_eigs, mask_zero_rows=True)
-        eigvecs /= np.sqrt(np.nansum(eigvecs ** 2, axis=1))[:, None]
-        eigvecs *= np.sqrt(np.abs(eigvals))[:, None]
-
-        if phasing_track is not None:
-            # Extract phasing track relevant for the _region
-            phasing_track_region = bioframe.select(phasing_track, _region)
-            phasing_vector = phasing_track_region["value"].values
-            corrs = _correlate_with_eigs(
-                eigvecs, phasing_vector, corr_metric
-            )
-            # Flip signs of eigvecs deterministically
-            for i in range(len(corrs)):
-                eigvecs[i] = np.sign(corrs[i]) * eigvecs[i]
-            # Re-rank eigvecs by descending correlation to phasing track
-            if reorder:
-                idx = np.argsort(-np.abs(corrs))
-                eigvals = eigvals[idx]
-                eigvecs[idx] = eigvecs[idx]
+            if phasing_track is not None:
+                # Extract phasing track relevant for the _region
+                phasing_track_region = bioframe.select(phasing_track, _region)
+                phasing_vector = phasing_track_region["value"].values
+                corrs = _correlate_with_eigs(
+                    eigvecs, phasing_vector, corr_metric
+                )
+                # Flip signs of eigvecs deterministically
+                for i in range(len(corrs)):
+                    eigvecs[i] = np.sign(corrs[i]) * eigvecs[i]
+                # Re-rank eigvecs by descending correlation to phasing track
+                if reorder:
+                    idx = np.argsort(-np.abs(corrs))
+                    eigvals = eigvals[idx]
+                    eigvecs[idx] = eigvecs[idx]
 
         return _region, eigvals, eigvecs
 
@@ -329,7 +329,7 @@ def _obsexp_trans_dense(A, partition, perc_top=99.95, perc_bottom=1):
 
     Returns
     -------
-    eigenvalues, eigenvectors : ndarray
+    2D array
 
     """
     A = np.array(A)
