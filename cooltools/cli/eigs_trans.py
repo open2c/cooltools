@@ -163,7 +163,6 @@ def eigs_trans(
         n_eigs=n_eigs,
         clr_weight_name=clr_weight_name,
         partition=None,
-        sort_metric=None,
     )
 
     # Output
