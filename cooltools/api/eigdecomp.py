@@ -52,7 +52,7 @@ def _correlate_with_eigs(eigvecs, phasing_vector, metric="spearmanr"):
 
         corrs.append(corr)
 
-    return np.array(corr)
+    return np.array(corrs)
 
 
 def _obsexp_cis_dense(A, ignore_diags=2, clip_percentile=0):
