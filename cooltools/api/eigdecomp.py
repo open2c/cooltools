@@ -388,6 +388,8 @@ def eigs_trans(
     n_eigs=3,
     partition=None,
     clr_weight_name="weight",
+    perc_top=99.95,
+    perc_bottom=1,
     phasing_track=None,
     reorder=False,
     corr_metric="pearsonr",
@@ -400,11 +402,13 @@ def eigs_trans(
     ----------
     A : 2D array
         balanced whole genome contact matrix
+    n_eigs : int
+        number of eigenvectors to compute; default = 3
     partition : sequence of int
         bin offset of each contiguous region to treat separately (e.g.,
         chromosomes or chromosome arms)
-    n_eigs : int
-        number of eigenvectors to compute; default = 3
+    clr_weight_name : str
+        Name of the column with balancing weights to be used.
     perc_top : float (percentile)
         filter - clip trans blowout contacts above this cutoff; default = 99.95
     perc_bottom : float (percentile)
