@@ -154,7 +154,10 @@ def pileup(
                 names=bedpe_cols,
             )
         else:
-            kwargs = dict(header="infer", usecols=bedpe_cols)
+            if len(names) < 6:
+                raise ValueError("Too few columns for BEDPE")
+            kwargs = dict(header="infer", usecols=bedpe_cols, dtype=dtypes)
+
     elif features_format.lower() == "bed":
         default_cols = [0, 1, 2]
         bed_cols = ["chrom", "start", "end"]
@@ -162,10 +165,15 @@ def pileup(
         if names is None:
             kwargs = dict(
                 header=None,
+                usecols=default_cols, 
                 names=bed_cols,
+                dtype=dtypes
             )
         else:
-            kwargs = dict(header="infer", usecols=bed_cols)
+            if len(names) < 3:
+                raise ValueError("Too few columns for BED")
+            kwargs = dict(header="infer", usecols=bed_cols, dtype=dtypes)
+
     else:
         raise NotImplementedError(
             "Automatic detection of features format is not implemented yet. "
@@ -173,7 +181,7 @@ def pileup(
         )
 
     features_df = pd.read_table(
-        buf, comment="#", usecols=default_cols, dtype=dtypes, verbose=verbose, **kwargs
+        buf, comment="#", verbose=verbose, **kwargs
     )
 
     ###### Define view
@@ -185,14 +193,15 @@ def pileup(
         view_df = read_viewframe_from_file(view, clr, check_sorting=True)
 
     # make sure feature are compatible with the view_df
-    if features_format.lower() == "bed":
-        if not bioframe.is_contained(features_df, view_df, cols=bed_cols):
-            raise ValueError("Features are not contained in view bounds")
-    else:
-        if not bioframe.is_contained(
-            features_df, view_df, cols=bedpe_cols[:3]
-        ) or not bioframe.is_contained(features_df, view_df, cols=bedpe_cols[3:]):
-            raise ValueError("Features are not contained in view bounds")
+    # TODO: uncomment when bioframe issue is resolved https://github.com/open2c/bioframe/issues/126
+    # if features_format.lower() == "bed":
+    #     if not bioframe.is_contained(features_df, view_df, cols=bed_cols):
+    #         raise ValueError("Features are not contained in view bounds")
+    # else:
+    #     if not bioframe.is_contained(
+    #         features_df, view_df, cols=bedpe_cols[:3]
+    #     ) or not bioframe.is_contained(features_df, view_df, cols=bedpe_cols[3:]):
+    #         raise ValueError("Features are not contained in view bounds")
 
     ##### Read expected, should be cis-expected:
     if expected is None:
