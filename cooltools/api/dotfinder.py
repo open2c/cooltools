@@ -1352,7 +1352,7 @@ def scoring_and_histogramming_step(
         # drop all lambda-bins that do not have pixels in them:
         final_hist[k] = final_hist[k].loc[:, final_hist[k].sum() > 0]
         # make sure index (observed pixels counts) is sorted
-        if not final_hist[k].index.is_monotonic:
+        if not final_hist[k].index.is_monotonic_increasing:
             raise ValueError(f"Histogram for {k}-kernel is not sorted")
     # returning filtered histogram
     return final_hist
@@ -1559,6 +1559,7 @@ def dots(
         )
     except Exception as e:
         raise ValueError("provided expected is not compatible") from e
+    expected = expected.set_index(["region1", "region2", "dist"]).sort_index()
 
     # Prepare some parameters.
     binsize = clr.binsize
@@ -1607,7 +1608,7 @@ def dots(
     time_start = time.perf_counter()
     gw_hist = scoring_and_histogramming_step(
         clr,
-        expected.set_index(["region1", "region2", "dist"]),
+        expected,
         expected_value_col=expected_value_col,
         clr_weight_name=clr_weight_name,
         tiles=tiles,
@@ -1628,7 +1629,7 @@ def dots(
     time_start = time.perf_counter()
     filtered_pixels = scoring_and_extraction_step(
         clr,
-        expected.set_index(["region1", "region2", "dist"]),
+        expected,
         expected_value_col=expected_value_col,
         clr_weight_name=clr_weight_name,
         tiles=tiles,
