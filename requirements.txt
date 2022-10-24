@@ -7,7 +7,7 @@ matplotlib
 multiprocess
 numba
 numpy
-pandas>=1.3
+pandas>=1.5.1
 scikit-learn>=1.1.2
 scipy
 scikit-image
