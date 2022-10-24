@@ -1,6 +1,40 @@
 # Release notes
 
-## [Upcoming release](https://github.com/open2c/cooltools/compare/v0.5.1...HEAD)
+## [Upcoming release](https://github.com/open2c/cooltools/compare/v0.5.2...HEAD)
+
+
+## [v0.5.2](https://github.com/open2c/cooltools/compare/v0.5.1...v0.5.2)
+
+### API changes
+* remove custom bad_bins from expected & eigdecomp [#336](https://github.com/open2c/cooltools/pull/336)
+* coverage can store total cis counts in the cooler, and sampling can use cis counts [#332](https://github.com/open2c/cooltools/pull/322)
+* can now calculate coverge for balanced data [#385](https://github.com/open2c/cooltools/pull/385)
+* new drop_track_na argument for align_track_with_cooler, allows calcultions that that missing data in tracks as absent [#360](https://github.com/open2c/cooltools/pull/360)
+* multi-thread insulation by chromosome (TODO: by chunk)
+* Virtual 4C tool [#378](https://github.com/open2c/cooltools/pull/378)
+
+### CLI changes
+* CLI tool for `coverage()`
+
+### Documentation
+* snipping documentation
+* dots tutorial
+* CLI tutorial
+
+### Maintenance
+* Dropped support for Python 3.7 (due to Pandas compatability issues)
+* Added support for Python 3.10
+
+* Minor bugfixes and compatibility updates
+  * Pandas compatibility, pinned above 1.5.1
+  * bioframe compatability
+  * scikit-learn, pinned above >=1.1.2
+  * saddle binedges, value limits [#361](https://github.com/open2c/cooltools/pull/361)
+  * pileup CLI bugfix for reading features
+
+
+### Other 
+* [Code of conduct](https://github.com/open2c/cooltools/blob/master/CODE_OF_CONDUCT.md)
 
 ## [v0.5.1](https://github.com/open2c/cooltools/compare/v0.5.0...v0.5.1)
 ### API changes
