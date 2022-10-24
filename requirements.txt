@@ -8,6 +8,6 @@ multiprocess
 numba
 numpy
 pandas>=1.3
-scikit-learn
+scikit-learn>=1.1.2
 scipy
-scikit-image>=1.1.2
+scikit-image
