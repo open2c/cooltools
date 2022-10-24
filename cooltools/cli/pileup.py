@@ -157,7 +157,7 @@ def pileup(
             if len(names) < 6:
                 raise ValueError("Too few columns for BEDPE")
             bedpe_cols = names[:6]
-            dtypes = dict(zip(names[], dtypes.values()))
+            dtypes = dict(zip(bedpe_cols, dtypes.values()))
             kwargs = dict(header="infer", usecols=bedpe_cols, dtype=dtypes)
 
     elif features_format.lower() == "bed":
@@ -175,7 +175,7 @@ def pileup(
             if len(names) < 3:
                 raise ValueError("Too few columns for BED")
             bed_cols = names[:3]
-            dtypes = dict(zip(names[], dtypes.values()))
+            dtypes = dict(zip(bed_cols, dtypes.values()))
             kwargs = dict(header="infer", usecols=bed_cols, dtype=dtypes)
 
     else:
