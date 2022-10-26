@@ -1,7 +1,6 @@
 from itertools import combinations
 from functools import partial
 from scipy.linalg import toeplitz
-from cytoolz import merge
 import numpy as np
 import pandas as pd
 from ..lib import numutils
@@ -15,6 +14,10 @@ from ..lib.common import view_from_track, align_track_with_cooler
 
 import warnings
 import bioframe
+
+
+def _merge_dict(a, b):
+    return {**a, **b}
 
 
 def _ecdf(x, v, side="left"):
@@ -423,7 +426,7 @@ def saddle(
             view_df=view_df,
             clr_weight_name=clr_weight_name,
             mask_clr_bad_bins=True,
-            drop_track_na=drop_track_na, # this adds check for chromosomes that have all missing values
+            drop_track_na=drop_track_na,  # this adds check for chromosomes that have all missing values
         )
         digitized_track, binedges = digitize(
             track.iloc[:, :4],
@@ -434,7 +437,7 @@ def saddle(
         )
         digitized_col = digitized_track.columns[3]
 
-    elif n_bins is None: 
+    elif n_bins is None:
         # assume and test if track is pre-digitized
         digitized_track = track
         digitized_col = digitized_track.columns[3]
@@ -449,9 +452,9 @@ def saddle(
                 + "pandas categorical. See get_digitized()."
             )
         cats = digitized_track[digitized_col].dtype.categories.values
-        # cats has two additional categories, 0 and n_bins+1, for values 
+        # cats has two additional categories, 0 and n_bins+1, for values
         # falling outside range, as well as -1 for NAs.
-        n_bins = len(cats[cats > -1]) - 2 
+        n_bins = len(cats[cats > -1]) - 2
     else:
         raise ValueError("n_bins must be provided as int or None")
 
@@ -683,7 +686,7 @@ def saddleplot(
     # Figure
     if fig is None:
         fig_kws_default = dict(figsize=(5, 5))
-        fig_kws = merge(fig_kws_default, fig_kws if fig_kws is not None else {})
+        fig_kws = _merge_dict(fig_kws_default, fig_kws if fig_kws is not None else {})
         fig = plt.figure(**fig_kws)
 
     # Heatmap
@@ -696,7 +699,7 @@ def saddleplot(
 
     grid["ax_heatmap"] = ax = plt.subplot(gs[4])
     heatmap_kws_default = dict(cmap=cmap, rasterized=True)
-    heatmap_kws = merge(
+    heatmap_kws = _merge_dict(
         heatmap_kws_default, heatmap_kws if heatmap_kws is not None else {}
     )
     img = ax.pcolormesh(X, Y, C, norm=norm, **heatmap_kws)
@@ -704,7 +707,9 @@ def saddleplot(
 
     # Margins
     margin_kws_default = dict(edgecolor="k", facecolor=color, linewidth=1)
-    margin_kws = merge(margin_kws_default, margin_kws if margin_kws is not None else {})
+    margin_kws = _merge_dict(
+        margin_kws_default, margin_kws if margin_kws is not None else {}
+    )
     # left margin hist
     grid["ax_margin_y"] = plt.subplot(gs[3], sharey=grid["ax_heatmap"])
     plt.barh(
@@ -732,7 +737,7 @@ def saddleplot(
     # Colorbar
     grid["ax_cbar"] = plt.subplot(gs[5])
     cbar_kws_default = dict(fraction=0.8, label=clabel or "")
-    cbar_kws = merge(cbar_kws_default, cbar_kws if cbar_kws is not None else {})
+    cbar_kws = _merge_dict(cbar_kws_default, cbar_kws if cbar_kws is not None else {})
     if scale == "linear" and vmin is not None and vmax is not None:
         grid["cbar"] = cb = plt.colorbar(img, **cbar_kws)
         # cb.set_ticks(np.arange(vmin, vmax + 0.001, 0.5))
