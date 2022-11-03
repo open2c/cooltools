@@ -69,3 +69,6 @@ Vignettes, using existing tools in new ways, should be submitted as pull request
 
 Practical aspects for contributing can be found in the guide [here](https://github.com/open2c/cooltools/blob/master/CONTRIBUTING.md).
 
+## Citing `cooltools`
+
+Open2C*, Nezar Abdennur*, Sameer Abraham, Geoffrey Fudenberg*, Ilya M. Flyamer*, Aleksandra A. Galitsyna*, Anton Goloborodko*, Maxim Imakaev, Betul A. Oksuz, and Sergey V. Venev*. “Cooltools: Enabling High-Resolution Hi-C Analysis in Python.” bioRxiv, November 1, 2022. https://doi.org/10.1101/2022.10.31.514564.
