@@ -8,9 +8,7 @@
 
 Chromosome conformation capture technologies reveal the incredible complexity of genome folding. A growing number of labs and multiple consortia, including the 4D Nucleome, the International Nucleome Consortium, and ENCODE, are generating higher-resolution datasets to probe genome architecture across cell states, types, and organisms. Larger datasets increase the challenges at each step of computational analysis, from storage, to memory, to researchers’ time. The recently-introduced [***cooler***](https://github.com/open2c/cooler/tree/master/cooler) format readily handles storage of high-resolution datasets via a sparse data model.
 
-***cooltools*** leverages this format to enable flexible and reproducible analysis of high-resolution data. ***cooltools*** provides a suite of computational tools with a paired python API and command line access, which facilitates workflows either on high-performance computing clusters or via custom analysis notebooks. As part of the [***Open2C*** ecosystem](https://open2c.github.io/), ***cooltools*** also provides detailed introductions to key concepts in Hi-C-data analysis with interactive notebook documentation.
-
-If you use ***cooltools*** in your work, please cite ***cooltools*** via its zenodo [DOI:10.5281/zenodo.5214125](https://doi.org/10.5281/zenodo.5214125)
+***cooltools*** leverages this format to enable flexible and reproducible analysis of high-resolution data. ***cooltools*** provides a suite of computational tools with a paired python API and command line access, which facilitates workflows either on high-performance computing clusters or via custom analysis notebooks. As part of the [***Open2C*** ecosystem](https://open2c.github.io/), ***cooltools*** also provides detailed introductions to key concepts in Hi-C-data analysis with interactive notebook documentation. For more information, see the [preprint](https://doi.org/10.1101/2022.10.31.514564): https://doi.org/10.1101/2022.10.31.514564.
 
 ## Requirements
 
