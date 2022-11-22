@@ -25,8 +25,6 @@ import multiprocessing as mp
     help="The number of diagonals to ignore. By default, equals"
     " the number of diagonals ignored during IC balancing.",
     type=int,
-    default=None,
-    show_default=True,
 )
 @click.option(
     "--store",
