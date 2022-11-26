@@ -636,10 +636,12 @@ def get_adjusted_expected_tile_some_nans(
             "a tuple/list of a couple of numpy.ndarray-s"
             "for a slice of matrix with an arbitrary origin."
         )
+    # prepare matrix of balancing weights Ci*Cj
+    bal_weights_ij = np.outer(v_bal_i, v_bal_j)
 
     # balanced observed, from raw-observed
     # by element-wise multiply:
-    O_bal = np.multiply(O_raw, np.outer(v_bal_i, v_bal_j))
+    O_bal = np.multiply(O_raw, bal_weights_ij)
     # O_bal is separate from O_raw memory-wise.
 
     # fill lower triangle of O_bal and E_bal with NaNs
@@ -653,14 +655,14 @@ def get_adjusted_expected_tile_some_nans(
 
     # raw E_bal: element-wise division of E_bal[i,j] and
     # v_bal[i]*v_bal[j]:
-    E_raw = np.divide(E_bal, np.outer(v_bal_i, v_bal_j))
+    E_raw = np.divide(E_bal, bal_weights_ij)
 
     # let's calculate a matrix of common NaNs
     # shared between observed and expected:
     # check if it's redundant ? (is NaNs from O_bal sufficient? )
     N_bal = np.logical_or(np.isnan(O_bal), np.isnan(E_bal))
     # fill in common nan-s with zeroes, preventing
-    # NaNs during convolution part of '_convolve_and_count_nans':
+    # NaNs during convolution:
     O_bal[N_bal] = 0.0
     E_bal[N_bal] = 0.0
     # think about usinf copyto and where functions later:
@@ -671,7 +673,7 @@ def get_adjusted_expected_tile_some_nans(
     # unfiltered results (even the lower triangle for now):
     i, j = np.indices(O_raw.shape)
     # pack it into DataFrame to accumulate results:
-    peaks_df = pd.DataFrame({"bin1_id": i.flatten() + io, "bin2_id": j.flatten() + jo})
+    peaks_df = pd.DataFrame({"bin1_id": i.ravel() + io, "bin2_id": j.ravel() + jo, "count": O_raw.ravel()})
 
     with np.errstate(divide="ignore", invalid="ignore"):
         for kernel_name, kernel in kernels.items():
@@ -693,13 +695,9 @@ def get_adjusted_expected_tile_some_nans(
             # N_bal is shared NaNs between O_bal E_bal,
             NN = convolve(
                 N_bal.astype(np.int64),
-                # we have to use kernel's
-                # nonzero footprint:
-                (kernel != 0).astype(np.int64),
+                (kernel != 0).astype(np.int64),  # non-zero footprint as kernel
                 mode="constant",
-                # there are only NaNs
-                # beyond the boundary:
-                cval=1,
+                cval=1,  # NaNs beyond boundaries
                 origin=0,
             )
             ######################################
@@ -710,33 +708,20 @@ def get_adjusted_expected_tile_some_nans(
             # ####################################
             # now finally, E_raw*(KO/KE), as the
             # locally-adjusted expected with raw counts as values:
-            Ek_raw = np.multiply(E_raw, np.divide(KO, KE))
+            local_adjustment_factor = np.divide(KO, KE)
+            Ek_raw = np.multiply(E_raw, local_adjustment_factor)
 
             logging.debug(
                 f"Convolution with kernel {kernel_name} is done for tile @ {io} {jo}."
             )
-            #
             # accumulation into single DataFrame:
             # store locally adjusted expected for each kernel
             # and number of NaNs in the footprint of each kernel
-            peaks_df[f"la_exp.{kernel_name}.value"] = Ek_raw.flatten()
-            peaks_df[f"la_exp.{kernel_name}.nnans"] = NN.flatten()
+            peaks_df[f"la_exp.{kernel_name}.value"] = Ek_raw.ravel()
+            peaks_df[f"la_exp.{kernel_name}.nnans"] = NN.ravel()
+            # division by KE=0 has to be treated separately:
+            peaks_df[f"safe_division.{kernel_name}"] = np.isfinite(local_adjustment_factor.ravel())
             # do all the filter/logic/masking etc on the complete DataFrame ...
-    #####################################
-    # downstream stuff is supposed to be
-    # aggregated over all kernels ...
-    #####################################
-    peaks_df["exp.raw"] = E_raw.flatten()
-    peaks_df["count"] = O_raw.flatten()
-
-    # Consider filling lower triangle of the OBSERVED matrix tile
-    # with NaNs, instead of this - we'd need this for a fair
-    # consideration of the pixels that are super close to the
-    # diagonal and in a case, when the corresponding donut would
-    # cross a diagonal line.
-    # selecting pixels in relation to diagonal - too far, too
-    # close etc, is now shifted to the outside of this function
-    # a way to simplify code.
 
     return peaks_df
 
@@ -832,8 +817,12 @@ def score_tile(
     does_comply_nans = np.all(
         result[[f"la_exp.{k}.nnans" for k in kernels]] < max_nans_tolerated, axis=1
     )
+
+    # (3) keep pixels without nan/infinite local adjustment factors for all kernel
+    finite_values_only = result[[f"safe_division.{k}" for k in kernels]].all(axis="columns")
+
     # so, selecting inside band and nNaNs compliant results:
-    res_df = result[upper_band & is_inside_band & does_comply_nans].reset_index(
+    res_df = result[upper_band & is_inside_band & does_comply_nans & finite_values_only].reset_index(
         drop=True
     )
     #
