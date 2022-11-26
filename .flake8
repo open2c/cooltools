@@ -5,14 +5,24 @@ exclude =
 
 max-line-length = 80
 ignore =
-    E203  # whitespace before ':'
-    E266  # too many leading '#' for block comment
-    E501  # line too long
-    W503  # line break before binary operator
+    # whitespace before ':'
+    E203
+    # too many leading '#' for block comment
+    E266
+    # line too long
+    E501
+    # line break before binary operator
+    W503
 select =
-    C  # mccabe complexity
-    E  # pycodestyle
-    F  # pyflakes error
-    W  # pyflakes warning
-    B  # bugbear
-    B950  # line exceeds max-line-length + 10%
+    # mccabe complexity
+    C
+    # pycodestyle
+    E
+    # pyflakes error
+    F
+    # pyflakes warning
+    W
+    # bugbear
+    B
+    # line exceeds max-line-length + 10%
+    B950
