@@ -73,18 +73,7 @@ def test_is_valid_expected(request, tmpdir):
             raise_errors=True,
         )
 
-    # alternate method of loading (read_expected_from_file):
-    expected_df_wrongdtype = expected_df.copy()
-    expected_df_wrongdtype[expected_df_wrongdtype.n_valid[0]] = "string"
-    expected_df_wrongdtype.to_csv(op.join(tmpdir, "CN.mm9.toy_expected_wrongdtype.tsv"), 
-                                  sep="\t", index=False)
-    
-    # raise error with string in one row of "n_valid" column (supposed to be Int64 dtype)
-    with pytest.raises(ValueError):
-        cooltools.lib.io.read_expected_from_file(
-            op.join(tmpdir, "CN.mm9.toy_expected_wrongdtype.tsv"),
-        )
-        
+    # alternate method of loading:
     expected_df = cooltools.lib.read_expected_from_file(
         expected_file, expected_value_cols=["balanced.avg"]
     )
