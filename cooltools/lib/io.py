@@ -289,6 +289,8 @@ def read_expected_from_file(
     Expected must conform v1.0 format
     https://github.com/open2c/cooltools/issues/217
 
+    dtypes are from https://github.com/open2c/cooltools/blob/master/cooltools/lib/schemas.py
+
     Parameters
     ----------
     fname : str
@@ -311,8 +313,17 @@ def read_expected_from_file(
         DataFrame with the expected
     """
 
+    if contact_type == "cis":
+        expected_dtypes = copy(schemas.diag_expected_dtypes)  # mutable copy
+    elif contact_type == "trans":
+        expected_dtypes = copy(schemas.block_expected_dtypes)  # mutable copy
+    else:
+        raise ValueError(
+            f"Incorrect contact_type: {contact_type}, only cis and trans are supported."
+        )
+
     try:
-        expected_df = pd.read_table(fname)
+        expected_df = pd.read_table(fname, dtype=expected_dtypes)
         _ = is_valid_expected(
             expected_df,
             contact_type,
