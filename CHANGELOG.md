@@ -1,7 +1,15 @@
 # Release notes
 
-## [Upcoming release](https://github.com/open2c/cooltools/compare/v0.5.2...HEAD)
+## [Upcoming release](https://github.com/open2c/cooltools/compare/v0.5.3...HEAD)
 
+## [v0.5.3](https://github.com/open2c/cooltools/compare/v0.5.2...v0.5.3)
+
+### Maintenance
+
+* Improvements for `read_expected_from_file`
+* Bug fix for dot caller 0/0 occurrences
+* Remove `cytoolz` dependency
+* Pin cooler <0.9 until compatibility
 
 ## [v0.5.2](https://github.com/open2c/cooltools/compare/v0.5.1...v0.5.2)
 
