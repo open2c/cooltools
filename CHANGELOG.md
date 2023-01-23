@@ -1,6 +1,12 @@
 # Release notes
 
-## [Upcoming release](https://github.com/open2c/cooltools/compare/v0.5.3...HEAD)
+## [Upcoming release](https://github.com/open2c/cooltools/compare/v0.5.4...HEAD)
+
+## [v0.5.4](https://github.com/open2c/cooltools/compare/v0.5.3...v0.5.4)
+
+### Maintenance
+
+* Updated import statements and requirements to use cooler 0.9.
 
 ## [v0.5.3](https://github.com/open2c/cooltools/compare/v0.5.2...v0.5.3)
 
