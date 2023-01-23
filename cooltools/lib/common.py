@@ -119,7 +119,7 @@ def assign_view_auto(
     cols_view : list of str
         The names of columns containing the chromosome, start and end of the
         genomic intervals in the view. The default values are `"chrom", "start", "end"`.
-    features_view_cols_unpaired : str
+    features_view_col_unpaired : str
         Name of the column where to save the assigned region name for unpaired features
     features_view_cols_paired : list of str
         Names of the columns where to save the assigned region names for paired features
@@ -138,9 +138,9 @@ def assign_view_auto(
         should we re-wrtie region columns or keep them. 
     """
     if set(cols_unpaired).issubset(features.columns.astype(str)):
-        if set([features_view_cols_unpaired]).issubset(features.columns.astype(str)):
+        if set([features_view_col_unpaired]).issubset(features.columns.astype(str)):
             if force:
-                features.drop([features_view_cols_unpaired], inplace=True, axis=1)
+                features.drop([features_view_col_unpaired], inplace=True, axis=1)
             else:
                 return features
 
