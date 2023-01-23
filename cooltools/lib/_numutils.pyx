@@ -1,5 +1,5 @@
 from operator import add
-from cooler.tools import split
+from cooler.parallel import split
 import cython
 import numpy as np
 
