@@ -91,6 +91,7 @@ def assign_view_auto(
     view_name_col="name",
     drop_unassigned=False,
     combined_assignments_column="region",
+    force=True,
 ):
     """Assign region names from the view to each feature
 
@@ -132,8 +133,17 @@ def assign_view_auto(
         features when they match into column with this name: region name when regions
         assigned to both sides match, np.nan if not.
         Default "region"
+    force : bool, True or False
+        if features already have features_view_col (paired or not, depending on the feature types),
+        should we re-wrtie region columns or keep them. 
     """
     if set(cols_unpaired).issubset(features.columns.astype(str)):
+        if set([features_view_cols_unpaired]).issubset(features.columns.astype(str)):
+            if force:
+                features.drop([features_view_cols_unpaired], inplace=True, axis=1)
+            else:
+                return features
+
         features = bioframe.assign_view(
             features,
             view_df,
@@ -143,7 +153,14 @@ def assign_view_auto(
             cols_view=cols_view,
             drop_unassigned=drop_unassigned,
         )
+
     elif set(cols_paired).issubset(features.columns.astype(str)):
+        if set(features_view_cols_paired).issubset(features.columns.astype(str)):
+            if force:
+                features.drop(features_view_cols_paired, inplace=True, axis=1)
+            else:
+                return features
+
         features = assign_view_paired(
             features=features,
             view_df=view_df,
