@@ -1,5 +1,5 @@
 import numpy as np
-import cooler.tools
+import cooler.parallel
 from ..lib.checks import is_cooler_balanced
 
 
@@ -136,7 +136,7 @@ def coverage(
             f"balancing weight {clr_weight_name} is not available in the cooler."
         )
         
-    chunks = cooler.tools.split(clr, chunksize=chunksize, map=map, use_lock=use_lock)
+    chunks = cooler.parallel.split(clr, chunksize=chunksize, map=map, use_lock=use_lock)
 
     if ignore_diags:
         chunks = chunks.pipe(_zero_diags, n_diags=ignore_diags)

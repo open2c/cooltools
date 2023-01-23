@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 
 import cooler
-import cooler.tools
+import cooler.parallel
 from .coverage import coverage
 
 
@@ -120,7 +120,7 @@ def sample(
 
     else:
         pipeline = (
-            cooler.tools.split(
+            cooler.parallel.split(
                 clr, include_bins=False, map=map_func, chunksize=chunksize
             )
             .pipe(_extract_pixel_chunk)

@@ -9,7 +9,7 @@ import pandas as pd
 from scipy.signal import fftconvolve
 from scipy.interpolate import interp1d
 
-from cooler.tools import partition
+from cooler.util import partition
 import cooler
 import bioframe
 from ..lib import assign_supports, numutils

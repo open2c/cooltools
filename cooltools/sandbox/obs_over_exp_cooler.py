@@ -20,7 +20,7 @@ import numpy as np
 import pandas as pd
 
 import cooler
-from cooler.tools import partition
+from cooler.util import partition
 
 from cooltools import (
     expected_cis,
