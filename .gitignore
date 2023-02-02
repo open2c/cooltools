@@ -99,7 +99,7 @@ ENV/
 tmp/
 
 # Downloaded data
-datasets/
+datasets/*
 !datasets/external_test_files.tsv
 tmp.npz
 .gitignore
