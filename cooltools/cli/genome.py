@@ -45,7 +45,7 @@ def binnify(chromsizes_path, binsize, all_names):
 def digest(chromsizes_path, fasta_path, enzyme_name):
     import bioframe
 
-    chromsizes = bioframe.read_chromsizes(chromsizes_path, all_names=True)
+    chromsizes = bioframe.read_chromsizes(chromsizes_path, filter_chroms=False)
     fasta_records = bioframe.load_fasta(fasta_path, engine="pyfaidx", as_raw=True)
     if not chromsizes.index.isin(fasta_records).all():
         raise ValueError(
