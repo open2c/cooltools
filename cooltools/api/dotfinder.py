@@ -990,7 +990,7 @@ def determine_thresholds(gw_hist, fdr):
     return threshold_df, qvalues
 
 
-def extract_scored_pixels(scored_df, thresholds, obs_raw_name=observed_count_name):
+def extract_scored_pixels(scored_df, thresholds, ledges, obs_raw_name=observed_count_name):
     """
     Implementation of HiCCUPS-like lambda-binning statistical procedure.
     Use FDR thresholds for different "classes" of hypothesis
@@ -1004,6 +1004,10 @@ def extract_scored_pixels(scored_df, thresholds, obs_raw_name=observed_count_nam
     thresholds : dict
         A dictionary {kernel_name : lambda_thresholds}, where 'lambda_thresholds'
         are pd.Series with FDR thresholds indexed by lambda-bin intervals
+    ledges : ndarray
+        An ndarray with bin lambda-edges for groupping locally adjusted
+        expecteds, i.e., classifying statistical hypothesis into lambda-bins.
+        Left-most bin (-inf, 1], and right-most one (value,+inf].
     obs_raw_name : str
         Name of the column/field with number of counts per pixel,
         i.e. observed raw counts.
@@ -1018,10 +1022,8 @@ def extract_scored_pixels(scored_df, thresholds, obs_raw_name=observed_count_nam
     for kernel_name, threshold in thresholds.items():
         # locally adjusted expected (lambda) of the scored pixels:
         lambda_of_pixels = scored_df[f"la_exp.{kernel_name}.value"]
-        # reconstruct edges of lambda bins from threshold's index:
-        ledges_reconstruct = np.r_[threshold.index.left, threshold.index.right[-1]]
-        # find indices of lambda-bins where pixels belong
-        lbin_idx = pd.cut(lambda_of_pixels, ledges_reconstruct, labels=False)
+        # find indices of lambda-bins where pixels belong, using exact ledges
+        lbin_idx = pd.cut(lambda_of_pixels, ledges, labels=False)
         # extract threholds for every pixel, based on lambda-bin each of the belongs
         threshold_of_pixels = threshold.iloc[lbin_idx]
         compliant_pixel_masks.append(
@@ -1388,6 +1390,7 @@ def scoring_and_extraction_step(
     to_extract = partial(
         extract_scored_pixels,
         thresholds=thresholds,
+        ledges=ledges,
     )
 
     # compose scoring and histogramming together
