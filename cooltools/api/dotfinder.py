@@ -436,11 +436,11 @@ def tile_square_matrix(matrix_size, offset, tile_size, pad=0):
     else:
         num_tiles = matrix_size // tile_size
 
-    logging.info(
+    logging.debug(
         f" matrix {matrix_size}X{matrix_size} to be split into {num_tiles * num_tiles} tiles of {tile_size}X{tile_size}."
     )
     if pad:
-        logging.info(
+        logging.debug(
             f" tiles are padded (width={pad}) to enable convolution near the edges"
         )
 
