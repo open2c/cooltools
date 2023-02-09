@@ -878,6 +878,19 @@ def pileup(
     else:
         raise ValueError("Unknown feature_df format")
 
+    if view_df is None:
+        view_df = make_cooler_view(clr)
+    else:
+        try:
+            _ = is_compatible_viewframe(
+                view_df,
+                clr,
+                check_sorting=True,
+                raise_errors=True,
+            )
+        except Exception as e:
+            raise ValueError("view_df is not a valid viewframe or incompatible") from e
+
     features_df = assign_view_auto(features_df, view_df)
     # TODO: switch to bioframe.assign_view upon update
 
@@ -895,19 +908,6 @@ def pileup(
             features_df["hi1"] = (features_df["end1"] / clr.binsize).astype(int)
             features_df["lo2"] = (features_df["start2"] / clr.binsize).astype(int)
             features_df["hi2"] = (features_df["end2"] / clr.binsize).astype(int)
-
-    if view_df is None:
-        view_df = make_cooler_view(clr)
-    else:
-        try:
-            _ = is_compatible_viewframe(
-                view_df,
-                clr,
-                check_sorting=True,
-                raise_errors=True,
-            )
-        except Exception as e:
-            raise ValueError("view_df is not a valid viewframe or incompatible") from e
 
     if clr_weight_name not in [None, False]:
         # check if cooler is balanced
