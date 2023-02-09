@@ -985,8 +985,11 @@ def pileup(
         mymap = map
     stack = _pileup(features_df, snipper.select, snipper.snip, map=mymap)
     if feature_type == "bed":
+        nans = np.isnan(stack)
+        nans_t = np.transpose(nans, axes=(1, 0, 2))
         stack = np.nansum([stack, np.transpose(stack, axes=(1, 0, 2))], axis=0)
-
+        stack[nans] = np.nan
+        stack[nans_t] = np.nan
     if nproc > 1:
         pool.close()
     return stack
