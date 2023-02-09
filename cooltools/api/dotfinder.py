@@ -1340,8 +1340,10 @@ def scoring_and_histogramming_step(
             raise ValueError(
                 f"There are la_exp.{k}.value in {last_lambda_bin.name}, please check the histogram"
             )
-        # drop all lambda-bins that do not have pixels in them:
-        final_hist[k] = final_hist[k].loc[:, final_hist[k].sum() > 0]
+        # last non-empty lambda bin (column)
+        last_non_empty_lbin = final_hist[k].columns[final_hist[k].sum() > 0][-1]
+        # drop trailing empty lambda bins (columns)
+        final_hist[k] = final_hist[k].loc[:, :last_non_empty_lbin]
         # make sure index (observed pixels counts) is sorted
         if not final_hist[k].index.is_monotonic_increasing:
             raise ValueError(f"Histogram for {k}-kernel is not sorted")
