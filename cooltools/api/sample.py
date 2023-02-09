@@ -107,7 +107,7 @@ def sample(
             " and `frac`"
         )
 
-    if frac >= 1.0:
+    if frac > 1.0:
         raise ValueError(
             "The number of contacts in a sample cannot exceed "
             "that in the original dataset."
