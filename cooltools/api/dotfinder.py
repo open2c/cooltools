@@ -665,6 +665,7 @@ def get_adjusted_expected_tile_some_nans(
     # NaNs during convolution:
     O_bal[N_bal] = 0.0
     E_bal[N_bal] = 0.0
+    E_raw[N_bal] = 0.0  # todo: consider filtering those altogether
     # think about usinf copyto and where functions later:
     # https://stackoverflow.com/questions/6431973/how-to-copy-data-from-a-numpy-array-to-another
     #
