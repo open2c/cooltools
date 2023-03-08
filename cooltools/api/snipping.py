@@ -985,7 +985,7 @@ def pileup(
         mymap = map
     stack = _pileup(features_df, snipper.select, snipper.snip, map=mymap)
     if feature_type == "bed":
-        stack = np.fmax(stack, np.transpose(stack, axes=(0, 2, 1)))
+        stack = np.maximum(stack, np.transpose(stack, axes=(0, 2, 1)))
 
     if nproc > 1:
         pool.close()
