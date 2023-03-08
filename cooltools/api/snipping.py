@@ -863,7 +863,9 @@ def pileup(
 
     Returns
     -------
-        np.ndarray: a stackup of all snippets corresponding to the features
+        np.ndarray: a stackup of all snippets corresponding to the features, with shape
+        (n, D, D), where n is the number of snippets and (D, D) is the shape of each
+        snippet
 
     """
 
