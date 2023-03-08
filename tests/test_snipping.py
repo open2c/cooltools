@@ -100,14 +100,16 @@ def test_pileup(request):
     windows = pd.DataFrame(
         {
             "chrom": ["chr1", "chr1"],
-            "start": [102_000_000, 108_000_000],
-            "end": [107_000_000, 113_000_000],
+            "start": [83000000, 108_000_000],
+            "end": [88_000_000, 113_000_000],
         }
     )
 
     stack = cooltools.api.snipping.pileup(clr, windows, view_df=None, flank=None)
     # Check that the size of snips is OK and there are two of them:
     assert stack.shape == (2, 5, 5)
+    # Check that NaNs were propagated
+    assert np.all(np.isnan(stack[0, 2, :]))
 
     stack = cooltools.api.snipping.pileup(
         clr, windows, view_df=view_df, expected_df=exp, flank=None
