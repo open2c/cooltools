@@ -107,14 +107,14 @@ def test_pileup(request):
 
     stack = cooltools.api.snipping.pileup(clr, windows, view_df=None, flank=None)
     # Check that the size of snips is OK and there are two of them:
-    assert stack.shape == (5, 5, 2)
+    assert stack.shape == (2, 5, 5)
 
     stack = cooltools.api.snipping.pileup(
         clr, windows, view_df=view_df, expected_df=exp, flank=None
     )
     # Check that the size of snips is OK and there are two of them.
     # Now with view and expected:
-    assert stack.shape == (5, 5, 2)
+    assert stack.shape == (2, 5, 5)
 
     # II.
     # Example off-diagonal features, two features from annotated genomic regions:
@@ -132,7 +132,7 @@ def test_pileup(request):
         clr, windows, view_df=view_df, expected_df=exp, flank=None
     )
     # Check that the size of snips is OK and there are two of them:
-    assert stack.shape == (5, 5, 2)
+    assert stack.shape == (2, 5, 5)
 
     # III.
     # Example off-diagonal features, one region outside the view:
@@ -150,9 +150,9 @@ def test_pileup(request):
         clr, windows, view_df=view_df, expected_df=exp, flank=None
     )
     # Check that the size of snips is OK and there are two of them:
-    assert stack.shape == (5, 5, 2)
+    assert stack.shape == (2, 5, 5)
 
-    assert np.all(np.isnan(stack[:, :, 0]))
+    assert np.all(np.isnan(stack[0]))
 
     # IV.
     # Example on-diagonal features, not valid bedframes (start>end):
@@ -169,7 +169,7 @@ def test_pileup(request):
     # DRAFT # Should work with force=True:
     # stack = cooltools.api.snipping.pileup(clr, windows, view_df, exp, flank=None, force=True)
     # # Check that the size of snips is OK and there are two of them:
-    # assert stack.shape == (5, 5, 2)
+    # assert stack.shape == (2, 5, 5,)
 
     # IV.
     # Example of-diagonal features not valid bedframes (start>end):
@@ -191,7 +191,7 @@ def test_pileup(request):
     # DRAFT # Should work with force=True:
     # stack = cooltools.api.snipping.pileup(clr, windows, view_df, exp, flank=0, force=True)
     # # Check that the size of snips is OK and there are two of them:
-    # assert stack.shape == (5, 5, 2)
+    # assert stack.shape == (2, 5, 5,)
 
 
 def test_ondiag__pileup_with_expected(request):
@@ -223,7 +223,7 @@ def test_ondiag__pileup_with_expected(request):
         )
 
         # Check that the size of snips is OK and there are two of them:
-        assert stack.shape == (5, 5, 2)
+        assert stack.shape == (2, 5, 5)
 
         # II.
         # Example region with windows, second window comes from unannotated genomic region:
@@ -238,8 +238,8 @@ def test_ondiag__pileup_with_expected(request):
             windows, snipper.select, snipper.snip, map=map
         )
 
-        assert stack.shape == (5, 5, 2)
-        assert np.all(np.isnan(stack[:, :, 1]))
+        assert stack.shape == (2, 5, 5)
+        assert np.all(np.isnan(stack[1]))
 
 
 def test_ondiag__pileup_without_expected(request):
@@ -267,7 +267,7 @@ def test_ondiag__pileup_without_expected(request):
     )
 
     # Check that the size of snips is OK and there are two of them:
-    assert stack.shape == (5, 5, 2)
+    assert stack.shape == (2, 5, 5)
 
     # II.
     # Example region with windows, second window comes from unannotated genomic region:
@@ -282,9 +282,9 @@ def test_ondiag__pileup_without_expected(request):
         windows, snipper.select, snipper.snip, map=map
     )
 
-    assert stack.shape == (5, 5, 2)
-    assert np.all(np.isfinite(stack[:, :, 0]))
-    assert np.all(np.isnan(stack[:, :, 1]))
+    assert stack.shape == (2, 5, 5)
+    assert np.all(np.isfinite(stack[0]))
+    assert np.all(np.isnan(stack[1]))
 
 
 def test_offdiag__pileup_with_expected(request):
@@ -324,7 +324,7 @@ def test_offdiag__pileup_with_expected(request):
         )
 
         # Check that the size of snips is OK and there are two of them:
-        assert stack.shape == (5, 5, 2)
+        assert stack.shape == (2, 5, 5)
 
         # II.
         # Example region with windows, second window is between two different regions:
@@ -345,8 +345,8 @@ def test_offdiag__pileup_with_expected(request):
             windows, snipper.select, snipper.snip, map=map
         )
 
-        assert stack.shape == (5, 5, 2)
-        assert np.all(np.isnan(stack[:, :, 1]))
+        assert stack.shape == (2, 5, 5)
+        assert np.all(np.isnan(stack[1]))
 
 
 def test_offdiag__pileup_without_expected(request):
@@ -380,7 +380,7 @@ def test_offdiag__pileup_without_expected(request):
     )
 
     # Check that the size of snips is OK and there are two of them:
-    assert stack.shape == (5, 5, 2)
+    assert stack.shape == (2, 5, 5)
 
     # II.
     # Example region with windows, second window comes from unannotated genomic region:
@@ -401,9 +401,9 @@ def test_offdiag__pileup_without_expected(request):
         windows, snipper.select, snipper.snip, map=map
     )
 
-    assert stack.shape == (5, 5, 2)
-    assert np.all(np.isfinite(stack[:, :, 0]))
-    assert np.all(np.isnan(stack[:, :, 1]))
+    assert stack.shape == (2, 5, 5)
+    assert np.all(np.isfinite(stack[0]))
+    assert np.all(np.isnan(stack[1]))
 
 
 def test_snipper_with_view_and_expected(request):
