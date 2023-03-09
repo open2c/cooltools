@@ -110,6 +110,7 @@ def test_pileup(request):
     assert stack.shape == (2, 5, 5)
     # Check that NaNs were propagated
     assert np.all(np.isnan(stack[0, 2, :]))
+    assert not np.all(np.isnan(stack))
 
     stack = cooltools.api.snipping.pileup(
         clr, windows, view_df=view_df, expected_df=exp, flank=None
