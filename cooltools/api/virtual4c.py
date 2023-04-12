@@ -51,8 +51,9 @@ def _extract_profile(chrom, clr, clr_weight_name, viewpoint):
     pxls2.columns = ["chrom", "start", "end", colname]
     if pxls2.shape[0] > 0:
         to_return.append(pxls2)
-
-    if len(to_return) > 0:
+    if len(to_return)==0:
+        return pd.DataFrame(columns=["chrom", "start", "end", colname])
+    else:
         return pd.concat(to_return, ignore_index=True)
 
 
@@ -112,29 +113,31 @@ def virtual4c(
     else:
         counts = list(map(f, clr.chromnames))
 
-    if len(counts) == 0:
+    # Concatenate all chrompsome dfs into one
+    v4c = pd.concat(counts, ignore_index=True)
+    if v4c.shape[0] == 0:
+        logging.warn(f"No contacts found for viewpoint {viewpoint}")
         v4c = clr.bins()[:][["chrom", "start", "end"]]
         v4c[colname] = np.nan
-        logging.warn(f"No contacts found for viewpoint {viewpoint}")
     else:
-        v4c = bioframe.sort_bedframe(
-            pd.concat(counts, ignore_index=True),
-            view_df=bioframe.make_viewframe(clr.chromsizes),
-        )  # Concatenate all chromsome dfs into one and sort it according clr.chromsizes order
-    v4c.loc[
-        (v4c["chrom"] == viewpoint[0])
-        & (v4c["start"] >= viewpoint[1])
-        & (v4c["end"] <= viewpoint[2]),
-        colname,
-    ] = np.nan  # Set within-viewpoint bins to nan
-    v4c = (
-        pd.merge(
-            clr.bins()[:][["chrom", "start", "end"]],
+        bioframe.sort_bedframe(
             v4c,
-            on=["chrom", "start", "end"],
-            how="left",
-        )
-        .drop_duplicates()
-        .reset_index(drop=True)
-    )  # Ensure we return all bins even if empty
+            view_df=bioframe.make_viewframe(clr.chromsizes),
+        )  # sort it according clr.chromsizes order
+        v4c.loc[
+            (v4c["chrom"] == viewpoint[0])
+            & (v4c["start"] >= viewpoint[1])
+            & (v4c["end"] <= viewpoint[2]),
+            colname,
+        ] = np.nan  # Set within-viewpoint bins to nan
+        v4c = (
+            pd.merge(
+                clr.bins()[:][["chrom", "start", "end"]],
+                v4c,
+                on=["chrom", "start", "end"],
+                how="left",
+            )
+            .drop_duplicates()
+            .reset_index(drop=True)
+        )  # Ensure we return all bins even if empty
     return v4c
