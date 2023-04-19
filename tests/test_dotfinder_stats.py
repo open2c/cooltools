@@ -215,7 +215,7 @@ def test_histogramming_summary():
     # make sure total sum of the histogram yields total number of pixels:
     for k, _hist in gw_hists.items():
         assert _hist.sum().sum() == num_pixels
-        assert _hist.index.is_monotonic  # is index sorted
+        assert _hist.index.is_monotonic_increasing  # is index sorted
 
 
 # test threshold and rejection tables and only then try q-values
@@ -238,7 +238,7 @@ def test_thresholding():
     threshold_df, qvalues = determine_thresholds(gw_hists, FDR)
 
     enriched_pixels_df = extract_scored_pixels(
-        scored_df, threshold_df, obs_raw_name="count"
+        scored_df, threshold_df, ledges, obs_raw_name="count"
     )
 
     # all enriched pixels have their Null hypothesis rejected

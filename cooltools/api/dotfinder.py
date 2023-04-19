@@ -436,11 +436,11 @@ def tile_square_matrix(matrix_size, offset, tile_size, pad=0):
     else:
         num_tiles = matrix_size // tile_size
 
-    logging.info(
+    logging.debug(
         f" matrix {matrix_size}X{matrix_size} to be split into {num_tiles * num_tiles} tiles of {tile_size}X{tile_size}."
     )
     if pad:
-        logging.info(
+        logging.debug(
             f" tiles are padded (width={pad}) to enable convolution near the edges"
         )
 
@@ -665,6 +665,7 @@ def get_adjusted_expected_tile_some_nans(
     # NaNs during convolution:
     O_bal[N_bal] = 0.0
     E_bal[N_bal] = 0.0
+    E_raw[N_bal] = 0.0  # todo: consider filtering those altogether
     # think about usinf copyto and where functions later:
     # https://stackoverflow.com/questions/6431973/how-to-copy-data-from-a-numpy-array-to-another
     #
@@ -990,7 +991,7 @@ def determine_thresholds(gw_hist, fdr):
     return threshold_df, qvalues
 
 
-def extract_scored_pixels(scored_df, thresholds, obs_raw_name=observed_count_name):
+def extract_scored_pixels(scored_df, thresholds, ledges, obs_raw_name=observed_count_name):
     """
     Implementation of HiCCUPS-like lambda-binning statistical procedure.
     Use FDR thresholds for different "classes" of hypothesis
@@ -1004,6 +1005,10 @@ def extract_scored_pixels(scored_df, thresholds, obs_raw_name=observed_count_nam
     thresholds : dict
         A dictionary {kernel_name : lambda_thresholds}, where 'lambda_thresholds'
         are pd.Series with FDR thresholds indexed by lambda-bin intervals
+    ledges : ndarray
+        An ndarray with bin lambda-edges for groupping locally adjusted
+        expecteds, i.e., classifying statistical hypothesis into lambda-bins.
+        Left-most bin (-inf, 1], and right-most one (value,+inf].
     obs_raw_name : str
         Name of the column/field with number of counts per pixel,
         i.e. observed raw counts.
@@ -1018,10 +1023,8 @@ def extract_scored_pixels(scored_df, thresholds, obs_raw_name=observed_count_nam
     for kernel_name, threshold in thresholds.items():
         # locally adjusted expected (lambda) of the scored pixels:
         lambda_of_pixels = scored_df[f"la_exp.{kernel_name}.value"]
-        # reconstruct edges of lambda bins from threshold's index:
-        ledges_reconstruct = np.r_[threshold.index.left, threshold.index.right[-1]]
-        # find indices of lambda-bins where pixels belong
-        lbin_idx = pd.cut(lambda_of_pixels, ledges_reconstruct, labels=False)
+        # find indices of lambda-bins where pixels belong, using exact ledges
+        lbin_idx = pd.cut(lambda_of_pixels, ledges, labels=False)
         # extract threholds for every pixel, based on lambda-bin each of the belongs
         threshold_of_pixels = threshold.iloc[lbin_idx]
         compliant_pixel_masks.append(
@@ -1338,8 +1341,10 @@ def scoring_and_histogramming_step(
             raise ValueError(
                 f"There are la_exp.{k}.value in {last_lambda_bin.name}, please check the histogram"
             )
-        # drop all lambda-bins that do not have pixels in them:
-        final_hist[k] = final_hist[k].loc[:, final_hist[k].sum() > 0]
+        # last non-empty lambda bin (column)
+        last_non_empty_lbin = final_hist[k].columns[final_hist[k].sum() > 0][-1]
+        # drop trailing empty lambda bins (columns)
+        final_hist[k] = final_hist[k].loc[:, :last_non_empty_lbin]
         # make sure index (observed pixels counts) is sorted
         if not final_hist[k].index.is_monotonic_increasing:
             raise ValueError(f"Histogram for {k}-kernel is not sorted")
@@ -1388,6 +1393,7 @@ def scoring_and_extraction_step(
     to_extract = partial(
         extract_scored_pixels,
         thresholds=thresholds,
+        ledges=ledges,
     )
 
     # compose scoring and histogramming together
