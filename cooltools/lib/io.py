@@ -369,10 +369,10 @@ def read_viewframe_from_file(
 
     # read BED file assuming bed4/3 formats (with names-columns and without):
     try:
-        view_df = bioframe.read_table(view_fname, schema="bed4", index_col=False)
+        view_df = bioframe.read_table(view_fname, schema="bed4", schema_is_strict=True)
     except Exception as err_bed4:
         try:
-            view_df = bioframe.read_table(view_fname, schema="bed3", index_col=False)
+            view_df = bioframe.read_table(view_fname, schema="bed3", schema_is_strict=True)
         except Exception as err_bed3:
             raise ValueError(
                 f"{view_fname} is not a BED file with 3 or 4 columns"
