@@ -1,4 +1,4 @@
-bioframe>=0.3.3
+bioframe>=0.3.3,<0.4
 click>=7
 cooler>=0.9.1
 cython
@@ -7,7 +7,7 @@ matplotlib
 multiprocess
 numba
 numpy
-pandas>=1.5.1
+pandas>=1.5.1,<2
 scikit-learn>=1.1.2
 scipy
 scikit-image
