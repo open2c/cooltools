@@ -350,6 +350,9 @@ def read_viewframe_from_file(
     Read a BED file with regions that conforms
     a definition of a viewframe (non-overlaping, unique names, etc).
 
+    When the 4th column with names is missing, UCSC-style names
+    are enforced.
+
     Parameters
     ----------
     view_fname : str
@@ -369,10 +372,10 @@ def read_viewframe_from_file(
 
     # read BED file assuming bed4/3 formats (with names-columns and without):
     try:
-        view_df = bioframe.read_table(view_fname, schema="bed4", index_col=False)
+        view_df = bioframe.read_table(view_fname, schema="bed4", schema_is_strict=True)
     except Exception as err_bed4:
         try:
-            view_df = bioframe.read_table(view_fname, schema="bed3", index_col=False)
+            view_df = bioframe.read_table(view_fname, schema="bed3", schema_is_strict=True)
         except Exception as err_bed3:
             raise ValueError(
                 f"{view_fname} is not a BED file with 3 or 4 columns"
@@ -380,7 +383,7 @@ def read_viewframe_from_file(
 
     # Convert view dataframe to viewframe:
     try:
-        view_df = bioframe.make_viewframe(view_df)
+        view_df = bioframe.make_viewframe(view_df, name_style="ucsc")
     except ValueError as e:
         raise ValueError(
             "View table is incorrect, please, comply with the format. "
