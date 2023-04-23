@@ -1,4 +1,4 @@
-bioframe>=0.3.3,<0.4
+bioframe>=0.4.1
 click>=7
 cooler>=0.9.1
 cython
