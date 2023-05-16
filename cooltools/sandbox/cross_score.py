@@ -39,6 +39,11 @@ parser.add_argument('--prefix',
                     default=None,
                     help='The prefix for output files')
 
+parser.add_argument('--clr-weight-name', 
+                    type=str,
+                    default='weight',
+                    help='Name of the column to use for data balancing')
+
 parser.add_argument('--format', 
                     type=str,
                     default='bigwig',
@@ -55,15 +60,16 @@ parser.add_argument('--chunksize',
 
 
 
-def get_dist_margs(clr_path, lo, hi, dist_bins):
+def get_dist_margs(clr_path, lo, hi, dist_bins, weight_name):
     clr = cooler.Cooler(clr_path)
 
     bins = clr.bins()[:]
     chunk = clr.pixels()[lo:hi]
     res = clr.binsize
 
+
     chunk = cooler.annotate(chunk, bins)
-    chunk['balanced'] = np.nan_to_num(chunk['count'] * chunk['weight1'] * chunk['weight2'])
+    chunk['balanced'] = np.nan_to_num(chunk['count'] * chunk[f'{weight_name}1'] * chunk[f'{weight_name}2'])
     chunk = chunk[chunk.chrom1 == chunk.chrom2]
 
     del(clr)
@@ -110,7 +116,7 @@ bins = clr.bins()[:]
 n_pixels = clr.pixels().shape[0]
 dist_bins = np.array([int(float(i)) for i in args.distbins.split(',')])
 formats = args.format.split(',')
-
+weight_name = args.clr_weight_name
 n_dist_bins = len(dist_bins)
 
 chunk_spans = np.r_[np.arange(0, n_pixels, chunksize), n_pixels]
@@ -121,7 +127,7 @@ logging.info(f'Calculating marginals for {args.COOL_URI} using {nproc} processes
 with mp.Pool(nproc) as pool:
     out = pool.starmap(get_dist_margs,
         [
-            (args.COOL_URI, lo, hi, dist_bins)
+            (args.COOL_URI, lo, hi, dist_bins, weight_name)
             for lo, hi in zip(chunk_spans[:-1], chunk_spans[1:])
         ]
     )
@@ -159,7 +165,7 @@ for dist_bin_id in range(n_dist_bins):
     for dir_str, margs in [('up', margs_up), ('down', margs_down), ('both', margs_up+margs_down)]:
         out_df = bins[['chrom', 'start', 'end']].copy()
         out_df['marg'] = margs[dist_bin_id]
-        out_df['marg'] = out_df['marg'].mask(bins['weight'].isnull(), np.nan)
+        out_df['marg'] = out_df['marg'].mask(bins[weight_name].isnull(), np.nan)
 
         if 'bigwig' in formats:
             file_name = f'{prefix}.{res}.cross.{dir_str}.{lo}-{hi}.bw'
