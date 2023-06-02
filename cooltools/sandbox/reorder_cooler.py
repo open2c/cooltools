@@ -4,7 +4,7 @@ import bioframe as bf
 import cooler
 
 
-def generate_adjusted_chunks(clr, view, chunksize=1_000_000):
+def generate_adjusted_chunks(clr, view, chunksize=1_000_000, orientation_col="strand"):
     """Generates chunks of pixels from the cooler and adjusts their bin IDs to follow the view"""
     view = view.copy()
     view = view.set_index("name")
@@ -12,6 +12,7 @@ def generate_adjusted_chunks(clr, view, chunksize=1_000_000):
         region: clr.extent(view.loc[region, ["chrom", "start", "end"]])
         for region in view.index
     }
+    view_max_bins = {region: ext[1] for region, ext in view_bin_ids.items()}
     orig_offsets = {
         region: clr.offset(view.loc[region, ["chrom", "start", "end"]])
         for region in view.index
@@ -30,16 +31,42 @@ def generate_adjusted_chunks(clr, view, chunksize=1_000_000):
         chunk = clr.pixels()[i0:i1]
         chunk["region1"] = chunk["bin1_id"].map(bins_to_regions)
         chunk["region2"] = chunk["bin2_id"].map(bins_to_regions)
-        chunk["bin1_id"] += -chunk["region1"].map(orig_offsets) + chunk["region1"].map(
-            view["offset"]
+
+        # Flipping where needed
+        toflip1 = np.where(chunk["region1"].map(view[orientation_col] == "-"))[0]
+        toflip2 = np.where(chunk["region2"].map(view[orientation_col] == "-"))[0]
+
+        # add original offset because later it's subtracted from all bin IDs
+        # then flip bin IDs by subtracting each ID from max ID of the region (binlength-1)
+        chunk.loc[toflip1, "bin1_id"] = (
+            chunk.loc[toflip1, "region1"].map(orig_offsets)
+            + chunk.loc[toflip1, "region1"].map(view_max_bins)
+            - 1
+            - chunk.loc[toflip1, "bin1_id"]
         )
-        chunk["bin2_id"] += -chunk["region2"].map(orig_offsets) + chunk["region2"].map(
-            view["offset"]
+        chunk.loc[toflip2, "bin2_id"] = (
+            chunk.loc[toflip2, "region2"].map(orig_offsets)
+            + chunk.loc[toflip2, "region2"].map(view_max_bins)
+            - 1
+            - chunk.loc[toflip2, "bin2_id"]
         )
 
-        chunk = chunk.dropna(subset=["bin1_id", "bin2_id"]).drop(
-            columns=["region1", "region2"]
+        # Rearranging
+        chunk["bin1_id"] = (
+            chunk["bin1_id"]
+            - chunk["region1"].map(orig_offsets)
+            + chunk["region1"].map(view["offset"])
         )
+        chunk["bin2_id"] = (
+            chunk["bin2_id"]
+            - chunk["region2"].map(orig_offsets)
+            + chunk["region2"].map(view["offset"])
+        )
+
+        # Drop unneeded technical columns
+        chunk = chunk.drop(columns=["region1", "region2"])
+
+        # Ensure bin1_id<bin2_id
         chunk[["bin1_id", "bin2_id"]] = np.sort(
             chunk[["bin1_id", "bin2_id"]].astype(int)
         )
@@ -53,16 +80,31 @@ def _adjust_start_end(chromdf):
     return chromdf
 
 
+def _flip_bins(regdf):
+    regdf = regdf.iloc[::-1].reset_index(drop=True)
+    l = regdf["end"] - regdf["start"]
+    regdf["start"] = regdf["end"].max() - regdf["end"]
+    regdf["end"] = regdf["start"] + l
+    return regdf
+
+
 def _reorder_bins(
-    bins_old,
-    view_df,
-    new_chrom_col="new_chrom",
+    bins_old, view_df, new_chrom_col="new_chrom", orientation_col="strand"
 ):
     chromdict = dict(zip(view_df["name"].to_numpy(), view_df[new_chrom_col].to_numpy()))
+    flipdict = dict(
+        zip(view_df["name"].to_numpy(), (view_df[orientation_col] == "-").to_numpy())
+    )
+    bins_old = bf.assign_view(bins_old, view_df, drop_unassigned=False).dropna(
+        subset=["view_region"]
+    )
+    bins_inverted = (
+        bins_old.groupby("view_region")
+        .apply(lambda x: _flip_bins(x) if flipdict[x.name] else x)
+        .reset_index(drop=True)
+    )
     bins_new = bf.sort_bedframe(
-        bf.assign_view(bins_old, view_df, drop_unassigned=False).dropna(
-            subset=["view_region"]
-        ),
+        bins_inverted,
         view_df=view_df,
         df_view_col="view_region",
     )
@@ -81,6 +123,7 @@ def reorder_cooler(
     view_df,
     out_cooler,
     new_chrom_col="new_chrom",
+    orientation_col="strand",
     chunksize=1_000_000,
 ):
     """Reorder cooler following a genomic view.
@@ -108,6 +151,7 @@ def reorder_cooler(
     cooler.create_cooler(
         out_cooler,
         bins_new,
-        generate_adjusted_chunks(clr, view_df, chunksize=chunksize),
+        generate_adjusted_chunks(
+            clr, view_df, chunksize=chunksize, orientation_col=orientation_col
+        ),
     )
-    # return cooler.Cooler(out_cooler)
