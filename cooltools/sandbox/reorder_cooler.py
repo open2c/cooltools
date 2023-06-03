@@ -19,10 +19,10 @@ def generate_adjusted_chunks(clr, view, chunksize=1_000_000, orientation_col="st
     }
     bins_to_regions = {}
     for region, (start, end) in view_bin_ids.items():
-        for bin in np.arange(start, end):
-            bins_to_regions[bin] = region
-    view["binlength"] = [i[1] - i[0] for i in view_bin_ids.values()]
-    view["offset"] = np.append([0], np.cumsum(view["binlength"][:-1]))
+        for pos in np.arange(start, end):
+            bins_to_regions[pos] = region
+    view.loc[:, "binlength"] = [i[1] - i[0] for i in view_bin_ids.values()]
+    view.loc[:, "offset"] = np.append([0], np.cumsum(view["binlength"][:-1]))
     chunks = np.append(
         np.arange(0, clr.pixels().shape[0], chunksize), clr.pixels().shape[0]
     )
@@ -31,6 +31,7 @@ def generate_adjusted_chunks(clr, view, chunksize=1_000_000, orientation_col="st
         chunk = clr.pixels()[i0:i1]
         chunk["region1"] = chunk["bin1_id"].map(bins_to_regions)
         chunk["region2"] = chunk["bin2_id"].map(bins_to_regions)
+        chunk = chunk.dropna(subset=["region1", "region2"])
 
         # Flipping where needed
         toflip1 = np.where(chunk["region1"].map(view[orientation_col] == "-"))[0]
@@ -99,7 +100,7 @@ def _reorder_bins(
         subset=["view_region"]
     )
     bins_inverted = (
-        bins_old.groupby("view_region")
+        bins_old.groupby("view_region", group_keys=False)
         .apply(lambda x: _flip_bins(x) if flipdict[x.name] else x)
         .reset_index(drop=True)
     )
@@ -111,7 +112,7 @@ def _reorder_bins(
     bins_new["chrom"] = bins_new["view_region"].map(chromdict)
     bins_new["length"] = bins_new["end"] - bins_new["start"]
     bins_new = (
-        bins_new.groupby("chrom")
+        bins_new.groupby("chrom", group_keys=False)
         .apply(_adjust_start_end)
         .drop(columns=["length", "view_region"])
     )
@@ -139,8 +140,31 @@ def reorder_cooler(
         File path to save the reordered data
     new_chrom_col : str, optional
         Column name in the view_df specifying new chromosome name for each region,
-        by default 'new_chrom'
+        by default 'new_chrom'. If None, then the default chrom column names will be used.
+    orientation_col : str, optional
+        Column name in the view_df specifying strand orientation of each region, 
+        by default 'strand'. The values in this column can be "+" or "-". 
+        If None, then all will be assumed "+".
     """
+    
+    view_df = view_df.copy()
+
+    # Add repeated entries for new chromosome names if they were not requested/absent:
+    if new_chrom_col is None:
+        new_chrom_col = "new_chrom"
+        while new_chrom_col in view_df.columns:
+           new_chrom_col = f"new_chrom_{np.random.randint(0, 1000)}"
+    if new_chrom_col not in view_df.columns:
+        view_df.loc[:, new_chrom_col] = view_df["chrom"]
+
+    # Add repeated entries for strnd orientation of chromosomes if they were not requested/absent:
+    if orientation_col is None:
+        orientation_col = "strand"
+        while orientation_col in view_df.columns:
+           orientation_col = f"strand_{np.random.randint(0, 1000)}" 
+    if orientation_col not in view_df.columns:
+        view_df.loc[:, orientation_col] = "+"
+
     if not np.all(
         view_df.groupby(new_chrom_col).apply(lambda x: np.all(np.diff(x.index) == 1))
     ):
