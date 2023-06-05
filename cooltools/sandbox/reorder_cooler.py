@@ -128,6 +128,7 @@ def reorder_cooler(
     new_chrom_col="new_chrom",
     orientation_col="strand",
     chunksize=1_000_000,
+    assembly=None,
 ):
     """Reorder cooler following a genomic view.
 
@@ -147,6 +148,11 @@ def reorder_cooler(
         Column name in the view_df specifying strand orientation of each region,
         by default 'strand'. The values in this column can be "+" or "-".
         If None, then all will be assumed "+".
+    chunksize : int, optional
+        How many pixels to process at a time
+    assembly : str, optional
+        The name of the assembly for the new cooler. If None, uses the same as in the
+        original cooler.
     """
 
     view_df = view_df.copy()
@@ -159,6 +165,9 @@ def reorder_cooler(
         )
     except Exception as e:
         raise ValueError("view_df is not a valid viewframe or incompatible") from e
+
+    if assembly is None:
+        assembly = clr.info["genome-assembly"]
 
     # Add repeated entries for new chromosome names if they were not requested/absent:
     if new_chrom_col is None:
@@ -187,6 +196,10 @@ def reorder_cooler(
         out_cooler,
         bins_new,
         generate_adjusted_chunks(
-            clr, view_df, chunksize=chunksize, orientation_col=orientation_col
+            clr,
+            view_df,
+            chunksize=chunksize,
+            orientation_col=orientation_col,
         ),
+        assembly=assembly,
     )
