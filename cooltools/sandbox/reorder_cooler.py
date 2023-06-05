@@ -3,6 +3,8 @@ import pandas as pd
 import bioframe as bf
 import cooler
 
+from ..lib.checks import is_compatible_viewframe
+
 
 def generate_adjusted_chunks(clr, view, chunksize=1_000_000, orientation_col="strand"):
     """Generates chunks of pixels from the cooler and adjusts their bin IDs to follow the view"""
@@ -142,18 +144,27 @@ def reorder_cooler(
         Column name in the view_df specifying new chromosome name for each region,
         by default 'new_chrom'. If None, then the default chrom column names will be used.
     orientation_col : str, optional
-        Column name in the view_df specifying strand orientation of each region, 
-        by default 'strand'. The values in this column can be "+" or "-". 
+        Column name in the view_df specifying strand orientation of each region,
+        by default 'strand'. The values in this column can be "+" or "-".
         If None, then all will be assumed "+".
     """
-    
+
     view_df = view_df.copy()
+    try:
+        _ = is_compatible_viewframe(
+            view_df,
+            clr,
+            check_sorting=False,
+            raise_errors=True,
+        )
+    except Exception as e:
+        raise ValueError("view_df is not a valid viewframe or incompatible") from e
 
     # Add repeated entries for new chromosome names if they were not requested/absent:
     if new_chrom_col is None:
         new_chrom_col = "new_chrom"
         while new_chrom_col in view_df.columns:
-           new_chrom_col = f"new_chrom_{np.random.randint(0, 1000)}"
+            new_chrom_col = f"new_chrom_{np.random.randint(0, 1000)}"
     if new_chrom_col not in view_df.columns:
         view_df.loc[:, new_chrom_col] = view_df["chrom"]
 
@@ -161,7 +172,7 @@ def reorder_cooler(
     if orientation_col is None:
         orientation_col = "strand"
         while orientation_col in view_df.columns:
-           orientation_col = f"strand_{np.random.randint(0, 1000)}" 
+            orientation_col = f"strand_{np.random.randint(0, 1000)}"
     if orientation_col not in view_df.columns:
         view_df.loc[:, orientation_col] = "+"
 
