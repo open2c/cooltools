@@ -87,7 +87,6 @@ def test_pileup_cli_hdf5(request, tmpdir):
 
 
 def test_pileup(request):
-
     # Read cool file and create view_df out of it:
     clr = cooler.Cooler(op.join(request.fspath.dirname, "data/CN.mm9.1000kb.cool"))
     exp = pd.read_table(op.join(request.fspath.dirname, "data/CN.mm9.toy_expected.tsv"))
@@ -304,7 +303,6 @@ def test_offdiag__pileup_with_expected(request):
         cooltools.api.snipping.ObsExpSnipper,
         cooltools.api.snipping.ExpectedSnipper,
     ):
-
         snipper = snipper_class(clr, exp, view_df=view_df)
 
         # I.
@@ -350,6 +348,31 @@ def test_offdiag__pileup_with_expected(request):
 
         assert stack.shape == (2, 5, 5)
         assert np.all(np.isnan(stack[1]))
+
+        # III.
+        # Example region with windows on diagonal, treated as off-diagonal. Check bottom
+        # triangle is all NaN
+        windows1 = cooltools.api.snipping.make_bin_aligned_windows(
+            1_000_000, ["chr1", "chr1"], [102_000_000, 10_000_000], flank_bp=2_000_000
+        )
+        windows2 = cooltools.api.snipping.make_bin_aligned_windows(
+            1_000_000, ["chr1", "chr1"], [102_000_000, 10_000_000], flank_bp=2_000_000
+        )
+        windows = pd.merge(
+            windows1, windows2, left_index=True, right_index=True, suffixes=("1", "2")
+        )
+        windows = cooltools.lib.common.assign_view_auto(windows, view_df).reset_index(
+            drop=True
+        )
+
+        stack = cooltools.api.snipping._pileup(
+            windows, snipper.select, snipper.snip, map=map
+        )
+
+        assert stack.shape == (2, 5, 5)
+        assert np.all(
+            [np.all(np.isnan(snip[np.tril_indices_from(snip, 1)])) for snip in stack]
+        )
 
 
 def test_offdiag__pileup_without_expected(request):
@@ -407,6 +430,32 @@ def test_offdiag__pileup_without_expected(request):
     assert stack.shape == (2, 5, 5)
     assert np.all(np.isfinite(stack[0]))
     assert np.all(np.isnan(stack[1]))
+
+    # III.
+    # Example region with windows on diagonal, treated as off-diagonal. Check bottom
+    # triangle is all NaN
+    snipper = cooltools.api.snipping.CoolerSnipper(clr, view_df=view_df, min_diag=2)
+    windows1 = cooltools.api.snipping.make_bin_aligned_windows(
+        1_000_000, ["chr1", "chr1"], [102_000_000, 10_000_000], flank_bp=2_000_000
+    )
+    windows2 = cooltools.api.snipping.make_bin_aligned_windows(
+        1_000_000, ["chr1", "chr1"], [102_000_000, 10_000_000], flank_bp=2_000_000
+    )
+    windows = pd.merge(
+        windows1, windows2, left_index=True, right_index=True, suffixes=("1", "2")
+    )
+    windows = cooltools.lib.common.assign_view_auto(windows, view_df).reset_index(
+        drop=True
+    )
+
+    stack = cooltools.api.snipping._pileup(
+        windows, snipper.select, snipper.snip, map=map
+    )
+
+    assert stack.shape == (2, 5, 5)
+    assert np.all(
+        [np.all(np.isnan(snip[np.tril_indices_from(snip, 1)])) for snip in stack]
+    )
 
 
 def test_snipper_with_view_and_expected(request):
