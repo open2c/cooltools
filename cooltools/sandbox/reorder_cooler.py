@@ -31,9 +31,10 @@ def generate_adjusted_chunks(clr, view, chunksize=1_000_000, orientation_col="st
     chunks = list(zip(chunks[:-1], chunks[1:]))
     for i0, i1 in chunks:
         chunk = clr.pixels()[i0:i1]
+        # This is the slowest part, takes >90% of the time in this function at high resolution
         chunk["region1"] = chunk["bin1_id"].map(bins_to_regions)
         chunk["region2"] = chunk["bin2_id"].map(bins_to_regions)
-        chunk = chunk.dropna(subset=["region1", "region2"])
+        chunk = chunk.dropna(subset=["region1", "region2"]).reset_index(drop=True)
 
         # Flipping where needed
         toflip1 = np.where(chunk["region1"].map(view[orientation_col] == "-"))[0]
