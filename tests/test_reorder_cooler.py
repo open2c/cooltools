@@ -4,7 +4,7 @@ import os.path as op
 
 import numpy as np
 
-from cooltools.api.rearrange_cooler import rearrange_cooler
+from cooltools.api.rearrange import rearrange_cooler
 from pandas.testing import assert_frame_equal
 
 

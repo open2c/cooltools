@@ -86,7 +86,7 @@ def rearrange(
         raise ValueError(f"New chrom col {new_chrom_col} not found in view columns")
     if orientation_col is not None and orientation_col not in view_df.columns:
         raise ValueError(f"Orientation col {orientation_col} not found in view columns")
-    api.rearrange_cooler.rearrange_cooler(
+    api.rearrange.rearrange_cooler(
         clr,
         view_df,
         out_path,
