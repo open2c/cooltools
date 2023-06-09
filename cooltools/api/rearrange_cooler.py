@@ -2,11 +2,14 @@ import numpy as np
 import pandas as pd
 import bioframe as bf
 import cooler
+from multiprocess import Pool
 
 from ..lib.checks import is_compatible_viewframe
 
 
-def generate_adjusted_chunks(clr, view, chunksize=1_000_000, orientation_col="strand"):
+def generate_adjusted_chunks(
+    clr, view, chunksize=1_000_000, orientation_col="strand", nproc=1
+):
     """Generates chunks of pixels from the cooler and adjusts their bin IDs to follow the view"""
     view = view.copy()
     view = view.set_index("name")
@@ -29,6 +32,7 @@ def generate_adjusted_chunks(clr, view, chunksize=1_000_000, orientation_col="st
         np.arange(0, clr.pixels().shape[0], chunksize), clr.pixels().shape[0]
     )
     chunks = list(zip(chunks[:-1], chunks[1:]))
+    # Running this loop in parallel slows the function down
     for i0, i1 in chunks:
         chunk = clr.pixels()[i0:i1]
         # This is the slowest part, takes >90% of the time in this function at high resolution
@@ -92,7 +96,7 @@ def _flip_bins(regdf):
     return regdf
 
 
-def _reorder_bins(
+def _rearrange_bins(
     bins_old, view_df, new_chrom_col="new_chrom", orientation_col="strand"
 ):
     chromdict = dict(zip(view_df["name"].to_numpy(), view_df[new_chrom_col].to_numpy()))
@@ -122,14 +126,14 @@ def _reorder_bins(
     return bins_new
 
 
-def reorder_cooler(
+def rearrange_cooler(
     clr,
     view_df,
     out_cooler,
     new_chrom_col="new_chrom",
     orientation_col="strand",
-    chunksize=1_000_000,
     assembly=None,
+    chunksize=10_000_000,
 ):
     """Reorder cooler following a genomic view.
 
@@ -149,11 +153,11 @@ def reorder_cooler(
         Column name in the view_df specifying strand orientation of each region,
         by default 'strand'. The values in this column can be "+" or "-".
         If None, then all will be assumed "+".
-    chunksize : int, optional
-        How many pixels to process at a time
     assembly : str, optional
         The name of the assembly for the new cooler. If None, uses the same as in the
         original cooler.
+    chunksize : int, optional
+        The number of pixels loaded and processed per step of computation.
     """
 
     view_df = view_df.copy()
@@ -178,7 +182,7 @@ def reorder_cooler(
     if new_chrom_col not in view_df.columns:
         view_df.loc[:, new_chrom_col] = view_df["chrom"]
 
-    # Add repeated entries for strnd orientation of chromosomes if they were not requested/absent:
+    # Add repeated entries for strand orientation of chromosomes if they were not requested/absent:
     if orientation_col is None:
         orientation_col = "strand"
         while orientation_col in view_df.columns:
@@ -192,7 +196,7 @@ def reorder_cooler(
         raise ValueError("New chromosomes are not consecutive")
     bins_old = clr.bins()[:]
     # Creating new bin table
-    bins_new = _reorder_bins(bins_old, view_df, new_chrom_col=new_chrom_col)
+    bins_new = _rearrange_bins(bins_old, view_df, new_chrom_col=new_chrom_col)
     cooler.create_cooler(
         out_cooler,
         bins_new,

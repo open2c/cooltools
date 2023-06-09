@@ -4,7 +4,7 @@ import os.path as op
 
 import numpy as np
 
-from cooltools.sandbox.reorder_cooler import reorder_cooler
+from cooltools.api.rearrange_cooler import rearrange_cooler
 from pandas.testing import assert_frame_equal
 
 
@@ -15,7 +15,7 @@ def test_reorder_cooler(request):
 
     # I.
     # Check that with the same view, nothing changes
-    reorder_cooler(clr, orig_view, "test_not_reordered.cool")
+    rearrange_cooler(clr, orig_view, "test_not_reordered.cool")
     new_clr = cooler.Cooler("test_not_reordered.cool")
     assert_frame_equal(new_clr.pixels()[:], clr.pixels()[:])
     assert_frame_equal(new_clr.bins()[:], clr.bins()[:])
@@ -24,7 +24,7 @@ def test_reorder_cooler(request):
     # II.
     # Check that when just getting one chrom, all is as expected
     new_view = orig_view.iloc[:1, :]
-    reorder_cooler(clr, new_view, "test_chrom1_reordered.cool")
+    rearrange_cooler(clr, new_view, "test_chrom1_reordered.cool")
     new_clr = cooler.Cooler("test_chrom1_reordered.cool")
     old_bins = clr.bins()[:].query('chrom=="chr1"')
     old_bins["chrom"] = old_bins["chrom"].astype(str)
@@ -41,7 +41,7 @@ def test_reorder_cooler(request):
     # Check that when just getting one chrom and inverting it, all is as expected
     inverted_view = new_view.copy()
     inverted_view["strand"] = "-"
-    reorder_cooler(clr, inverted_view, "test_chrom1_reordered_inverted.cool")
+    rearrange_cooler(clr, inverted_view, "test_chrom1_reordered_inverted.cool")
     inverted_clr = cooler.Cooler("test_chrom1_reordered_inverted.cool")
     inverted_bins = inverted_clr.bins()[:]
     inverted_bins[["end", "start"]] = (
@@ -67,7 +67,7 @@ def test_reorder_cooler(request):
     reorder_invert_view = (
         orig_view.iloc[1::-1].assign(strand=["+", "-"]).reset_index(drop=True)
     )
-    reorder_cooler(clr, reorder_invert_view, "test_chr2chr1_reordered_inverted.cool")
+    rearrange_cooler(clr, reorder_invert_view, "test_chr2chr1_reordered_inverted.cool")
     reordered_inverted_clr = cooler.Cooler("test_chr2chr1_reordered_inverted.cool")
 
     # compare chr2 bins

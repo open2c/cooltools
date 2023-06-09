@@ -118,7 +118,7 @@ def insulation(
     """
     Calculate the diamond insulation scores and call insulating boundaries.
 
-    IN_PATH : The paths to a .cool file with a balanced Hi-C map.
+    IN_PATH : The path to a .cool file with a balanced Hi-C map.
 
     WINDOW : The window size for the insulation score calculations.
              Multiple space-separated values can be provided.
