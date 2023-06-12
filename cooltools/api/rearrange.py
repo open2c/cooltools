@@ -2,7 +2,6 @@ import numpy as np
 import pandas as pd
 import bioframe as bf
 import cooler
-from multiprocess import Pool
 
 from ..lib.checks import is_compatible_viewframe
 
@@ -10,7 +9,7 @@ from ..lib.checks import is_compatible_viewframe
 def generate_adjusted_chunks(
     clr, view, chunksize=1_000_000, orientation_col="strand", nproc=1
 ):
-    """Generates chunks of pixels from the cooler and adjusts their bin IDs to follow the view"""
+    """Generates chunks of pixels from the cooler and adjusts their bin IDs to follow the view."""
     view = view.copy()
     view = view.set_index("name")
     view_bin_ids = {
