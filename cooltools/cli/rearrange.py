@@ -93,6 +93,7 @@ def rearrange(
         view_df = pd.read_table(buf, header=0)
     else:
         # Use default names
+        # If some are missing, pandas create them with all NaNs
         view_df = pd.read_csv(buf, names=default_names)
     # If additinal column names not provided, set them to defaults
     if new_chrom_col is None:
