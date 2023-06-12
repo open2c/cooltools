@@ -193,7 +193,7 @@ def _extract_stack(data_select, data_snip, arg):
             hi = feature_group["hi"].values
             s = (hi - lo).astype(int)  # Shape of individual snips
             assert s.max() == s.min(), "Pileup accepts only windows of the same size"
-            stack = np.full((s[0], s[0], len(feature_group)), np.nan)
+            stack = np.full((len(feature_group), s[0], s[0]), np.nan)
         else:  # off-diagonal off-region case:
             lo1 = feature_group["lo1"].values
             hi1 = feature_group["hi1"].values
@@ -203,8 +203,7 @@ def _extract_stack(data_select, data_snip, arg):
             s2 = (hi2 - lo2).astype(int)
             assert s1.max() == s1.min(), "Pileup accepts only windows of the same size"
             assert s2.max() == s2.min(), "Pileup accepts only windows of the same size"
-            stack = np.full((s1[0], s2[0], len(feature_group)), np.nan)
-
+            stack = np.full((len(feature_group), s1[0], s2[0]), np.nan)
         return stack, feature_group["_rank"].values
 
     # check if support region is on- or off-diagonal
@@ -226,8 +225,8 @@ def _extract_stack(data_select, data_snip, arg):
 
     data = data_select(region1, region2)
     stack = list(map(partial(data_snip, data, region1, region2), zip(s1, e1, s2, e2)))
-
-    return np.dstack(stack), feature_group["_rank"].values
+    stack = np.stack(stack)
+    return stack, feature_group["_rank"].values
 
 
 def _pileup(features, data_select, data_snip, map=map):
@@ -279,13 +278,12 @@ def _pileup(features, data_select, data_snip, map=map):
             features.groupby("region", sort=False),
         )
     )
-
     # Restore the original rank of the input features
-    cumul_stack = np.dstack(cumul_stack)
+    cumul_stack = np.concatenate(cumul_stack, axis=0)
     orig_rank = np.concatenate(orig_rank)
 
     idx = np.argsort(orig_rank)
-    cumul_stack = cumul_stack[:, :, idx]
+    cumul_stack = cumul_stack[idx, :, :]
     return cumul_stack
 
 
@@ -865,7 +863,9 @@ def pileup(
 
     Returns
     -------
-        np.ndarray: a stackup of all snippets corresponding to the features
+        np.ndarray: a stackup of all snippets corresponding to the features, with shape
+        (n, D, D), where n is the number of snippets and (D, D) is the shape of each
+        snippet
 
     """
 
@@ -985,7 +985,7 @@ def pileup(
         mymap = map
     stack = _pileup(features_df, snipper.select, snipper.snip, map=mymap)
     if feature_type == "bed":
-        stack = np.nansum([stack, np.transpose(stack, axes=(1, 0, 2))], axis=0)
+        stack = np.fmax(stack, np.transpose(stack, axes=(0, 2, 1)))
 
     if nproc > 1:
         pool.close()
