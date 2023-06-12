@@ -163,7 +163,7 @@ def rearrange_cooler(
     view_df = view_df.copy()
     try:
         _ = is_compatible_viewframe(
-            view_df,
+            view_df[["chrom", "start", "end", "name"]],
             clr,
             check_sorting=False,
             raise_errors=True,
@@ -196,7 +196,9 @@ def rearrange_cooler(
         raise ValueError("New chromosomes are not consecutive")
     bins_old = clr.bins()[:]
     # Creating new bin table
-    bins_new = _rearrange_bins(bins_old, view_df, new_chrom_col=new_chrom_col)
+    bins_new = _rearrange_bins(
+        bins_old, view_df, new_chrom_col=new_chrom_col, orientation_col=orientation_col
+    )
     cooler.create_cooler(
         out_cooler,
         bins_new,
