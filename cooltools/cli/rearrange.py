@@ -1,12 +1,10 @@
 import click
-
 import cooler
-
-from . import cli
-from .. import api
-from .util import sniff_for_header
-
 import pandas as pd
+
+from .. import api
+from . import cli
+from .util import sniff_for_header
 
 
 @cli.command()
