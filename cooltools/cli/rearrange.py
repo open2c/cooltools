@@ -46,7 +46,7 @@ from .util import sniff_for_header
     "--chunksize",
     help="The number of pixels loaded and processed per step of computation.",
     type=int,
-    default=int(1e7),
+    default=int(1e6),
     show_default=True,
 )
 def rearrange(

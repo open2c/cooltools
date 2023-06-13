@@ -4,81 +4,31 @@ import numpy as np
 import pandas as pd
 
 from ..lib.checks import is_compatible_viewframe
+import logging
+
+logging.basicConfig(level=logging.INFO)
 
 
-def generate_adjusted_chunks(
-    clr, view, chunksize=1_000_000, orientation_col="strand", nproc=1
+def _generate_adjusted_chunks(
+    clr, binmapping, chunksize=1_000_000, orientation_col="strand", nproc=1
 ):
     """Generates chunks of pixels from the cooler and adjusts their bin IDs to follow the view."""
-    view = view.copy()
-    view = view.set_index("name")
-    view_bin_ids = {
-        region: clr.extent(view.loc[region, ["chrom", "start", "end"]])
-        for region in view.index
-    }
-    view_max_bins = {region: ext[1] for region, ext in view_bin_ids.items()}
-    orig_offsets = {
-        region: clr.offset(view.loc[region, ["chrom", "start", "end"]])
-        for region in view.index
-    }
-    bins_to_regions = {}
-    for region, (start, end) in view_bin_ids.items():
-        for pos in np.arange(start, end):
-            bins_to_regions[pos] = region
-    view.loc[:, "binlength"] = [i[1] - i[0] for i in view_bin_ids.values()]
-    view.loc[:, "offset"] = np.append([0], np.cumsum(view["binlength"][:-1]))
-    chunks = np.append(
-        np.arange(0, clr.pixels().shape[0], chunksize), clr.pixels().shape[0]
-    )
+    npixels = clr.pixels().shape[0]
+    chunks = np.append(np.arange(0, npixels, chunksize), npixels)
     chunks = list(zip(chunks[:-1], chunks[1:]))
+
     # Running this loop in parallel slows the function down
     for i0, i1 in chunks:
         chunk = clr.pixels()[i0:i1]
-        # This is the slowest part, takes >90% of the time in this function at high resolution
-        chunk["region1"] = chunk["bin1_id"].map(bins_to_regions)
-        chunk["region2"] = chunk["bin2_id"].map(bins_to_regions)
-        chunk = chunk.dropna(subset=["region1", "region2"]).reset_index(drop=True)
-
-        # Flipping where needed
-        toflip1 = np.where(chunk["region1"].map(view[orientation_col] == "-"))[0]
-        toflip2 = np.where(chunk["region2"].map(view[orientation_col] == "-"))[0]
-
-        # add original offset because later it's subtracted from all bin IDs
-        # then flip bin IDs by subtracting each ID from max ID of the region (binlength-1)
-        chunk.loc[toflip1, "bin1_id"] = (
-            chunk.loc[toflip1, "region1"].map(orig_offsets)
-            + chunk.loc[toflip1, "region1"].map(view_max_bins)
-            - 1
-            - chunk.loc[toflip1, "bin1_id"]
-        )
-        chunk.loc[toflip2, "bin2_id"] = (
-            chunk.loc[toflip2, "region2"].map(orig_offsets)
-            + chunk.loc[toflip2, "region2"].map(view_max_bins)
-            - 1
-            - chunk.loc[toflip2, "bin2_id"]
-        )
-
-        # Rearranging
-        chunk["bin1_id"] = (
-            chunk["bin1_id"]
-            - chunk["region1"].map(orig_offsets)
-            + chunk["region1"].map(view["offset"])
-        )
-        chunk["bin2_id"] = (
-            chunk["bin2_id"]
-            - chunk["region2"].map(orig_offsets)
-            + chunk["region2"].map(view["offset"])
-        )
-
-        # Drop unneeded technical columns
-        chunk = chunk.drop(columns=["region1", "region2"])
-
-        # Ensure bin1_id<bin2_id
-        chunk[["bin1_id", "bin2_id"]] = np.sort(
-            chunk[["bin1_id", "bin2_id"]].astype(int)
-        )
+        chunk["bin1_id"] = chunk["bin1_id"].map(binmapping)
+        chunk["bin2_id"] = chunk["bin2_id"].map(binmapping)
+        chunk = chunk[(chunk["bin1_id"] != -1) & (chunk["bin2_id"] != -1)]
         if chunk.shape[0] > 0:
+            chunk[["bin1_id", "bin2_id"]] = np.sort(
+                chunk[["bin1_id", "bin2_id"]].astype(int)
+            )
             yield chunk.reset_index(drop=True)
+        logging.info(f"Processed {i1/npixels*100:.2f}% pixels")
 
 
 def _adjust_start_end(chromdf):
@@ -95,18 +45,46 @@ def _flip_bins(regdf):
     return regdf
 
 
-def _rearrange_bins(
+def rearrange_bins(
     bins_old, view_df, new_chrom_col="new_chrom", orientation_col="strand"
 ):
+    """
+    Rearranges the input `bins_old` based on the information in the `view_df` DataFrame.
+
+    Parameters
+    ----------
+    bins_old : bintable
+        The original bintable to rearrange.
+    view_df : viewframe
+        Viewframe with new order of genomic regions. Can have an additional column for
+        the new chromosome name (`new_chrom_col`), and an additional column for the
+        strand orientation (`orientation_col`, '-' will invert the region).
+    new_chrom_col : str, optional
+        Column name in the view_df specifying new chromosome name for each region,
+        by default 'new_chrom'. If None, then the default chrom column names will be used.
+    orientation_col : str, optional
+        Column name in the view_df specifying strand orientation of each region,
+        by default 'strand'. The values in this column can be "+" or "-".
+        If None, then all will be assumed "+".
+
+
+    Returns
+    -------
+    bins_new : bintable
+        The rearranged bintagle with the new chromosome names and orientations.
+    bin_mapping : dict
+        Mapping of original bin IDs to new bin IDs
+    """
     chromdict = dict(zip(view_df["name"].to_numpy(), view_df[new_chrom_col].to_numpy()))
     flipdict = dict(
         zip(view_df["name"].to_numpy(), (view_df[orientation_col] == "-").to_numpy())
     )
-    bins_old = bf.assign_view(bins_old, view_df, drop_unassigned=False).dropna(
+    bins_old = bins_old.reset_index(names=["old_id"])
+    bins_subset = bf.assign_view(bins_old, view_df, drop_unassigned=False).dropna(
         subset=["view_region"]
     )
     bins_inverted = (
-        bins_old.groupby("view_region", group_keys=False)
+        bins_subset.groupby("view_region", group_keys=False)
         .apply(lambda x: _flip_bins(x) if flipdict[x.name] else x)
         .reset_index(drop=True)
     )
@@ -122,7 +100,17 @@ def _rearrange_bins(
         .apply(_adjust_start_end)
         .drop(columns=["length", "view_region"])
     )
-    return bins_new
+    logging.info("Rearranged bins")
+    bin_mapping = {old_id: -1 for old_id in bins_old["old_id"].astype(int)}
+    bin_mapping.update(
+        {
+            old_id: new_id
+            for old_id, new_id in zip(bins_new["old_id"].astype(int), bins_new.index)
+        }
+    )
+    logging.info("Created bin mapping")
+    bins_new = bins_new.drop(columns=["old_id"])
+    return bins_new, bin_mapping
 
 
 def rearrange_cooler(
@@ -141,8 +129,9 @@ def rearrange_cooler(
     clr : cooler.Cooler
         Cooler object
     view_df : viewframe
-        Viewframe with new order of genomic regions. Needs an additional column for the
-        new chromosome name, its name can be specified in `new_chrom_col`.
+        Viewframe with new order of genomic regions. Can have an additional column for
+        the new chromosome name (`new_chrom_col`), and an additional column for the
+        strand orientation (`orientation_col`, '-' will invert the region).
     out_cooler : str
         File path to save the reordered data
     new_chrom_col : str, optional
@@ -195,17 +184,18 @@ def rearrange_cooler(
         raise ValueError("New chromosomes are not consecutive")
     bins_old = clr.bins()[:]
     # Creating new bin table
-    bins_new = _rearrange_bins(
+    bins_new, bin_mapping = rearrange_bins(
         bins_old, view_df, new_chrom_col=new_chrom_col, orientation_col=orientation_col
     )
+    logging.info("Creating a new cooler")
     cooler.create_cooler(
         out_cooler,
         bins_new,
-        generate_adjusted_chunks(
+        _generate_adjusted_chunks(
             clr,
-            view_df,
+            bin_mapping,
             chunksize=chunksize,
-            orientation_col=orientation_col,
         ),
         assembly=assembly,
     )
+    logging.info(f"Created a new cooler at {out_cooler}")
