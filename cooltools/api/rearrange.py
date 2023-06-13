@@ -165,16 +165,28 @@ def rearrange_cooler(
     # Add repeated entries for new chromosome names if they were not requested/absent:
     if new_chrom_col is None:
         new_chrom_col = "new_chrom"
-        while new_chrom_col in view_df.columns:
-            new_chrom_col = f"new_chrom_{np.random.randint(0, 1000)}"
+        if new_chrom_col in view_df.columns:
+            logging.warn(
+                "new_chrom_col is not provided, but new_chrom column exists."
+                " Pre-existing new_chrom column will not be used."
+            )
+            while new_chrom_col in view_df.columns:
+                new_chrom_col = (
+                    f"new_chrom_{np.random.randint(0, np.iinfo(np.int32).max)}"
+                )
     if new_chrom_col not in view_df.columns:
         view_df.loc[:, new_chrom_col] = view_df["chrom"]
 
     # Add repeated entries for strand orientation of chromosomes if they were not requested/absent:
     if orientation_col is None:
         orientation_col = "strand"
+        if orientation_col in view_df.columns:
+            logging.warn(
+                "orientation_col is not provided, but strand column exists."
+                " Pre-existing strand column will not be used."
+            )
         while orientation_col in view_df.columns:
-            orientation_col = f"strand_{np.random.randint(0, 1000)}"
+            orientation_col = f"strand_{np.random.randint(0, np.iinfo(np.int32).max)}"
     if orientation_col not in view_df.columns:
         view_df.loc[:, orientation_col] = "+"
 
