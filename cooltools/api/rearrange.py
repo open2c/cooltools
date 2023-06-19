@@ -209,5 +209,6 @@ def rearrange_cooler(
             chunksize=chunksize,
         ),
         assembly=assembly,
+        mode='a'
     )
     logging.info(f"Created a new cooler at {out_cooler}")
