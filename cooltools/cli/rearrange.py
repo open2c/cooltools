@@ -49,8 +49,14 @@ from .util import sniff_for_header
     default=int(1e6),
     show_default=True,
 )
+@click.option(
+    "--mode",
+    help="(w)rite or (a)ppend to the output file (default: w)",
+    default="auto",
+    type=click.Choice(["w", "a"], case_sensitive=False),
+)
 def rearrange(
-    in_path, out_path, view, new_chrom_col, orientation_col, assembly, chunksize
+    in_path, out_path, view, new_chrom_col, orientation_col, assembly, chunksize, mode
 ):
     """Rearrange data from a cooler according to a new genomic view
 
@@ -82,6 +88,8 @@ def rearrange(
         original cooler.
     chunksize : int
         The number of pixels loaded and processed per step of computation.
+    mode : str
+        (w)rite or (a)ppend to the output file (default: w)
     """
     clr = cooler.Cooler(in_path)
     default_names = ["chrom", "start", "end", "name", "new_chrom", "strand"]
@@ -120,4 +128,5 @@ def rearrange(
         orientation_col=orientation_col,
         assembly=assembly,
         chunksize=chunksize,
+        mode=mode,
     )

@@ -121,6 +121,7 @@ def rearrange_cooler(
     orientation_col="strand",
     assembly=None,
     chunksize=10_000_000,
+    mode="w",
 ):
     """Reorder cooler following a genomic view.
 
@@ -146,6 +147,8 @@ def rearrange_cooler(
         original cooler.
     chunksize : int, optional
         The number of pixels loaded and processed per step of computation.
+    mode : str, optional
+        (w)rite or (a)ppend to the output cooler file. Default: w
     """
 
     view_df = view_df.copy()
@@ -209,6 +212,6 @@ def rearrange_cooler(
             chunksize=chunksize,
         ),
         assembly=assembly,
-        mode='a'
+        mode=mode,
     )
     logging.info(f"Created a new cooler at {out_cooler}")
