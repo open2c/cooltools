@@ -1430,7 +1430,7 @@ def robust_gauss_filter(
     pixels with gaussian weights.  With this mode, pixels near start/end are
     also a mean of nearby pixels with gaussian weights. That's it.  If we
     encounter NANs, we also simply ignore them, following the same definition:
-    mean of nearby valid pixels.  Yes, it rases the weights for the first/last
+    mean of nearby valid pixels.  Yes, it raises the weights for the first/last
     pixels, because now only a part of the whole gaussian is being used  (up to
     1/2 for the first/last pixel and large sigma). But it preserves the "mean of
     nearby pixels" definition.  It is different from padding with zeros (it
@@ -1438,7 +1438,7 @@ def robust_gauss_filter(
     from "nearest" - that gives too much weight to the first/last pixel.
 
     To achieve this smoothing, we preform regular gaussian smoothing using
-    mode="constant"  (pad with zeros). Then we takes an array of valid pixels
+    mode="constant"  (pad with zeros). Then we take an array of valid pixels
     and smooth it the same way.  This calculates how many "average valid pixels"
     contributed to each point of a smoothed array.  Dividing one by the other
     achieves the desired result.
