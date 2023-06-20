@@ -52,7 +52,7 @@ from .util import sniff_for_header
 @click.option(
     "--mode",
     help="(w)rite or (a)ppend to the output file (default: w)",
-    default="auto",
+    default="w",
     type=click.Choice(["w", "a"], case_sensitive=False),
 )
 def rearrange(
