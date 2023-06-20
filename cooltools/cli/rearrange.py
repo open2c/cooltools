@@ -46,7 +46,7 @@ from .util import sniff_for_header
     "--chunksize",
     help="The number of pixels loaded and processed per step of computation.",
     type=int,
-    default=int(1e6),
+    default=int(1e7),
     show_default=True,
 )
 @click.option(
@@ -96,25 +96,23 @@ def rearrange(
     buf, names = sniff_for_header(view)
     if names is not None:
         # Simply take column names from the file
-        view_df = pd.read_table(buf, header=0)
+        view_df = pd.read_table(buf, header=0, sep="\t")
     else:
         # Use default names
-        # If some are missing, pandas create them with all NaNs
-        view_df = pd.read_csv(buf, names=default_names)
+        # If some are missing, pandas creates them with all NaNs
+        view_df = pd.read_csv(buf, names=default_names, sep="\t")
+        names = view_df.columns
     # If additinal column names not provided, set them to defaults
+    # If additional columns are not in the view, raise
     if new_chrom_col is None:
         new_chrom_col = "new_chrom"
-        if names is not None and "new_chrom" not in names:
-            view_df["new_chrom"] = pd.NA
+    elif new_chrom_col not in view_df.columns:
+        raise ValueError(f"New chrom col {new_chrom_col} not found in view columns")
     if orientation_col is None:
         orientation_col = "strand"
-        if orientation_col is not None and "strand" not in names:
-            view_df["strand"] = pd.NA
-    # If additional columns are not in the view, raise
-    if new_chrom_col is not None and new_chrom_col not in view_df.columns:
-        raise ValueError(f"New chrom col {new_chrom_col} not found in view columns")
-    if orientation_col is not None and orientation_col not in view_df.columns:
+    elif orientation_col not in view_df.columns:
         raise ValueError(f"Orientation col {orientation_col} not found in view columns")
+
     # Fill NaNs in additional columns: if they were created here, will be filled with
     # default values. Allows not specifying default values in the file, i.e. only
     # regions that need to be inverted need to have "-" in orientation_col
