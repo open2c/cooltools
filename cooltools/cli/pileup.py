@@ -254,9 +254,9 @@ def pileup(
     ##### Store the data as NPZ file:
     if out_format.lower() == "npz":
         if store_snips:
-            np.savez(out, pileup=pileup)
-        else:
             np.savez(out, pileup=pileup, stack=stack)
+        else:
+            np.savez(out, pileup=pileup)
     elif out_format.lower() == "hdf5":
         h5 = h5py.File(out, "w")
         h5.create_dataset("pileup", data=pileup)
