@@ -8,7 +8,7 @@ from cooltools.api.rearrange import rearrange_cooler
 from pandas.testing import assert_frame_equal
 
 
-def test_reorder_cooler(request):
+def test_rearrange_cooler(request):
     # Read cool file and create view_df out of it:
     clr = cooler.Cooler(op.join(request.fspath.dirname, "data/CN.mm9.10000kb.cool"))
     orig_view = bioframe.make_viewframe(clr.chromsizes)
