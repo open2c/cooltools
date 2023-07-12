@@ -51,7 +51,7 @@ def _extract_profile(chrom, clr, clr_weight_name, viewpoint):
     pxls2.columns = ["chrom", "start", "end", colname]
     if pxls2.shape[0] > 0:
         to_return.append(pxls2)
-    if len(to_return)==0:
+    if len(to_return) == 0:
         return pd.DataFrame(columns=["chrom", "start", "end", colname])
     else:
         return pd.concat(to_return, ignore_index=True)
@@ -120,6 +120,9 @@ def virtual4c(
         v4c = clr.bins()[:][["chrom", "start", "end"]]
         v4c[colname] = np.nan
     else:
+        v4c["chrom"] = v4c["chrom"].astype("category")
+        v4c["start"] = v4c["start"].astype(int)
+        v4c["end"] = v4c["end"].astype(int)
         bioframe.sort_bedframe(
             v4c,
             view_df=bioframe.make_viewframe(clr.chromsizes),
