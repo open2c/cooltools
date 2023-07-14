@@ -648,7 +648,7 @@ def observed_over_expected(
     return data, dist_bins, sum_pixels_arr, n_pixels_arr
 
 
-@numba.jit  # (nopython=True)
+@numba.jit(nopython=True)
 def iterative_correction_symmetric(
     x, max_iter=1000, ignore_diags=0, tol=1e-5, verbose=False
 ):
@@ -723,7 +723,7 @@ def iterative_correction_symmetric(
     return _x, totalBias, report
 
 
-@numba.jit  # (nopython=True)
+@numba.jit(nopython=True)
 def iterative_correction_asymmetric(x, max_iter=1000, tol=1e-5, verbose=False):
     """Adapted from iterative_correction_symmetric
 
