@@ -5,6 +5,7 @@ import cooler
 import functools
 from multiprocessing import Pool
 import logging
+from cooltools.lib.common import pool_decorator
 
 formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s : %(message)s")
 logger = logging.getLogger("data_util")
@@ -14,7 +15,6 @@ ch = logging.StreamHandler()
 ch.setLevel(logging.INFO)
 ch.setFormatter(formatter)
 logger.addHandler(ch)
-
 
 @curry
 def cis_total_ratio_filter(clr, thres=0.5):
@@ -130,44 +130,6 @@ def pixel_iter_chunks(clr, chunksize):
     for lo, hi in cooler.util.partition(0, len(selector), chunksize):
         chunk = selector[lo:hi]
         yield chunk
-
-
-def pool_decorator(func):
-    """
-    A decorator function that enables multiprocessing for a given function.
-
-    Parameters
-    ----------
-    func : callable
-        The function to be decorated.
-
-    Returns
-    -------
-    A wrapper function that enables multiprocessing for the given function.
-    """
-
-    def wrapper(*args, **kwargs):
-        pool = None
-        if "nproc" in kwargs.keys():
-            if kwargs["nproc"] > 1:
-                logger.debug("Start to use pool")
-                pool = Pool(kwargs["nproc"])
-                mymap = pool.map
-            else:
-                mymap = map
-
-            func(*args, **kwargs, map=mymap)
-
-        else:
-            raise TypeError(
-                "nproc must be specified as a keyword argument (e.g. nproc=1, nproc=5...)"
-            )
-
-        if pool != None:
-            pool.close()
-
-    return wrapper
-
 
 @pool_decorator
 def create_filtered_cooler(
