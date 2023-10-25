@@ -17,7 +17,7 @@ ch.setFormatter(formatter)
 logger.addHandler(ch)
 
 @curry
-def cis_total_ratio_filter(clr, thres=0.5):
+def cis_total_ratio_filter(clr, threshold=0.5):
     """
     Filter out bins with low cis-to-total coverage ratio from a Cooler object.
 
@@ -25,7 +25,7 @@ def cis_total_ratio_filter(clr, thres=0.5):
     ----------
     clr : cooler.Cooler
         A Cooler object containing Hi-C contact matrices.
-    thres : float
+    threshold : float
         The threshold cis-to-total coverage ratio below which bins are considered bad.
 
     Returns
@@ -39,11 +39,11 @@ def cis_total_ratio_filter(clr, thres=0.5):
     """
     if isinstance(clr, float):
         raise TypeError(
-            "If only threshold value is provided, please use 'thres' keyword to set threshold value (e.g. thres=0.2)"
+            "If only threshold value is provided, please use 'threshold' keyword to set threshold value (e.g. threshold=0.2)"
         )
     coverage = cooltools.coverage(clr)
     cis_total_cov = coverage[0] / coverage[1]
-    bin_mask = cis_total_cov > thres
+    bin_mask = cis_total_cov > threshold
 
     return bin_mask
 
@@ -161,7 +161,7 @@ def create_filtered_cooler(
             "bin_mask should have the same length as bin table in cool file"
         )
     logger.debug("Start to create cooler file...")
-    bin_table = clr.bins()[:]
+    bin_table = clr.bins()[:][['chrom','start','end']].copy()
     good_bins_index = np.array(range(clr.bins().shape[0]))[bin_mask]
     pixels_filter = functools.partial(_pixel_filter, good_bins_index=good_bins_index)
 

@@ -529,7 +529,7 @@ def pool_decorator(func):
         if "nproc" in kwargs.keys():
             if kwargs["nproc"] > 1:
                 pool = Pool(kwargs["nproc"])
-                mymap = pool.map
+                mymap = pool.imap
             else:
                 mymap = map
 
