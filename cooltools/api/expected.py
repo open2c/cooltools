@@ -302,7 +302,9 @@ def make_diag_tables(clr, regions, regions2=None, clr_weight_name="weight"):
             regions2 = bioframe.make_viewframe(
                 regions2, check_bounds=clr.chromsizes
             ).to_numpy()
-    except ValueError:  # If there are non-unique entries in regions1/2, possible only for asymmetric expected:
+    except (
+        ValueError
+    ):  # If there are non-unique entries in regions1/2, possible only for asymmetric expected:
         regions = pd.concat(
             [
                 bioframe.make_viewframe([region], check_bounds=clr.chromsizes)
@@ -1017,25 +1019,43 @@ def expected_cis(
 
     # additional smoothing and aggregating options would add columns only, not replace them
     if smooth:
+        if clr_weight_name is None:
+            # result["count.avg"] = result["count.sum"] / result["n_valid"]
+            cols = {
+                "dist": "dist",
+                "n_pixels": _NUM_VALID,
+                "n_contacts": "count.sum",
+                "contact_freq": "count.avg",
+                "smooth_suffix": ".smoothed",
+            }
+        else:
+            cols = expected_smoothing.DEFAULT_CVD_COLS
+
         result_smooth = expected_smoothing.agg_smooth_cvd(
-            result,
-            sigma_log10=smooth_sigma,
+            result, sigma_log10=smooth_sigma, cols=cols
         )
         # add smoothed columns to the result (only balanced for now)
         result = result.merge(
-            result_smooth[["balanced.avg.smoothed", _DIST]],
+            result_smooth[[cols["contact_freq"] + cols["smooth_suffix"], _DIST]],
             on=[_REGION1, _REGION2, _DIST],
             how="left",
         )
         if aggregate_smoothed:
             result_smooth_agg = expected_smoothing.agg_smooth_cvd(
-                result,
-                groupby=None,
-                sigma_log10=smooth_sigma,
-            ).rename(columns={"balanced.avg.smoothed": "balanced.avg.smoothed.agg"})
+                result, groupby=None, sigma_log10=smooth_sigma, cols=cols
+            ).rename(
+                columns={
+                    cols["contact_freq"]
+                    + cols["smooth_suffix"]: cols["contact_freq"]
+                    + cols["smooth_suffix"]
+                    + ".agg"
+                }
+            )
             # add smoothed columns to the result
             result = result.merge(
-                result_smooth_agg[["balanced.avg.smoothed.agg", _DIST]],
+                result_smooth_agg[
+                    [cols["contact_freq"] + cols["smooth_suffix"] + ".agg", _DIST]
+                ],
                 on=[
                     _DIST,
                 ],
