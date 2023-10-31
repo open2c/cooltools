@@ -488,8 +488,7 @@ def test_expected_smooth_nobalance_cli(request, tmpdir):
             "expected-cis",
             "--smooth",
             "--aggregate-smoothed",
-            "--clr-weight-name",
-            clr_weight_name,
+            "--clr-weight-name ''",
             "-o",
             out_cis_expected,
             in_cool,
@@ -498,7 +497,6 @@ def test_expected_smooth_nobalance_cli(request, tmpdir):
     assert result.exit_code == 0
     clr = cooler.Cooler(in_cool)
     cis_expected = pd.read_table(out_cis_expected, sep="\t")
-    print(cis_expected)
     grouped = cis_expected.groupby(["region1", "region2"])
     # full chromosomes in this example:
     for (chrom1, chrom2), group in grouped:
