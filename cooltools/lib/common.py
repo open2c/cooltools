@@ -8,6 +8,8 @@ import pandas as pd
 
 import bioframe
 
+from multiprocessing import Pool
+
 
 def assign_view_paired(
     features,
@@ -506,3 +508,39 @@ def align_track_with_cooler(
         clr_track.loc[~valid_bins, "value"] = np.nan
 
     return clr_track[["chrom", "start", "end", "value"]]
+
+
+def pool_decorator(func):
+    """
+    A decorator function that enables multiprocessing for a given function.
+
+    Parameters
+    ----------
+    func : callable
+        The function to be decorated.
+
+    Returns
+    -------
+    A wrapper function that enables multiprocessing for the given function.
+    """
+
+    def wrapper(*args, **kwargs):
+        pool = None
+        if "nproc" in kwargs.keys():
+            if kwargs["nproc"] > 1:
+                pool = Pool(kwargs["nproc"])
+                mymap = pool.imap
+            else:
+                mymap = map
+
+            func(*args, **kwargs, map=mymap)
+
+        else:
+            raise TypeError(
+                "nproc must be specified as a keyword argument (e.g. nproc=1, nproc=5...)"
+            )
+
+        if pool != None:
+            pool.close()
+
+    return wrapper
