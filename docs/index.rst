@@ -19,8 +19,7 @@ Chromosome conformation capture technologies reveal the incredible complexity of
 
 **cooltools** leverages this format to enable flexible and reproducible analysis of high-resolution data. **cooltools** provides a suite of computational tools with a paired python API and command line access, which facilitates workflows either on high-performance computing clusters or via custom analysis notebooks. As part of the `Open2C ecosystem <https://open2c.github.io/>`_, **cooltools** also provides detailed introductions to key concepts in Hi-C-data analysis with interactive notebook documentation.
 
-If you use **cooltools** in your work, please cite **cooltools** via its zenodo `DOI 10.5281/zenodo.5214125 <https://doi.org/10.5281/zenodo.5214125>`_
-
+If you use **cooltools** in your work, please cite **cooltools**: https://doi.org/10.1101/2022.10.31.514564.
 
 Installation
 ============
