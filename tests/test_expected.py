@@ -514,20 +514,10 @@ def test_expected_smooth_nobalance_cli(request, tmpdir):
             # because of non-matching NaNs and "noiseness" of the non-smoothed
             # expected
             _delta_smooth = np.nanmax(
-                np.abs(
-                    np.nan_to_num(
-                        group["count.avg.smoothed"].to_numpy() - desired_expected,
-                        posinf=0,
-                    ),
-                ),
+                np.abs(group["count.avg.smoothed"].to_numpy() - desired_expected)
             )
             _delta_smooth_agg = np.nanmax(
-                np.abs(
-                    np.nan_to_num(
-                        group["count.avg.smoothed.agg"].to_numpy() - desired_expected,
-                        posinf=0,
-                    ),
-                ),
+                np.abs(group["count.avg.smoothed.agg"].to_numpy() - desired_expected)
             )
             # some made up tolerances, that work for this example
             assert _delta_smooth < 2000
