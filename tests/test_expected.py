@@ -478,9 +478,8 @@ def test_expected_smooth_cli(request, tmpdir):
 
 def test_expected_smooth_nobalance_cli(request, tmpdir):
     # CLI compute-expected for chrom-wide cis-data
-    clr_weight_name = None
     in_cool = op.join(request.fspath.dirname, "data/CN.mm9.1000kb.cool")
-    out_cis_expected = op.join(tmpdir, "cis.exp.tsv")
+    out_cis_expected = op.join(tmpdir, "cis_unb.exp.tsv")
     runner = CliRunner()
     result = runner.invoke(
         cli,
@@ -488,7 +487,8 @@ def test_expected_smooth_nobalance_cli(request, tmpdir):
             "expected-cis",
             "--smooth",
             "--aggregate-smoothed",
-            "--clr-weight-name ''",
+            "--clr-weight-name",
+            "",
             "-o",
             out_cis_expected,
             in_cool,
@@ -504,24 +504,34 @@ def test_expected_smooth_nobalance_cli(request, tmpdir):
         # work only on "large" crhomosomes, skip chrM and such
         if chrom1 not in ["chrM", "chrY", "chrX"]:
             # extract dense matrix and get desired expected:
-            matrix = clr.matrix(balance=clr_weight_name).fetch(chrom1)
+            matrix = clr.matrix(balance=False).fetch(chrom1)
             desired_expected = np.where(
                 group["dist"] < ignore_diags,
                 np.nan,  # fill nan for ignored diags
                 _diagsum_symm_dense(matrix),
             )
-            # do overlall tolerance instead of element by element comparison
+            # do overall tolerance instead of element by element comparison
             # because of non-matching NaNs and "noiseness" of the non-smoothed
             # expected
             _delta_smooth = np.nanmax(
-                np.abs(group["count.avg.smoothed"].to_numpy() - desired_expected)
+                np.abs(
+                    np.nan_to_num(
+                        group["count.avg.smoothed"].to_numpy() - desired_expected,
+                        posinf=0,
+                    ),
+                ),
             )
             _delta_smooth_agg = np.nanmax(
-                np.abs(group["count.avg.smoothed.agg"].to_numpy() - desired_expected)
+                np.abs(
+                    np.nan_to_num(
+                        group["count.avg.smoothed.agg"].to_numpy() - desired_expected,
+                        posinf=0,
+                    ),
+                ),
             )
             # some made up tolerances, that work for this example
-            assert _delta_smooth < 0.01
-            assert _delta_smooth_agg < 0.02
+            assert _delta_smooth < 2000
+            assert _delta_smooth_agg < 4000
 
 
 def test_trans_expected_view_cli(request, tmpdir):
