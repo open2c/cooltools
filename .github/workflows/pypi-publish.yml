@@ -27,7 +27,7 @@ jobs:
           pip install build
 
       - name: Build
-        run: python -m build
+        run: python -m build --sdist
 
       - name: Publish distribution 📦 to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
