@@ -4,11 +4,21 @@
 
 ## [v0.6.0](https://github.com/open2c/cooltools/compare/v0.5.4...v0.6.0)
 
+### New features
+* New function/tool `rearrange_cooler` to reorder/subset/flip regions of the genome in a cooler
+* New test dataset for micro-C from hESCs
+
+### API changes
+* snipping: reorder the axes of the output snipper array to (snippet_idx, i, j).
+
 ### Maintenance
 
 * snipping: fix spurious nan->0 conversion of bad bins in on-diagonal pileups
-* snipping: reorder the axes of the output snipper array to (snippet_idx, i, j).
+* snipping: fix snipping without provided view
+* snipping: fix for storing the stack in a file
+* virtual4c: fix for the case when viewpoint has no contacts
 * fix: Fix numba deprecation warnings by adding `nopython=True`
+* Other small bugfixes
 
 ## [v0.5.4](https://github.com/open2c/cooltools/compare/v0.5.3...v0.5.4)
 
