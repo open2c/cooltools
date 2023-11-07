@@ -1,9 +1,14 @@
 # Release notes
 
-## [Upcoming release](https://github.com/open2c/cooltools/compare/v0.5.4...HEAD)
+## [Upcoming release](https://github.com/open2c/cooltools/compare/v0.6.0...HEAD)
+
+## [v0.6.0](https://github.com/open2c/cooltools/compare/v0.5.4...v0.6.0)
+
+### Maintenance
 
 * snipping: fix spurious nan->0 conversion of bad bins in on-diagonal pileups
 * snipping: reorder the axes of the output snipper array to (snippet_idx, i, j).
+* fix: Fix numba deprecation warnings by adding `nopython=True`
 
 ## [v0.5.4](https://github.com/open2c/cooltools/compare/v0.5.3...v0.5.4)
 
