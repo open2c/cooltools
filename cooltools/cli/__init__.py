@@ -57,4 +57,5 @@ from . import (
     sample,
     coverage,
     virtual4c,
+    rearrange,
 )
