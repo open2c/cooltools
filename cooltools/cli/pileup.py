@@ -164,10 +164,7 @@ def pileup(
         dtypes = {"chrom": str, "start": np.int64, "end": np.int64}
         if names is None:
             kwargs = dict(
-                header=None,
-                usecols=default_cols, 
-                names=bed_cols,
-                dtype=dtypes
+                header=None, usecols=default_cols, names=bed_cols, dtype=dtypes
             )
         else:
             if len(names) < 3:
@@ -180,9 +177,7 @@ def pileup(
             "Please provide BED or BEDPE as --features-format"
         )
 
-    features_df = pd.read_table(
-        buf, comment="#", verbose=verbose, **kwargs
-    )
+    features_df = pd.read_table(buf, comment="#", verbose=verbose, **kwargs)
 
     ###### Define view
     if view is None:
@@ -249,7 +244,7 @@ def pileup(
             f"Aggregation mode {aggregate} not supported. Please use mean/median/min/max/std."
         )
 
-    pileup = agg_func(stack, axis=2)
+    pileup = agg_func(stack, axis=0)
 
     ##### Store the data as NPZ file:
     if out_format.lower() == "npz":
