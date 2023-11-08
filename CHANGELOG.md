@@ -1,6 +1,12 @@
 # Release notes
 
-## [Upcoming release](https://github.com/open2c/cooltools/compare/v0.6.0...HEAD)
+## [Upcoming release](https://github.com/open2c/cooltools/compare/v0.6.1...HEAD)
+
+## [v0.6.1](https://github.com/open2c/cooltools/compare/v0.6.0...v0.6.1)
+
+### Maintenance
+* Bug fix in CLI pileup
+
 
 ## [v0.6.0](https://github.com/open2c/cooltools/compare/v0.5.4...v0.6.0)
 
