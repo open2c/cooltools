@@ -29,6 +29,7 @@ MOCK_MODULES = [
     'matplotlib',
     'matplotlib.cm',
     'matplotlib.pyplot',
+    'matplotlib.colors',
     'numba',
     # 'numpy',
     'pandas',
