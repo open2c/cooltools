@@ -1315,7 +1315,7 @@ def adaptive_coarsegrain(ar, countar, cutoff=5, max_levels=8, min_shape=8):
     Norig = ar.shape[0]
     Nlog = np.log2(Norig)
     if not np.allclose(Nlog, np.rint(Nlog)):
-        newN = np.int(2 ** np.ceil(Nlog))  # next power-of-two sized matrix
+        newN = int(2 ** np.ceil(Nlog))  # next power-of-two sized matrix
         newar = np.empty((newN, newN), dtype=float)  # fitting things in there
         newar[:] = np.nan
         newcountar = np.zeros((newN, newN), dtype=float)
