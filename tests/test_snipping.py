@@ -206,6 +206,7 @@ def test_ondiag__pileup_with_expected(request):
     view_df = bioframe.read_table(
         op.join(request.fspath.dirname, "data/CN.mm9.toy_regions.bed"), schema="bed4"
     )
+    feature_type = "bed"
     for snipper_class in (
         cooltools.api.snipping.ObsExpSnipper,
         cooltools.api.snipping.ExpectedSnipper,
@@ -221,7 +222,7 @@ def test_ondiag__pileup_with_expected(request):
             drop=True
         )
         stack = cooltools.api.snipping._pileup(
-            windows, snipper.select, snipper.snip, map=map
+            windows, feature_type, snipper.select, snipper.snip, map=map
         )
 
         # Check that the size of snips is OK and there are two of them:
@@ -237,7 +238,7 @@ def test_ondiag__pileup_with_expected(request):
         )
 
         stack = cooltools.api.snipping._pileup(
-            windows, snipper.select, snipper.snip, map=map
+            windows, feature_type, snipper.select, snipper.snip, map=map
         )
 
         assert stack.shape == (2, 5, 5)
@@ -253,6 +254,7 @@ def test_ondiag__pileup_without_expected(request):
     view_df = bioframe.read_table(
         op.join(request.fspath.dirname, "data/CN.mm9.toy_regions.bed"), schema="bed4"
     )
+    feature_type = "bed"
 
     # I.
     # Example region with windows, two regions from annotated genomic regions:
@@ -265,7 +267,7 @@ def test_ondiag__pileup_without_expected(request):
     )
     snipper = cooltools.api.snipping.CoolerSnipper(clr, view_df=view_df, min_diag=None)
     stack = cooltools.api.snipping._pileup(
-        windows, snipper.select, snipper.snip, map=map
+        windows, feature_type, snipper.select, snipper.snip, map=map
     )
 
     # Check that the size of snips is OK and there are two of them:
@@ -281,7 +283,7 @@ def test_ondiag__pileup_without_expected(request):
     )
 
     stack = cooltools.api.snipping._pileup(
-        windows, snipper.select, snipper.snip, map=map
+        windows, feature_type, snipper.select, snipper.snip, map=map
     )
 
     assert stack.shape == (2, 5, 5)
@@ -299,6 +301,7 @@ def test_offdiag__pileup_with_expected(request):
     view_df = bioframe.read_table(
         op.join(request.fspath.dirname, "data/CN.mm9.toy_regions.bed"), schema="bed4"
     )
+    feature_type = "bedpe"
     for snipper_class in (
         cooltools.api.snipping.ObsExpSnipper,
         cooltools.api.snipping.ExpectedSnipper,
@@ -321,7 +324,7 @@ def test_offdiag__pileup_with_expected(request):
         )
 
         stack = cooltools.api.snipping._pileup(
-            windows, snipper.select, snipper.snip, map=map
+            windows, feature_type, snipper.select, snipper.snip, map=map
         )
 
         # Check that the size of snips is OK and there are two of them:
@@ -343,7 +346,7 @@ def test_offdiag__pileup_with_expected(request):
         )
 
         stack = cooltools.api.snipping._pileup(
-            windows, snipper.select, snipper.snip, map=map
+            windows, feature_type, snipper.select, snipper.snip, map=map
         )
 
         assert stack.shape == (2, 5, 5)
@@ -366,7 +369,7 @@ def test_offdiag__pileup_with_expected(request):
         )
 
         stack = cooltools.api.snipping._pileup(
-            windows, snipper.select, snipper.snip, map=map
+            windows, feature_type, snipper.select, snipper.snip, map=map
         )
 
         assert stack.shape == (2, 5, 5)
@@ -384,6 +387,7 @@ def test_offdiag__pileup_without_expected(request):
     view_df = bioframe.read_table(
         op.join(request.fspath.dirname, "data/CN.mm9.toy_regions.bed"), schema="bed4"
     )
+    feature_type = "bedpe"
 
     # I.
     # Example region with windows, two regions from annotated genomic regions:
@@ -402,7 +406,7 @@ def test_offdiag__pileup_without_expected(request):
 
     snipper = cooltools.api.snipping.CoolerSnipper(clr, view_df=view_df, min_diag=None)
     stack = cooltools.api.snipping._pileup(
-        windows, snipper.select, snipper.snip, map=map
+        windows, feature_type, snipper.select, snipper.snip, map=map
     )
 
     # Check that the size of snips is OK and there are two of them:
@@ -424,7 +428,7 @@ def test_offdiag__pileup_without_expected(request):
     )
 
     stack = cooltools.api.snipping._pileup(
-        windows, snipper.select, snipper.snip, map=map
+        windows, feature_type, snipper.select, snipper.snip, map=map
     )
 
     assert stack.shape == (2, 5, 5)
@@ -449,7 +453,7 @@ def test_offdiag__pileup_without_expected(request):
     )
 
     stack = cooltools.api.snipping._pileup(
-        windows, snipper.select, snipper.snip, map=map
+        windows, feature_type, snipper.select, snipper.snip, map=map
     )
 
     assert stack.shape == (2, 5, 5)
