@@ -8,6 +8,7 @@ import pandas as pd
 import pytest
 
 from click.testing import CliRunner
+from cooltools.lib import numutils
 from cooltools.cli import cli
 
 
@@ -99,7 +100,7 @@ def test_pileup(request):
     windows = pd.DataFrame(
         {
             "chrom": ["chr1", "chr1"],
-            "start": [83000000, 108_000_000],
+            "start": [83_000_000, 108_000_000],
             "end": [88_000_000, 113_000_000],
         }
     )
@@ -259,9 +260,8 @@ def test_ondiag__pileup_without_expected(request):
     # I.
     # Example region with windows, two regions from annotated genomic regions:
     windows = cooltools.api.snipping.make_bin_aligned_windows(
-        1_000_000, ["chr1", "chr1"], [120_000_000, 160_000_000], flank_bp=2_000_000
+        1_000_000, ["chr1", "chr1"], [120_000_000, 140_000_000], flank_bp=2_000_000
     )
-
     windows = cooltools.lib.common.assign_view_auto(windows, view_df).reset_index(
         drop=True
     )
@@ -289,6 +289,46 @@ def test_ondiag__pileup_without_expected(request):
     assert stack.shape == (2, 5, 5)
     assert np.all(np.isfinite(stack[0]))
     assert np.all(np.isnan(stack[1]))
+
+
+def test_ondiag__pileup_without_expected_with_result_validation(request, allclose):
+    """
+    Test the snipping on matrix:
+    """
+    # Read cool file and create view_df out of it:
+    clr = cooler.Cooler(op.join(request.fspath.dirname, "data/CN.mm9.1000kb.cool"))
+    view_df = bioframe.read_table(
+        op.join(request.fspath.dirname, "data/CN.mm9.toy_regions.bed"), schema="bed4"
+    )
+    feature_type = "bed"
+    min_diag = 1
+
+    # Example region with windows, two regions from annotated genomic regions:
+    windows = cooltools.api.snipping.make_bin_aligned_windows(
+        1_000_000, ["chr1", "chr1"], [110_000_000, 140_000_000], flank_bp=2_000_000
+    )
+    windows = cooltools.lib.common.assign_view_auto(windows, view_df).reset_index(
+        drop=True
+    )
+
+    # generate reference stack using naive cooler.matrix.fetch extraction:
+    ref_stack = []
+    for _win in windows[["chrom","start","end"]].itertuples(index=False):
+        _mat = clr.matrix().fetch(_win)
+        # fill min_diag diagonals with NaNs
+        for d in range(-min_diag + 1, min_diag):
+            _mat = numutils.set_diag(_mat, np.nan, d)
+        ref_stack.append(_mat)
+    ref_stack = np.asarray(ref_stack)
+
+    snipper = cooltools.api.snipping.CoolerSnipper(clr, view_df=view_df, min_diag=min_diag)
+    stack = cooltools.api.snipping._pileup(
+        windows, feature_type, snipper.select, snipper.snip, map=map
+    )
+
+    # Check that the size of snips is OK and there are two of them:
+    assert stack.shape == (len(windows), 5, 5)
+    assert allclose(stack, ref_stack, equal_nan=True)
 
 
 def test_offdiag__pileup_with_expected(request):
@@ -376,6 +416,87 @@ def test_offdiag__pileup_with_expected(request):
         assert np.all(
             [np.all(np.isnan(snip[np.tril_indices_from(snip, 1)])) for snip in stack]
         )
+
+def test_offdiag__pileup_without_expected_with_result_validation(request, allclose):
+    """
+    Test the snipping on matrix:
+    """
+    # Read cool file and create view_df out of it:
+    clr = cooler.Cooler(op.join(request.fspath.dirname, "data/CN.mm9.1000kb.cool"))
+    view_df = bioframe.read_table(
+        op.join(request.fspath.dirname, "data/CN.mm9.toy_regions.bed"), schema="bed4"
+    )
+    feature_type = "bedpe"
+    min_diag = 2
+
+    # I.
+    # Example region with windows, two regions from annotated genomic regions:
+    windows1 = cooltools.api.snipping.make_bin_aligned_windows(
+        1_000_000, ["chr1", "chr1"], [102_000_000, 115_000_000], flank_bp=2_000_000
+    )
+    windows2 = cooltools.api.snipping.make_bin_aligned_windows(
+        1_000_000, ["chr1", "chr1"], [115_000_000, 140_000_000], flank_bp=2_000_000
+    )
+    windows = pd.merge(
+        windows1, windows2, left_index=True, right_index=True, suffixes=("1", "2")
+    )
+    windows = cooltools.lib.common.assign_view_auto(windows, view_df).reset_index(
+        drop=True
+    )
+
+    # generate reference stack using naive cooler.matrix.fetch extraction:
+    ref_stack = []
+    for _win in windows[["chrom1", "start1", "end1", "chrom2", "start2", "end2"]].itertuples(index=False):
+        _reg1 = _win[:3]
+        _reg2 = _win[3:]
+        _mat = clr.matrix().fetch(_reg1, _reg2)
+        # assuming regions are away from the diagonal - no set_diag needed
+        ref_stack.append(_mat)
+    ref_stack = np.asarray(ref_stack)
+
+    snipper = cooltools.api.snipping.CoolerSnipper(clr, view_df=view_df, min_diag=min_diag)
+    stack = cooltools.api.snipping._pileup(
+        windows, feature_type, snipper.select, snipper.snip, map=map
+    )
+
+    # Check that the size of snips is OK, there are two of them and their value are OK:
+    assert stack.shape == (len(windows), 5, 5)
+    assert allclose(stack, ref_stack, equal_nan = True)
+
+    # II.
+    # Example trans features
+    min_diag = None
+    snipper = cooltools.api.snipping.CoolerSnipper(clr, view_df=view_df, min_diag=min_diag)
+    windows1 = cooltools.api.snipping.make_bin_aligned_windows(
+        1_000_000, ["chr1", "chr1"], [102_000_000, 120_000_000], flank_bp=2_000_000
+    )
+    windows2 = cooltools.api.snipping.make_bin_aligned_windows(
+        1_000_000, ["chr2", "chr2"], [102_000_000, 130_000_000], flank_bp=2_000_000
+    )
+    windows = pd.merge(
+        windows1, windows2, left_index=True, right_index=True, suffixes=("1", "2")
+    )
+    windows = cooltools.lib.common.assign_view_auto(windows, view_df).reset_index(
+        drop=True
+    )
+
+    # generate reference stack using naive cooler.matrix.fetch extraction:
+    ref_stack = []
+    for _win in windows[["chrom1", "start1", "end1", "chrom2", "start2", "end2"]].itertuples(index=False):
+        _reg1 = _win[:3]
+        _reg2 = _win[3:]
+        _mat = clr.matrix().fetch(_reg1, _reg2)
+        ref_stack.append(_mat)
+    ref_stack = np.asarray(ref_stack)
+
+    stack = cooltools.api.snipping._pileup(
+        windows, feature_type, snipper.select, snipper.snip, map=map
+    )
+
+    # check shape and values
+    assert stack.shape == (len(windows), 5, 5)
+    assert allclose(stack, ref_stack, equal_nan = True)
+
 
 
 def test_offdiag__pileup_without_expected(request):

@@ -294,6 +294,13 @@ def _pileup(features, feature_type, data_select, data_snip, map=map):
 
     idx = np.argsort(orig_rank)
     cumul_stack = cumul_stack[idx, :, :]
+    # snippers return only upper part of the on-diagonal matrix
+    # this is intended behavior for off-diagonal pileups - it masks
+    # lower-symmetrical values for near-diagonal snips - but for
+    # on-diagonal pileups it has to be mitigated to restore symmetry:
+    if feature_type == "bed":
+        cumul_stack = np.fmax(cumul_stack, np.transpose(cumul_stack, axes=(0, 2, 1)))
+
     return cumul_stack
 
 
@@ -947,9 +954,8 @@ def pileup(
         mymap = pool.map
     else:
         mymap = map
+
     stack = _pileup(features_df, feature_type, snipper.select, snipper.snip, map=mymap)
-    if feature_type == "bed":
-        stack = np.fmax(stack, np.transpose(stack, axes=(0, 2, 1)))
 
     if nproc > 1:
         pool.close()
