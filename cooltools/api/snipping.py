@@ -486,14 +486,12 @@ class ObsExpSnipper:
             Genomic view to constrain the analysis
             E.g. use make_cooler_view(clr) to generate view with
             all chromosomes present in the cooler
+            all chromosomes present in the cooler
         cooler_opts : dict, optional
             Options to pass to the clr.matrix() method, by default None
             Can be used to choose the cooler weight name, e.g.
             cooler_opts={balance='non-standard-weight'}, or use unbalanced data with
             cooler_opts={balance=False}
-        view_df : pd.DataFrame, optional
-            Genomic view to constrain the analysis, by default None and uses all
-            chromosomes present in the cooler
         min_diag : int, optional
             This number of short-distance diagonals is ignored, by default 2
         expected_value_col : str, optional
@@ -651,7 +649,7 @@ class ObsExpSnipper:
 
 class ExpectedSnipper:
     def __init__(
-        self, clr, expected, view_df=None, min_diag=2, expected_value_col="balanced.avg"
+        self, clr, expected, view_df, min_diag=2, expected_value_col="balanced.avg"
     ):
         """Class for generating expected snips
 
@@ -661,9 +659,10 @@ class ExpectedSnipper:
             Cooler object to which the data corresponds
         expected : pd.DataFrame
             Dataframe containing expected interactions in the cooler
-        view_df : pd.DataFrame, optional
-            Genomic view to constrain the analysis, by default None and uses all
-            chromosomes present in the cooler
+        view_df : pd.DataFrame
+            Genomic view to constrain the analysis
+            E.g. use make_cooler_view(clr) to generate view with
+            all chromosomes present in the cooler
         min_diag : int, optional
             This number of short-distance diagonals is ignored, by default 2
         expected_value_col : str, optional
