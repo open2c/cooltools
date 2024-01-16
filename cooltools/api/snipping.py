@@ -111,6 +111,8 @@ def expand_align_features(features_df, flank, resolution, format="bed"):
         ).astype(int)
         features_df["start2"] = features_df["lo2"] * resolution
         features_df["end2"] = features_df["hi2"] * resolution
+    else:
+        raise ValueError(f"feature_type can be 'bed' or 'bedpe', {format} is provided.")
     return features_df
 
 
@@ -185,51 +187,53 @@ def make_bin_aligned_windows(
 
 
 def _extract_stack(data_select, data_snip, arg):
+    # on-diagonal: support is a single region name or ""
     support, feature_group = arg
     # return empty snippets if region is unannotated:
     if len(support) == 0:
-        if "start" in feature_group:  # on-diagonal off-region case:
-            lo = feature_group["lo"].values
-            hi = feature_group["hi"].values
-            s = (hi - lo).astype(int)  # Shape of individual snips
-            assert s.max() == s.min(), "Pileup accepts only windows of the same size"
-            stack = np.full((len(feature_group), s[0], s[0]), np.nan)
-        else:  # off-diagonal off-region case:
-            lo1 = feature_group["lo1"].values
-            hi1 = feature_group["hi1"].values
-            lo2 = feature_group["lo2"].values
-            hi2 = feature_group["hi2"].values
-            s1 = (hi1 - lo1).astype(int)  # Shape of individual snips
-            s2 = (hi2 - lo2).astype(int)
-            assert s1.max() == s1.min(), "Pileup accepts only windows of the same size"
-            assert s2.max() == s2.min(), "Pileup accepts only windows of the same size"
-            stack = np.full((len(feature_group), s1[0], s2[0]), np.nan)
-        return stack, feature_group["_rank"].values
-
-    # check if support region is on- or off-diagonal
-    if len(support) == 2:
-        region1, region2 = support
+        lo = feature_group["lo"].to_numpy()
+        hi = feature_group["hi"].to_numpy()
+        s = (hi - lo).astype(int)  # Shape of individual snips
+        assert s.max() == s.min(), "Pileup accepts only windows of the same size"
+        stack = np.full((len(feature_group), s[0], s[0]), np.nan)
     else:
         region1 = region2 = support
-
-    # check if features are on- or off-diagonal
-    if "start" in feature_group:
-        s1 = feature_group["start"].values
-        e1 = feature_group["end"].values
+        s1 = feature_group["start"].to_numpy()
+        e1 = feature_group["end"].to_numpy()
         s2, e2 = s1, e1
+        data = data_select(region1, region2)
+        stack = list(map(partial(data_snip, data, region1, region2), zip(s1, e1, s2, e2)))
+        stack = np.stack(stack)
+    return stack, feature_group["_rank"].to_numpy()
+
+
+def _extract_stack_paired(data_select, data_snip, arg):
+    # off-diagonal case: support is (region1, region2), region1/2 could be ""
+    support, feature_group = arg
+    region1, region2 = support
+    # return empty snippets if region is unannotated:
+    if (len(region1) == 0) or (len(region2) == 0):
+        lo1 = feature_group["lo1"].to_numpy()
+        hi1 = feature_group["hi1"].to_numpy()
+        lo2 = feature_group["lo2"].to_numpy()
+        hi2 = feature_group["hi2"].to_numpy()
+        s1 = (hi1 - lo1).astype(int)  # Shape of individual snips
+        s2 = (hi2 - lo2).astype(int)
+        assert s1.max() == s1.min(), "Pileup accepts only windows of the same size"
+        assert s2.max() == s2.min(), "Pileup accepts only windows of the same size"
+        stack = np.full((len(feature_group), s1[0], s2[0]), np.nan)
     else:
-        s1 = feature_group["start1"].values
-        e1 = feature_group["end1"].values
-        s2 = feature_group["start2"].values
-        e2 = feature_group["end2"].values
+        s1 = feature_group["start1"].to_numpy()
+        e1 = feature_group["end1"].to_numpy()
+        s2 = feature_group["start2"].to_numpy()
+        e2 = feature_group["end2"].to_numpy()
+        data = data_select(region1, region2)
+        stack = list(map(partial(data_snip, data, region1, region2), zip(s1, e1, s2, e2)))
+        stack = np.stack(stack)
+    return stack, feature_group["_rank"].to_numpy()
 
-    data = data_select(region1, region2)
-    stack = list(map(partial(data_snip, data, region1, region2), zip(s1, e1, s2, e2)))
-    stack = np.stack(stack)
-    return stack, feature_group["_rank"].values
 
-
-def _pileup(features, data_select, data_snip, map=map):
+def _pileup(features, feature_type, data_select, data_snip, map=map):
     """
     Creates a stackup of snippets (a 3D array) by selecting each region present in the
     `features` (using the `data_select` function) and then extracting all snippets from
@@ -241,10 +245,14 @@ def _pileup(features, data_select, data_snip, map=map):
     Parameters
     ----------
     features : DataFrame
-        Table of features. Requires columns ['chrom', 'start', 'end'].
-        Or ['chrom1', 'start1', 'end1', 'chrom1', 'start2', 'end2'].
+        Table of features. Requires columns ['chrom', 'start', 'end'] for
+        features of type 'bed'. For features of type 'bedpe' - columns
+        ['chrom1', 'start1', 'end1', 'chrom1', 'start2', 'end2'].
         start, end are bp coordinates.
         lo, hi are bin coordinates.
+
+    feature_type: str
+        type of the provided features. Can be 'bed' or 'bedpe'.
 
     data_select : callable
         Callable that takes a region as argument and returns
@@ -258,71 +266,64 @@ def _pileup(features, data_select, data_snip, map=map):
         Callable that works like builtin `map`.
 
     """
-    if features["region"].isnull().any():
-        warnings.warn(
-            "Some features do not have view regions assigned! Some snips will be empty."
-        )
 
     features = features.copy()
-    features["region"] = features["region"].fillna(
-        ""
-    )  # fill in unanotated view regions with empty string
     features["_rank"] = range(len(features))
+    # based on feature_type define how we will extract stacks for each region-group:
+    # define _extract_group_data function and _feature_groups iterable (region, group_df)
+    # Note that unannotated regions will form a separate group
+    if feature_type == "bed":
+        # fill in unanotated view regions with empty string
+        features["region"] = features["region"].fillna("")
+        _extract_group_data = partial(_extract_stack, data_select, data_snip)
+        _feature_groups = features.groupby("region", sort=False)
+    elif feature_type == "bedpe":
+        # fill in unanotated view regions with empty string
+        features["region1"] = features["region1"].fillna("")
+        features["region2"] = features["region2"].fillna("")
+        _extract_group_data = partial(_extract_stack_paired, data_select, data_snip)
+        _feature_groups = features.groupby(["region1", "region2"], sort=False)
+    else:
+        raise ValueError(f"feature_type can be only bed or bedpe, {feature_type} is provided.")
 
-    # cumul_stack = []
-    # orig_rank = []
-    cumul_stack, orig_rank = zip(
-        *map(
-            partial(_extract_stack, data_select, data_snip),
-            # Note that unannotated regions will form a separate group
-            features.groupby("region", sort=False),
-        )
-    )
+    # perform stack extraction on a per-region basis using _extract_group_data and _feature_groups
+    cumul_stack, orig_rank = zip( *map( _extract_group_data, _feature_groups ) )
     # Restore the original rank of the input features
     cumul_stack = np.concatenate(cumul_stack, axis=0)
     orig_rank = np.concatenate(orig_rank)
 
     idx = np.argsort(orig_rank)
     cumul_stack = cumul_stack[idx, :, :]
+    # snippers return only upper part of the on-diagonal matrix
+    # this is intended behavior for off-diagonal pileups - it masks
+    # lower-symmetrical values for near-diagonal snips - but for
+    # on-diagonal pileups it has to be mitigated to restore symmetry:
+    if feature_type == "bed":
+        cumul_stack = np.fmax(cumul_stack, np.transpose(cumul_stack, axes=(0, 2, 1)))
+
     return cumul_stack
 
 
 class CoolerSnipper:
-    def __init__(self, clr, cooler_opts=None, view_df=None, min_diag=2):
+    def __init__(self, clr, view_df, cooler_opts=None, min_diag=2):
         """Class for generating snips with "observed" data from a cooler
 
         Parameters
         ----------
         clr : cooler.Cooler
             Cooler object with data to use
+        view_df : pd.DataFrame
+            Genomic view to constrain the analysis
+            E.g. use make_cooler_view(clr) to generate view with
+            all chromosomes present in the cooler
         cooler_opts : dict, optional
             Options to pass to the clr.matrix() method, by default None
             Can be used to choose the cooler weight name, e.g.
             cooler_opts={balance='non-standard-weight'}, or use unbalanced data with
             cooler_opts={balance=False}
-        view_df : pd.DataFrame, optional
-            Genomic view to constrain the analysis, by default None and uses all
-            chromosomes present in the cooler
         min_diag : int, optional
             This number of short-distance diagonals is ignored, by default 2
         """
-
-        # get chromosomes from cooler, if view_df not specified:
-        if view_df is None:
-            view_df = make_cooler_view(clr)
-        else:
-            # Make sure view_df is a proper viewframe
-            try:
-                _ = is_compatible_viewframe(
-                    view_df,
-                    clr,
-                    check_sorting=True,
-                    raise_errors=True,
-                )
-            except Exception as e:
-                raise ValueError(
-                    "view_df is not a valid viewframe or incompatible"
-                ) from e
 
         self.view_df = view_df.set_index("name")
         self.clr = clr
@@ -468,8 +469,8 @@ class ObsExpSnipper:
         self,
         clr,
         expected,
+        view_df,
         cooler_opts=None,
-        view_df=None,
         min_diag=2,
         expected_value_col="balanced.avg",
     ):
@@ -481,14 +482,16 @@ class ObsExpSnipper:
             Cooler object with data to use
         expected : pd.DataFrame
             Dataframe containing expected interactions in the cooler
+        view_df : pd.DataFrame
+            Genomic view to constrain the analysis
+            E.g. use make_cooler_view(clr) to generate view with
+            all chromosomes present in the cooler
+            all chromosomes present in the cooler
         cooler_opts : dict, optional
             Options to pass to the clr.matrix() method, by default None
             Can be used to choose the cooler weight name, e.g.
             cooler_opts={balance='non-standard-weight'}, or use unbalanced data with
             cooler_opts={balance=False}
-        view_df : pd.DataFrame, optional
-            Genomic view to constrain the analysis, by default None and uses all
-            chromosomes present in the cooler
         min_diag : int, optional
             This number of short-distance diagonals is ignored, by default 2
         expected_value_col : str, optional
@@ -498,37 +501,6 @@ class ObsExpSnipper:
         self.clr = clr
         self.expected = expected
         self.expected_value_col = expected_value_col
-        # get chromosomes from cooler, if view_df not specified:
-        if view_df is None:
-            view_df = make_cooler_view(clr)
-        else:
-            # Make sure view_df is a proper viewframe
-            try:
-                _ = is_compatible_viewframe(
-                    view_df,
-                    clr,
-                    check_sorting=True,
-                    raise_errors=True,
-                )
-            except Exception as e:
-                raise ValueError(
-                    "view_df is not a valid viewframe or incompatible"
-                ) from e
-        # make sure expected is compatible
-        try:
-            _ = is_valid_expected(
-                expected,
-                "cis",
-                view_df,
-                verify_cooler=clr,
-                expected_value_cols=[
-                    self.expected_value_col,
-                ],
-                raise_errors=True,
-            )
-        except Exception as e:
-            raise ValueError("provided expected is not valid") from e
-
         self.view_df = view_df.set_index("name")
         self.binsize = self.clr.binsize
         self.offsets = {}
@@ -677,7 +649,7 @@ class ObsExpSnipper:
 
 class ExpectedSnipper:
     def __init__(
-        self, clr, expected, view_df=None, min_diag=2, expected_value_col="balanced.avg"
+        self, clr, expected, view_df, min_diag=2, expected_value_col="balanced.avg"
     ):
         """Class for generating expected snips
 
@@ -687,9 +659,10 @@ class ExpectedSnipper:
             Cooler object to which the data corresponds
         expected : pd.DataFrame
             Dataframe containing expected interactions in the cooler
-        view_df : pd.DataFrame, optional
-            Genomic view to constrain the analysis, by default None and uses all
-            chromosomes present in the cooler
+        view_df : pd.DataFrame
+            Genomic view to constrain the analysis
+            E.g. use make_cooler_view(clr) to generate view with
+            all chromosomes present in the cooler
         min_diag : int, optional
             This number of short-distance diagonals is ignored, by default 2
         expected_value_col : str, optional
@@ -699,37 +672,6 @@ class ExpectedSnipper:
         self.clr = clr
         self.expected = expected
         self.expected_value_col = expected_value_col
-        # get chromosomes from cooler, if view_df not specified:
-        if view_df is None:
-            view_df = make_cooler_view(clr)
-        else:
-            # Make sure view_df is a proper viewframe
-            try:
-                _ = is_compatible_viewframe(
-                    view_df,
-                    clr,
-                    check_sorting=True,
-                    raise_errors=True,
-                )
-            except Exception as e:
-                raise ValueError(
-                    "view_df is not a valid viewframe or incompatible"
-                ) from e
-        # make sure expected is compatible
-        try:
-            _ = is_valid_expected(
-                expected,
-                "cis",
-                view_df,
-                verify_cooler=clr,
-                expected_value_cols=[
-                    self.expected_value_col,
-                ],
-                raise_errors=True,
-            )
-        except Exception as e:
-            raise ValueError("provided expected is not valid") from e
-
         self.view_df = view_df.set_index("name")
         self.binsize = self.clr.binsize
         self.offsets = {}
@@ -869,6 +811,7 @@ def pileup(
 
     """
 
+    # deduce feature_type -> bed or bedpe
     if {"chrom", "start", "end"}.issubset(features_df.columns):
         feature_type = "bed"
     elif {"chrom1", "start1", "end1", "chrom2", "start2", "end1"}.issubset(
@@ -878,6 +821,7 @@ def pileup(
     else:
         raise ValueError("Unknown feature_df format")
 
+    # check view_df or generate full chromosome view
     if view_df is None:
         view_df = make_cooler_view(clr)
     else:
@@ -891,7 +835,23 @@ def pileup(
         except Exception as e:
             raise ValueError("view_df is not a valid viewframe or incompatible") from e
 
-    features_df = assign_view_auto(features_df, view_df)
+    # check expected compatibility when provided
+    if expected_df is not None:
+        try:
+            _ = is_valid_expected(
+                expected_df,
+                "cis",
+                view_df,
+                verify_cooler=clr,
+                expected_value_cols=[
+                    expected_value_col,
+                ],
+                raise_errors=True,
+            )
+        except Exception as e:
+            raise ValueError("provided expected is not valid") from e
+
+    features_df = assign_view_auto(features_df, view_df, combined_assignments_column=False)
     # TODO: switch to bioframe.assign_view upon update
 
     if flank is not None:
@@ -930,9 +890,13 @@ def pileup(
     region_offsets = view_df[["chrom", "start", "end"]].apply(clr.offset, axis=1)
     region_offsets_dict = dict(zip(view_df["name"].values, region_offsets))
 
-    features_df["region_offset"] = features_df["region"].replace(region_offsets_dict)
 
     if feature_type == "bed":
+        if features_df["region"].isnull().any():
+            warnings.warn(
+                "Some features do not have view regions assigned! Some snips will be empty."
+            )
+        features_df["region_offset"] = features_df["region"].replace(region_offsets_dict)
         features_df[["lo", "hi"]] = (
             features_df[["lo", "hi"]]
             .subtract(
@@ -942,18 +906,24 @@ def pileup(
             .astype(int)
         )
     else:
+        if features_df["region1"].isnull().any() or features_df["region2"].isnull().any():
+            warnings.warn(
+                "Some features do not have view regions assigned! Some snips will be empty."
+            )
+        features_df["region1_offset"] = features_df["region1"].replace(region_offsets_dict)
         features_df[["lo1", "hi1"]] = (
             features_df[["lo1", "hi1"]]
             .subtract(
-                features_df["region_offset"].fillna(0),
+                features_df["region1_offset"].fillna(0),
                 axis=0,
             )
             .astype(int)
         )
+        features_df["region2_offset"] = features_df["region2"].replace(region_offsets_dict)
         features_df[["lo2", "hi2"]] = (
             features_df[["lo2", "hi2"]]
             .subtract(
-                features_df["region_offset"].fillna(0),
+                features_df["region2_offset"].fillna(0),
                 axis=0,
             )
             .astype(int)
@@ -983,9 +953,8 @@ def pileup(
         mymap = pool.map
     else:
         mymap = map
-    stack = _pileup(features_df, snipper.select, snipper.snip, map=mymap)
-    if feature_type == "bed":
-        stack = np.fmax(stack, np.transpose(stack, axes=(0, 2, 1)))
+
+    stack = _pileup(features_df, feature_type, snipper.select, snipper.snip, map=mymap)
 
     if nproc > 1:
         pool.close()
