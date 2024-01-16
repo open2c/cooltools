@@ -48,7 +48,7 @@ from ..lib.common import assign_view_auto, make_cooler_view
 from ..lib.numutils import LazyToeplitz
 import warnings
 
-import multiprocessing
+from multiprocess import Pool
 
 
 def expand_align_features(features_df, flank, resolution, format="bed"):
@@ -949,7 +949,7 @@ def pileup(
         )
 
     if nproc > 1:
-        pool = multiprocessing.Pool(nproc)
+        pool = Pool(nproc)
         mymap = pool.map
     else:
         mymap = map

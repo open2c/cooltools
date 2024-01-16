@@ -6,7 +6,7 @@ from .. import coverage
 from . import cli
 from .. import api
 import bioframe
-import multiprocessing as mp
+import multiprocess as mp
 
 
 @cli.command()
