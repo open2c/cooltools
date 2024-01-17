@@ -366,8 +366,8 @@ class CoolerSnipper:
         CSR matrix
             Sparse matrix of the selected portion of the data from the cooler
         """
-        region1_coords = self.view_df.loc[region1]
-        region2_coords = self.view_df.loc[region2]
+        region1_coords = tuple(self.view_df.loc[region1])
+        region2_coords = tuple(self.view_df.loc[region2])
         self.offsets[region1] = self.clr.offset(region1_coords) - self.clr.offset(
             region1_coords[0]
         )
@@ -540,10 +540,10 @@ class ObsExpSnipper:
         CSR matrix
             Sparse matrix of the selected portion of the data from the cooler
         """
-        if not region1 == region2:
+        region1_coords = tuple(self.view_df.loc[region1])
+        region2_coords = tuple(self.view_df.loc[region2])
+        if region1_coords[0] != region2_coords[0]:
             raise ValueError("ObsExpSnipper is implemented for cis contacts only.")
-        region1_coords = self.view_df.loc[region1]
-        region2_coords = self.view_df.loc[region2]
         self.offsets[region1] = self.clr.offset(region1_coords) - self.clr.offset(
             region1_coords[0]
         )
@@ -697,10 +697,10 @@ class ExpectedSnipper:
         CSR matrix
             Sparse matrix of the selected portion of the data from the cooler
         """
-        if not region1 == region2:
-            raise ValueError("ExpectedSnipper is implemented for cis contacts only.")
-        region1_coords = self.view_df.loc[region1]
-        region2_coords = self.view_df.loc[region2]
+        region1_coords = tuple(self.view_df.loc[region1])
+        region2_coords = tuple(self.view_df.loc[region2])
+        if region1_coords[0] != region2_coords[0]:
+            raise ValueError("ObsExpSnipper is implemented for cis contacts only.")
         self.offsets[region1] = self.clr.offset(region1_coords) - self.clr.offset(
             region1_coords[0]
         )
