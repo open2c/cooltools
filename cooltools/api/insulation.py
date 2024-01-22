@@ -17,6 +17,8 @@ from ..lib import peaks, numutils
 
 from ..lib.checks import is_compatible_viewframe, is_cooler_balanced
 from ..lib.common import make_cooler_view
+from ..lib.common import pool_decorator
+
 
 
 def get_n_pixels(bad_bin_mask, window=10, ignore_diags=2):
@@ -151,7 +153,7 @@ def insul_diamond(
 
     return score, n_pixels, sum_balanced, sum_counts
 
-
+@pool_decorator
 def calculate_insulation_score(
     clr,
     window_bp,
@@ -164,6 +166,7 @@ def calculate_insulation_score(
     clr_weight_name="weight",
     verbose=False,
     nproc=1,
+    map=map,
 ):
     """Calculate the diamond insulation scores for all bins in a cooler.
 
@@ -253,32 +256,23 @@ def calculate_insulation_score(
 
     # Calculate insulation score for each region separately.
     # Define mapper depending on requested number of threads:
-    if nproc > 1:
-        pool = mp.Pool(nproc)
-        map_ = pool.map
-    else:
-        map_ = map
+    map_ = map
 
     # Using try-clause to close mp.Pool properly
-    try:
-        # Apply get_region_insulation:
-        job = partial(
-            _get_region_insulation,
-            clr,
-            is_bad_bin_key,
-            clr_weight_name,
-            chunksize,
-            window_bp,
-            min_dist_bad_bin,
-            ignore_diags,
-            append_raw_scores,
-            verbose,
-        )
-        ins_region_tables = map_(job, view_df[["chrom", "start", "end", "name"]].values)
-
-    finally:
-        if nproc > 1:
-            pool.close()
+    # Apply get_region_insulation:
+    job = partial(
+        _get_region_insulation,
+        clr,
+        is_bad_bin_key,
+        clr_weight_name,
+        chunksize,
+        window_bp,
+        min_dist_bad_bin,
+        ignore_diags,
+        append_raw_scores,
+        verbose,
+    )
+    ins_region_tables = map_(job, view_df[["chrom", "start", "end", "name"]].values)
 
     ins_table = pd.concat(ins_region_tables)
     return ins_table

@@ -13,6 +13,8 @@ import bioframe
 
 
 from ..lib.checks import is_cooler_balanced
+from ..lib.common import pool_decorator
+
 
 
 def _extract_profile(chrom, clr, clr_weight_name, viewpoint):
@@ -56,12 +58,13 @@ def _extract_profile(chrom, clr, clr_weight_name, viewpoint):
     else:
         return pd.concat(to_return, ignore_index=True)
 
-
+@pool_decorator
 def virtual4c(
     clr,
     viewpoint,
     clr_weight_name="weight",
     nproc=1,
+    map=map
 ):
     """Generate genome-wide contact profile for a given viewpoint.
 
@@ -107,11 +110,7 @@ def virtual4c(
         _extract_profile, clr=clr, clr_weight_name=clr_weight_name, viewpoint=viewpoint
     )
 
-    if nproc > 1:
-        with mp.Pool(nproc) as p:
-            counts = list(p.map(f, clr.chromnames))
-    else:
-        counts = list(map(f, clr.chromnames))
+    counts = list(map(f, clr.chromnames))
 
     # Concatenate all chrompsome dfs into one
     v4c = pd.concat(counts, ignore_index=True)
