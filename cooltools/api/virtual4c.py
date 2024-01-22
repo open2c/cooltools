@@ -64,7 +64,7 @@ def virtual4c(
     viewpoint,
     clr_weight_name="weight",
     nproc=1,
-    map=map
+    map=map,
 ):
     """Generate genome-wide contact profile for a given viewpoint.
 

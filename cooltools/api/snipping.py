@@ -44,6 +44,7 @@ from ..lib.checks import (
     is_valid_expected,
 )
 from ..lib.common import assign_view_auto, make_cooler_view
+from ..lib.common import pool_decorator
 
 from ..lib.numutils import LazyToeplitz
 import warnings
@@ -818,7 +819,7 @@ class ExpectedSnipper:
             snippet[D] = np.nan
         return snippet
 
-
+@pool_decorator
 def pileup(
     clr,
     features_df,
@@ -829,6 +830,7 @@ def pileup(
     min_diag="auto",
     clr_weight_name="weight",
     nproc=1,
+    map=map,
 ):
     """
     Pileup features over the cooler.
@@ -978,15 +980,9 @@ def pileup(
             expected_value_col=expected_value_col,
         )
 
-    if nproc > 1:
-        pool = multiprocessing.Pool(nproc)
-        mymap = pool.map
-    else:
-        mymap = map
+    mymap = map
     stack = _pileup(features_df, snipper.select, snipper.snip, map=mymap)
     if feature_type == "bed":
         stack = np.fmax(stack, np.transpose(stack, axes=(0, 2, 1)))
-
-    if nproc > 1:
-        pool.close()
+        
     return stack

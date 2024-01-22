@@ -532,16 +532,14 @@ def pool_decorator(func):
                 mymap = pool.imap
             else:
                 mymap = map
-
             try:
-                func(*args, **kwargs, map=mymap)
+                result = func(*args, **kwargs, map=mymap)
             finally:
                 if pool != None:
                     pool.close()
-
+            return result 
         else:
-            raise TypeError(
-                "nproc must be specified as a keyword argument (e.g. nproc=1, nproc=5...)"
-            )
-
+            warnings.warn("nproc is not specified, single thread is used then (e.g. nproc=1, nproc=5...)")
+            return func(*args, **kwargs, map=map)
+            
     return wrapper
