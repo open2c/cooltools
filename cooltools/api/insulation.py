@@ -16,9 +16,7 @@ from ..lib._query import CSRSelector
 from ..lib import peaks, numutils
 
 from ..lib.checks import is_compatible_viewframe, is_cooler_balanced
-from ..lib.common import make_cooler_view
-from ..lib.common import pool_decorator
-
+from ..lib.common import make_cooler_view, pool_decorator
 
 
 def get_n_pixels(bad_bin_mask, window=10, ignore_diags=2):

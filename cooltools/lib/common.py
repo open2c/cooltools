@@ -539,7 +539,7 @@ def pool_decorator(func):
                     pool.close()
             return result 
         else:
-            warnings.warn("nproc is not specified, single thread is used then (e.g. nproc=1, nproc=5...)")
+            warnings.warn("nproc is not specified, single thread is used")
             return func(*args, **kwargs, map=map)
             
     return wrapper

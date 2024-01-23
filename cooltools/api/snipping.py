@@ -43,9 +43,7 @@ from ..lib.checks import (
     is_cooler_balanced,
     is_valid_expected,
 )
-from ..lib.common import assign_view_auto, make_cooler_view
-from ..lib.common import pool_decorator
-
+from ..lib.common import assign_view_auto, make_cooler_view, pool_decorator
 from ..lib.numutils import LazyToeplitz
 import warnings
 
