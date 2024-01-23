@@ -18,6 +18,7 @@ from ..lib.common import make_cooler_view
 from ..lib.schemas import diag_expected_dtypes, block_expected_dtypes
 
 from ..sandbox import expected_smoothing
+from ..lib.common import pool_decorator
 
 # common expected_df column names, take from schemas
 _REGION1 = list(diag_expected_dtypes)[0]
@@ -877,6 +878,7 @@ def blocksum_pairwise(
 
 
 # user-friendly wrapper for diagsum_symm and diagsum_pairwise - part of new "public" API
+@pool_decorator
 def expected_cis(
     clr,
     view_df=None,
@@ -888,6 +890,7 @@ def expected_cis(
     ignore_diags=2,  # should default to cooler info
     chunksize=10_000_000,
     nproc=1,
+    map=map,
 ):
     """
     Calculate average interaction frequencies as a function of genomic
@@ -978,38 +981,29 @@ def expected_cis(
             f"balancing weight {clr_weight_name} is not available in the cooler."
         )
 
-    # execution details
-    if nproc > 1:
-        pool = mp.Pool(nproc)
-        map_ = pool.map
-    else:
-        map_ = map
+    map_ = map
 
     # using try-clause to close mp.Pool properly
-    try:
-        if intra_only:
-            result = diagsum_symm(
-                clr,
-                view_df,
-                transforms=transforms,
-                clr_weight_name=clr_weight_name,
-                ignore_diags=ignore_diags,
-                chunksize=chunksize,
-                map=map_,
-            )
-        else:
-            result = diagsum_pairwise(
-                clr,
-                view_df,
-                transforms=transforms,
-                clr_weight_name=clr_weight_name,
-                ignore_diags=ignore_diags,
-                chunksize=chunksize,
-                map=map_,
-            )
-    finally:
-        if nproc > 1:
-            pool.close()
+    if intra_only:
+        result = diagsum_symm(
+            clr,
+            view_df,
+            transforms=transforms,
+            clr_weight_name=clr_weight_name,
+            ignore_diags=ignore_diags,
+            chunksize=chunksize,
+            map=map_,
+        )
+    else:
+        result = diagsum_pairwise(
+            clr,
+            view_df,
+            transforms=transforms,
+            clr_weight_name=clr_weight_name,
+            ignore_diags=ignore_diags,
+            chunksize=chunksize,
+            map=map_,
+        )
 
     # calculate actual averages by dividing sum by n_valid:
     for key in chain(["count"], transforms):
@@ -1046,12 +1040,14 @@ def expected_cis(
 
 
 # user-friendly wrapper for diagsum_symm and diagsum_pairwise - part of new "public" API
+@pool_decorator
 def expected_trans(
     clr,
     view_df=None,
     clr_weight_name="weight",
     chunksize=10_000_000,
     nproc=1,
+    map=map,
 ):
     """
     Calculate average interaction frequencies for inter-chromosomal
@@ -1122,25 +1118,17 @@ def expected_trans(
         )
 
     # execution details
-    if nproc > 1:
-        pool = mp.Pool(nproc)
-        map_ = pool.map
-    else:
-        map_ = map
+    map_ = map
 
     # using try-clause to close mp.Pool properly
-    try:
-        result = blocksum_pairwise(
-            clr,
-            view_df,
-            transforms=transforms,
-            clr_weight_name=clr_weight_name,
-            chunksize=chunksize,
-            map=map_,
-        )
-    finally:
-        if nproc > 1:
-            pool.close()
+    result = blocksum_pairwise(
+        clr,
+        view_df,
+        transforms=transforms,
+        clr_weight_name=clr_weight_name,
+        chunksize=chunksize,
+        map=map_,
+    )
 
     # keep only trans interactions for the user-friendly function:
     _name_to_region = view_df.set_index("name")

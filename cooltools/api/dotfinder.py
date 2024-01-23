@@ -96,6 +96,7 @@ from ..lib.checks import (
     is_compatible_viewframe,
     is_valid_expected,
 )
+from ..lib.common import pool_decorator
 
 from bioframe import make_viewframe
 
@@ -1265,7 +1266,7 @@ def cluster_filtering_hiccups(
 # large helper functions wrapping smaller step-specific ones
 ####################################################################
 
-
+@pool_decorator
 def scoring_and_histogramming_step(
     clr,
     expected_indexed,
@@ -1277,6 +1278,7 @@ def scoring_and_histogramming_step(
     max_nans_tolerated,
     loci_separation_bins,
     nproc,
+    map=map,
 ):
     """
     This implements the 1st step of the lambda-binning scoring procedure - histogramming.
@@ -1307,20 +1309,16 @@ def scoring_and_histogramming_step(
     # standard multiprocessing implementation
     if nproc > 1:
         logging.info(f"creating a Pool of {nproc} workers to tackle {len(tiles)} tiles")
-        pool = mp.Pool(nproc)
-        map_ = pool.imap
         map_kwargs = dict(chunksize=int(np.ceil(len(tiles) / nproc)))
     else:
         logging.info("fallback to serial implementation.")
-        map_ = map
         map_kwargs = {}
-    try:
-        # consider using
-        # https://github.com/mirnylab/cooler/blob/9e72ee202b0ac6f9d93fd2444d6f94c524962769/cooler/tools.py#L59
-        histogram_chunks = map_(job, tiles, **map_kwargs)
-    finally:
-        if nproc > 1:
-            pool.close()
+        
+    map_ = map
+
+    # consider using
+    # https://github.com/mirnylab/cooler/blob/9e72ee202b0ac6f9d93fd2444d6f94c524962769/cooler/tools.py#L59
+    histogram_chunks = map_(job, tiles, **map_kwargs)
 
     # now we need to combine/sum all of the histograms for different kernels:
     def _sum_hists(hx, hy):
@@ -1351,7 +1349,7 @@ def scoring_and_histogramming_step(
     # returning filtered histogram
     return final_hist
 
-
+@pool_decorator
 def scoring_and_extraction_step(
     clr,
     expected_indexed,
@@ -1366,6 +1364,7 @@ def scoring_and_extraction_step(
     nproc,
     bin1_id_name="bin1_id",
     bin2_id_name="bin2_id",
+    map=map,
 ):
     """
     This implements the 2nd step of the lambda-binning scoring procedure,
@@ -1402,21 +1401,18 @@ def scoring_and_extraction_step(
     # standard multiprocessing implementation
     if nproc > 1:
         logging.info(f"creating a Pool of {nproc} workers to tackle {len(tiles)} tiles")
-        pool = mp.Pool(nproc)
-        map_ = pool.imap
         map_kwargs = dict(chunksize=int(np.ceil(len(tiles) / nproc)))
     else:
         logging.info("fallback to serial implementation.")
-        map_ = map
         map_kwargs = {}
-    try:
-        # consider using
-        # https://github.com/mirnylab/cooler/blob/9e72ee202b0ac6f9d93fd2444d6f94c524962769/cooler/tools.py#L59
-        filtered_pix_chunks = map_(job, tiles, **map_kwargs)
-        significant_pixels = pd.concat(filtered_pix_chunks, ignore_index=True)
-    finally:
-        if nproc > 1:
-            pool.close()
+    
+    map_ = map
+    
+    # consider using
+    # https://github.com/mirnylab/cooler/blob/9e72ee202b0ac6f9d93fd2444d6f94c524962769/cooler/tools.py#L59
+    filtered_pix_chunks = map_(job, tiles, **map_kwargs)
+    significant_pixels = pd.concat(filtered_pix_chunks, ignore_index=True)
+    
     # same pixels should never be scored >1 times with the current tiling of the interactions matrix
     if significant_pixels.duplicated().any():
         raise ValueError(
