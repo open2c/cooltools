@@ -40,3 +40,16 @@ def test_virtual4c_cli_nobalance(request, tmpdir):
         ["virtual4c", "--clr-weight-name", "", "-o", out_prefix, in_cool, viewpoint],
     )
     assert result.exit_code == 0
+
+
+def test_pooled_virtual4c(request):
+    clr_path = op.join(request.fspath.dirname, "data/CN.mm9.1000kb.cool")
+    clr = cooler.Cooler(clr_path)
+    viewpoint = "chr1:30000000-40000000"
+
+    v4c = virtual4c.virtual4c(clr, viewpoint)
+    pooled2_v4c = virtual4c.virtual4c(clr, viewpoint, nproc=2)
+    pooled3_v4c = virtual4c.virtual4c(clr, viewpoint, nproc=3)
+
+    assert v4c.equals(pooled2_v4c)
+    assert v4c.equals(pooled3_v4c)

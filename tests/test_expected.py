@@ -670,3 +670,92 @@ def test_diagsum_from_array():
     exp1 = diagsum_from_array(ar, ignore_diags=0)
     exp1["balanced.avg"] = exp1["balanced.sum"] / exp1["n_valid"]
     assert np.allclose(exp, exp1["balanced.avg"].values, equal_nan=True)
+
+def test_pooled_expected_cis(request):
+    # perform test:
+    clr = cooler.Cooler(op.join(request.fspath.dirname, "data/CN.mm9.1000kb.cool"))
+    # symm result - engaging diagsum_symm
+    res_symm = cooltools.api.expected.expected_cis(
+        clr,
+        view_df=view_df,
+        clr_weight_name=clr_weight_name,
+        chunksize=chunksize,
+        ignore_diags=ignore_diags,
+    )
+    res_symm_pooled2 = cooltools.api.expected.expected_cis(
+        clr,
+        view_df=view_df,
+        clr_weight_name=clr_weight_name,
+        chunksize=chunksize,
+        ignore_diags=ignore_diags,
+        nproc=2
+    )
+    res_symm_pooled3 = cooltools.api.expected.expected_cis(
+        clr,
+        view_df=view_df,
+        clr_weight_name=clr_weight_name,
+        chunksize=chunksize,
+        ignore_diags=ignore_diags,
+        nproc=3
+    )
+    # check results for every block
+    assert res_symm.equals(res_symm_pooled2)
+    assert res_symm.equals(res_symm_pooled3)
+
+    # asymm and symm result together - engaging diagsum_pairwise
+    res_all = cooltools.api.expected.expected_cis(
+        clr,
+        view_df=view_df,
+        intra_only=False,
+        clr_weight_name=clr_weight_name,
+        chunksize=chunksize,
+        ignore_diags=ignore_diags,
+    )
+    res_all_pooled2 = cooltools.api.expected.expected_cis(
+        clr,
+        view_df=view_df,
+        intra_only=False,
+        clr_weight_name=clr_weight_name,
+        chunksize=chunksize,
+        ignore_diags=ignore_diags,
+        nproc=2
+    )
+    res_all_pooled3 = cooltools.api.expected.expected_cis(
+        clr,
+        view_df=view_df,
+        intra_only=False,
+        clr_weight_name=clr_weight_name,
+        chunksize=chunksize,
+        ignore_diags=ignore_diags,
+        nproc=3
+    )
+    # check results for every block
+    assert res_all.equals(res_all_pooled2)
+    assert res_all.equals(res_all_pooled3)
+
+def test_pooled_expected_trans(request):
+    # perform test:
+    clr = cooler.Cooler(op.join(request.fspath.dirname, "data/CN.mm9.1000kb.cool"))
+    res = cooltools.api.expected.expected_trans(
+        clr,
+        view_df=view_df,
+        clr_weight_name=clr_weight_name,
+        chunksize=chunksize,
+    )
+    res_pooled2 = cooltools.api.expected.expected_trans(
+        clr,
+        view_df=view_df,
+        clr_weight_name=clr_weight_name,
+        chunksize=chunksize,
+        nproc=2
+    )
+    res_pooled3 = cooltools.api.expected.expected_trans(
+        clr,
+        view_df=view_df,
+        clr_weight_name=clr_weight_name,
+        chunksize=chunksize,
+        nproc=3
+    )
+
+    assert res.equals(res_pooled2)
+    assert res.equals(res_pooled3)

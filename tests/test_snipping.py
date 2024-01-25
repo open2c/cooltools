@@ -487,3 +487,141 @@ def test_cooler_snipper_with_view(request):
         matrix, "foo", "foo", (110_000_000, 120_000_000, 110_000_000, 120_000_000)
     )
     assert snippet.shape is not None
+
+def test_pooled_pileup(request):
+    # Read cool file and create view_df out of it:
+    clr = cooler.Cooler(op.join(request.fspath.dirname, "data/CN.mm9.1000kb.cool"))
+    exp = pd.read_table(op.join(request.fspath.dirname, "data/CN.mm9.toy_expected.tsv"))
+    view_df = bioframe.read_table(
+        op.join(request.fspath.dirname, "data/CN.mm9.toy_regions.bed"), schema="bed4"
+    )
+
+    # I.
+    # Example on-diagonal features, two regions from annotated genomic regions:
+    windows = pd.DataFrame(
+        {
+            "chrom": ["chr1", "chr1"],
+            "start": [83000000, 108_000_000],
+            "end": [88_000_000, 113_000_000],
+        }
+    )
+
+    stack = cooltools.api.snipping.pileup(clr, windows, view_df=None, flank=None)
+    stack_pooled2 = cooltools.api.snipping.pileup(clr, windows, view_df=None, flank=None, nproc=2)
+    stack_pooled3 = cooltools.api.snipping.pileup(clr, windows, view_df=None, flank=None, nproc=3)
+
+    # check if they output the same result
+    assert np.array_equal(stack, stack_pooled2, equal_nan=True)
+    assert np.array_equal(stack, stack_pooled3, equal_nan=True)
+
+    stack = cooltools.api.snipping.pileup(
+        clr, windows, view_df=view_df, expected_df=exp, flank=None
+    )
+    stack_pooled2 = cooltools.api.snipping.pileup(
+        clr, windows, view_df=view_df, expected_df=exp, flank=None, nproc=2
+    )
+    stack_pooled3 = cooltools.api.snipping.pileup(
+        clr, windows, view_df=view_df, expected_df=exp, flank=None, nproc=3
+    )
+    # check if they output the same result
+    assert np.array_equal(stack, stack_pooled2, equal_nan=True)
+    assert np.array_equal(stack, stack_pooled3, equal_nan=True)
+
+    # II.
+    # Example off-diagonal features, two features from annotated genomic regions:
+    windows = pd.DataFrame(
+        {
+            "chrom1": ["chr1", "chr1"],
+            "start1": [102_000_000, 107_000_000],
+            "end1": [107_000_000, 112_000_000],
+            "chrom2": ["chr1", "chr1"],
+            "start2": [107_000_000, 113_000_000],
+            "end2": [112_000_000, 118_000_000],
+        }
+    )
+    stack = cooltools.api.snipping.pileup(
+        clr, windows, view_df=view_df, expected_df=exp, flank=None
+    )
+    stack_pooled2 = cooltools.api.snipping.pileup(
+        clr, windows, view_df=view_df, expected_df=exp, flank=None, nproc=2
+    )
+    stack_pooled3 = cooltools.api.snipping.pileup(
+        clr, windows, view_df=view_df, expected_df=exp, flank=None, nproc=3
+    )
+    # check if they output the same result
+    assert np.array_equal(stack, stack_pooled2, equal_nan=True)
+    assert np.array_equal(stack, stack_pooled3, equal_nan=True)
+
+    # III.
+    # Example off-diagonal features, one region outside the view:
+    windows = pd.DataFrame(
+        {
+            "chrom1": ["chr1", "chr1"],
+            "start1": [90_000_000, 105_000_000],
+            "end1": [95_000_000, 110_000_000],
+            "chrom2": ["chr1", "chr1"],
+            "start2": [105_000_000, 110_000_000],
+            "end2": [110_000_000, 115_000_000],
+        }
+    )
+    stack = cooltools.api.snipping.pileup(
+        clr, windows, view_df=view_df, expected_df=exp, flank=None
+    )
+    stack_pooled2 = cooltools.api.snipping.pileup(
+        clr, windows, view_df=view_df, expected_df=exp, flank=None, nproc=2
+    )
+    stack_pooled3 = cooltools.api.snipping.pileup(
+        clr, windows, view_df=view_df, expected_df=exp, flank=None, nproc=3
+    )
+    # check if they output the same result
+    assert np.array_equal(stack, stack_pooled2, equal_nan=True)
+    assert np.array_equal(stack, stack_pooled3, equal_nan=True)
+
+
+    # IV.
+    # Example on-diagonal features, not valid bedframes (start>end):
+    windows = pd.DataFrame(
+        {
+            "chrom": ["chr1", "chr1"],
+            "start": [107_000_000, 108_000_000],
+            "end": [102_000_000, 113_000_000],
+        }
+    )
+    with pytest.raises(ValueError):
+        stack = cooltools.api.snipping.pileup(clr, windows, view_df, exp, flank=None)
+        stack_pooled2 = cooltools.api.snipping.pileup(clr, windows, view_df, exp, flank=None, nproc=2)
+        stack_pooled3 = cooltools.api.snipping.pileup(clr, windows, view_df, exp, flank=None, nproc=3)
+    
+
+    # DRAFT # Should work with force=True:
+    # stack = cooltools.api.snipping.pileup(clr, windows, view_df, exp, flank=None, force=True)
+    # # Check that the size of snips is OK and there are two of them:
+    # assert stack.shape == (2, 5, 5,)
+
+    # IV.
+    # Example of-diagonal features not valid bedframes (start>end):
+    windows = pd.DataFrame(
+        {
+            "chrom1": ["chr1", "chr1"],
+            "start1": [107_000_000, 107_000_000],
+            "end1": [102_000_000, 112_000_000],
+            "chrom2": ["chr1", "chr1"],
+            "start2": [107_000_000, 113_000_000],
+            "end2": [112_000_000, 118_000_000],
+        }
+    )
+    with pytest.raises(ValueError):
+        stack = cooltools.api.snipping.pileup(
+            clr, windows, view_df=view_df, expected_df=exp, flank=None
+        )
+        stack_pooled2 = cooltools.api.snipping.pileup(
+        clr, windows, view_df=view_df, expected_df=exp, flank=None, nproc=2
+        )
+        stack_pooled3 = cooltools.api.snipping.pileup(
+            clr, windows, view_df=view_df, expected_df=exp, flank=None, nproc=3
+        )
+
+    # DRAFT # Should work with force=True:
+    # stack = cooltools.api.snipping.pileup(clr, windows, view_df, exp, flank=0, force=True)
+    # # Check that the size of snips is OK and there are two of them:
+    # assert stack.shape == (2, 5, 5,)
