@@ -63,7 +63,7 @@ def _get_chunk_coverage(chunk, pixel_weight_key="count"):
 
 def coverage(
     clr,
-    ignore_diags=None,
+    ignore_diags="auto",
     chunksize=int(1e7),
     map=map,
     use_lock=False,
@@ -95,7 +95,7 @@ def coverage(
     ignore_diags : int, optional
         Drop elements occurring on the first ``ignore_diags`` diagonals of the
         matrix (including the main diagonal).
-        If None, equals the number of diagonals ignored during IC balancing.
+        If auto, equals the number of diagonals ignored during IC balancing.
     store : bool, optional
         If True, store the results in the input cooler file when finished. If clr_weight_name=None, 
         also stores total cis counts in the cooler info. Default is False.
@@ -113,7 +113,7 @@ def coverage(
     try:
         ignore_diags = (
             ignore_diags
-            if ignore_diags is not None
+            if ignore_diags != "auto"
             else clr._load_attrs(clr.root.rstrip("/") + "/bins/weight")["ignore_diags"]
         )
     except:
