@@ -225,7 +225,7 @@ def make_pairwise_expected_table(clr, view_df, clr_weight_name):
     create a DataFrame for accumulating expected summaries (blocks and diagonal ones)
     it also contains "n_valid" column for dividing summaries by.
     """
-    
+
     # create pairwise combinations of regions from view_df
     cis_combs, trans_combs = tee(
         combinations_with_replacement(view_df.itertuples(), 2)
@@ -318,10 +318,10 @@ def _sum_(clr, fields, transforms, clr_weight_name, regions, span):
     # apply requested transforms, e.g. balancing:
     for field, t in transforms.items():
         pixels[field] = t(pixels)
-    
+
     # perform aggregation by r1, r2 and _DIST_NAME
     _blocks = pixels.groupby(["r1", "r2", _DIST_NAME])
-    
+
     # calculate summaries and add ".sum" suffix to field column-names
     return _blocks[fields].sum().add_suffix(".sum")
 
@@ -609,7 +609,7 @@ def expected_full_fast(
     elif aggregate_cis:
         # aggregate only if requested:
         _agg_df = result.loc[_cis_mask] \
-            .groupby([*(grp_columns or []), _DIST_NAME])[additive_cols] \
+            .groupby([*(grp_columns or []), _DIST_NAME], observed=True)[additive_cols] \
             .transform("sum") \
             .add_suffix(".agg")
         # calculate new average
@@ -627,7 +627,7 @@ def expected_full_fast(
         if aggregate_trans == "chrom":
             # groupby chromosomes and sum up additive values:
             _trans_agg_df = result.loc[_trans_mask] \
-                .groupby(["chrom1", "chrom2"])[additive_cols] \
+                .groupby(["chrom1", "chrom2"], observed=True)[additive_cols] \
                 .transform("sum") \
                 .add_suffix(".agg")
         elif aggregate_trans == "genome":
@@ -722,16 +722,11 @@ def obs_over_exp(
     # cast to int, as there are no more NaNs among view_column_name1/view_column_name2
     pixels_oe = pixels_oe.astype({view_col1 : int, view_col1 : int})
 
-    # trans pixels_oe will have "feature"-dist of 0 (or some other special value)
-    pixels_oe["dist"] = TRANS_DIST_VALUE
-
-    # cis pixels_oe will have "feature"-dist "bind2_id - bin1_id"
-    # dask-compatible notation using `where`, as assign to iloc/loc isn't supported
-    cis_mask = (pixels_oe["chrom1"] == pixels_oe["chrom2"])
-    pixels_oe["dist"] = pixels_oe["dist"].where(
-        ~cis_mask,
-        pixels_oe.loc[cis_mask, "bin2_id"] - pixels_oe.loc[cis_mask, "bin1_id"]
-    )
+    # initialize distance for all values, and then correct for trans
+    pixels_oe["dist"] = pixels_oe["bin2_id"] - pixels_oe["bin1_id"]
+    cis_mask = pixels_oe["chrom1"] == pixels_oe["chrom2"]
+    # use dask-compatible where notation, instead of loc/iloc assignment
+    pixels_oe["dist"] = pixels_oe["dist"].where(cis_mask, TRANS_DIST_VALUE)
 
     # merge pixels_oe with the expected_full - to assign appropriate expected to each pixel
     # dask-compatible notation instead of pd.merge
