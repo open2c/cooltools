@@ -8,6 +8,7 @@ import pandas as pd
 
 import bioframe
 
+import multiprocessing as mp
 from multiprocessing import Pool
 
 
@@ -528,6 +529,7 @@ def pool_decorator(func):
         pool = None
         if "nproc" in kwargs.keys():
             if kwargs["nproc"] > 1:
+                mp.set_start_method('spawn') 
                 pool = Pool(kwargs["nproc"])
                 mymap = pool.imap
             else:
