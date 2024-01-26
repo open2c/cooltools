@@ -974,7 +974,11 @@ def expected_cis(
         # define balanced data transform:
         weight1 = clr_weight_name + "1"
         weight2 = clr_weight_name + "2"
-        transforms = {"balanced": lambda p: p["count"] * p[weight1] * p[weight2]}
+        # transforms = {"balanced": lambda p: p["count"] * p[weight1] * p[weight2]}
+        def trans_func(p):
+            return p["count"] * p[weight1] * p[weight2]
+        transforms = {"balanced": trans_func}
+
     else:
         raise ValueError(
             "cooler is not balanced, or"
@@ -1110,7 +1114,10 @@ def expected_trans(
         # define balanced data transform:
         weight1 = clr_weight_name + "1"
         weight2 = clr_weight_name + "2"
-        transforms = {"balanced": lambda p: p["count"] * p[weight1] * p[weight2]}
+        # transforms = {"balanced": lambda p: p["count"] * p[weight1] * p[weight2]}
+        def trans_func(p):
+            return p["count"] * p[weight1] * p[weight2]
+        transforms =  {"balanced": trans_func}
     else:
         raise ValueError(
             "cooler is not balanced, or"
