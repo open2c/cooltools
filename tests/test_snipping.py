@@ -14,9 +14,13 @@ from cooltools.cli import cli
 
 def test_pileup_cli_npz(request, tmpdir):
     in_cool = op.join(request.fspath.dirname, "data/CN.mm9.1000kb.cool")
-    in_features = op.join(request.fspath.dirname, "data/CN.mm9.toy_features.bed")
+    in_features = op.join(
+        request.fspath.dirname, "data/CN.mm9.toy_features.bed"
+    )
     in_regions = op.join(request.fspath.dirname, "data/CN.mm9.toy_regions.bed")
-    in_expected = op.join(request.fspath.dirname, "data/CN.mm9.toy_expected.tsv")
+    in_expected = op.join(
+        request.fspath.dirname, "data/CN.mm9.toy_expected.tsv"
+    )
     out_file = op.join(tmpdir, "tmp.npz")
     runner = CliRunner()
     # Output npz file:
@@ -50,9 +54,13 @@ def test_pileup_cli_npz(request, tmpdir):
 
 def test_pileup_cli_hdf5(request, tmpdir):
     in_cool = op.join(request.fspath.dirname, "data/CN.mm9.1000kb.cool")
-    in_features = op.join(request.fspath.dirname, "data/CN.mm9.toy_features.bed")
+    in_features = op.join(
+        request.fspath.dirname, "data/CN.mm9.toy_features.bed"
+    )
     in_regions = op.join(request.fspath.dirname, "data/CN.mm9.toy_regions.bed")
-    in_expected = op.join(request.fspath.dirname, "data/CN.mm9.toy_expected.tsv")
+    in_expected = op.join(
+        request.fspath.dirname, "data/CN.mm9.toy_expected.tsv"
+    )
     out_file = op.join(tmpdir, "tmp.hdf5")
     runner = CliRunner()
 
@@ -86,14 +94,20 @@ def test_pileup_cli_hdf5(request, tmpdir):
     )
     assert result.exit_code == 0
 
+
 # define fixture with clr, exp and view_df to be reused across many tests
 # fixture return a dict and values can be accessed e.g. as data["clr"]
 @pytest.fixture
 def data(request):
-    clr = cooler.Cooler(op.join(request.fspath.dirname, "data/CN.mm9.1000kb.cool"))
-    exp = pd.read_table(op.join(request.fspath.dirname, "data/CN.mm9.toy_expected.tsv"))
+    clr = cooler.Cooler(
+        op.join(request.fspath.dirname, "data/CN.mm9.1000kb.cool")
+    )
+    exp = pd.read_table(
+        op.join(request.fspath.dirname, "data/CN.mm9.toy_expected.tsv")
+    )
     view_df = bioframe.read_table(
-        op.join(request.fspath.dirname, "data/CN.mm9.toy_regions.bed"), schema="bed4"
+        op.join(request.fspath.dirname, "data/CN.mm9.toy_regions.bed"),
+        schema="bed4",
     )
     return {
         "clr": clr,
@@ -103,7 +117,6 @@ def data(request):
 
 
 def test_pileup(request, data):
-
     # I.
     # Example on-diagonal features, two regions from annotated genomic regions:
     windows = pd.DataFrame(
@@ -114,7 +127,9 @@ def test_pileup(request, data):
         }
     )
 
-    stack = cooltools.api.snipping.pileup(data["clr"], windows, view_df=None, flank=None)
+    stack = cooltools.api.snipping.pileup(
+        data["clr"], windows, view_df=None, flank=None
+    )
     # Check that the size of snips is OK and there are two of them:
     assert stack.shape == (2, 5, 5)
     # Check that NaNs were propagated
@@ -122,7 +137,11 @@ def test_pileup(request, data):
     assert not np.all(np.isnan(stack))
 
     stack = cooltools.api.snipping.pileup(
-        data["clr"], windows, view_df=data["view"], expected_df=data["exp"], flank=None
+        data["clr"],
+        windows,
+        view_df=data["view"],
+        expected_df=data["exp"],
+        flank=None,
     )
     # Check that the size of snips is OK and there are two of them.
     # Now with view and expected:
@@ -141,7 +160,11 @@ def test_pileup(request, data):
         }
     )
     stack = cooltools.api.snipping.pileup(
-        data["clr"], windows, view_df=data["view"], expected_df=data["exp"], flank=None
+        data["clr"],
+        windows,
+        view_df=data["view"],
+        expected_df=data["exp"],
+        flank=None,
     )
     # Check that the size of snips is OK and there are two of them:
     assert stack.shape == (2, 5, 5)
@@ -159,7 +182,11 @@ def test_pileup(request, data):
         }
     )
     stack = cooltools.api.snipping.pileup(
-        data["clr"], windows, view_df=data["view"], expected_df=data["exp"], flank=None
+        data["clr"],
+        windows,
+        view_df=data["view"],
+        expected_df=data["exp"],
+        flank=None,
     )
     # Check that the size of snips is OK and there are two of them:
     assert stack.shape == (2, 5, 5)
@@ -176,7 +203,9 @@ def test_pileup(request, data):
         }
     )
     with pytest.raises(ValueError):
-        stack = cooltools.api.snipping.pileup(data["clr"], windows, data["view"], data["exp"], flank=None)
+        stack = cooltools.api.snipping.pileup(
+            data["clr"], windows, data["view"], data["exp"], flank=None
+        )
 
     # DRAFT # Should work with force=True:
     # stack = cooltools.api.snipping.pileup(data["clr"], windows, view_df, data["exp"], flank=None, force=True)
@@ -197,7 +226,11 @@ def test_pileup(request, data):
     )
     with pytest.raises(ValueError):
         stack = cooltools.api.snipping.pileup(
-            data["clr"], windows, view_df=data["view"], expected_df=data["exp"], flank=None
+            data["clr"],
+            windows,
+            view_df=data["view"],
+            expected_df=data["exp"],
+            flank=None,
         )
 
     # DRAFT # Should work with force=True:
@@ -220,11 +253,14 @@ def test_ondiag__pileup_with_expected(request, data):
         # I.
         # Example region with windows, two regions from annotated genomic regions:
         windows = cooltools.api.snipping.make_bin_aligned_windows(
-            1_000_000, ["chr1", "chr1"], [102_000_000, 105_000_000], flank_bp=2_000_000
+            1_000_000,
+            ["chr1", "chr1"],
+            [102_000_000, 105_000_000],
+            flank_bp=2_000_000,
         )
-        windows = cooltools.lib.common.assign_view_auto(windows, data["view"]).reset_index(
-            drop=True
-        )
+        windows = cooltools.lib.common.assign_view_auto(
+            windows, data["view"]
+        ).reset_index(drop=True)
         stack = cooltools.api.snipping._pileup(
             windows, feature_type, snipper.select, snipper.snip, map=map
         )
@@ -235,11 +271,14 @@ def test_ondiag__pileup_with_expected(request, data):
         # II.
         # Example region with windows, second window comes from unannotated genomic region:
         windows = cooltools.api.snipping.make_bin_aligned_windows(
-            1_000_000, ["chr1", "chr1"], [120_000_000, 160_000_000], flank_bp=2_000_000
+            1_000_000,
+            ["chr1", "chr1"],
+            [120_000_000, 160_000_000],
+            flank_bp=2_000_000,
         )
-        windows = cooltools.lib.common.assign_view_auto(windows, data["view"]).reset_index(
-            drop=True
-        )
+        windows = cooltools.lib.common.assign_view_auto(
+            windows, data["view"]
+        ).reset_index(drop=True)
 
         stack = cooltools.api.snipping._pileup(
             windows, feature_type, snipper.select, snipper.snip, map=map
@@ -258,12 +297,17 @@ def test_ondiag__pileup_without_expected(request, data):
     # I.
     # Example region with windows, two regions from annotated genomic regions:
     windows = cooltools.api.snipping.make_bin_aligned_windows(
-        1_000_000, ["chr1", "chr1"], [120_000_000, 140_000_000], flank_bp=2_000_000
+        1_000_000,
+        ["chr1", "chr1"],
+        [120_000_000, 140_000_000],
+        flank_bp=2_000_000,
     )
-    windows = cooltools.lib.common.assign_view_auto(windows, data["view"]).reset_index(
-        drop=True
+    windows = cooltools.lib.common.assign_view_auto(
+        windows, data["view"]
+    ).reset_index(drop=True)
+    snipper = cooltools.api.snipping.CoolerSnipper(
+        data["clr"], data["view"], min_diag=None
     )
-    snipper = cooltools.api.snipping.CoolerSnipper(data["clr"], data["view"], min_diag=None)
     stack = cooltools.api.snipping._pileup(
         windows, feature_type, snipper.select, snipper.snip, map=map
     )
@@ -274,11 +318,14 @@ def test_ondiag__pileup_without_expected(request, data):
     # II.
     # Example region with windows, second window comes from unannotated genomic region:
     windows = cooltools.api.snipping.make_bin_aligned_windows(
-        1_000_000, ["chr1", "chr1"], [120_000_000, 160_000_000], flank_bp=2_000_000
+        1_000_000,
+        ["chr1", "chr1"],
+        [120_000_000, 160_000_000],
+        flank_bp=2_000_000,
     )
-    windows = cooltools.lib.common.assign_view_auto(windows, data["view"]).reset_index(
-        drop=True
-    )
+    windows = cooltools.lib.common.assign_view_auto(
+        windows, data["view"]
+    ).reset_index(drop=True)
 
     stack = cooltools.api.snipping._pileup(
         windows, feature_type, snipper.select, snipper.snip, map=map
@@ -289,7 +336,9 @@ def test_ondiag__pileup_without_expected(request, data):
     assert np.all(np.isnan(stack[1]))
 
 
-def test_ondiag__pileup_without_expected_with_result_validation(request, allclose, data):
+def test_ondiag__pileup_without_expected_with_result_validation(
+    request, allclose, data
+):
     """
     Test the snipping on matrix:
     """
@@ -298,15 +347,18 @@ def test_ondiag__pileup_without_expected_with_result_validation(request, allclos
 
     # Example region with windows, two regions from annotated genomic regions:
     windows = cooltools.api.snipping.make_bin_aligned_windows(
-        1_000_000, ["chr1", "chr1"], [110_000_000, 140_000_000], flank_bp=2_000_000
+        1_000_000,
+        ["chr1", "chr1"],
+        [110_000_000, 140_000_000],
+        flank_bp=2_000_000,
     )
-    windows = cooltools.lib.common.assign_view_auto(windows, data["view"]).reset_index(
-        drop=True
-    )
+    windows = cooltools.lib.common.assign_view_auto(
+        windows, data["view"]
+    ).reset_index(drop=True)
 
     # generate reference stack using naive cooler.matrix.fetch extraction:
     ref_stack = []
-    for _win in windows[["chrom","start","end"]].itertuples(index=False):
+    for _win in windows[["chrom", "start", "end"]].itertuples(index=False):
         _mat = data["clr"].matrix().fetch(_win)
         # fill min_diag diagonals with NaNs
         for d in range(-min_diag + 1, min_diag):
@@ -314,7 +366,9 @@ def test_ondiag__pileup_without_expected_with_result_validation(request, allclos
         ref_stack.append(_mat)
     ref_stack = np.asarray(ref_stack)
 
-    snipper = cooltools.api.snipping.CoolerSnipper(data["clr"], data["view"], min_diag=min_diag)
+    snipper = cooltools.api.snipping.CoolerSnipper(
+        data["clr"], data["view"], min_diag=min_diag
+    )
     stack = cooltools.api.snipping._pileup(
         windows, feature_type, snipper.select, snipper.snip, map=map
     )
@@ -338,17 +392,27 @@ def test_offdiag__pileup_with_expected(request, data):
         # I.
         # Example region with windows, two off-diagonal features from annotated genomic regions:
         windows1 = cooltools.api.snipping.make_bin_aligned_windows(
-            1_000_000, ["chr1", "chr1"], [102_000_000, 105_000_000], flank_bp=2_000_000
+            1_000_000,
+            ["chr1", "chr1"],
+            [102_000_000, 105_000_000],
+            flank_bp=2_000_000,
         )
         windows2 = cooltools.api.snipping.make_bin_aligned_windows(
-            1_000_000, ["chr1", "chr1"], [105_000_000, 109_000_000], flank_bp=2_000_000
+            1_000_000,
+            ["chr1", "chr1"],
+            [105_000_000, 109_000_000],
+            flank_bp=2_000_000,
         )
         windows = pd.merge(
-            windows1, windows2, left_index=True, right_index=True, suffixes=("1", "2")
+            windows1,
+            windows2,
+            left_index=True,
+            right_index=True,
+            suffixes=("1", "2"),
         )
-        windows = cooltools.lib.common.assign_view_auto(windows, data["view"]).reset_index(
-            drop=True
-        )
+        windows = cooltools.lib.common.assign_view_auto(
+            windows, data["view"]
+        ).reset_index(drop=True)
 
         stack = cooltools.api.snipping._pileup(
             windows, feature_type, snipper.select, snipper.snip, map=map
@@ -360,17 +424,27 @@ def test_offdiag__pileup_with_expected(request, data):
         # II.
         # Example region with windows, second window is between two different regions:
         windows1 = cooltools.api.snipping.make_bin_aligned_windows(
-            1_000_000, ["chr1", "chr1"], [102_000_000, 10_000_000], flank_bp=2_000_000
+            1_000_000,
+            ["chr1", "chr1"],
+            [102_000_000, 10_000_000],
+            flank_bp=2_000_000,
         )
         windows2 = cooltools.api.snipping.make_bin_aligned_windows(
-            1_000_000, ["chr1", "chr1"], [105_000_000, 109_000_000], flank_bp=2_000_000
+            1_000_000,
+            ["chr1", "chr1"],
+            [105_000_000, 109_000_000],
+            flank_bp=2_000_000,
         )
         windows = pd.merge(
-            windows1, windows2, left_index=True, right_index=True, suffixes=("1", "2")
+            windows1,
+            windows2,
+            left_index=True,
+            right_index=True,
+            suffixes=("1", "2"),
         )
-        windows = cooltools.lib.common.assign_view_auto(windows, data["view"]).reset_index(
-            drop=True
-        )
+        windows = cooltools.lib.common.assign_view_auto(
+            windows, data["view"]
+        ).reset_index(drop=True)
 
         stack = cooltools.api.snipping._pileup(
             windows, feature_type, snipper.select, snipper.snip, map=map
@@ -383,17 +457,27 @@ def test_offdiag__pileup_with_expected(request, data):
         # Example region with windows on diagonal, treated as off-diagonal. Check bottom
         # triangle is all NaN
         windows1 = cooltools.api.snipping.make_bin_aligned_windows(
-            1_000_000, ["chr1", "chr1"], [102_000_000, 10_000_000], flank_bp=2_000_000
+            1_000_000,
+            ["chr1", "chr1"],
+            [102_000_000, 10_000_000],
+            flank_bp=2_000_000,
         )
         windows2 = cooltools.api.snipping.make_bin_aligned_windows(
-            1_000_000, ["chr1", "chr1"], [102_000_000, 10_000_000], flank_bp=2_000_000
+            1_000_000,
+            ["chr1", "chr1"],
+            [102_000_000, 10_000_000],
+            flank_bp=2_000_000,
         )
         windows = pd.merge(
-            windows1, windows2, left_index=True, right_index=True, suffixes=("1", "2")
+            windows1,
+            windows2,
+            left_index=True,
+            right_index=True,
+            suffixes=("1", "2"),
         )
-        windows = cooltools.lib.common.assign_view_auto(windows, data["view"]).reset_index(
-            drop=True
-        )
+        windows = cooltools.lib.common.assign_view_auto(
+            windows, data["view"]
+        ).reset_index(drop=True)
 
         stack = cooltools.api.snipping._pileup(
             windows, feature_type, snipper.select, snipper.snip, map=map
@@ -401,10 +485,16 @@ def test_offdiag__pileup_with_expected(request, data):
 
         assert stack.shape == (2, 5, 5)
         assert np.all(
-            [np.all(np.isnan(snip[np.tril_indices_from(snip, 1)])) for snip in stack]
+            [
+                np.all(np.isnan(snip[np.tril_indices_from(snip, 1)]))
+                for snip in stack
+            ]
         )
 
-def test_offdiag__pileup_without_expected_with_result_validation(request, allclose, data):
+
+def test_offdiag__pileup_without_expected_with_result_validation(
+    request, allclose, data
+):
     """
     Test the snipping on matrix:
     """
@@ -414,21 +504,33 @@ def test_offdiag__pileup_without_expected_with_result_validation(request, allclo
     # I.
     # Example region with windows, two regions from annotated genomic regions:
     windows1 = cooltools.api.snipping.make_bin_aligned_windows(
-        1_000_000, ["chr1", "chr1"], [102_000_000, 115_000_000], flank_bp=2_000_000
+        1_000_000,
+        ["chr1", "chr1"],
+        [102_000_000, 115_000_000],
+        flank_bp=2_000_000,
     )
     windows2 = cooltools.api.snipping.make_bin_aligned_windows(
-        1_000_000, ["chr1", "chr1"], [115_000_000, 140_000_000], flank_bp=2_000_000
+        1_000_000,
+        ["chr1", "chr1"],
+        [115_000_000, 140_000_000],
+        flank_bp=2_000_000,
     )
     windows = pd.merge(
-        windows1, windows2, left_index=True, right_index=True, suffixes=("1", "2")
+        windows1,
+        windows2,
+        left_index=True,
+        right_index=True,
+        suffixes=("1", "2"),
     )
-    windows = cooltools.lib.common.assign_view_auto(windows, data["view"]).reset_index(
-        drop=True
-    )
+    windows = cooltools.lib.common.assign_view_auto(
+        windows, data["view"]
+    ).reset_index(drop=True)
 
     # generate reference stack using naive cooler.matrix.fetch extraction:
     ref_stack = []
-    for _win in windows[["chrom1", "start1", "end1", "chrom2", "start2", "end2"]].itertuples(index=False):
+    for _win in windows[
+        ["chrom1", "start1", "end1", "chrom2", "start2", "end2"]
+    ].itertuples(index=False):
         _reg1 = _win[:3]
         _reg2 = _win[3:]
         _mat = data["clr"].matrix().fetch(_reg1, _reg2)
@@ -436,35 +538,51 @@ def test_offdiag__pileup_without_expected_with_result_validation(request, allclo
         ref_stack.append(_mat)
     ref_stack = np.asarray(ref_stack)
 
-    snipper = cooltools.api.snipping.CoolerSnipper(data["clr"], data["view"], min_diag=min_diag)
+    snipper = cooltools.api.snipping.CoolerSnipper(
+        data["clr"], data["view"], min_diag=min_diag
+    )
     stack = cooltools.api.snipping._pileup(
         windows, feature_type, snipper.select, snipper.snip, map=map
     )
 
     # Check that the size of snips is OK, there are two of them and their value are OK:
     assert stack.shape == (len(windows), 5, 5)
-    assert allclose(stack, ref_stack, equal_nan = True)
+    assert allclose(stack, ref_stack, equal_nan=True)
 
     # II.
     # Example trans features
     min_diag = None
-    snipper = cooltools.api.snipping.CoolerSnipper(data["clr"], data["view"], min_diag=min_diag)
+    snipper = cooltools.api.snipping.CoolerSnipper(
+        data["clr"], data["view"], min_diag=min_diag
+    )
     windows1 = cooltools.api.snipping.make_bin_aligned_windows(
-        1_000_000, ["chr1", "chr1"], [102_000_000, 120_000_000], flank_bp=2_000_000
+        1_000_000,
+        ["chr1", "chr1"],
+        [102_000_000, 120_000_000],
+        flank_bp=2_000_000,
     )
     windows2 = cooltools.api.snipping.make_bin_aligned_windows(
-        1_000_000, ["chr2", "chr2"], [102_000_000, 130_000_000], flank_bp=2_000_000
+        1_000_000,
+        ["chr2", "chr2"],
+        [102_000_000, 130_000_000],
+        flank_bp=2_000_000,
     )
     windows = pd.merge(
-        windows1, windows2, left_index=True, right_index=True, suffixes=("1", "2")
+        windows1,
+        windows2,
+        left_index=True,
+        right_index=True,
+        suffixes=("1", "2"),
     )
-    windows = cooltools.lib.common.assign_view_auto(windows, data["view"]).reset_index(
-        drop=True
-    )
+    windows = cooltools.lib.common.assign_view_auto(
+        windows, data["view"]
+    ).reset_index(drop=True)
 
     # generate reference stack using naive cooler.matrix.fetch extraction:
     ref_stack = []
-    for _win in windows[["chrom1", "start1", "end1", "chrom2", "start2", "end2"]].itertuples(index=False):
+    for _win in windows[
+        ["chrom1", "start1", "end1", "chrom2", "start2", "end2"]
+    ].itertuples(index=False):
         _reg1 = _win[:3]
         _reg2 = _win[3:]
         _mat = data["clr"].matrix().fetch(_reg1, _reg2)
@@ -477,8 +595,7 @@ def test_offdiag__pileup_without_expected_with_result_validation(request, allclo
 
     # check shape and values
     assert stack.shape == (len(windows), 5, 5)
-    assert allclose(stack, ref_stack, equal_nan = True)
-
+    assert allclose(stack, ref_stack, equal_nan=True)
 
 
 def test_offdiag__pileup_without_expected(request, data):
@@ -490,19 +607,31 @@ def test_offdiag__pileup_without_expected(request, data):
     # I.
     # Example region with windows, two regions from annotated genomic regions:
     windows1 = cooltools.api.snipping.make_bin_aligned_windows(
-        1_000_000, ["chr1", "chr1"], [102_000_000, 105_000_000], flank_bp=2_000_000
+        1_000_000,
+        ["chr1", "chr1"],
+        [102_000_000, 105_000_000],
+        flank_bp=2_000_000,
     )
     windows2 = cooltools.api.snipping.make_bin_aligned_windows(
-        1_000_000, ["chr1", "chr1"], [105_000_000, 109_000_000], flank_bp=2_000_000
+        1_000_000,
+        ["chr1", "chr1"],
+        [105_000_000, 109_000_000],
+        flank_bp=2_000_000,
     )
     windows = pd.merge(
-        windows1, windows2, left_index=True, right_index=True, suffixes=("1", "2")
+        windows1,
+        windows2,
+        left_index=True,
+        right_index=True,
+        suffixes=("1", "2"),
     )
-    windows = cooltools.lib.common.assign_view_auto(windows, data["view"]).reset_index(
-        drop=True
-    )
+    windows = cooltools.lib.common.assign_view_auto(
+        windows, data["view"]
+    ).reset_index(drop=True)
 
-    snipper = cooltools.api.snipping.CoolerSnipper(data["clr"], data["view"], min_diag=None)
+    snipper = cooltools.api.snipping.CoolerSnipper(
+        data["clr"], data["view"], min_diag=None
+    )
     stack = cooltools.api.snipping._pileup(
         windows, feature_type, snipper.select, snipper.snip, map=map
     )
@@ -513,17 +642,27 @@ def test_offdiag__pileup_without_expected(request, data):
     # II.
     # Example region with windows, second window comes from unannotated genomic region:
     windows1 = cooltools.api.snipping.make_bin_aligned_windows(
-        1_000_000, ["chr1", "chr1"], [102_000_000, 10_000_000], flank_bp=2_000_000
+        1_000_000,
+        ["chr1", "chr1"],
+        [102_000_000, 10_000_000],
+        flank_bp=2_000_000,
     )
     windows2 = cooltools.api.snipping.make_bin_aligned_windows(
-        1_000_000, ["chr1", "chr1"], [105_000_000, 109_000_000], flank_bp=2_000_000
+        1_000_000,
+        ["chr1", "chr1"],
+        [105_000_000, 109_000_000],
+        flank_bp=2_000_000,
     )
     windows = pd.merge(
-        windows1, windows2, left_index=True, right_index=True, suffixes=("1", "2")
+        windows1,
+        windows2,
+        left_index=True,
+        right_index=True,
+        suffixes=("1", "2"),
     )
-    windows = cooltools.lib.common.assign_view_auto(windows, data["view"]).reset_index(
-        drop=True
-    )
+    windows = cooltools.lib.common.assign_view_auto(
+        windows, data["view"]
+    ).reset_index(drop=True)
 
     stack = cooltools.api.snipping._pileup(
         windows, feature_type, snipper.select, snipper.snip, map=map
@@ -536,19 +675,31 @@ def test_offdiag__pileup_without_expected(request, data):
     # III.
     # Example region with windows on diagonal, treated as off-diagonal. Check bottom
     # triangle is all NaN
-    snipper = cooltools.api.snipping.CoolerSnipper(data["clr"], data["view"], min_diag=2)
+    snipper = cooltools.api.snipping.CoolerSnipper(
+        data["clr"], data["view"], min_diag=2
+    )
     windows1 = cooltools.api.snipping.make_bin_aligned_windows(
-        1_000_000, ["chr1", "chr1"], [102_000_000, 10_000_000], flank_bp=2_000_000
+        1_000_000,
+        ["chr1", "chr1"],
+        [102_000_000, 10_000_000],
+        flank_bp=2_000_000,
     )
     windows2 = cooltools.api.snipping.make_bin_aligned_windows(
-        1_000_000, ["chr1", "chr1"], [102_000_000, 10_000_000], flank_bp=2_000_000
+        1_000_000,
+        ["chr1", "chr1"],
+        [102_000_000, 10_000_000],
+        flank_bp=2_000_000,
     )
     windows = pd.merge(
-        windows1, windows2, left_index=True, right_index=True, suffixes=("1", "2")
+        windows1,
+        windows2,
+        left_index=True,
+        right_index=True,
+        suffixes=("1", "2"),
     )
-    windows = cooltools.lib.common.assign_view_auto(windows, data["view"]).reset_index(
-        drop=True
-    )
+    windows = cooltools.lib.common.assign_view_auto(
+        windows, data["view"]
+    ).reset_index(drop=True)
 
     stack = cooltools.api.snipping._pileup(
         windows, feature_type, snipper.select, snipper.snip, map=map
@@ -556,7 +707,10 @@ def test_offdiag__pileup_without_expected(request, data):
 
     assert stack.shape == (2, 5, 5)
     assert np.all(
-        [np.all(np.isnan(snip[np.tril_indices_from(snip, 1)])) for snip in stack]
+        [
+            np.all(np.isnan(snip[np.tril_indices_from(snip, 1)]))
+            for snip in stack
+        ]
     )
 
 
@@ -568,7 +722,10 @@ def test_snipper_with_view_and_expected(request, data):
         snipper = snipper_class(data["clr"], data["exp"], data["view"])
         matrix = snipper.select("foo", "foo")
         snippet = snipper.snip(
-            matrix, "foo", "foo", (110_000_000, 120_000_000, 110_000_000, 120_000_000)
+            matrix,
+            "foo",
+            "foo",
+            (110_000_000, 120_000_000, 110_000_000, 120_000_000),
         )
         assert snippet.shape is not None
 
@@ -577,6 +734,9 @@ def test_cooler_snipper_with_view(request, data):
     snipper = cooltools.api.snipping.CoolerSnipper(data["clr"], data["view"])
     matrix = snipper.select("foo", "foo")
     snippet = snipper.snip(
-        matrix, "foo", "foo", (110_000_000, 120_000_000, 110_000_000, 120_000_000)
+        matrix,
+        "foo",
+        "foo",
+        (110_000_000, 120_000_000, 110_000_000, 120_000_000),
     )
     assert snippet.shape is not None

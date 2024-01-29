@@ -4,24 +4,24 @@ Collection of classes and functions used for snipping and creation of pileups
 The main user-facing function of this module is `pileup`, it performs pileups using
 snippers and other functions defined in the module.  The concept is the following:
 
-- First, the provided features are annotated with the regions from a view (or simply  
+- First, the provided features are annotated with the regions from a view (or simply
   whole chromosomes, if no view is provided). They are assigned to the region that
   contains it, or the one with the largest overlap.
-- Then the features are expanded using the `flank` argument, and aligned to the bins  
+- Then the features are expanded using the `flank` argument, and aligned to the bins
   of the cooler
-- Depending on the requested operation (whether the normalization to expected is  
+- Depending on the requested operation (whether the normalization to expected is
   required), the appropriate snipper object is created
-- A snipper can `select` a particular region of a genome-wide matrix, meaning it  
+- A snipper can `select` a particular region of a genome-wide matrix, meaning it
   stores its sparse representation in memory. This could be whole chromosomes or
   chromosome arms, for example
-- A snipper can `snip` a small area of a selected region, meaning it will extract  
+- A snipper can `snip` a small area of a selected region, meaning it will extract
   and return a dense representation of this area
-- For each region present, it is first `select`ed, and then all features within it are  
+- For each region present, it is first `select`ed, and then all features within it are
   `snip`ped, creating a stack: a 3D array containing all snippets for this region
-- For features that are not assigned to any region, an empty snippet is returned  
-- All per-region stacks are then combined into one, which then can be averaged to create  
+- For features that are not assigned to any region, an empty snippet is returned
+- All per-region stacks are then combined into one, which then can be averaged to create
   a single pileup
-- The order of snippets in the stack matches the order of features, this way the stack  
+- The order of snippets in the stack matches the order of features, this way the stack
   can also be used for analysis of any subsets of original features
 
 This procedure achieves a good tradeoff between speed and RAM. Extracting each
@@ -45,7 +45,7 @@ from ..lib.checks import (
 )
 from ..lib.common import assign_view_auto, make_cooler_view
 
-from ..lib.numutils import LazyToeplitz
+from ..lib.numutils import LazyToeplitz, set_diag
 import warnings
 
 from multiprocess import Pool
@@ -83,7 +83,9 @@ def expand_align_features(features_df, flank, resolution, format="bed"):
             np.floor(features_df["center"] / resolution) - flank // resolution
         ).astype(int)
         features_df["hi"] = (
-            np.floor(features_df["center"] / resolution) + flank // resolution + 1
+            np.floor(features_df["center"] / resolution)
+            + flank // resolution
+            + 1
         ).astype(int)
         features_df["start"] = features_df["lo"] * resolution
         features_df["end"] = features_df["hi"] * resolution
@@ -91,14 +93,20 @@ def expand_align_features(features_df, flank, resolution, format="bed"):
         features_df[
             ["orig_start1", "orig_end1", "orig_start2", "orig_end2"]
         ] = features_df[["start1", "end1", "start2", "end2"]]
-        features_df["center1"] = (features_df["start1"] + features_df["end1"]) / 2
-        features_df["center2"] = (features_df["start2"] + features_df["end2"]) / 2
+        features_df["center1"] = (
+            features_df["start1"] + features_df["end1"]
+        ) / 2
+        features_df["center2"] = (
+            features_df["start2"] + features_df["end2"]
+        ) / 2
 
         features_df["lo1"] = (
             np.floor(features_df["center1"] / resolution) - flank // resolution
         ).astype(int)
         features_df["hi1"] = (
-            np.floor(features_df["center1"] / resolution) + flank // resolution + 1
+            np.floor(features_df["center1"] / resolution)
+            + flank // resolution
+            + 1
         ).astype(int)
         features_df["start1"] = features_df["lo1"] * resolution
         features_df["end1"] = features_df["hi1"] * resolution
@@ -107,12 +115,16 @@ def expand_align_features(features_df, flank, resolution, format="bed"):
             np.floor(features_df["center2"] / resolution) - flank // resolution
         ).astype(int)
         features_df["hi2"] = (
-            np.floor(features_df["center2"] / resolution) + flank // resolution + 1
+            np.floor(features_df["center2"] / resolution)
+            + flank // resolution
+            + 1
         ).astype(int)
         features_df["start2"] = features_df["lo2"] * resolution
         features_df["end2"] = features_df["hi2"] * resolution
     else:
-        raise ValueError(f"feature_type can be 'bed' or 'bedpe', {format} is provided.")
+        raise ValueError(
+            f"feature_type can be 'bed' or 'bedpe', {format} is provided."
+        )
     return features_df
 
 
@@ -194,7 +206,9 @@ def _extract_stack(data_select, data_snip, arg):
         lo = feature_group["lo"].to_numpy()
         hi = feature_group["hi"].to_numpy()
         s = (hi - lo).astype(int)  # Shape of individual snips
-        assert s.max() == s.min(), "Pileup accepts only windows of the same size"
+        assert (
+            s.max() == s.min()
+        ), "Pileup accepts only windows of the same size"
         stack = np.full((len(feature_group), s[0], s[0]), np.nan)
     else:
         region1 = region2 = support
@@ -202,7 +216,9 @@ def _extract_stack(data_select, data_snip, arg):
         e1 = feature_group["end"].to_numpy()
         s2, e2 = s1, e1
         data = data_select(region1, region2)
-        stack = list(map(partial(data_snip, data, region1, region2), zip(s1, e1, s2, e2)))
+        stack = list(
+            map(partial(data_snip, data, region1, region2), zip(s1, e1, s2, e2))
+        )
         stack = np.stack(stack)
     return stack, feature_group["_rank"].to_numpy()
 
@@ -219,8 +235,12 @@ def _extract_stack_paired(data_select, data_snip, arg):
         hi2 = feature_group["hi2"].to_numpy()
         s1 = (hi1 - lo1).astype(int)  # Shape of individual snips
         s2 = (hi2 - lo2).astype(int)
-        assert s1.max() == s1.min(), "Pileup accepts only windows of the same size"
-        assert s2.max() == s2.min(), "Pileup accepts only windows of the same size"
+        assert (
+            s1.max() == s1.min()
+        ), "Pileup accepts only windows of the same size"
+        assert (
+            s2.max() == s2.min()
+        ), "Pileup accepts only windows of the same size"
         stack = np.full((len(feature_group), s1[0], s2[0]), np.nan)
     else:
         s1 = feature_group["start1"].to_numpy()
@@ -228,7 +248,9 @@ def _extract_stack_paired(data_select, data_snip, arg):
         s2 = feature_group["start2"].to_numpy()
         e2 = feature_group["end2"].to_numpy()
         data = data_select(region1, region2)
-        stack = list(map(partial(data_snip, data, region1, region2), zip(s1, e1, s2, e2)))
+        stack = list(
+            map(partial(data_snip, data, region1, region2), zip(s1, e1, s2, e2))
+        )
         stack = np.stack(stack)
     return stack, feature_group["_rank"].to_numpy()
 
@@ -281,13 +303,17 @@ def _pileup(features, feature_type, data_select, data_snip, map=map):
         # fill in unanotated view regions with empty string
         features["region1"] = features["region1"].fillna("")
         features["region2"] = features["region2"].fillna("")
-        _extract_group_data = partial(_extract_stack_paired, data_select, data_snip)
+        _extract_group_data = partial(
+            _extract_stack_paired, data_select, data_snip
+        )
         _feature_groups = features.groupby(["region1", "region2"], sort=False)
     else:
-        raise ValueError(f"feature_type can be only bed or bedpe, {feature_type} is provided.")
+        raise ValueError(
+            f"feature_type can be only bed or bedpe, {feature_type} is provided."
+        )
 
     # perform stack extraction on a per-region basis using _extract_group_data and _feature_groups
-    cumul_stack, orig_rank = zip( *map( _extract_group_data, _feature_groups ) )
+    cumul_stack, orig_rank = zip(*map(_extract_group_data, _feature_groups))
     # Restore the original rank of the input features
     cumul_stack = np.concatenate(cumul_stack, axis=0)
     orig_rank = np.concatenate(orig_rank)
@@ -299,7 +325,9 @@ def _pileup(features, feature_type, data_select, data_snip, map=map):
     # lower-symmetrical values for near-diagonal snips - but for
     # on-diagonal pileups it has to be mitigated to restore symmetry:
     if feature_type == "bed":
-        cumul_stack = np.fmax(cumul_stack, np.transpose(cumul_stack, axes=(0, 2, 1)))
+        cumul_stack = np.fmax(
+            cumul_stack, np.transpose(cumul_stack, axes=(0, 2, 1))
+        )
 
     return cumul_stack
 
@@ -328,9 +356,8 @@ class CoolerSnipper:
         self.view_df = view_df.set_index("name")
         self.clr = clr
         self.binsize = self.clr.binsize
+        self.min_diag = min_diag
         self.offsets = {}
-        self.diag_indicators = {}
-        self.pad = True
         self.cooler_opts = {} if cooler_opts is None else cooler_opts
         self.cooler_opts.setdefault("sparse", True)
 
@@ -346,7 +373,6 @@ class CoolerSnipper:
                 self.clr_weight_name = self.cooler_opts["balance"]
         else:
             self.clr_weight_name = "weight"
-        self.min_diag = min_diag
 
     def select(self, region1, region2):
         """Select a portion of the cooler for snipping based on two regions in the view
@@ -368,34 +394,33 @@ class CoolerSnipper:
         """
         region1_coords = tuple(self.view_df.loc[region1])
         region2_coords = tuple(self.view_df.loc[region2])
-        self.offsets[region1] = self.clr.offset(region1_coords) - self.clr.offset(
-            region1_coords[0]
-        )
-        self.offsets[region2] = self.clr.offset(region2_coords) - self.clr.offset(
-            region2_coords[0]
-        )
+        chrom1_offset = self.clr.offset(region1_coords[0])
+        chrom2_offset = self.clr.offset(region2_coords[0])
+        self.offsets[region1] = self.clr.offset(region1_coords) - chrom1_offset
+        self.offsets[region2] = self.clr.offset(region2_coords) - chrom2_offset
         matrix = self.clr.matrix(**self.cooler_opts).fetch(
             region1_coords, region2_coords
         )
+        if self.cooler_opts["sparse"]:
+            matrix = matrix.tocsr()
         if self.clr_weight_name:
             self._isnan1 = np.isnan(
-                self.clr.bins()[self.clr_weight_name].fetch(region1_coords).values
+                self.clr.bins()[self.clr_weight_name]
+                .fetch(region1_coords)
+                .to_numpy()
             )
             self._isnan2 = np.isnan(
-                self.clr.bins()[self.clr_weight_name].fetch(region2_coords).values
+                self.clr.bins()[self.clr_weight_name]
+                .fetch(region2_coords)
+                .to_numpy()
             )
         else:
             self._isnan1 = np.zeros_like(
-                self.clr.bins()["start"].fetch(region1_coords).values
+                self.clr.bins()["start"].fetch(region1_coords).to_numpy()
             ).astype(bool)
             self._isnan2 = np.zeros_like(
-                self.clr.bins()["start"].fetch(region2_coords).values
+                self.clr.bins()["start"].fetch(region2_coords).to_numpy()
             ).astype(bool)
-        if self.cooler_opts["sparse"]:
-            matrix = matrix.tocsr()
-        if self.min_diag is not None:
-            diags = np.arange(np.diff(self.clr.extent(region1_coords)), dtype=np.int32)
-            self.diag_indicators[region1] = LazyToeplitz(-diags, diags)
         return matrix
 
     def snip(self, matrix, region1, region2, tup):
@@ -424,43 +449,34 @@ class CoolerSnipper:
         offset1 = self.offsets[region1]
         offset2 = self.offsets[region2]
         binsize = self.binsize
-        lo1, hi1 = (s1 // binsize) - offset1, (e1 // binsize) - offset1
-        lo2, hi2 = (s2 // binsize) - offset2, (e2 // binsize) - offset2
-        assert hi1 >= 0
-        assert hi2 >= 0
+        # bins relative to start of respective chromosomes
+        lo1, hi1 = s1 // binsize, e1 // binsize
+        lo2, hi2 = s2 // binsize, e2 // binsize
+        # calculate min diagonal of the snippet
+        min_diag_snip = lo2 - hi1 + 1
+        # bins relative to respective regions, i.e. matrix
+        lo1 -= offset1
+        hi1 -= offset1
+        lo2 -= offset2
+        hi2 -= offset2
 
         m, n = matrix.shape
         dm, dn = hi1 - lo1, hi2 - lo2
-        out_of_bounds = False
-        pad_left = pad_right = pad_bottom = pad_top = None
-        if lo1 < 0:
-            pad_bottom = -lo1
-            out_of_bounds = True
-        if lo2 < 0:
-            pad_left = -lo2
-            out_of_bounds = True
-        if hi1 > m:
-            pad_top = dm - (hi1 - m)
-            out_of_bounds = True
-        if hi2 > n:
-            pad_right = dn - (hi2 - n)
-            out_of_bounds = True
+        # if snippet is out of bounds, return "empty" snippet
+        if lo1 < 0 or lo2 < 0 or hi1 > m or hi2 > n:
+            return np.full((dm, dn), np.nan)
 
-        if out_of_bounds:
-            i0 = max(lo1, 0)
-            i1 = min(hi1, m)
-            j0 = max(lo2, 0)
-            j1 = min(hi2, n)
-            snippet = np.full((dm, dn), np.nan)
-        #             snippet[pad_bottom:pad_top,
-        #                     pad_left:pad_right] = matrix[i0:i1, j0:j1].toarray()
-        else:
-            snippet = matrix[lo1:hi1, lo2:hi2].toarray().astype("float")
-            snippet[self._isnan1[lo1:hi1], :] = np.nan
-            snippet[:, self._isnan2[lo2:hi2]] = np.nan
+        snippet = matrix[lo1:hi1, lo2:hi2].toarray().astype("float")
+        snippet[self._isnan1[lo1:hi1], :] = np.nan
+        snippet[:, self._isnan2[lo2:hi2]] = np.nan
+
         if self.min_diag is not None:
-            D = self.diag_indicators[region1][lo1:hi1, lo2:hi2] < self.min_diag
-            snippet[D] = np.nan
+            # fill in NaNs in diagonals below self.min_diag
+            for _diag, _diag_relative in zip(
+                range(min_diag_snip, self.min_diag),
+                range(-dm+1, dn),
+            ):
+                set_diag(snippet, np.nan, i=_diag_relative)
         return snippet
 
 
@@ -499,13 +515,12 @@ class ObsExpSnipper:
             interaction values, by default "balanced.avg"
         """
         self.clr = clr
-        self.expected = expected
+        self.expected_grp = expected.set_index("dist").groupby(["region1", "region2"])
         self.expected_value_col = expected_value_col
         self.view_df = view_df.set_index("name")
         self.binsize = self.clr.binsize
+        self.min_diag = min_diag
         self.offsets = {}
-        self.diag_indicators = {}
-        self.pad = True
         self.cooler_opts = {} if cooler_opts is None else cooler_opts
         self.cooler_opts.setdefault("sparse", True)
         if "balance" in self.cooler_opts:
@@ -520,7 +535,6 @@ class ObsExpSnipper:
                 self.clr_weight_name = self.cooler_opts["balance"]
         else:
             self.clr_weight_name = "weight"
-        self.min_diag = min_diag
 
     def select(self, region1, region2):
         """Select a portion of the cooler for snipping based on two regions in the view
@@ -543,13 +557,12 @@ class ObsExpSnipper:
         region1_coords = tuple(self.view_df.loc[region1])
         region2_coords = tuple(self.view_df.loc[region2])
         if region1_coords[0] != region2_coords[0]:
-            raise ValueError("ObsExpSnipper is implemented for cis contacts only.")
-        self.offsets[region1] = self.clr.offset(region1_coords) - self.clr.offset(
-            region1_coords[0]
-        )
-        self.offsets[region2] = self.clr.offset(region2_coords) - self.clr.offset(
-            region2_coords[0]
-        )
+            raise ValueError(
+                "ObsExpSnipper is implemented for cis contacts only."
+            )
+        chrom_offset = self.clr.offset(region1_coords[0])
+        self.offsets[region1] = self.clr.offset(region1_coords) - chrom_offset
+        self.offsets[region2] = self.clr.offset(region2_coords) - chrom_offset
         matrix = self.clr.matrix(**self.cooler_opts).fetch(
             region1_coords, region2_coords
         )
@@ -557,26 +570,39 @@ class ObsExpSnipper:
             matrix = matrix.tocsr()
         if self.clr_weight_name:
             self._isnan1 = np.isnan(
-                self.clr.bins()[self.clr_weight_name].fetch(region1_coords).values
+                self.clr.bins()[self.clr_weight_name]
+                .fetch(region1_coords)
+                .to_numpy()
             )
             self._isnan2 = np.isnan(
-                self.clr.bins()[self.clr_weight_name].fetch(region2_coords).values
+                self.clr.bins()[self.clr_weight_name]
+                .fetch(region2_coords)
+                .to_numpy()
             )
         else:
             self._isnan1 = np.zeros_like(
-                self.clr.bins()["start"].fetch(region1_coords).values
+                self.clr.bins()["start"].fetch(region1_coords).to_numpy()
             ).astype(bool)
             self._isnan2 = np.zeros_like(
-                self.clr.bins()["start"].fetch(region2_coords).values
+                self.clr.bins()["start"].fetch(region2_coords).to_numpy()
             ).astype(bool)
-        self._expected = LazyToeplitz(
-            self.expected.groupby(["region1", "region2"])
-            .get_group((region1, region2))[self.expected_value_col]
-            .values
-        )
-        if self.min_diag is not None:
-            diags = np.arange(np.diff(self.clr.extent(region1_coords)), dtype=np.int32)
-            self.diag_indicators[region1] = LazyToeplitz(-diags, diags)
+        # extract expected for the region from the expected_groupby, indexed by distance
+        _exp_diags = self.expected_grp.get_group((region1, region2))[self.expected_value_col]
+        if region1_coords == region2_coords:
+            # on-diagonal case
+            self._expected = LazyToeplitz(_exp_diags.to_numpy())
+        else:
+            # extract region extents for off-diagonal expected
+            lo1, hi1 = self.clr.extent(region1_coords)
+            lo2, hi2 = self.clr.extent(region2_coords)
+            # diagonal coordinates of the matrix relative to chrom
+            min_dist = lo2 - hi1
+            mid_dist = lo2 - lo1
+            max_dist = hi2 - lo1
+            self._expected = LazyToeplitz(
+                _exp_diags.loc[mid_dist:min_dist:-1].to_numpy(),
+                _exp_diags.loc[mid_dist:max_dist].to_numpy(),
+            )
         return matrix
 
     def snip(self, matrix, region1, region2, tup):
@@ -605,51 +631,46 @@ class ObsExpSnipper:
         offset1 = self.offsets[region1]
         offset2 = self.offsets[region2]
         binsize = self.binsize
-        lo1, hi1 = (s1 // binsize) - offset1, (e1 // binsize) - offset1
-        lo2, hi2 = (s2 // binsize) - offset2, (e2 // binsize) - offset2
-        assert hi1 >= 0
-        assert hi2 >= 0
+        # bins relative to start of respective chromosomes
+        lo1, hi1 = s1 // binsize, e1 // binsize
+        lo2, hi2 = s2 // binsize, e2 // binsize
+        # calculate min diagonal of the snippet
+        min_diag_snip = lo2 - hi1 + 1
+        # bins relative to respective regions (matrix)
+        lo1 -= offset1
+        hi1 -= offset1
+        lo2 -= offset2
+        hi2 -= offset2
 
         m, n = matrix.shape
         dm, dn = hi1 - lo1, hi2 - lo2
-        out_of_bounds = False
-        pad_left = pad_right = pad_bottom = pad_top = None
-        if lo1 < 0:
-            pad_bottom = -lo1
-            out_of_bounds = True
-        if lo2 < 0:
-            pad_left = -lo2
-            out_of_bounds = True
-        if hi1 > m:
-            pad_top = dm - (hi1 - m)
-            out_of_bounds = True
-        if hi2 > n:
-            pad_right = dn - (hi2 - n)
-            out_of_bounds = True
-
-        if out_of_bounds:
-            i0 = max(lo1, 0)
-            i1 = min(hi1, m)
-            j0 = max(lo2, 0)
-            j1 = min(hi2, n)
+        # if snippet is out of bounds, return "empty" snippet
+        if lo1 < 0 or lo2 < 0 or hi1 > m or hi2 > n:
             return np.full((dm, dn), np.nan)
-        #             snippet[pad_bottom:pad_top,
-        #                     pad_left:pad_right] = matrix[i0:i1, j0:j1].toarray()
-        else:
-            snippet = matrix[lo1:hi1, lo2:hi2].toarray().astype("float")
-            snippet[self._isnan1[lo1:hi1], :] = np.nan
-            snippet[:, self._isnan2[lo2:hi2]] = np.nan
+
+        snippet = matrix[lo1:hi1, lo2:hi2].toarray().astype("float")
+        snippet[self._isnan1[lo1:hi1], :] = np.nan
+        snippet[:, self._isnan2[lo2:hi2]] = np.nan
 
         e = self._expected[lo1:hi1, lo2:hi2]
         if self.min_diag is not None:
-            D = self.diag_indicators[region1][lo1:hi1, lo2:hi2] < self.min_diag
-            snippet[D] = np.nan
+            # fill in NaNs in diagonals below self.min_diag
+            for _diag, _diag_relative in zip(
+                range(min_diag_snip, self.min_diag),
+                range(-dm+1, dn)
+            ):
+                set_diag(snippet, np.nan, i=_diag_relative)
         return snippet / e
 
 
 class ExpectedSnipper:
     def __init__(
-        self, clr, expected, view_df, min_diag=2, expected_value_col="balanced.avg"
+        self,
+        clr,
+        expected,
+        view_df,
+        min_diag=2,
+        expected_value_col="balanced.avg",
     ):
         """Class for generating expected snips
 
@@ -670,12 +691,11 @@ class ExpectedSnipper:
             interaction values, by default "balanced.avg"
         """
         self.clr = clr
-        self.expected = expected
+        self.expected_grp = expected.set_index("dist").groupby(["region1", "region2"])
         self.expected_value_col = expected_value_col
         self.view_df = view_df.set_index("name")
         self.binsize = self.clr.binsize
         self.offsets = {}
-        self.diag_indicators = {}
         self.min_diag = min_diag
 
     def select(self, region1, region2):
@@ -700,24 +720,29 @@ class ExpectedSnipper:
         region1_coords = tuple(self.view_df.loc[region1])
         region2_coords = tuple(self.view_df.loc[region2])
         if region1_coords[0] != region2_coords[0]:
-            raise ValueError("ObsExpSnipper is implemented for cis contacts only.")
-        self.offsets[region1] = self.clr.offset(region1_coords) - self.clr.offset(
-            region1_coords[0]
-        )
-        self.offsets[region2] = self.clr.offset(region2_coords) - self.clr.offset(
-            region2_coords[0]
-        )
-        self.m = np.diff(self.clr.extent(region1_coords))
-        self.n = np.diff(self.clr.extent(region2_coords))
-        self._expected = LazyToeplitz(
-            self.expected.groupby(["region1", "region2"])
-            .get_group((region1, region2))[self.expected_value_col]
-            .values
-        )
-        if self.min_diag is not None:
-            diags = np.arange(np.diff(self.clr.extent(region1_coords)), dtype=np.int32)
-            self.diag_indicators[region1] = LazyToeplitz(-diags, diags)
-        return self._expected
+            raise ValueError(
+                "ObsExpSnipper is implemented for cis contacts only."
+            )
+        chrom_offset = self.clr.offset(region1_coords[0])
+        self.offsets[region1] = self.clr.offset(region1_coords) - chrom_offset
+        self.offsets[region2] = self.clr.offset(region2_coords) - chrom_offset
+        # extract expected for the region from the expected_groupby, indexed by distance
+        _exp_diags = self.expected_grp.get_group((region1, region2))[self.expected_value_col]
+        if region1_coords == region2_coords:
+            # on-diagonal case
+            return LazyToeplitz(_exp_diags.to_numpy())
+        else:
+            # extract region extents for off-diagonal expected
+            lo1, hi1 = self.clr.extent(region1_coords)
+            lo2, hi2 = self.clr.extent(region2_coords)
+            # diagonal coordinates of the matrix relative to chrom
+            min_dist = lo2 - hi1
+            mid_dist = lo2 - lo1
+            max_dist = hi2 - lo1
+            return LazyToeplitz(
+                _exp_diags.loc[mid_dist:min_dist:-1].to_numpy(),
+                _exp_diags.loc[mid_dist:max_dist].to_numpy(),
+            )
 
     def snip(self, exp, region1, region2, tup):
         """Extract an expected snippet
@@ -745,19 +770,31 @@ class ExpectedSnipper:
         offset1 = self.offsets[region1]
         offset2 = self.offsets[region2]
         binsize = self.binsize
-        lo1, hi1 = (s1 // binsize) - offset1, (e1 // binsize) - offset1
-        lo2, hi2 = (s2 // binsize) - offset2, (e2 // binsize) - offset2
-        assert hi1 >= 0
-        assert hi2 >= 0
+        # bins relative to start of respective chromosomes
+        lo1, hi1 = s1 // binsize, e1 // binsize
+        lo2, hi2 = s2 // binsize, e2 // binsize
+        # calculate min diagonal of the snippet
+        min_diag_snip = lo2 - hi1 + 1
+        # bins relative to respective regions, i.e. matrix
+        lo1 -= offset1
+        hi1 -= offset1
+        lo2 -= offset2
+        hi2 -= offset2
+
+        m, n = exp.shape
         dm, dn = hi1 - lo1, hi2 - lo2
 
-        if lo1 < 0 or lo2 < 0 or hi1 > self.m or hi2 > self.n:
+        if lo1 < 0 or lo2 < 0 or hi1 > m or hi2 > n:
             return np.full((dm, dn), np.nan)
 
         snippet = exp[lo1:hi1, lo2:hi2]
         if self.min_diag is not None:
-            D = self.diag_indicators[region1][lo1:hi1, lo2:hi2] < self.min_diag
-            snippet[D] = np.nan
+            # fill in NaNs in diagonals below self.min_diag
+            for _diag, _diag_relative in zip(
+                range(min_diag_snip, self.min_diag),
+                range(-dm+1, dn)
+            ):
+                set_diag(snippet, np.nan, i=_diag_relative)
         return snippet
 
 
@@ -833,7 +870,9 @@ def pileup(
                 raise_errors=True,
             )
         except Exception as e:
-            raise ValueError("view_df is not a valid viewframe or incompatible") from e
+            raise ValueError(
+                "view_df is not a valid viewframe or incompatible"
+            ) from e
 
     # check expected compatibility when provided
     if expected_df is not None:
@@ -851,7 +890,9 @@ def pileup(
         except Exception as e:
             raise ValueError("provided expected is not valid") from e
 
-    features_df = assign_view_auto(features_df, view_df, combined_assignments_column=False)
+    features_df = assign_view_auto(
+        features_df, view_df, combined_assignments_column=False
+    )
     # TODO: switch to bioframe.assign_view upon update
 
     if flank is not None:
@@ -864,9 +905,13 @@ def pileup(
             features_df["lo"] = (features_df["start"] / clr.binsize).astype(int)
             features_df["hi"] = (features_df["end"] / clr.binsize).astype(int)
         else:
-            features_df["lo1"] = (features_df["start1"] / clr.binsize).astype(int)
+            features_df["lo1"] = (features_df["start1"] / clr.binsize).astype(
+                int
+            )
             features_df["hi1"] = (features_df["end1"] / clr.binsize).astype(int)
-            features_df["lo2"] = (features_df["start2"] / clr.binsize).astype(int)
+            features_df["lo2"] = (features_df["start2"] / clr.binsize).astype(
+                int
+            )
             features_df["hi2"] = (features_df["end2"] / clr.binsize).astype(int)
 
     if clr_weight_name not in [None, False]:
@@ -887,16 +932,19 @@ def pileup(
 
     # Find region offsets and then subtract them from the feature extents
 
-    region_offsets = view_df[["chrom", "start", "end"]].apply(clr.offset, axis=1)
+    region_offsets = view_df[["chrom", "start", "end"]].apply(
+        clr.offset, axis=1
+    )
     region_offsets_dict = dict(zip(view_df["name"].values, region_offsets))
-
 
     if feature_type == "bed":
         if features_df["region"].isnull().any():
             warnings.warn(
                 "Some features do not have view regions assigned! Some snips will be empty."
             )
-        features_df["region_offset"] = features_df["region"].replace(region_offsets_dict)
+        features_df["region_offset"] = features_df["region"].replace(
+            region_offsets_dict
+        )
         features_df[["lo", "hi"]] = (
             features_df[["lo", "hi"]]
             .subtract(
@@ -906,11 +954,16 @@ def pileup(
             .astype(int)
         )
     else:
-        if features_df["region1"].isnull().any() or features_df["region2"].isnull().any():
+        if (
+            features_df["region1"].isnull().any()
+            or features_df["region2"].isnull().any()
+        ):
             warnings.warn(
                 "Some features do not have view regions assigned! Some snips will be empty."
             )
-        features_df["region1_offset"] = features_df["region1"].replace(region_offsets_dict)
+        features_df["region1_offset"] = features_df["region1"].replace(
+            region_offsets_dict
+        )
         features_df[["lo1", "hi1"]] = (
             features_df[["lo1", "hi1"]]
             .subtract(
@@ -919,7 +972,9 @@ def pileup(
             )
             .astype(int)
         )
-        features_df["region2_offset"] = features_df["region2"].replace(region_offsets_dict)
+        features_df["region2_offset"] = features_df["region2"].replace(
+            region_offsets_dict
+        )
         features_df[["lo2", "hi2"]] = (
             features_df[["lo2", "hi2"]]
             .subtract(
@@ -954,7 +1009,9 @@ def pileup(
     else:
         mymap = map
 
-    stack = _pileup(features_df, feature_type, snipper.select, snipper.snip, map=mymap)
+    stack = _pileup(
+        features_df, feature_type, snipper.select, snipper.snip, map=mymap
+    )
 
     if nproc > 1:
         pool.close()
