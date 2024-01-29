@@ -8,7 +8,7 @@ import pandas as pd
 
 import bioframe
 
-from multiprocessing import Pool
+from multiprocess import Pool
 
 
 def assign_view_paired(
