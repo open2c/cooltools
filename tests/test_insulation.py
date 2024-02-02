@@ -59,6 +59,9 @@ def test_calculate_insulation_score(request):
     assert {f"n_valid_pixels_{window}" for window in windows}.issubset(
         insulation.columns
     )
+    # check multiprocessed result
+    insulation_pooled = calculate_insulation_score(clr, windows, nproc=3)
+    assert insulation.equals(insulation_pooled)
 
     # II. Insulation with masking bad bins
     insulation = calculate_insulation_score(clr, 10_000_000, min_dist_bad_bin=1)
@@ -70,6 +73,9 @@ def test_calculate_insulation_score(request):
     assert np.any(
         ~np.isnan(insulation.query("dist_bad_bin==1")["log2_insulation_score_10000000"])
     )
+    # check multiprocessed result
+    insulation_pooled = calculate_insulation_score(clr, 10_000_000, min_dist_bad_bin=1, nproc=3)
+    assert insulation.equals(insulation_pooled)
 
     # III. Insulation for separate view:
     region = pd.DataFrame(
@@ -79,10 +85,15 @@ def test_calculate_insulation_score(request):
         clr, 10_000_000, min_dist_bad_bin=0, view_df=region
     )
     assert len(insulation) == 10
+    # check multiprocessed result
+    insulation_pooled = calculate_insulation_score(
+        clr, 10_000_000, min_dist_bad_bin=0, view_df=region, nproc=3
+    )
+    assert insulation.equals(insulation_pooled)
 
     # IV. Insulation with string or float inputs for window sizes should work.
     calculate_insulation_score(clr, '10_000_000')
-    
+    calculate_insulation_score(clr, '10_000_000', nproc=3)
 
 
 def test_find_boundaries(request):
@@ -176,43 +187,3 @@ def test_insulation_sparse_vs_dense(request):
         boundaries_sparse["log2_insulation_score_10000000"],
         equal_nan=True,
     )
-
-def test_pooled_calculate_insulation_score(request):
-    clr_path = op.join(request.fspath.dirname, "data/CN.mm9.1000kb.cool")
-    clr = cooler.Cooler(clr_path)
-    windows = [10_000_000, 20_000_000]
-
-    # I. Regular insulation, check presence of columns for each window:
-    insulation = calculate_insulation_score(clr, windows)
-    insulation_pooled2 = calculate_insulation_score(clr, windows, nproc=2)
-    insulation_pooled3 = calculate_insulation_score(clr, windows, nproc=3)
-    assert insulation.equals(insulation_pooled2)
-    assert insulation.equals(insulation_pooled3)
-
-    # II. Insulation with masking bad bins
-    insulation = calculate_insulation_score(clr, 10_000_000, min_dist_bad_bin=1)
-    insulation_pooled2 = calculate_insulation_score(clr, 10_000_000, min_dist_bad_bin=1, nproc=2)
-    insulation_pooled3 = calculate_insulation_score(clr, 10_000_000, min_dist_bad_bin=1, nproc=3)
-    assert insulation.equals(insulation_pooled2)
-    assert insulation.equals(insulation_pooled3)
-
-    # III. Insulation for separate view:
-    region = pd.DataFrame(
-        {"chrom": ["chr1"], "start": [0], "end": [10_000_000], "name": ["fragment01"]}
-    )
-    insulation = calculate_insulation_score(
-        clr, 10_000_000, min_dist_bad_bin=0, view_df=region
-    )
-    insulation_pooled2 = calculate_insulation_score(
-        clr, 10_000_000, min_dist_bad_bin=0, view_df=region, nproc=2
-    )
-    insulation_pooled3 = calculate_insulation_score(
-        clr, 10_000_000, min_dist_bad_bin=0, view_df=region, nproc=3
-    )
-    assert insulation.equals(insulation_pooled2)
-    assert insulation.equals(insulation_pooled3)
-
-    # IV. Insulation with string or float inputs for window sizes should work.
-    calculate_insulation_score(clr, '10_000_000')
-    calculate_insulation_score(clr, '10_000_000', nproc=2)
-    calculate_insulation_score(clr, '10_000_000', nproc=3)

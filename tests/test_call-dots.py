@@ -49,6 +49,27 @@ def test_dots(request):
     # just checking if it runs without errors
     assert not dot_calls_df.empty
 
+    dot_calls_df_pooled = api.dotfinder.dots(
+        clr,
+        expected_df,
+        view_df=view_df,
+        kernels={
+            "d": np.array([[1, 0, 1], [0, 0, 0], [1, 0, 1]]),
+            "v": np.array([[0, 1, 0], [0, 0, 0], [0, 1, 0]]),
+            "h": np.array([[0, 0, 0], [1, 0, 1], [0, 0, 0]]),
+        },
+        max_loci_separation=100_000_000,
+        max_nans_tolerated=1,
+        n_lambda_bins=50,
+        lambda_bin_fdr=0.1,
+        clustering_radius=False,
+        cluster_filtering=None,
+        tile_size=50_000_000,
+        nproc=3,
+    )
+    
+    assert dot_calls_df.equals(dot_calls_df_pooled)
+
 
 def test_call_dots_cli(request, tmpdir):
     in_cool = op.join(request.fspath.dirname, "data/CN.mm9.1000kb.cool")
@@ -106,79 +127,3 @@ def test_call_dots_cli(request, tmpdir):
 #     # make sure output is generated:
 #     assert op.isfile(out_dots)
 
-def test_pooled_dots(request):
-    # Note that call-dots requires ucsc named expected and view
-    in_cool = op.join(request.fspath.dirname, "data/CN.mm9.1000kb.cool")
-    in_exp = op.join(request.fspath.dirname, "data/CN.mm9.toy_expected.tsv")
-    in_regions = op.join(request.fspath.dirname, "data/CN.mm9.toy_regions.bed")
-
-    # read data for the test:
-    clr = cooler.Cooler(in_cool)
-    view_df = read_viewframe_from_file(in_regions, clr, check_sorting=True)
-    expected_df = read_expected_from_file(
-        in_exp,
-        expected_value_cols=["balanced.avg"],
-        verify_view=view_df,
-        verify_cooler=clr,
-    )
-
-    # generate dot-calls
-    dot_calls_df = api.dotfinder.dots(
-        clr,
-        expected_df,
-        view_df=view_df,
-        kernels={
-            "d": np.array([[1, 0, 1], [0, 0, 0], [1, 0, 1]]),
-            "v": np.array([[0, 1, 0], [0, 0, 0], [0, 1, 0]]),
-            "h": np.array([[0, 0, 0], [1, 0, 1], [0, 0, 0]]),
-        },
-        max_loci_separation=100_000_000,
-        max_nans_tolerated=1,
-        n_lambda_bins=50,
-        lambda_bin_fdr=0.1,
-        clustering_radius=False,
-        cluster_filtering=None,
-        tile_size=50_000_000,
-        nproc=1,
-    )
-
-    dot_calls_df_pooled2 = api.dotfinder.dots(
-        clr,
-        expected_df,
-        view_df=view_df,
-        kernels={
-            "d": np.array([[1, 0, 1], [0, 0, 0], [1, 0, 1]]),
-            "v": np.array([[0, 1, 0], [0, 0, 0], [0, 1, 0]]),
-            "h": np.array([[0, 0, 0], [1, 0, 1], [0, 0, 0]]),
-        },
-        max_loci_separation=100_000_000,
-        max_nans_tolerated=1,
-        n_lambda_bins=50,
-        lambda_bin_fdr=0.1,
-        clustering_radius=False,
-        cluster_filtering=None,
-        tile_size=50_000_000,
-        nproc=2,
-    )
-
-    dot_calls_df_pooled3 = api.dotfinder.dots(
-        clr,
-        expected_df,
-        view_df=view_df,
-        kernels={
-            "d": np.array([[1, 0, 1], [0, 0, 0], [1, 0, 1]]),
-            "v": np.array([[0, 1, 0], [0, 0, 0], [0, 1, 0]]),
-            "h": np.array([[0, 0, 0], [1, 0, 1], [0, 0, 0]]),
-        },
-        max_loci_separation=100_000_000,
-        max_nans_tolerated=1,
-        n_lambda_bins=50,
-        lambda_bin_fdr=0.1,
-        clustering_radius=False,
-        cluster_filtering=None,
-        tile_size=50_000_000,
-        nproc=3,
-    )
-    
-    assert dot_calls_df.equals(dot_calls_df_pooled2)
-    assert dot_calls_df.equals(dot_calls_df_pooled3)
