@@ -5,7 +5,6 @@ from .. import coverage
 
 from . import cli
 from .. import api
-from ..lib.common import pool_decorator
 
 import bioframe
 import multiprocessing as mp
@@ -70,9 +69,8 @@ import multiprocessing as mp
     default=1,
     type=int,
 )
-@pool_decorator
 def coverage(
-    cool_path, output, ignore_diags, store, chunksize, bigwig, clr_weight_name, nproc, map=map,
+    cool_path, output, ignore_diags, store, chunksize, bigwig, clr_weight_name, nproc,
 ):
     """
     Calculate the sums of cis and genome-wide contacts (aka coverage aka marginals) for
@@ -86,10 +84,8 @@ def coverage(
 
     clr = cooler.Cooler(cool_path)
 
-    _map = map
-
     cis_cov, tot_cov = api.coverage.coverage(
-        clr, ignore_diags=ignore_diags, chunksize=chunksize, map=_map, store=store, clr_weight_name=clr_weight_name
+        clr, ignore_diags=ignore_diags, chunksize=chunksize, nproc=nproc, store=store, clr_weight_name=clr_weight_name
     )
     
 

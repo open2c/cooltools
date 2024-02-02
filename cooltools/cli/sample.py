@@ -5,7 +5,6 @@ import cooler
 
 from . import cli
 from .. import api
-from ..lib.common import pool_decorator
 
 
 @cli.command()
@@ -60,8 +59,7 @@ from ..lib.common import pool_decorator
     default=int(1e7),
     show_default=True,
 )
-@pool_decorator
-def random_sample(in_path, out_path, count, cis_count, frac, exact, nproc, chunksize, map=map):
+def random_sample(in_path, out_path, count, cis_count, frac, exact, nproc, chunksize):
     """
     Pick a random sample of contacts from a Hi-C map.
 
@@ -72,9 +70,7 @@ def random_sample(in_path, out_path, count, cis_count, frac, exact, nproc, chunk
     Specify the target sample size with either --count or --frac.
 
     """
-
-    map_ = map
-
+    
     api.sample.sample(
         in_path,
         out_path,
@@ -83,5 +79,5 @@ def random_sample(in_path, out_path, count, cis_count, frac, exact, nproc, chunk
         frac=frac,
         exact=exact,
         chunksize=chunksize,
-        map_func=map_,
+        nproc=nproc
     )

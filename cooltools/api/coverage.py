@@ -1,6 +1,8 @@
 import numpy as np
 import cooler.parallel
 from ..lib.checks import is_cooler_balanced
+from ..lib.common import pool_decorator
+
 
 
 def _apply_balancing(chunk, bias, balanced_column_name='balanced'):
@@ -60,16 +62,17 @@ def _get_chunk_coverage(chunk, pixel_weight_key="count"):
 
     return covs
 
-
+@pool_decorator
 def coverage(
     clr,
     ignore_diags=None,
     chunksize=int(1e7),
-    map=map,
     use_lock=False,
     clr_weight_name=None,
     store=False,
     store_prefix="cov",
+    nproc=1,
+    map=map,
 ):
 
     """
