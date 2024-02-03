@@ -20,7 +20,7 @@ def test_sample(request):
         op.join(request.fspath.dirname, "data/CN.mm9.1000kb.test_sampled.cool")
     )
     # Test that deviation from expected total is very small
-    testing.assert_allclose(clr_result.info["sum"], clr.info["sum"] / 2, rtol=1e-1)
+    testing.assert_allclose(clr_result.info["sum"], clr.info["sum"] / 10, rtol=1e-2)
 
     cooltools.api.sample.sample(
         clr,
@@ -31,7 +31,7 @@ def test_sample(request):
         op.join(request.fspath.dirname, "data/CN.mm9.1000kb.test_sampled.cool")
     )
     # Test that deviation from expected total is very small
-    testing.assert_allclose(clr_result.info["sum"], 2000, rtol=1e-1)
+    testing.assert_allclose(clr_result.info["sum"], 2000, rtol=1e-2)
 
 
 def test_sample_exact(request):
