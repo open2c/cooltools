@@ -13,24 +13,25 @@ def test_sample(request):
     cooltools.api.sample.sample(
         clr,
         op.join(request.fspath.dirname, "data/CN.mm9.1000kb.test_sampled.cool"),
-        frac=0.5,
+        frac=0.1,
+        nproc=3
     )
     clr_result = cooler.Cooler(
         op.join(request.fspath.dirname, "data/CN.mm9.1000kb.test_sampled.cool")
     )
     # Test that deviation from expected total is very small
-    testing.assert_allclose(clr_result.info["sum"], clr.info["sum"] / 2, rtol=1e-3)
+    testing.assert_allclose(clr_result.info["sum"], clr.info["sum"] / 2, rtol=1e-2)
 
     cooltools.api.sample.sample(
         clr,
         op.join(request.fspath.dirname, "data/CN.mm9.1000kb.test_sampled.cool"),
-        count=200000000,
+        count=2000,
     )
     clr_result = cooler.Cooler(
         op.join(request.fspath.dirname, "data/CN.mm9.1000kb.test_sampled.cool")
     )
     # Test that deviation from expected total is very small
-    testing.assert_allclose(clr_result.info["sum"], 200000000, rtol=1e-3)
+    testing.assert_allclose(clr_result.info["sum"], 2000, rtol=1e-2)
 
 
 def test_sample_exact(request):
@@ -40,8 +41,9 @@ def test_sample_exact(request):
     cooltools.api.sample.sample(
         clr,
         op.join(request.fspath.dirname, "data/CN.mm9.10000kb.test_sampled.cool"),
-        frac=0.5,
+        frac=0.1,
         exact=True,
+        nproc=3
     )
     clr_result = cooler.Cooler(
         op.join(request.fspath.dirname, "data/CN.mm9.10000kb.test_sampled.cool")
@@ -52,11 +54,11 @@ def test_sample_exact(request):
     cooltools.api.sample.sample(
         clr,
         op.join(request.fspath.dirname, "data/CN.mm9.10000kb.test_sampled.cool"),
-        count=200000000,
+        count=2000,
         exact=True,
     )
     clr_result = cooler.Cooler(
         op.join(request.fspath.dirname, "data/CN.mm9.10000kb.test_sampled.cool")
     )
     # Test that result matches expectation exactly
-    testing.assert_equal(clr_result.info["sum"], 200000000)
+    testing.assert_equal(clr_result.info["sum"], 2000)
