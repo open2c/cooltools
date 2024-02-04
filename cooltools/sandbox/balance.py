@@ -8,7 +8,7 @@ import pandas
 import h5py
 
 from scipy.sparse import linalg
-from cooler.tools import split, partition
+from cooler.parallel import split, partition
 import cooler
 
 
