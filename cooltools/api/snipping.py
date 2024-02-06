@@ -828,7 +828,7 @@ def pileup(
     min_diag="auto",
     clr_weight_name="weight",
     nproc=1,
-    map=map,
+    map_functor=map,
 ):
     """
     Pileup features over the cooler.
@@ -860,6 +860,10 @@ def pileup(
         Allows start>end in the features (not implemented)
     nproc : str
         How many cores to use
+    map_functor : callable, optional
+        Map function to dispatch the matrix chunks to workers.
+        Default is the builtin ``map``, but alternatives include parallel map
+        implementations from a multiprocessing pool.
 
     Returns
     -------
@@ -978,8 +982,7 @@ def pileup(
             expected_value_col=expected_value_col,
         )
 
-    mymap = map
-    stack = _pileup(features_df, snipper.select, snipper.snip, map=mymap)
+    stack = _pileup(features_df, snipper.select, snipper.snip, map=map_functor)
     if feature_type == "bed":
         stack = np.fmax(stack, np.transpose(stack, axes=(0, 2, 1)))
         

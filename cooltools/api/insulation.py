@@ -164,7 +164,7 @@ def calculate_insulation_score(
     clr_weight_name="weight",
     verbose=False,
     nproc=1,
-    map=map,
+    map_functor=map,
 ):
     """Calculate the diamond insulation scores for all bins in a cooler.
 
@@ -196,6 +196,10 @@ def calculate_insulation_score(
         If True, report real-time progress.
     nproc : int, optional
         How many processes to use for calculation
+    map_functor : callable, optional
+        Map function to dispatch the matrix chunks to workers.
+        Default is the builtin ``map``, but alternatives include parallel map
+        implementations from a multiprocessing pool.
 
     Returns
     -------
@@ -253,9 +257,6 @@ def calculate_insulation_score(
         )
 
     # Calculate insulation score for each region separately.
-    # Define mapper depending on requested number of threads:
-    map_ = map
-
     # Using try-clause to close mp.Pool properly
     # Apply get_region_insulation:
     job = partial(
@@ -270,7 +271,7 @@ def calculate_insulation_score(
         append_raw_scores,
         verbose,
     )
-    ins_region_tables = map_(job, view_df[["chrom", "start", "end", "name"]].values)
+    ins_region_tables = map_functor(job, view_df[["chrom", "start", "end", "name"]].values)
 
     ins_table = pd.concat(ins_region_tables)
     return ins_table

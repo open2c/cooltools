@@ -890,7 +890,7 @@ def expected_cis(
     ignore_diags=2,  # should default to cooler info
     chunksize=10_000_000,
     nproc=1,
-    map=map,
+    map_functor=map,
 ):
     """
     Calculate average interaction frequencies as a function of genomic
@@ -936,6 +936,10 @@ def expected_cis(
         Size of pixel table chunks to process
     nproc : int, optional
         How many processes to use for calculation
+    map_functor : callable, optional
+        Map function to dispatch the matrix chunks to workers.
+        Default is the builtin ``map``, but alternatives include parallel map
+        implementations from a multiprocessing pool.
 
     Returns
     -------
@@ -982,8 +986,6 @@ def expected_cis(
             f"balancing weight {clr_weight_name} is not available in the cooler."
         )
 
-    map_ = map
-
     # using try-clause to close mp.Pool properly
     if intra_only:
         result = diagsum_symm(
@@ -993,7 +995,7 @@ def expected_cis(
             clr_weight_name=clr_weight_name,
             ignore_diags=ignore_diags,
             chunksize=chunksize,
-            map=map_,
+            map=map_functor,
         )
     else:
         result = diagsum_pairwise(
@@ -1003,7 +1005,7 @@ def expected_cis(
             clr_weight_name=clr_weight_name,
             ignore_diags=ignore_diags,
             chunksize=chunksize,
-            map=map_,
+            map=map_functor,
         )
 
     # calculate actual averages by dividing sum by n_valid:
@@ -1048,7 +1050,7 @@ def expected_trans(
     clr_weight_name="weight",
     chunksize=10_000_000,
     nproc=1,
-    map=map,
+    map_functor=map,
 ):
     """
     Calculate average interaction frequencies for inter-chromosomal
@@ -1078,6 +1080,10 @@ def expected_trans(
         Size of pixel table chunks to process
     nproc : int, optional
         How many processes to use for calculation
+    map_functor : callable, optional
+        Map function to dispatch the matrix chunks to workers.
+        Default is the builtin ``map``, but alternatives include parallel map
+        implementations from a multiprocessing pool.
 
     Returns
     -------
@@ -1120,8 +1126,6 @@ def expected_trans(
         )
 
     # execution details
-    map_ = map
-
     # using try-clause to close mp.Pool properly
     result = blocksum_pairwise(
         clr,
@@ -1129,7 +1133,7 @@ def expected_trans(
         transforms=transforms,
         clr_weight_name=clr_weight_name,
         chunksize=chunksize,
-        map=map_,
+        map=map_functor,
     )
 
     # keep only trans interactions for the user-friendly function:

@@ -64,7 +64,7 @@ def virtual4c(
     viewpoint,
     clr_weight_name="weight",
     nproc=1,
-    map=map,
+    map_functor=map,
 ):
     """Generate genome-wide contact profile for a given viewpoint.
 
@@ -80,6 +80,10 @@ def virtual4c(
         Name of the column in the bin table with weight
     nproc : int, optional
         How many processes to use for calculation
+    map_functor : callable, optional
+        Map function to dispatch the matrix chunks to workers.
+        Default is the builtin ``map``, but alternatives include parallel map
+        implementations from a multiprocessing pool.
 
     Returns
     -------
@@ -110,7 +114,7 @@ def virtual4c(
         _extract_profile, clr=clr, clr_weight_name=clr_weight_name, viewpoint=viewpoint
     )
 
-    counts = list(map(f, clr.chromnames))
+    counts = list(map_functor(f, clr.chromnames))
 
     # Concatenate all chrompsome dfs into one
     v4c = pd.concat(counts, ignore_index=True)

@@ -9,7 +9,8 @@ import pandas as pd
 import bioframe
 
 from multiprocess import Pool
-
+from functools import wraps
+import logging
 
 def assign_view_paired(
     features,
@@ -512,7 +513,10 @@ def align_track_with_cooler(
 
 def pool_decorator(func):
     """
-    A decorator function that enables multiprocessing for a given function.
+    A decorator function that enables multiprocessing for a given function.  
+    Function must have nproc and map_functor as key word arguments.  
+    It works by hijacking map_functor argument and substituting it with the  
+    parallel one: multiprocess.Pool(nproc).imap, when nproc > 1 
 
     Parameters
     ----------
@@ -523,23 +527,31 @@ def pool_decorator(func):
     -------
     A wrapper function that enables multiprocessing for the given function.
     """
-
+    @wraps(func)
     def wrapper(*args, **kwargs):
+        # If alternative or third party map functors are provided
+        if "map_functor" in kwargs.keys():
+            logging.info(f"using an alternative map functor: {kwargs['map_functor']}")
+            return func(*args, **kwargs, map_functor=kwargs["map_functor"])
+        
         pool = None
         if "nproc" in kwargs.keys():
             if kwargs["nproc"] > 1:
+                logging.info(f"creating a Pool of {kwargs['nproc']} workers")
                 pool = Pool(kwargs["nproc"])
                 mymap = pool.imap
             else:
+                logging.info("fallback to serial implementation.")
                 mymap = map
             try:
-                result = func(*args, **kwargs, map=mymap)
+                result = func(*args, **kwargs, map_functor=mymap)
             finally:
-                if pool != None:
+                if pool is not None:
                     pool.close()
+                    pool.terminate()
             return result 
         else:
-            warnings.warn("nproc is not specified, single thread is used")
-            return func(*args, **kwargs, map=map)
+            logging.warning("nproc is not specified, single thread is used")
+            return func(*args, **kwargs, map_functor=map)
             
     return wrapper

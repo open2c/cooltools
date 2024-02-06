@@ -55,7 +55,7 @@ def sample(
     exact=False,
     chunksize=int(1e7),
     nproc=1,
-    map=map,
+    map_functor=map,
 ):
     """
     Pick a random subset of contacts from a Hi-C map.
@@ -86,11 +86,16 @@ def sample(
         If False, binomial sampling will be used instead and the sample size
         will be randomly distributed around the target value.
 
-    map : function
-        A map implementation.
-
     chunksize : int
         The number of pixels loaded and processed per step of computation.
+
+    nproc : int, optional
+        How many processes to use for calculation
+
+    map_functor : callable, optional
+        Map function to dispatch the matrix chunks to workers.
+        Default is the builtin ``map``, but alternatives include parallel map
+        implementations from a multiprocessing pool.
 
     """
     if issubclass(type(clr), str):
@@ -124,7 +129,7 @@ def sample(
     else:
         pipeline = (
             cooler.parallel.split(
-                clr, include_bins=False, map=map, chunksize=chunksize
+                clr, include_bins=False, map=map_functor, chunksize=chunksize
             )
             .pipe(_extract_pixel_chunk)
             .pipe(sample_pixels_approx, frac=frac)

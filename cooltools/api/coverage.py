@@ -72,7 +72,7 @@ def coverage(
     store=False,
     store_prefix="cov",
     nproc=1,
-    map=map,
+    map_functor=map,
 ):
 
     """
@@ -86,25 +86,27 @@ def coverage(
     ----------
     clr : cooler.Cooler
         Cooler object
-    chunksize : int, optional
-        Split the contact matrix pixel records into equally sized chunks to
-        save memory and/or parallelize. Default is 10^7
-    map : callable, optional
-        Map function to dispatch the matrix chunks to workers.
-        Default is the builtin ``map``, but alternatives include parallel map
-        implementations from a multiprocessing pool.
-    clr_weight_name : str
-        Name of the weight column. Specify to calculate coverage of balanced cooler.
     ignore_diags : int, optional
         Drop elements occurring on the first ``ignore_diags`` diagonals of the
         matrix (including the main diagonal).
         If None, equals the number of diagonals ignored during IC balancing.
+    chunksize : int, optional
+        Split the contact matrix pixel records into equally sized chunks to
+        save memory and/or parallelize. Default is 10^7
+    clr_weight_name : str
+        Name of the weight column. Specify to calculate coverage of balanced cooler.
     store : bool, optional
         If True, store the results in the input cooler file when finished. If clr_weight_name=None, 
         also stores total cis counts in the cooler info. Default is False.
     store_prefix : str, optional
         Name prefix of the columns of the bin table to save cis and total coverages. 
         Will add suffixes _cis and _tot, as well as _raw in the default case or _clr_weight_name if specified.
+    nproc : int, optional
+        How many processes to use for calculation
+    map_functor : callable, optional
+        Map function to dispatch the matrix chunks to workers.
+        Default is the builtin ``map``, but alternatives include parallel map
+        implementations from a multiprocessing pool.
 
     Returns
     -------
@@ -139,7 +141,7 @@ def coverage(
             f"balancing weight {clr_weight_name} is not available in the cooler."
         )
         
-    chunks = cooler.parallel.split(clr, chunksize=chunksize, map=map, use_lock=use_lock)
+    chunks = cooler.parallel.split(clr, chunksize=chunksize, map=map_functor, use_lock=use_lock)
 
     if ignore_diags:
         chunks = chunks.pipe(_zero_diags, n_diags=ignore_diags)
