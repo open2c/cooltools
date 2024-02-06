@@ -75,15 +75,12 @@ and second to extract significantly enriched pixels.
 """
 
 from functools import partial, reduce
-import multiprocess as mp
 import logging
 import warnings
 import time
 
-from scipy.linalg import toeplitz
 from scipy.ndimage import convolve
 from scipy.stats import poisson
-from scipy.sparse import coo_matrix
 import numpy as np
 import pandas as pd
 from sklearn.cluster import Birch
@@ -98,7 +95,6 @@ from ..lib.checks import (
 )
 from ..lib.common import pool_decorator
 
-from bioframe import make_viewframe
 
 warnings.simplefilter(action="ignore", category=pd.errors.PerformanceWarning)
 logging.basicConfig(level=logging.INFO)

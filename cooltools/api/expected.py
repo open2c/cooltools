@@ -2,7 +2,6 @@ from itertools import chain, combinations, combinations_with_replacement
 from functools import partial
 
 import warnings
-import multiprocess as mp
 
 import numpy as np
 import pandas as pd

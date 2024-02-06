@@ -1,14 +1,11 @@
-import re
 import logging
 
 logging.basicConfig(level=logging.INFO)
 
-import multiprocess as mp
 from functools import partial
 
 import numpy as np
 import pandas as pd
-import cooler
 import bioframe
 
 

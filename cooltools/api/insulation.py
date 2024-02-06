@@ -4,7 +4,6 @@ import logging
 logging.basicConfig(level=logging.INFO)
 
 import warnings
-import multiprocess as mp
 from functools import partial
 
 import numpy as np

@@ -1,7 +1,6 @@
 import bioframe as bf
 import cooler
 import numpy as np
-import pandas as pd
 
 from ..lib.checks import is_compatible_viewframe
 import logging

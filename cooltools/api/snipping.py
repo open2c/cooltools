@@ -36,7 +36,6 @@ import warnings
 
 import numpy as np
 import pandas as pd
-import bioframe
 
 from ..lib.checks import (
     is_compatible_viewframe,
@@ -47,7 +46,6 @@ from ..lib.common import assign_view_auto, make_cooler_view, pool_decorator
 from ..lib.numutils import LazyToeplitz
 import warnings
 
-import multiprocessing
 
 
 def expand_align_features(features_df, flank, resolution, format="bed"):

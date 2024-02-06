@@ -1,8 +1,6 @@
 import warnings
 import numpy as np
 import pandas as pd
-from ..lib import peaks, numutils
-
 
 def _dirscore(
     pixels, bins, window=10, ignore_diags=2, balanced=True, signed_chi2=False
