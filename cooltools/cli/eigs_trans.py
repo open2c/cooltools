@@ -4,7 +4,6 @@ import cooler
 import bioframe
 from ..api import eigdecomp
 from ..lib.common import make_cooler_view
-from ..lib.io import read_viewframe_from_file
 
 import click
 from .util import TabularFilePath, sniff_for_header

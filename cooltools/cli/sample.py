@@ -1,7 +1,4 @@
-import multiprocess as mp
 import click
-
-import cooler
 
 from . import cli
 from .. import api

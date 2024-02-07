@@ -1,5 +1,3 @@
-import pandas as pd
-import numpy as np
 from functools import partial
 from ..api import expected
 from ..lib.io import read_expected_from_file

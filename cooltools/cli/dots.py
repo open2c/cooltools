@@ -1,16 +1,12 @@
-import os.path as op
 from functools import partial
-import pandas as pd
-import numpy as np
 import cooler
-import bioframe
 import logging
 
 import click
 from . import cli
 from .. import api
 
-from ..lib.common import make_cooler_view, assign_regions
+from ..lib.common import make_cooler_view
 from ..lib.io import read_viewframe_from_file, read_expected_from_file
 
 from .util import validate_csv

@@ -15,9 +15,7 @@ from .util import validate_csv
 
 from ..lib.common import make_cooler_view, mask_cooler_bad_bins, align_track_with_cooler
 from ..lib.io import read_viewframe_from_file, read_expected_from_file
-from ..lib.checks import is_track
 
-from . import util
 from . import cli
 
 
