@@ -934,11 +934,11 @@ def expected_cis(
     chunksize : int, optional
         Size of pixel table chunks to process
     nproc : int, optional
-        How many processes to use for calculation
+        How many processes to use for calculation. Ignored if map_functor is passed.
     map_functor : callable, optional
         Map function to dispatch the matrix chunks to workers.
-        Default is the builtin ``map``, but alternatives include parallel map
-        implementations from a multiprocessing pool.
+        If left unspecified, pool_decorator applies the following defaults: if nproc>1 this defaults to multiprocess.Pool;
+        If nproc=1 this defaults the builtin map. 
 
     Returns
     -------
@@ -1078,11 +1078,11 @@ def expected_trans(
     chunksize : int, optional
         Size of pixel table chunks to process
     nproc : int, optional
-        How many processes to use for calculation
+        How many processes to use for calculation. Ignored if map_functor is passed.
     map_functor : callable, optional
         Map function to dispatch the matrix chunks to workers.
-        Default is the builtin ``map``, but alternatives include parallel map
-        implementations from a multiprocessing pool.
+        If left unspecified, pool_decorator applies the following defaults: if nproc>1 this defaults to multiprocess.Pool;
+        If nproc=1 this defaults the builtin map. 
 
     Returns
     -------
