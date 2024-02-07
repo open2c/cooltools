@@ -508,7 +508,7 @@ def align_track_with_cooler(
 def pool_decorator(func):
     """
     A decorator function that enables multiprocessing for a given function.  
-    Function must have nproc and map_functor as key word arguments.  
+    The function must have a ``map_functor`` keyword argument.  
     It works by hijacking map_functor argument and substituting it with the  
     parallel one: multiprocess.Pool(nproc).imap, when nproc > 1 
 
