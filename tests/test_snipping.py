@@ -110,6 +110,9 @@ def test_pileup(request):
     # Check that NaNs were propagated
     assert np.all(np.isnan(stack[0, 2, :]))
     assert not np.all(np.isnan(stack))
+    # check multiprocessed result
+    stack_pooled = cooltools.api.snipping.pileup(clr, windows, view_df=None, flank=None, nproc=3)
+    assert np.array_equal(stack, stack_pooled, equal_nan=True)
 
     stack = cooltools.api.snipping.pileup(
         clr, windows, view_df=view_df, expected_df=exp, flank=None
@@ -117,6 +120,7 @@ def test_pileup(request):
     # Check that the size of snips is OK and there are two of them.
     # Now with view and expected:
     assert stack.shape == (2, 5, 5)
+    
 
     # II.
     # Example off-diagonal features, two features from annotated genomic regions:
@@ -135,6 +139,11 @@ def test_pileup(request):
     )
     # Check that the size of snips is OK and there are two of them:
     assert stack.shape == (2, 5, 5)
+    # check multiprocessed result
+    stack_pooled = cooltools.api.snipping.pileup(
+        clr, windows, view_df=view_df, expected_df=exp, flank=None, nproc=3
+    )
+    assert np.array_equal(stack, stack_pooled, equal_nan=True)
 
     # III.
     # Example off-diagonal features, one region outside the view:
@@ -167,6 +176,8 @@ def test_pileup(request):
     )
     with pytest.raises(ValueError):
         stack = cooltools.api.snipping.pileup(clr, windows, view_df, exp, flank=None)
+    with pytest.raises(ValueError):
+        stack_pooled = cooltools.api.snipping.pileup(clr, windows, view_df, exp, flank=None, nproc=3)
 
     # DRAFT # Should work with force=True:
     # stack = cooltools.api.snipping.pileup(clr, windows, view_df, exp, flank=None, force=True)

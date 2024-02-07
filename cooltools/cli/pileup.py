@@ -1,7 +1,6 @@
 import pandas as pd
 import numpy as np
 import cooler
-import bioframe
 
 from .. import api
 

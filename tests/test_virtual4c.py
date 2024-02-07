@@ -16,6 +16,10 @@ def test_virtual4c(request):
 
     assert v4c.shape[0] == clr.bins()[:].shape[0]
 
+    # check multiprocessed result
+    pooled_v4c = virtual4c.virtual4c(clr, viewpoint, nproc=3)
+    assert v4c.equals(pooled_v4c)
+
 
 def test_virtual4c_cli(request, tmpdir):
 

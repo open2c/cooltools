@@ -49,6 +49,27 @@ def test_dots(request):
     # just checking if it runs without errors
     assert not dot_calls_df.empty
 
+    dot_calls_df_pooled = api.dotfinder.dots(
+        clr,
+        expected_df,
+        view_df=view_df,
+        kernels={
+            "d": np.array([[1, 0, 1], [0, 0, 0], [1, 0, 1]]),
+            "v": np.array([[0, 1, 0], [0, 0, 0], [0, 1, 0]]),
+            "h": np.array([[0, 0, 0], [1, 0, 1], [0, 0, 0]]),
+        },
+        max_loci_separation=100_000_000,
+        max_nans_tolerated=1,
+        n_lambda_bins=50,
+        lambda_bin_fdr=0.1,
+        clustering_radius=False,
+        cluster_filtering=None,
+        tile_size=50_000_000,
+        nproc=3,
+    )
+    
+    assert dot_calls_df.equals(dot_calls_df_pooled)
+
 
 def test_call_dots_cli(request, tmpdir):
     in_cool = op.join(request.fspath.dirname, "data/CN.mm9.1000kb.cool")
@@ -105,3 +126,4 @@ def test_call_dots_cli(request, tmpdir):
 #     assert result.exit_code == 0
 #     # make sure output is generated:
 #     assert op.isfile(out_dots)
+

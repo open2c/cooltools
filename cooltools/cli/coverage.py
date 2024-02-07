@@ -1,12 +1,11 @@
 import click
 import cooler
 
-from .. import coverage
-
 from . import cli
 from .. import api
+
 import bioframe
-import multiprocessing as mp
+
 
 
 @cli.command()
@@ -82,19 +81,10 @@ def coverage(
 
     clr = cooler.Cooler(cool_path)
 
-    if nproc > 1:
-        pool = mp.Pool(nproc)
-        _map = pool.imap
-    else:
-        _map = map
-
-    try:
-        cis_cov, tot_cov = api.coverage.coverage(
-            clr, ignore_diags=ignore_diags, chunksize=chunksize, map=_map, store=store, clr_weight_name=clr_weight_name
-        )
-    finally:
-        if nproc > 1:
-            pool.close()
+    cis_cov, tot_cov = api.coverage.coverage(
+        clr, ignore_diags=ignore_diags, chunksize=chunksize, nproc=nproc, store=store, clr_weight_name=clr_weight_name
+    )
+    
 
     coverage_table = clr.bins()[:][["chrom", "start", "end"]]
     if clr_weight_name is None:

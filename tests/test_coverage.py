@@ -17,6 +17,13 @@ def test_coverage_symmetric_upper(request):
 
     # Test that minimal coverage is larger than 0.5
     assert tot_cov[tot_cov > 0].min() >= 1
+    # Check multiprocessed result
+    cis_cov_pooled, tot_cov_pooled = cooltools.api.coverage.coverage(
+        clr, ignore_diags=2, chunksize=int(1e7), nproc=3
+    )
+    assert np.array_equal(cis_cov, cis_cov_pooled, equal_nan=True)
+    assert np.array_equal(tot_cov, tot_cov_pooled, equal_nan=True)
+
 
     # Test that dense matrix marginal is the same:
     mtx = clr.matrix(balance=False, as_pixels=False)[:]
@@ -63,6 +70,12 @@ def test_balanced_coverage(request):
     
     # Test that mean total balanced coverage is 1.0
     assert np.nanmean(tot_cov_weight) == 1.0
+
+    cis_cov_weight_pooled, tot_cov_weight_pooled = cooltools.api.coverage.coverage(
+        clr, ignore_diags=2, chunksize=int(1e7), clr_weight_name="weight", nproc=3
+    )
+    assert np.array_equal(cis_cov_weight, cis_cov_weight_pooled, equal_nan=True)
+    assert np.array_equal(tot_cov_weight, tot_cov_weight_pooled, equal_nan=True)
     
     # Generate test matrix with weights
     bins=pd.DataFrame(

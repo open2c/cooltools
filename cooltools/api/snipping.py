@@ -36,19 +36,16 @@ import warnings
 
 import numpy as np
 import pandas as pd
-import bioframe
 
 from ..lib.checks import (
     is_compatible_viewframe,
     is_cooler_balanced,
     is_valid_expected,
 )
-from ..lib.common import assign_view_auto, make_cooler_view
-
+from ..lib.common import assign_view_auto, make_cooler_view, pool_decorator
 from ..lib.numutils import LazyToeplitz
 import warnings
 
-import multiprocessing
 
 
 def expand_align_features(features_df, flank, resolution, format="bed"):
@@ -818,7 +815,7 @@ class ExpectedSnipper:
             snippet[D] = np.nan
         return snippet
 
-
+@pool_decorator
 def pileup(
     clr,
     features_df,
@@ -829,6 +826,7 @@ def pileup(
     min_diag="auto",
     clr_weight_name="weight",
     nproc=1,
+    map_functor=map,
 ):
     """
     Pileup features over the cooler.
@@ -858,8 +856,12 @@ def pileup(
         Value of the column that contains the balancing weights
     force : bool
         Allows start>end in the features (not implemented)
-    nproc : str
-        How many cores to use
+    nproc : int, optional
+        How many processes to use for calculation. Ignored if map_functor is passed.
+    map_functor : callable, optional
+        Map function to dispatch the matrix chunks to workers.
+        If left unspecified, pool_decorator applies the following defaults: if nproc>1 this defaults to multiprocess.Pool;
+        If nproc=1 this defaults the builtin map. 
 
     Returns
     -------
@@ -978,15 +980,8 @@ def pileup(
             expected_value_col=expected_value_col,
         )
 
-    if nproc > 1:
-        pool = multiprocessing.Pool(nproc)
-        mymap = pool.map
-    else:
-        mymap = map
-    stack = _pileup(features_df, snipper.select, snipper.snip, map=mymap)
+    stack = _pileup(features_df, snipper.select, snipper.snip, map=map_functor)
     if feature_type == "bed":
         stack = np.fmax(stack, np.transpose(stack, axes=(0, 2, 1)))
-
-    if nproc > 1:
-        pool.close()
+        
     return stack

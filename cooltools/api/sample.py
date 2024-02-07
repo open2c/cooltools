@@ -4,6 +4,8 @@ import pandas as pd
 import cooler
 import cooler.parallel
 from .coverage import coverage
+from ..lib.common import pool_decorator
+
 
 
 def sample_pixels_approx(pixels, frac):
@@ -43,7 +45,7 @@ def sample_pixels_exact(pixels, count):
 def _extract_pixel_chunk(chunk):
     return chunk["pixels"]
 
-
+@pool_decorator
 def sample(
     clr,
     out_clr_path,
@@ -51,8 +53,9 @@ def sample(
     cis_count=None,
     frac=None,
     exact=False,
-    map_func=map,
     chunksize=int(1e7),
+    nproc=1,
+    map_functor=map,
 ):
     """
     Pick a random subset of contacts from a Hi-C map.
@@ -83,11 +86,16 @@ def sample(
         If False, binomial sampling will be used instead and the sample size
         will be randomly distributed around the target value.
 
-    map_func : function
-        A map implementation.
-
     chunksize : int
         The number of pixels loaded and processed per step of computation.
+
+    nproc : int, optional
+        How many processes to use for calculation. Ignored if map_functor is passed.
+        
+    map_functor : callable, optional
+        Map function to dispatch the matrix chunks to workers.
+        If left unspecified, pool_decorator applies the following defaults: if nproc>1 this defaults to multiprocess.Pool;
+        If nproc=1 this defaults the builtin map. 
 
     """
     if issubclass(type(clr), str):
@@ -121,7 +129,7 @@ def sample(
     else:
         pipeline = (
             cooler.parallel.split(
-                clr, include_bins=False, map=map_func, chunksize=chunksize
+                clr, include_bins=False, map=map_functor, chunksize=chunksize
             )
             .pipe(_extract_pixel_chunk)
             .pipe(sample_pixels_approx, frac=frac)

@@ -272,6 +272,7 @@ def test_expected_cis(request):
             desired=desired_expected,
             equal_nan=True,
         )
+
     # asymm and symm result together - engaging diagsum_pairwise
     res_all = cooltools.api.expected.expected_cis(
         clr,
@@ -299,6 +300,18 @@ def test_expected_cis(request):
             desired=desired_expected,
             equal_nan=True,
         )
+    
+    # check multiprocessed result
+    res_all_pooled = cooltools.api.expected.expected_cis(
+        clr,
+        view_df=view_df,
+        intra_only=False,
+        clr_weight_name=clr_weight_name,
+        chunksize=chunksize,
+        ignore_diags=ignore_diags,
+        nproc=3
+    )
+    assert res_all.equals(res_all_pooled)
 
 
 def test_blocksum_pairwise(request):
@@ -344,6 +357,16 @@ def test_expected_trans(request):
             desired=_blocksum_asymm_dense(matrix),
             equal_nan=True,
         )
+
+    # Check multiprocessed result
+    res_pooled = cooltools.api.expected.expected_trans(
+        clr,
+        view_df=view_df,
+        clr_weight_name=clr_weight_name,
+        chunksize=chunksize,
+        nproc=3
+    )
+    assert res.equals(res_pooled)
 
 
 ### Test CLI:

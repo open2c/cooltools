@@ -1,8 +1,4 @@
-import multiprocess as mp
-import pandas as pd
-from itertools import combinations
 import cooler
-import bioframe
 from .. import api
 from ..lib.common import make_cooler_view
 from ..lib.io import read_viewframe_from_file
