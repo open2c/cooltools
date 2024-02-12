@@ -138,8 +138,8 @@ if __name__ == "__main__":
                            ]
                            )
 
-    margs_up = np.zeros(len(bins) * n_dist_bins)
-    margs_down = np.zeros(len(bins) * n_dist_bins)
+    margs_up = np.zeros(len(bins) * n_dist_bins + 1)
+    margs_down = np.zeros(len(bins) * n_dist_bins + 1)
 
     for min_bin_id, margs_down_loc, margs_up_loc in out:
         margs_down[
@@ -152,8 +152,8 @@ if __name__ == "__main__":
         min_bin_id * n_dist_bins + len(margs_up_loc)
         ] += margs_up_loc
 
-    margs_down = margs_down.reshape((len(bins), n_dist_bins)).T
-    margs_up = margs_up.reshape((len(bins), n_dist_bins)).T
+    margs_down = margs_down[:-1].reshape((len(bins), n_dist_bins)).T
+    margs_up = margs_up[:-1].reshape((len(bins), n_dist_bins)).T
 
     out_folder = pathlib.Path(args.outfolder)
     clr_name = pathlib.Path(args.COOL_URI.split(':')[0]).name
