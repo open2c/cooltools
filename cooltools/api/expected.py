@@ -256,7 +256,8 @@ def make_diag_table(bad_mask, span1, span2):
             )
         diags = diags[diags["n_elem"] > 0]
 
-    diags = diags.drop("n_elem", axis=1)
+    # keep diags["n_elem"] for calculating count.avg
+    # diags = diags.drop("n_elem", axis=1) 
     return diags.astype(int)
 
 
@@ -1009,7 +1010,11 @@ def expected_cis(
 
     # calculate actual averages by dividing sum by n_valid:
     for key in chain(["count"], transforms):
-        result[f"{key}.avg"] = result[f"{key}.sum"] / result[_NUM_VALID]
+        if key == "count":
+            result[f"{key}.avg"] = result[f"{key}.sum"] / result["n_elem"]
+        else:    
+            result[f"{key}.avg"] = result[f"{key}.sum"] / result[_NUM_VALID]
+
 
     # additional smoothing and aggregating options would add columns only, not replace them
     if smooth:
@@ -1017,9 +1022,9 @@ def expected_cis(
             result,
             sigma_log10=smooth_sigma,
         )
-        # add smoothed columns to the result (only balanced for now)
+        # add smoothed columns to the result (only balanced for now) (include count as well)
         result = result.merge(
-            result_smooth[["balanced.avg.smoothed", _DIST]],
+            result_smooth[["balanced.avg.smoothed", "count.avg.smoothed", _DIST]],
             on=[_REGION1, _REGION2, _DIST],
             how="left",
         )
@@ -1028,10 +1033,10 @@ def expected_cis(
                 result,
                 groupby=None,
                 sigma_log10=smooth_sigma,
-            ).rename(columns={"balanced.avg.smoothed": "balanced.avg.smoothed.agg"})
+            ).rename(columns={"balanced.avg.smoothed": "balanced.avg.smoothed.agg", "count.avg.smoothed": "count.avg.smoothed.agg"})
             # add smoothed columns to the result
             result = result.merge(
-                result_smooth_agg[["balanced.avg.smoothed.agg", _DIST]],
+                result_smooth_agg[["balanced.avg.smoothed.agg", "count.avg.smoothed.agg", _DIST]],
                 on=[
                     _DIST,
                 ],
