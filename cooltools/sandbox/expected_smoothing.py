@@ -10,6 +10,9 @@ DEFAULT_CVD_COLS = {
     "n_contacts": "balanced.sum",
     "contact_freq": "balanced.avg",
     "smooth_suffix": ".smoothed",
+    "n_pixels_tot": "n_elem",
+    "n_contacts_raw": "count.sum",
+    "contact_freq_raw": "count.avg",
 }
 
 
@@ -182,6 +185,8 @@ def _smooth_cvd_group(cvd, sigma_log10, window_sigma, points_per_sigma, cols=Non
             {
                 cols["n_pixels"]: "sum",
                 cols["n_contacts"]: "sum",
+                cols["n_pixels_tot"]: "sum",
+                cols["n_contacts_raw"]: "sum",
             }
         )
         .reset_index()
@@ -198,6 +203,18 @@ def _smooth_cvd_group(cvd, sigma_log10, window_sigma, points_per_sigma, cols=Non
         points_per_sigma=points_per_sigma,
     )
 
+    smoothed_raw_sum, smoothed_n_elem = log_smooth(
+        cvd_smoothed[cols["dist"]].values.astype(np.float64),
+        [
+            cvd_smoothed[cols["n_contacts_raw"]].values.astype(np.float64),
+            cvd_smoothed[cols["n_pixels_tot"]].values.astype(np.float64),
+        ],
+        sigma_log10=sigma_log10,
+        window_sigma=window_sigma,
+        points_per_sigma=points_per_sigma,
+    )
+
+
     # cvd_smoothed[cols["contact_freq"]] = cvd_smoothed[cols["n_contacts"]] / cvd_smoothed[cols["n_pixels"]]
 
     cvd_smoothed[cols["n_pixels"] + cols["smooth_suffix"]] = smoothed_n_valid
@@ -205,6 +222,13 @@ def _smooth_cvd_group(cvd, sigma_log10, window_sigma, points_per_sigma, cols=Non
     cvd_smoothed[cols["contact_freq"] + cols["smooth_suffix"]] = (
         cvd_smoothed[cols["n_contacts"] + cols["smooth_suffix"]]
         / cvd_smoothed[cols["n_pixels"] + cols["smooth_suffix"]]
+    )
+
+    cvd_smoothed[cols["n_pixels_tot"] + cols["smooth_suffix"]] = smoothed_n_elem
+    cvd_smoothed[cols["n_contacts_raw"] + cols["smooth_suffix"]] = smoothed_raw_sum
+    cvd_smoothed[cols["contact_freq_raw"] + cols["smooth_suffix"]] = (
+        cvd_smoothed[cols["n_contacts_raw"] + cols["smooth_suffix"]]
+        / cvd_smoothed[cols["n_pixels_tot"] + cols["smooth_suffix"]]
     )
 
     return cvd_smoothed
@@ -291,7 +315,7 @@ def agg_smooth_cvd(
     )
 
     cvd_smoothed.drop(
-        [cols["n_pixels"], cols["n_contacts"]], axis="columns", inplace=True
+        [cols["n_pixels"], cols["n_contacts"], cols["n_pixels_tot"], cols["n_contacts_raw"]], axis="columns", inplace=True
     )
 
     # cvd = cvd.drop(cols["contact_freq"], axis='columns', errors='ignore')
