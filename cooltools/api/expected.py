@@ -319,12 +319,12 @@ def make_diag_tables(clr, regions, regions2=None, clr_weight_name="weight"):
     bins = clr.bins()[:]
     if clr_weight_name is None:
         # ignore bad bins
-        sizes = dict(bins.groupby("chrom").size())
+        sizes = dict(bins.groupby("chrom", observed=True).size())
         bad_bin_dict = {
             chrom: np.zeros(sizes[chrom], dtype=bool) for chrom in sizes.keys()
         }
     elif is_cooler_balanced(clr, clr_weight_name):
-        groups = dict(iter(bins.groupby("chrom")[clr_weight_name]))
+        groups = dict(iter(bins.groupby("chrom", observed=True)[clr_weight_name]))
         bad_bin_dict = {
             chrom: np.array(groups[chrom].isnull()) for chrom in groups.keys()
         }

@@ -547,7 +547,7 @@ def is_track(track, raise_errors=False):
         else:
             return False
 
-    for name, group in track.groupby(track.columns[0]):
+    for name, group in track.groupby(track.columns[0], observed=True):
         if not _is_sorted_ascending(group[track.columns[1]].values):
             if raise_errors:
                 raise ValueError(
