@@ -945,7 +945,36 @@ def expected_cis(
     -------
     DataFrame with summary statistic of every diagonal of every symmetric
     or asymmetric block:
-    region1, region2, diag, n_valid, count.sum count.avg, etc
+    
+    Notes
+    -----
+    dist: 
+        Distance in bins.
+    dist_bp:
+        Distance in basepairs.
+    contact_freq:
+        The "most processed" contact frequency value. For example, if balanced & smoothing then this will return the balanced.avg.smooth.agg; 
+        if aggregated+smoothed, then balanced.avg.smooth.agg; if nothing then count.avg.
+    n_elem:
+        Number of total pixels at a given distance.
+    n_valid: 
+        Number of valid pixels (with non-NaN values after balancing) at a given distance.
+    count.sum:
+        Sum up raw contact counts of all pixels at a given distance.
+    balanced.sum: 
+        Sum up balanced contact values of valid pixels at a given distance.
+    count.avg:
+        The average raw contact count of pixels at a given distance. count.sum / n_elem.
+    balanced.avg:
+        The average balanced contact values of valid pixels at a given distance. balanced.sum / n_valid.
+    count.avg.smoothed:
+        Log-smoothed count.avg.
+    balanced.avg.smoothed:
+        Log-smoothed balanced.avg.
+    count.avg.smoothed.agg:
+        Aggregate Log-smoothed count.avg of all genome regions.
+    balanced.avg.smoothed.agg:
+        Aggregate Log-smoothed balanced.avg of all genome regions.
 
     """
 
@@ -979,7 +1008,6 @@ def expected_cis(
         weight1 = clr_weight_name + "1"
         weight2 = clr_weight_name + "2"
         transforms = {"balanced": lambda p: p["count"] * p[weight1] * p[weight2]}
-
     else:
         raise ValueError(
             "cooler is not balanced, or"
@@ -1015,6 +1043,9 @@ def expected_cis(
         else:    
             result[f"{key}.avg"] = result[f"{key}.sum"] / result[_NUM_VALID]
 
+    # add dist_bp column, which shows distance in basepairs
+    result.insert(3, 'dist_bp', result[_DIST]*clr.binsize)
+
 
     # additional smoothing and aggregating options would add columns only, not replace them
     if smooth:
@@ -1024,7 +1055,7 @@ def expected_cis(
         )
         # add smoothed columns to the result (only balanced for now) (include count as well)
         result = result.merge(
-            result_smooth[["balanced.avg.smoothed", "count.avg.smoothed", _DIST]],
+            result_smooth[["count.avg.smoothed", "balanced.avg.smoothed", _DIST]],
             on=[_REGION1, _REGION2, _DIST],
             how="left",
         )
@@ -1036,12 +1067,15 @@ def expected_cis(
             ).rename(columns={"balanced.avg.smoothed": "balanced.avg.smoothed.agg", "count.avg.smoothed": "count.avg.smoothed.agg"})
             # add smoothed columns to the result
             result = result.merge(
-                result_smooth_agg[["balanced.avg.smoothed.agg", "count.avg.smoothed.agg", _DIST]],
+                result_smooth_agg[["count.avg.smoothed.agg", "balanced.avg.smoothed.agg", _DIST]],
                 on=[
                     _DIST,
                 ],
                 how="left",
             )
+        
+    # add contact_frequency columns to the result, which is the copy of the "most processing" contact values
+    result.insert(4, 'contact_frequency', result.iloc[:,-1])
 
     return result
 

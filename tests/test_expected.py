@@ -257,6 +257,10 @@ def test_expected_cis(request):
         chunksize=chunksize,
         ignore_diags=ignore_diags,
     )
+
+    # check column names
+    assert list(res_symm.columns) == ['region1', 'region2', 'dist', 'dist_bp', 'contact_frequency', 'n_elem', 'n_valid', 'count.sum',  'balanced.sum', 'count.avg', 'balanced.avg', 'count.avg.smoothed', 'balanced.avg.smoothed', 'count.avg.smoothed.agg', 'balanced.avg.smoothed.agg']
+
     # check results for every block
     grouped = res_symm.groupby(["region1", "region2"])
     for (name1, name2), group in grouped:
