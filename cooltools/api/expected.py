@@ -25,6 +25,26 @@ _REGION2 = list(diag_expected_dtypes)[1]
 _DIST = list(diag_expected_dtypes)[2]
 _NUM_VALID = list(diag_expected_dtypes)[3]
 
+# See notes in the docstring of agg_smooth_cvd()
+DEFAULT_BALANCED_CVD_COLS = {
+    "region1": _REGION1,
+    "region2": _REGION2,
+    "dist": "dist",
+    "n_pixels": "n_valid",
+    "n_contacts": "balanced.sum",
+    "output_prefix": "balanced.avg",
+}
+DEFAULT_RAW_CVD_COLS = {
+    "region1": _REGION1,
+    "region2": _REGION2,
+    "dist": "dist",
+    "n_pixels": "n_total",
+    "n_contacts": "count.sum",
+    "output_prefix": "count.avg",
+}
+SMOOTH_SUFFIX = ".smoothed"
+SMOOTH_AGG_SUFFIX = ".smoothed.agg"
+
 
 def lattice_pdist_frequencies(n, points):
     """
@@ -199,7 +219,7 @@ def count_bad_pixels_per_block(x, y, bad_bins_x, bad_bins_y):
 
 def make_diag_table(bad_mask, span1, span2):
     """
-    Compute the total number of elements ``n_elem`` and the number of bad
+    Compute the total number of elements ``n_total`` and the number of bad
     elements ``n_bad`` per diagonal for a single contact area encompassing
     ``span1`` and ``span2`` on the same genomic scaffold (cis matrix).
 
@@ -217,7 +237,7 @@ def make_diag_table(bad_mask, span1, span2):
     Returns
     -------
     diags : pandas.DataFrame
-        Table indexed by 'diag' with columns ['n_elem', 'n_bad'].
+        Table indexed by 'diag' with columns ['n_total', 'n_bad'].
 
     """
 
@@ -226,8 +246,8 @@ def make_diag_table(bad_mask, span1, span2):
 
     def _make_diag_table(n_bins, bad_locs):
         diags = pd.DataFrame(index=pd.Series(np.arange(n_bins), name=_DIST))
-        diags["n_elem"] = count_all_pixels_per_diag(n_bins)
-        diags[_NUM_VALID] = diags["n_elem"] - count_bad_pixels_per_diag(
+        diags["n_total"] = count_all_pixels_per_diag(n_bins)
+        diags[_NUM_VALID] = diags["n_total"] - count_bad_pixels_per_diag(
             n_bins, bad_locs
         )
         return diags
@@ -254,10 +274,10 @@ def make_diag_table(bad_mask, span1, span2):
             diags.add(
                 _make_diag_table(lo2 - hi1, where(bad_mask[hi1:lo2])), fill_value=0
             )
-        diags = diags[diags["n_elem"] > 0]
+        diags = diags[diags["n_total"] > 0]
 
-    # keep diags["n_elem"] for calculating count.avg
-    # diags = diags.drop("n_elem", axis=1) 
+    # keep diags["n_total"] for calculating count.avg
+    # diags = diags.drop("n_total", axis=1)
     return diags.astype(int)
 
 
@@ -303,7 +323,9 @@ def make_diag_tables(clr, regions, regions2=None, clr_weight_name="weight"):
             regions2 = bioframe.make_viewframe(
                 regions2, check_bounds=clr.chromsizes
             ).to_numpy()
-    except ValueError:  # If there are non-unique entries in regions1/2, possible only for asymmetric expected:
+    except (
+        ValueError
+    ):  # If there are non-unique entries in regions1/2, possible only for asymmetric expected:
         regions = pd.concat(
             [
                 bioframe.make_viewframe([region], check_bounds=clr.chromsizes)
@@ -939,42 +961,44 @@ def expected_cis(
     map_functor : callable, optional
         Map function to dispatch the matrix chunks to workers.
         If left unspecified, pool_decorator applies the following defaults: if nproc>1 this defaults to multiprocess.Pool;
-        If nproc=1 this defaults the builtin map. 
+        If nproc=1 this defaults the builtin map.
 
     Returns
     -------
     DataFrame with summary statistic of every diagonal of every symmetric
     or asymmetric block:
-    
+
     Notes
     -----
-    dist: 
+    Output DataFrame columns correspond to the following quantities:
+
+    dist:
         Distance in bins.
     dist_bp:
         Distance in basepairs.
     contact_freq:
-        The "most processed" contact frequency value. For example, if balanced & smoothing then this will return the balanced.avg.smooth.agg; 
+        The "most processed" contact frequency value. For example, if balanced & smoothing then this will return the balanced.avg.smooth.agg;
         if aggregated+smoothed, then balanced.avg.smooth.agg; if nothing then count.avg.
-    n_elem:
+    n_total:
         Number of total pixels at a given distance.
-    n_valid: 
+    n_valid:
         Number of valid pixels (with non-NaN values after balancing) at a given distance.
     count.sum:
         Sum up raw contact counts of all pixels at a given distance.
-    balanced.sum: 
-        Sum up balanced contact values of valid pixels at a given distance.
+    balanced.sum:
+        Sum up balanced contact values of valid pixels at a given distance. Returned if clr_weight_name is not None.
     count.avg:
-        The average raw contact count of pixels at a given distance. count.sum / n_elem.
+        The average raw contact count of pixels at a given distance. count.sum / n_total.
     balanced.avg:
-        The average balanced contact values of valid pixels at a given distance. balanced.sum / n_valid.
+        The average balanced contact values of valid pixels at a given distance. balanced.sum / n_valid. Returned if clr_weight_name is not None.
     count.avg.smoothed:
-        Log-smoothed count.avg.
+        Log-smoothed count.avg. Returned if smooth=True.
     balanced.avg.smoothed:
-        Log-smoothed balanced.avg.
+        Log-smoothed balanced.avg. Returned if smooth=True and clr_weight_name is not None.
     count.avg.smoothed.agg:
-        Aggregate Log-smoothed count.avg of all genome regions.
+        Aggregate Log-smoothed count.avg of all genome regions. Returned if smooth=True and aggregate_smoothed=True.
     balanced.avg.smoothed.agg:
-        Aggregate Log-smoothed balanced.avg of all genome regions.
+        Aggregate Log-smoothed balanced.avg of all genome regions. Returned if smooth=True and aggregate_smoothed=True and clr_weight_name is not None.
 
     """
 
@@ -1000,9 +1024,11 @@ def expected_cis(
             raise ValueError("view_df is not a valid viewframe or incompatible") from e
 
     # define transforms - balanced and raw ('count') for now
+    cols = DEFAULT_BALANCED_CVD_COLS
     if clr_weight_name is None:
         # no transforms
         transforms = {}
+        cols = DEFAULT_RAW_CVD_COLS
     elif is_cooler_balanced(clr, clr_weight_name):
         # define balanced data transform:
         weight1 = clr_weight_name + "1"
@@ -1012,6 +1038,7 @@ def expected_cis(
         raise ValueError(
             "cooler is not balanced, or"
             f"balancing weight {clr_weight_name} is not available in the cooler."
+            f"Pass clr_weight_name=None explicitly to calculate on raw counts"
         )
 
     # using try-clause to close mp.Pool properly
@@ -1039,43 +1066,32 @@ def expected_cis(
     # calculate actual averages by dividing sum by n_valid:
     for key in chain(["count"], transforms):
         if key == "count":
-            result[f"{key}.avg"] = result[f"{key}.sum"] / result["n_elem"]
-        else:    
+            result[f"{key}.avg"] = result[f"{key}.sum"] / result["n_total"]
+        else:
             result[f"{key}.avg"] = result[f"{key}.sum"] / result[_NUM_VALID]
 
     # add dist_bp column, which shows distance in basepairs
-    result.insert(3, 'dist_bp', result[_DIST]*clr.binsize)
-
+    result.insert(3, "dist_bp", result[_DIST] * clr.binsize)
 
     # additional smoothing and aggregating options would add columns only, not replace them
     if smooth:
-        result_smooth = expected_smoothing.agg_smooth_cvd(
+        result = expected_smoothing.per_region_smooth_cvd(
             result,
             sigma_log10=smooth_sigma,
+            cols=cols,
+            suffix=SMOOTH_SUFFIX,
         )
-        # add smoothed columns to the result (only balanced for now) (include count as well)
-        result = result.merge(
-            result_smooth[["count.avg.smoothed", "balanced.avg.smoothed", _DIST]],
-            on=[_REGION1, _REGION2, _DIST],
-            how="left",
-        )
+
         if aggregate_smoothed:
-            result_smooth_agg = expected_smoothing.agg_smooth_cvd(
+            result = expected_smoothing.genome_wide_smooth_cvd(
                 result,
-                groupby=None,
                 sigma_log10=smooth_sigma,
-            ).rename(columns={"balanced.avg.smoothed": "balanced.avg.smoothed.agg", "count.avg.smoothed": "count.avg.smoothed.agg"})
-            # add smoothed columns to the result
-            result = result.merge(
-                result_smooth_agg[["count.avg.smoothed.agg", "balanced.avg.smoothed.agg", _DIST]],
-                on=[
-                    _DIST,
-                ],
-                how="left",
+                cols=cols,
+                suffix=SMOOTH_AGG_SUFFIX,
             )
-        
+
     # add contact_frequency columns to the result, which is the copy of the "most processing" contact values
-    result.insert(4, 'contact_frequency', result.iloc[:,-1])
+    result.insert(4, "contact_frequency", result.iloc[:, -1])
 
     return result
 
@@ -1121,7 +1137,7 @@ def expected_trans(
     map_functor : callable, optional
         Map function to dispatch the matrix chunks to workers.
         If left unspecified, pool_decorator applies the following defaults: if nproc>1 this defaults to multiprocess.Pool;
-        If nproc=1 this defaults the builtin map. 
+        If nproc=1 this defaults the builtin map.
 
     Returns
     -------
@@ -1156,7 +1172,7 @@ def expected_trans(
         weight1 = clr_weight_name + "1"
         weight2 = clr_weight_name + "2"
         transforms = {"balanced": lambda p: p["count"] * p[weight1] * p[weight2]}
-        
+
     else:
         raise ValueError(
             "cooler is not balanced, or"

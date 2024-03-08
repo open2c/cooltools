@@ -3,18 +3,6 @@ from collections.abc import Iterable
 import numpy as np
 import numba
 
-# See notes in the docstring of agg_smooth_cvd()
-DEFAULT_CVD_COLS = {
-    "dist": "dist",
-    "n_pixels": "n_valid",
-    "n_contacts": "balanced.sum",
-    "contact_freq": "balanced.avg",
-    "smooth_suffix": ".smoothed",
-    "n_pixels_tot": "n_elem",
-    "n_contacts_raw": "count.sum",
-    "contact_freq_raw": "count.avg",
-}
-
 
 def _log_interp(xs, xp, fp):
     """
@@ -66,7 +54,7 @@ def _log_thin(xs, min_log10_step=0.1):
     """
     xs_thinned = [xs[0]]
     prev = xs[0]
-    min_ratio = 10 ** min_log10_step
+    min_ratio = 10**min_log10_step
     for x in xs[1:]:
         if x > prev * min_ratio:
             xs_thinned.append(x)
@@ -103,9 +91,9 @@ def _log_smooth_numba(
         hi = np.searchsorted(log_xs, cur_log_x + sigma_log10 * window_sigma)
         smooth_weights = np.exp(
             -((cur_log_x - log_xs[lo:hi]) ** 2) / 2 / sigma_log10 / sigma_log10
-        ) 
+        )
         norm = smooth_weights.sum()
-        
+
         if norm > 0:
             smooth_weights /= norm
 
@@ -156,9 +144,7 @@ def log_smooth(
     if ys.ndim not in (1, 2):
         raise ValueError('ys must be either a 1D vector or a "tall" 2D matrix')
     if xs.shape[0] != ys.shape[-1]:
-        raise ValueError(
-            "xs and ys must have the same number of observations"
-        )
+        raise ValueError("xs and ys must have the same number of observations")
 
     ys = ys[np.newaxis, :] if ys.ndim == 1 else ys
 
@@ -176,17 +162,15 @@ def log_smooth(
     return ys_smoothed
 
 
-def _smooth_cvd_group(cvd, sigma_log10, window_sigma, points_per_sigma, cols=None):
-    cols = dict(DEFAULT_CVD_COLS, **({} if cols is None else cols))
-
+def _smooth_cvd_group(
+    cvd, sigma_log10, window_sigma, points_per_sigma, cols=None, suffix=""
+):
     cvd_smoothed = (
         cvd.groupby(cols["dist"])
         .agg(
             {
                 cols["n_pixels"]: "sum",
                 cols["n_contacts"]: "sum",
-                cols["n_pixels_tot"]: "sum",
-                cols["n_contacts_raw"]: "sum",
             }
         )
         .reset_index()
@@ -203,77 +187,31 @@ def _smooth_cvd_group(cvd, sigma_log10, window_sigma, points_per_sigma, cols=Non
         points_per_sigma=points_per_sigma,
     )
 
-    smoothed_raw_sum, smoothed_n_elem = log_smooth(
-        cvd_smoothed[cols["dist"]].values.astype(np.float64),
-        [
-            cvd_smoothed[cols["n_contacts_raw"]].values.astype(np.float64),
-            cvd_smoothed[cols["n_pixels_tot"]].values.astype(np.float64),
-        ],
-        sigma_log10=sigma_log10,
-        window_sigma=window_sigma,
-        points_per_sigma=points_per_sigma,
-    )
-    
-    cvd_smoothed[cols["n_pixels_tot"] + cols["smooth_suffix"]] = smoothed_n_elem
-    cvd_smoothed[cols["n_contacts_raw"] + cols["smooth_suffix"]] = smoothed_raw_sum
-    cvd_smoothed[cols["contact_freq_raw"] + cols["smooth_suffix"]] = (
-        cvd_smoothed[cols["n_contacts_raw"] + cols["smooth_suffix"]]
-        / cvd_smoothed[cols["n_pixels_tot"] + cols["smooth_suffix"]]
-    )
-    
-    cvd_smoothed[cols["n_pixels"] + cols["smooth_suffix"]] = smoothed_n_valid
-    cvd_smoothed[cols["n_contacts"] + cols["smooth_suffix"]] = smoothed_balanced_sum
-    cvd_smoothed[cols["contact_freq"] + cols["smooth_suffix"]] = (
-        cvd_smoothed[cols["n_contacts"] + cols["smooth_suffix"]]
-        / cvd_smoothed[cols["n_pixels"] + cols["smooth_suffix"]]
+    cvd_smoothed[cols["n_pixels"] + suffix] = smoothed_n_valid
+    cvd_smoothed[cols["n_contacts"] + suffix] = smoothed_balanced_sum
+    cvd_smoothed[cols["output_prefix"] + suffix] = (
+        cvd_smoothed[cols["n_contacts"] + suffix]
+        / cvd_smoothed[cols["n_pixels"] + suffix]
     )
 
     return cvd_smoothed
 
 
-def _agg_smooth_cvd(
-    cvd, groupby, sigma_log10, window_sigma, points_per_sigma, cols=None
-):
-    if groupby:
-        cvd = cvd.set_index(groupby).groupby(groupby).apply(
-            _smooth_cvd_group,
-            sigma_log10=sigma_log10,
-            window_sigma=window_sigma,
-            points_per_sigma=points_per_sigma,
-            cols=cols,
-        )
-    else:
-        cvd = _smooth_cvd_group(
-            cvd,
-            sigma_log10=sigma_log10,
-            window_sigma=window_sigma,
-            points_per_sigma=points_per_sigma,
-            cols=cols,
-        )
-
-    return cvd
-
-
-def agg_smooth_cvd(
+def genome_wide_smooth_cvd(
     cvd,
-    groupby=["region1", "region2"],
     sigma_log10=0.1,
     window_sigma=5,
     points_per_sigma=10,
     cols=None,
+    suffix="",
 ):
     """
-    Smooth the contact-vs-distance curve in the log-space.
+    Smooth the contact-vs-distance curve aggregated across all regions in log-space.
 
     Parameters
     ----------
     cvd : pandas.DataFrame
         A dataframe with the expected values in the cooltools.expected format.
-    groupby : list of str
-        The list of column names to split the input table before smoothing.
-        This argument can be used to calculate separate smoothed CvD curves for
-        each region, Hi-C read orientation, etc.
-        If None or empty, a single CvD curve is calculated for the whole table.
     sigma_log10 : float, optional
         The standard deviation of the smoothing Gaussian kernel, applied over log10(diagonal), by default 0.1
     window_sigma : int, optional
@@ -287,59 +225,102 @@ def agg_smooth_cvd(
 
     Returns
     -------
-    cvd_smoothed : pandas.DataFrame
+    cvd : pandas.DataFrame
         A cvd table with extra column for the log-smoothed contact frequencies (by default, "balanced.avg.smoothed").
 
     Notes
     -----
-    dist: 
-        Distance in bins.
-    dist_bp:
-        Distance in basepairs.
+    Parameters in "cols"
+
+    dist:
+
+    n_pixels:
+
+    n_contacts:
+
     contact_freq:
-        The "most processed" contact frequency value. For example, if balanced & smoothing then this will return the balanced.avg.smooth.agg; 
-        if aggregated+smoothed, then balanced.avg.smooth.agg; if nothing then count.avg.
-    n_elem:
-        Number of total pixels at a given distance.
-    n_valid: 
-        Number of valid pixels (with non-NaN values after balancing) at a given distance.
-    count.sum:
-        Sum up raw contact counts of all pixels at a given distance.
-    balanced.sum: 
-        Sum up balanced contact values of valid pixels at a given distance.
-    count.avg:
-        The average raw contact count of pixels at a given distance. count.sum / n_elem.
-    balanced.avg:
-        The average balanced contact values of valid pixels at a given distance. balanced.sum / n_valid.
-    count.avg.smoothed:
-        Log-smoothed count.avg.
-    balanced.avg.smoothed:
-        Log-smoothed balanced.avg.
-    count.avg.smoothed.agg:
-        Aggregate Log-smoothed count.avg of all genome regions.
-    balanced.avg.smoothed.agg:
-        Aggregate Log-smoothed balanced.avg of all genome regions.
-   
+
     """
-
-    cols = dict(DEFAULT_CVD_COLS, **({} if cols is None else cols))
-
-    if groupby is None:
-        groupby = []
-    elif isinstance(groupby, str):
-        groupby = [groupby]
-    elif isinstance(groupby, Iterable):
-        groupby = list(groupby)
-    else:
-        raise ValueError("groupby must be a string, a list of strings, or None")
-
-    cvd_smoothed = _agg_smooth_cvd(
+    cvd_smoothed = _smooth_cvd_group(
         cvd,
-        groupby=groupby,
         sigma_log10=sigma_log10,
         window_sigma=window_sigma,
         points_per_sigma=points_per_sigma,
         cols=cols,
+        suffix=suffix,
     )
 
-    return cvd_smoothed
+    # add aggeragated smoothed columns to the result
+    cvd = cvd.merge(
+        cvd_smoothed[[cols["output_prefix"] + suffix, cols["dist"]]],
+        on=[cols["dist"]],
+        how="left",
+    )
+
+    return cvd
+
+
+def per_region_smooth_cvd(
+    cvd,
+    sigma_log10=0.1,
+    window_sigma=5,
+    points_per_sigma=10,
+    cols=None,
+    suffix="",
+):
+    """
+    Smooth the contact-vs-distance curve for each region in log-space.
+
+    Parameters
+    ----------
+    cvd : pandas.DataFrame
+        A dataframe with the expected values in the cooltools.expected format.
+    sigma_log10 : float, optional
+        The standard deviation of the smoothing Gaussian kernel, applied over log10(diagonal), by default 0.1
+    window_sigma : int, optional
+        Width of the smoothing window, expressed in sigmas, by default 5
+    points_per_sigma : int, optional
+        If provided, smoothing is done only for `points_per_sigma` points per sigma and the
+        rest of the values are interpolated (this results in a major speed-up). By default 10
+    cols : dict, optional
+        If provided, use the specified column names instead of the standard ones.
+        See DEFAULT_CVD_COLS variable for the format of this argument.
+
+    Returns
+    -------
+    cvd : pandas.DataFrame
+        A cvd table with extra column for the log-smoothed contact frequencies (by default, "balanced.avg.smoothed").
+
+    Notes
+    -----
+    Parameters in "cols"
+
+    dist:
+
+    n_pixels:
+
+    n_contacts:
+
+    contact_freq:
+
+    """
+    cvd_smoothed = (
+        cvd.set_index([cols["region1"], cols["region2"]])
+        .groupby([cols["region1"], cols["region2"]])
+        .apply(
+            _smooth_cvd_group,
+            sigma_log10=sigma_log10,
+            window_sigma=window_sigma,
+            points_per_sigma=points_per_sigma,
+            cols=cols,
+            suffix=suffix,
+        )
+    )
+    # add smoothed columns to the result
+    cvd = cvd.merge(
+        cvd_smoothed[[cols["output_prefix"] + suffix, cols["dist"]]],
+        on=[cols["region1"], cols["region2"], cols["dist"]],
+        how="left",
+    )
+
+    return cvd

@@ -259,7 +259,23 @@ def test_expected_cis(request):
     )
 
     # check column names
-    assert list(res_symm.columns) == ['region1', 'region2', 'dist', 'dist_bp', 'contact_frequency', 'n_elem', 'n_valid', 'count.sum',  'balanced.sum', 'count.avg', 'balanced.avg', 'count.avg.smoothed', 'balanced.avg.smoothed', 'count.avg.smoothed.agg', 'balanced.avg.smoothed.agg']
+    assert list(res_symm.columns) == [
+        "region1",
+        "region2",
+        "dist",
+        "dist_bp",
+        "contact_frequency",
+        "n_elem",
+        "n_valid",
+        "count.sum",
+        "balanced.sum",
+        "count.avg",
+        "balanced.avg",
+        "count.avg.smoothed",
+        "balanced.avg.smoothed",
+        "count.avg.smoothed.agg",
+        "balanced.avg.smoothed.agg",
+    ]
 
     # check results for every block
     grouped = res_symm.groupby(["region1", "region2"])
@@ -304,7 +320,7 @@ def test_expected_cis(request):
             desired=desired_expected,
             equal_nan=True,
         )
-    
+
     # check multiprocessed result
     res_all_pooled = cooltools.api.expected.expected_cis(
         clr,
@@ -313,7 +329,7 @@ def test_expected_cis(request):
         clr_weight_name=clr_weight_name,
         chunksize=chunksize,
         ignore_diags=ignore_diags,
-        nproc=3
+        nproc=3,
     )
     assert res_all.equals(res_all_pooled)
 
@@ -368,7 +384,7 @@ def test_expected_trans(request):
         view_df=view_df,
         clr_weight_name=clr_weight_name,
         chunksize=chunksize,
-        nproc=3
+        nproc=3,
     )
     assert res.equals(res_pooled)
 
