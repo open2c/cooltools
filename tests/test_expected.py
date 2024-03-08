@@ -290,6 +290,28 @@ def test_expected_cis(request):
             desired=desired_expected,
             equal_nan=True,
         )
+    
+    # check column names, when clr_weight_name = None, which is the unbalanced case
+    res_symm = cooltools.api.expected.expected_cis(
+        clr,
+        view_df=view_df,
+        clr_weight_name=None,
+        chunksize=chunksize,
+        ignore_diags=ignore_diags,
+    )
+    assert list(res_symm.columns) == [
+        "region1",
+        "region2",
+        "dist",
+        "dist_bp",
+        "contact_frequency",
+        "n_total",
+        "n_valid",
+        "count.sum",
+        "count.avg",
+        "count.avg.smoothed",
+        "count.avg.smoothed.agg",
+    ]
 
     # asymm and symm result together - engaging diagsum_pairwise
     res_all = cooltools.api.expected.expected_cis(
