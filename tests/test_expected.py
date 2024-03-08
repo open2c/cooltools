@@ -265,15 +265,13 @@ def test_expected_cis(request):
         "dist",
         "dist_bp",
         "contact_frequency",
-        "n_elem",
+        "n_total",
         "n_valid",
         "count.sum",
         "balanced.sum",
         "count.avg",
         "balanced.avg",
-        "count.avg.smoothed",
         "balanced.avg.smoothed",
-        "count.avg.smoothed.agg",
         "balanced.avg.smoothed.agg",
     ]
 
