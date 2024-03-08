@@ -931,20 +931,20 @@ def genomewide_smooth_cvd(
     Returns
     -------
     cvd : pandas.DataFrame
-        A cvd table with extra column for the log-smoothed contact frequencies (by default, "count.avg.smoothed.agg" or "balanced.avg.smoothed.agg" depends on whether balanced or not).
+        A cvd table with extra column for the log-smoothed contact frequencies (by default, "balanced.avg.smoothed.agg" if balanced, or "count.avg.smoothed.agg" if raw).
 
     Notes
     -----
     Parameters in "cols" will be used:
 
     dist:
-        Indicate the name of the column that stores distance values (by default, "dist").
+        Name of the column that stores distance values (by default, "dist").
     n_pixels:
-        Indicate the name of the column that stores number of pixels (by default can be either "n_total" or "n_valid" depends on whether balanced or not).
+        Name of the column that stores number of pixels (by default, "n_valid" if balanced, or "n_total" if raw).
     n_contacts:
-        Indicate the name of the column that stores the sum of contacts (by default can be either "count.sum" or "balanced.sum" depends on whether balanced or not).
+        Name of the column that stores the sum of contacts (by default, "balanced.sum" if balanced, or "count.sum" if raw).
     output_prefix:
-        Indicate the name prefix of the column that will store output value (by default, can be either "count.avg" or "balanced.avg" depends on whether balanced or not).
+        Name prefix of the column that will store output value (by default, "balanced.avg" if balanced, or "count.avg" if raw).
     """
     cvd_smoothed = expected_smoothing._smooth_cvd_group(
         cvd,
@@ -996,24 +996,24 @@ def per_region_smooth_cvd(
     Returns
     -------
     cvd : pandas.DataFrame
-        A cvd table with extra column for the log-smoothed contact frequencies (by default, "count.avg.smoothed" or "balanced.avg.smoothed" depends on whether balanced or not).
+        A cvd table with extra column for the log-smoothed contact frequencies (by default, "balanced.avg.smoothed" if balanced, or "count.avg.smoothed" if raw).
 
     Notes
     -----
     Parameters in "cols" will be used:
 
     region1:
-        Indicate the name of the column that stores region1's locations (by default, "region1").
+        Name of the column that stores region1's locations (by default, "region1").
     region2:
-        Indicate the name of the column that stores region2's locations (by default, "region2").
+        Name of the column that stores region2's locations (by default, "region2").
     dist:
-        Indicate the name of the column that stores distance values (by default, "dist").
+        Name of the column that stores distance values (by default, "dist").
     n_pixels:
-        Indicate the name of the column that stores number of pixels (by default can be either "n_total" or "n_valid" depends on whether balanced or not).
+        Name of the column that stores number of pixels (by default, "n_valid" if balanced, or "n_total" if raw).
     n_contacts:
-        Indicate the name of the column that stores the sum of contacts (by default can be either "count.sum" or "balanced.sum" depends on whether balanced or not).
+        Name of the column that stores the sum of contacts (by default, "balanced.sum" if balanced, or "count.sum" if raw).
     output_prefix:
-        Indicate the name prefix of the column that will store output value (by default, can be either "count.avg" or "balanced.avg" depends on whether balanced or not).
+        Name prefix of the column that will store output value (by default, "balanced.avg" if balanced, or "count.avg" if raw).
     """
     cvd_smoothed = (
         cvd.set_index([cols["region1"], cols["region2"]])
