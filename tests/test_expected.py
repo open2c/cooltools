@@ -257,6 +257,24 @@ def test_expected_cis(request):
         chunksize=chunksize,
         ignore_diags=ignore_diags,
     )
+
+    # check column names
+    assert list(res_symm.columns) == [
+        "region1",
+        "region2",
+        "dist",
+        "dist_bp",
+        "contact_frequency",
+        "n_total",
+        "n_valid",
+        "count.sum",
+        "balanced.sum",
+        "count.avg",
+        "balanced.avg",
+        "balanced.avg.smoothed",
+        "balanced.avg.smoothed.agg",
+    ]
+
     # check results for every block
     grouped = res_symm.groupby(["region1", "region2"])
     for (name1, name2), group in grouped:
@@ -272,6 +290,28 @@ def test_expected_cis(request):
             desired=desired_expected,
             equal_nan=True,
         )
+    
+    # check column names, when clr_weight_name = None, which is the unbalanced case
+    res_symm = cooltools.api.expected.expected_cis(
+        clr,
+        view_df=view_df,
+        clr_weight_name=None,
+        chunksize=chunksize,
+        ignore_diags=ignore_diags,
+    )
+    assert list(res_symm.columns) == [
+        "region1",
+        "region2",
+        "dist",
+        "dist_bp",
+        "contact_frequency",
+        "n_total",
+        "n_valid",
+        "count.sum",
+        "count.avg",
+        "count.avg.smoothed",
+        "count.avg.smoothed.agg",
+    ]
 
     # asymm and symm result together - engaging diagsum_pairwise
     res_all = cooltools.api.expected.expected_cis(
@@ -300,7 +340,7 @@ def test_expected_cis(request):
             desired=desired_expected,
             equal_nan=True,
         )
-    
+
     # check multiprocessed result
     res_all_pooled = cooltools.api.expected.expected_cis(
         clr,
@@ -309,7 +349,7 @@ def test_expected_cis(request):
         clr_weight_name=clr_weight_name,
         chunksize=chunksize,
         ignore_diags=ignore_diags,
-        nproc=3
+        nproc=3,
     )
     assert res_all.equals(res_all_pooled)
 
@@ -364,7 +404,7 @@ def test_expected_trans(request):
         view_df=view_df,
         clr_weight_name=clr_weight_name,
         chunksize=chunksize,
-        nproc=3
+        nproc=3,
     )
     assert res.equals(res_pooled)
 
