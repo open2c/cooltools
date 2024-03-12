@@ -1,8 +1,7 @@
 # cooltools: enabling high-resolution Hi-C analysis in Python
 
 
-<img src="https://github.com/open2c/cooltools/raw/main/docs/figs/cooltools-logo-futura.png" width=55%> 
-
+<img src="https://github.com/open2c/cooltools/blob/master/docs/figs/cooltools-logo-futura.png" width=55%> 
 
 [![Pytest](https://github.com/open2c/cooltools/actions/workflows/pytest.yml/badge.svg)](https://github.com/open2c/cooltools/actions/workflows/pytest.yml)
 [![Documentation Status](https://readthedocs.org/projects/cooltools/badge/?version=latest)](https://cooltools.readthedocs.io/en/latest/?badge=latest)
