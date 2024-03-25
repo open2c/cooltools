@@ -171,7 +171,6 @@ def eigs_cis(
         clr_weight_name=clr_weight_name,
         ignore_diags=ignore_diags,
         clip_percentile=99.9,
-        sort_metric=None,
     )
 
     # Output
