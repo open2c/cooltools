@@ -9,7 +9,7 @@
 * expected_cis() now accepts unbalanced cool file too
 
 ### API changes
-* expected_cis: the output cvd table now also includes "dist_bp" and "n_valid" columns
+* expected_cis: the output cvd table now also includes "dist_bp", "contact_frequency", and "n_valid" columns
 * expected_cis() will now return count.avg.smoothed and count.avg.smoothed.agg, when clr_weight_name=None, smooth=True, aggregate_smoothed=True
 
 ### Maintenance
