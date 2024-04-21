@@ -1,12 +1,28 @@
 # Release notes
 
-## [Upcoming release](https://github.com/open2c/cooltools/compare/v0.6.1...HEAD)
+## [Upcoming release](https://github.com/open2c/cooltools/compare/v0.6.2...HEAD)
+
+## [v0.6.2](https://github.com/open2c/cooltools/compare/v0.6.1...v0.6.2)
+
+### New features
+* Add pool decorator to functions for supporting multiprocess
+* `expected_cis` now accepts unbalanced cool file too
+
+### API changes
+* `expected_cis`
+  * output cvd table now also includes "dist_bp", "contact_frequency", and "n_valid" columns
+  * now returns "count.avg.smoothed" and "count.avg.smoothed.agg", when `clr_weight_name=None, smooth=True, aggregate_smoothed=True`
+
+### Maintenance
+* Replaced np.int with int in adaptive_coarsegrain
+* OE update in sandbox
+* Cross score sandbox fixes
+* Support for pandas 2
 
 ## [v0.6.1](https://github.com/open2c/cooltools/compare/v0.6.0...v0.6.1)
 
 ### Maintenance
 * Bug fix in CLI pileup
-
 
 ## [v0.6.0](https://github.com/open2c/cooltools/compare/v0.5.4...v0.6.0)
 
