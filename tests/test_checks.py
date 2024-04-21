@@ -235,13 +235,13 @@ def test_is_track():
     assert cooltools.lib.is_track(track)
 
     track_incompat = bioframe.sort_bedframe(track.copy())
-    track_incompat.iloc[:, 0] = 10
+    track_incompat["chrom"] = 10
 
     # not bedframe in first three columns
     assert cooltools.lib.is_track(track_incompat) is False
 
     track_incompat = track.copy()
-    track_incompat.iloc[:, -1] = ["a", "b", "c", "d"]
+    track_incompat["value"] = ["a", "b", "c", "d"]
     # not numeric type in column4
     assert cooltools.lib.is_track(track_incompat) is False
 
