@@ -2,7 +2,7 @@
 
 ## [Upcoming release](https://github.com/open2c/cooltools/compare/v0.6.2...HEAD)
 
-## [v0.7.0](https://github.com/open2c/cooltools/compare/v0.6.1...v0.6.2)
+## [v0.7.0](https://github.com/open2c/cooltools/compare/v0.6.1...v0.7.0)
 
 ### New features
 * Add pool decorator to functions for supporting multiprocess
