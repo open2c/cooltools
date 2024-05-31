@@ -2,7 +2,11 @@
 Migrated from :mod:`mirnylib.plotting`.
 
 """
-from matplotlib.cm import register_cmap
+try:
+    from matplotlib.cm import register_cmap
+except ImportError:
+    from matplotlib.colormaps import register
+
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 import numpy as np
