@@ -114,7 +114,12 @@ def insul_diamond(
 
         i = diag_pixels.bin1_id.values - lo_bin_id
         j = diag_pixels.bin2_id.values - lo_bin_id
-
+        ####
+        # Weight each bin by the fraction of NaNs at each diagonal
+        diag_pixels['distance_from_diag'] = (diag_pixels['bin1_id'] - diag_pixels['bin2_id']).abs()
+        diag_pixels['valid_pixel_mask'] = ~diag_pixels["balanced"].isnull().values
+        diag_weighting_factor = diag_pixels.groupby(['bin1_id', 'distance_from_diag'])['valid_pixel_mask'].mean()
+        ####
         for i_shift in range(0, window):
             for j_shift in range(0, window):
                 if i_shift + j_shift < ignore_diags:
@@ -131,9 +136,10 @@ def insul_diamond(
                 )
 
                 if clr_weight_name:
+                    ### Weight sum_balanced by the number of non-Nans in diagonal
                     sum_balanced += np.bincount(
                         i[mask & valid_pixel_mask] + i_shift,
-                        diag_pixels["balanced"].values[mask & valid_pixel_mask],
+                        diag_pixels["balanced"].values[mask & valid_pixel_mask] / diag_weighting_factor.loc[[i, i_shift + j_shift]],
                         minlength=N,
                     )
 
