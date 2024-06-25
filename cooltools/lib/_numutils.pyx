@@ -230,8 +230,8 @@ def fake_cis(
 @cython.cdivision(True)
 def _matvec_sparse_symmetric(
         np.ndarray[np.double_t, ndim=1] y,
-        np.ndarray[np.int_t, ndim=1] bin1,
-        np.ndarray[np.int_t, ndim=1] bin2,
+        np.ndarray[np.int32_t, ndim=1] bin1,
+        np.ndarray[np.int32_t, ndim=1] bin2,
         np.ndarray[np.double_t, ndim=1] values,
         np.ndarray[np.double_t, ndim=1] x):
     """
