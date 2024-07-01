@@ -13,7 +13,7 @@ ctypedef unsigned short ushort
 ctypedef unsigned char uchar
 
 cdef extern from "stdlib.h":
-    long c_libc_random "random"()
+    long c_libc_random "rand"()
     double c_libc_drandom "drand48"()
 
 
