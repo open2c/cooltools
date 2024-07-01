@@ -1,6 +1,12 @@
 # Release notes
 
-## [Upcoming release](https://github.com/open2c/cooltools/compare/v0.7.0...HEAD)
+## [Upcoming release](https://github.com/open2c/cooltools/compare/v0.7.1...HEAD)
+
+## [v0.7.1](https://github.com/open2c/cooltools/compare/v0.7.0...v0.7.1)
+
+### Maintenance
+* Support for matplotlib 3.9 (color maps import both from `matplotlib.cm` and `matplotlib.colors`)
+* Support for numpy 2.0 (explicit np.int32_t in cython functions)
 
 ## [v0.7.0](https://github.com/open2c/cooltools/compare/v0.6.1...v0.7.0)
 
