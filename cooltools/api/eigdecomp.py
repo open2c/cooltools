@@ -10,105 +10,68 @@ from ..lib.common import make_cooler_view, align_track_with_cooler
 import bioframe
 
 
-def _phase_eigs(eigvals, eigvecs, phasing_track, sort_metric=None):
+def _correlate_with_eigs(eigvecs, phasing_vector, metric="spearmanr"):
     """
-    Flip `eigvecs` to achieve a positive correlation with `phasing_track`.
+    Correlate eigenvectors with a given phasing vector.
 
     Parameters
     ----------
-    sort_metric : str
-        If provided, re-sort `eigenvecs` and `eigvals` in the order of
-        decreasing correlation between phasing_track and eigenvector, using the
-        specified measure of correlation. Possible values:
-        'pearsonr' - sort by decreasing Pearson correlation.
-        'var_explained' - sort by decreasing absolute amount of variation in
-        `eigvecs` explained by `phasing_track` (i.e. R^2 * var(eigvec)).
-        'MAD_explained' - sort by decreasing absolute amount of Median Absolute
-        Deviation from the median of `eigvecs` explained by `phasing_track`
-        (i.e. COMED(eigvec, phasing_track) * MAD(eigvec)).
-        'spearmanr' - sort by decreasing Spearman correlation.
-    """
+    eigvecs : 2D array (n, k)
+        `k` eigenvectors (as columns).
+    phasing_track : 1D array (n,)
+        Quantitative genomic track, same length as eigenvectors.
+    metric: spearmanr, pearsonr, var_explained, MAD_explained
+        Correlation metric to use.
 
+    Returns
+    -------
+    1D array (k,)
+        Correlation coefficients.
+    """
     corrs = []
-    for eigvec in eigvecs:
-        mask = np.isfinite(eigvec) & np.isfinite(phasing_track)
-        if sort_metric is None or sort_metric == "spearmanr":
-            corr = scipy.stats.spearmanr(phasing_track[mask], eigvec[mask])[0]
-        elif sort_metric == "pearsonr":
-            corr = scipy.stats.pearsonr(phasing_track[mask], eigvec[mask])[0]
-        elif sort_metric == "var_explained":
-            corr = scipy.stats.pearsonr(phasing_track[mask], eigvec[mask])[0]
+
+    for i in range(eigvecs.shape[1]):
+
+        mask = np.isfinite(eigvecs[:, i]) & np.isfinite(phasing_vector)
+
+        if metric is None or metric == "spearmanr":
+            corr = scipy.stats.spearmanr(phasing_vector[mask], eigvecs[mask, i])[0]
+        elif metric == "pearsonr":
+            corr = scipy.stats.pearsonr(phasing_vector[mask], eigvecs[mask, i])[0]
+        elif metric == "var_explained":
+            corr = scipy.stats.pearsonr(phasing_vector[mask], eigvecs[mask, i])[0]
             # multiply by the sign to keep the phasing information
-            corr = np.sign(corr) * corr * corr * np.var(eigvec[mask])
-        elif sort_metric == "MAD_explained":
-            corr = numutils.COMED(phasing_track[mask], eigvec[mask]) * numutils.MAD(
-                eigvec[mask]
+            corr = np.sign(corr) * corr * corr * np.var(eigvecs[mask, i])
+        elif metric == "MAD_explained":
+            corr = (
+                numutils.COMED(phasing_vector[mask], eigvecs[mask, i]) *
+                numutils.MAD(eigvecs[mask, i])
             )
         else:
-            raise ValueError("Unknown sorting metric: {}".format(sort_metric))
+            raise ValueError("Unknown correlation metric: {}".format(metric))
 
         corrs.append(corr)
 
-    # flip eigvecs
-    for i in range(len(eigvecs)):
-        eigvecs[i] = np.sign(corrs[i]) * eigvecs[i]
-
-    # sort eigvecs
-    if sort_metric is not None:
-        idx = np.argsort(-np.abs(corrs))
-        eigvals, eigvecs = eigvals[idx], eigvecs[idx]
-
-    return eigvals, eigvecs
+    return np.array(corrs)
 
 
-def cis_eig(
-    A, n_eigs=3, phasing_track=None, ignore_diags=2, clip_percentile=0, sort_metric=None
-):
+def _obsexp_cis_dense(A, ignore_diags=2, clip_percentile=0):
     """
-    Compute compartment eigenvector on a dense cis matrix.
-
-    Note that the amplitude of compartment eigenvectors is weighted by their
-    corresponding eigenvalue
+    Prepare obs/exp of a single dense cis contact matrix.
 
     Parameters
     ----------
     A : 2D array
         balanced dense contact matrix
-    n_eigs : int
-        number of eigenvectors to compute
-    phasing_track : 1D array, optional
-        if provided, eigenvectors are flipped to achieve a positive correlation
-        with `phasing_track`.
     ignore_diags : int
         the number of diagonals to ignore
     clip_percentile : float
         if >0 and <100, clip pixels with diagonal-normalized values
         higher than the specified percentile of matrix-wide values.
-    sort_metric : str
-        If provided, re-sort `eigenvecs` and `eigvals` in the order of
-        decreasing correlation between phasing_track and eigenvector, using the
-        specified measure of correlation. Possible values:
-        'pearsonr' - sort by decreasing Pearson correlation.
-        'var_explained' - sort by decreasing absolute amount of variation in
-        `eigvecs` explained by `phasing_track` (i.e. R^2 * var(eigvec))
-        'MAD_explained' - sort by decreasing absolute amount of Median Absolute
-        Deviation from the median of `eigvecs` explained by `phasing_track`
-        (i.e. COMED(eigvec, phasing_track) * MAD(eigvec)).
-        'spearmanr' - sort by decreasing Spearman correlation.
-        This option is designed to report the most "biologically" informative
-        eigenvectors first, and prevent eigenvector swapping caused by
-        translocations. In reality, however, sometimes it shows poor
-        performance and may lead to reporting of non-informative eigenvectors.
-        Off by default.
-
 
     Returns
     -------
-    eigenvalues, eigenvectors
-
-    .. note:: ALWAYS check your EVs by eye. The first one occasionally does
-              not reflect the compartment structure, but instead describes
-              chromosomal arms or translocation blowouts.
+    2D array or None
 
     """
     A = np.array(A)
@@ -117,10 +80,7 @@ def cis_eig(
     mask = A.sum(axis=0) > 0
 
     if A.shape[0] <= ignore_diags + 3 or mask.sum() <= ignore_diags + 3:
-        return (
-            np.array([np.nan for i in range(n_eigs)]),
-            np.array([np.ones(A.shape[0]) * np.nan for i in range(n_eigs)]),
-        )
+        return None
 
     if ignore_diags:
         for d in range(-ignore_diags + 1, ignore_diags):
@@ -138,15 +98,191 @@ def cis_eig(
     OE[~mask, :] = 0
     OE[:, ~mask] = 0
 
-    eigvecs, eigvals = numutils.get_eig(OE, n_eigs, mask_zero_rows=True)
-    eigvecs /= np.sqrt(np.nansum(eigvecs ** 2, axis=1))[:, None]
-    eigvecs *= np.sqrt(np.abs(eigvals))[:, None]
+    return OE
 
-    # Orient and reorder
+
+def eigs_cis(
+    clr,
+    view_df=None,
+    n_eigs=3,
+    clr_weight_name="weight",
+    ignore_diags=None,
+    clip_percentile=99.9,
+    phasing_track=None,
+    reorder=False,
+    corr_metric="pearsonr",
+    map=map,
+):
+    """
+    Eigendecomposition on intrachromosomal (cis) contact matrices.
+
+    Compute eigenvectors for a number of symmetric intrachromosomal regions
+    specified in ``view_df`` (cis-regions) or for all chromosomes. Eigenvectors
+    can be oriented by passing a binned ``phasing_track`` with the same
+    resolution as the cooler.
+
+    Parameters
+    ----------
+    clr : cooler
+        Cooler object
+    view_df : iterable or DataFrame, optional
+        If provided, eigenvectors are calculated for the regions of the view
+        only, otherwise chromosome-wide eigenvectors are computed, for
+        chromosomes specified in phasing_track.
+    n_eigs : int
+        Number of eigenvectors to compute.
+    clr_weight_name : str
+        Name of the column with balancing weights to be used.
+    ignore_diags : int, optional
+        The number of diagonals to ignore. Derived from cooler metadata
+        if not specified.
+    clip_percentile : float
+        If >0 and <100, clip pixels with diagonal-normalized values higher than
+        the specified percentile of matrix-wide values.
+    phasing_track : DataFrame
+        If provided, eigenvectors are oriented to achieve a deterministic
+        positive correlation with ``phasing_track``, according to
+        ``corr_metric``. Provided as a binned track with the same resolution as
+        cooler bins. The fourth column is used to phase the eigenvectors.
+    reorder : bool, default: False
+        If a phasing track is provided, reorder the ``eigvecs`` and ``eigvals``
+        in descending order of correlation between phasing track and eigenvector,
+        using the specified measure of correlation. Off by default.
+    corr_metric : str, default: "pearsonr"
+        Correlation metric to use for phasing and for reordering eigenvectors if
+        requested. Possible values:
+        'pearsonr' - Pearson correlation.
+        'spearmanr' - Spearman correlation.
+        'var_explained' - variation in `eigvecs` explained by `phasing_track`
+                          (i.e. R^2 * var(eigvec))
+        'MAD_explained' - amount of Median Absolute Deviation from the median of
+                          `eigvecs` explained by `phasing_track`
+                          (i.e. COMED(eigvec, phasing_track) * MAD(eigvec)).
+    map : callable, optional
+        Map functor for parallelization.
+
+    Returns
+    -------
+    eigvals, eigvecs : DataFrame
+        Dataframes with eigenvalues for each region and a bin table of
+        eigenvectors.
+
+    Notes
+    -----
+    The amplitude of each eigenvector is weighted by its corresponding
+    eigenvalue: ``sqrt(abs(eigval))``.
+
+    ALWAYS check your EVs by eye. The first one occasionally does not reflect
+    the compartment structure, but instead describes chromosomal arms or
+    translocation blowouts. Possible mitigations: employ `view_df` (e.g. arms)
+    to avoid issues with chromosomal arms, consider blacklisting regions with
+    translocations during balancing.
+
+    The ``reorder`` option is designed to report the most "biologically"
+    informative eigenvectors first, and prevent eigenvector swapping caused by
+    translocations. In reality, however, sometimes it shows poor performance and
+    may lead to reporting of non-informative eigenvectors.
+
+    """
+    # Determine chromosomes from cooler, if view_df not specified
+    if view_df is None:
+        view_df = make_cooler_view(clr)
+    else:
+        # Make sure view_df is a proper viewframe
+        try:
+            _ = is_compatible_viewframe(
+                view_df,
+                clr,
+                check_sorting=True,
+                raise_errors=True,
+            )
+        except Exception as e:
+            raise ValueError("view_df is not a valid viewframe or incompatible") from e
+
+    # Check if cooler is balanced
+    try:
+        _ = is_cooler_balanced(clr, clr_weight_name, raise_errors=True)
+    except Exception as e:
+        raise ValueError(
+            f"provided cooler is not balanced or {clr_weight_name} is missing"
+        ) from e
+
+    # Ignore diags as in cooler unless specified
+    ignore_diags = (
+        clr._load_attrs(f"bins/{clr_weight_name}").get("ignore_diags", 2)
+        if ignore_diags is None
+        else ignore_diags
+    )
+
+    bins = clr.bins()[:]
+
+    # Adjust phasing track as necessary
     if phasing_track is not None:
-        eigvals, eigvecs = _phase_eigs(eigvals, eigvecs, phasing_track, sort_metric)
+        phasing_track = align_track_with_cooler(
+            phasing_track,
+            clr,
+            view_df=view_df,
+            clr_weight_name=clr_weight_name,
+            mask_clr_bad_bins=True,
+            drop_track_na=True # this adds check for chromosomes that have all missing values
+        )
 
-    return eigvals, eigvecs
+    # Prepare output table for eigen vectors
+    eigvec_table = bioframe.assign_view(bins, view_df).dropna(subset=["view_region"], axis=0)
+    eigvec_table = eigvec_table.loc[:, bins.columns]
+    eigvec_columns = [f"E{i + 1}" for i in range(n_eigs)]
+    for ev_col in eigvec_columns:
+        eigvec_table[ev_col] = np.nan
+
+    # Prepare output table for eigenvalues
+    eigvals_table = view_df.copy()
+    eigval_columns = [f"eigval{i + 1}" for i in range(n_eigs)]
+    for eval_col in eigval_columns:
+        eigvals_table[eval_col] = np.nan
+
+    # Eigendecompose matrix per region (can be multiprocessed).
+    # Output assumes that the order of results matches regions.
+    def _each(region):
+        _region = region[:3]  # take only (chrom, start, end)
+        A = clr.matrix(balance=clr_weight_name).fetch(_region)
+
+        OE = _obsexp_cis_dense(A, ignore_diags, clip_percentile)
+        if OE is None:
+            eigvals = np.array([np.nan for i in range(n_eigs)])
+            eigvecs = np.array([np.ones(A.shape[0]) * np.nan for i in range(n_eigs)])
+        else:
+            eigvecs, eigvals = numutils.get_eig(OE, n_eigs, mask_zero_rows=True)
+            eigvecs /= np.sqrt(np.nansum(eigvecs ** 2, axis=1))[:, None]
+            eigvecs *= np.sqrt(np.abs(eigvals))[:, None]
+
+            if phasing_track is not None:
+                # Extract phasing track relevant for the _region
+                phasing_track_region = bioframe.select(phasing_track, _region)
+                phasing_vector = phasing_track_region["value"].values
+                corrs = _correlate_with_eigs(
+                    eigvecs, phasing_vector, corr_metric
+                )
+                # Flip signs of eigvecs deterministically
+                for i in range(len(corrs)):
+                    eigvecs[i] = np.sign(corrs[i]) * eigvecs[i]
+                # Re-rank eigvecs by descending correlation to phasing track
+                if reorder:
+                    idx = np.argsort(-np.abs(corrs))
+                    eigvals = eigvals[idx]
+                    eigvecs[idx] = eigvecs[idx]
+
+        return _region, eigvals, eigvecs
+
+    results = map(_each, view_df.values)
+
+    # Go through eigendecomposition results and fill in output tables.
+    for _region, _eigvals, _eigvecs in results:
+        idx = bioframe.select(eigvec_table, _region).index
+        eigvec_table.loc[idx, eigvec_columns] = _eigvecs.T
+        idx = bioframe.select(eigvals_table, _region).index
+        eigvals_table.loc[idx, eigval_columns] = _eigvals
+
+    return eigvals_table, eigvec_table
 
 
 def _filter_heatmap(A, transmask, perc_top, perc_bottom):
@@ -175,17 +311,9 @@ def _fake_cis(A, cismask):
     return A
 
 
-def trans_eig(
-    A,
-    partition,
-    n_eigs=3,
-    perc_top=99.95,
-    perc_bottom=1,
-    phasing_track=None,
-    sort_metric=False,
-):
+def _obsexp_trans_dense(A, partition, perc_top=99.95, perc_bottom=1):
     """
-    Compute compartmentalization eigenvectors on trans contact data
+    Prepare interchromosomal obs/exp from dense whole genome contact matrix.
 
     Parameters
     ----------
@@ -194,41 +322,14 @@ def trans_eig(
     partition : sequence of int
         bin offset of each contiguous region to treat separately (e.g.,
         chromosomes or chromosome arms)
-    n_eigs : int
-        number of eigenvectors to compute; default = 3
     perc_top : float (percentile)
         filter - clip trans blowout contacts above this cutoff; default = 99.95
     perc_bottom : float (percentile)
         filter - remove bins with trans coverage below this cutoff; default=1
-    phasing_track : 1D array, optional
-        if provided, eigenvectors are flipped to achieve a positive correlation
-        with `phasing_track`.
-    sort_metric : str
-        If provided, re-sort `eigenvecs` and `eigvals` in the order of
-        decreasing correlation between phasing_track and eigenvector, using the
-        specified measure of correlation. Possible values:
-        'pearsonr' - sort by decreasing Pearson correlation.
-        'var_explained' - sort by decreasing absolute amount of variation in
-        `eigvecs` explained by `phasing_track` (i.e. R^2 * var(eigvec))
-        'MAD_explained' - sort by decreasing absolute amount of Median Absolute
-        Deviation from the median of `eigvecs` explained by `phasing_track`
-        (i.e. COMED(eigvec, phasing_track) * MAD(eigvec)).
-        'spearmanr' - sort by decreasing Spearman correlation.
-        This option is designed to report the most "biologically" informative
-        eigenvectors first, and prevent eigenvector swapping caused by
-        translocations. In reality, however, sometimes it shows poor
-        performance and may lead to reporting of non-informative eigenvectors.
-        Off by default.
-
 
     Returns
     -------
-    eigenvalues, eigenvectors
-
-    .. note:: ALWAYS check your EVs by eye. The first one occasionally does
-          not reflect the compartment structure, but instead describes
-          chromosomal arms or translocation blowouts.
-
+    2D array
 
     """
     A = np.array(A)
@@ -275,205 +376,77 @@ def trans_eig(
 
     # Compute eig
     Abar = np.mean(A[is_valid])  # center by scalar mean
-    O = (A - Abar) / Abar
-    O[is_bad_bin, :] = 0
-    O[:, is_bad_bin] = 0
-    eigvecs, eigvals = numutils.get_eig(O, n_eigs, mask_zero_rows=True)
+    OE = (A - Abar) / Abar
+    OE[is_bad_bin, :] = 0
+    OE[:, is_bad_bin] = 0
 
-    eigvecs /= np.sqrt(np.nansum(eigvecs ** 2, axis=1))[:, None]
-    eigvecs *= np.sqrt(np.abs(eigvals))[:, None]
-    if phasing_track is not None:
-        eigvals, eigvecs = _phase_eigs(eigvals, eigvecs, phasing_track, sort_metric)
-
-    return eigvals, eigvecs
-
-
-def eigs_cis(
-    clr,
-    phasing_track=None,
-    view_df=None,
-    n_eigs=3,
-    clr_weight_name="weight",
-    ignore_diags=None,
-    clip_percentile=99.9,
-    sort_metric=None,
-    map=map,
-):
-    """
-    Compute compartment eigenvector for a given cooler `clr` in a number of
-    symmetric intra chromosomal regions defined in view_df (cis-regions), or for each
-    chromosome.
-
-    Note that the amplitude of compartment eigenvectors is weighted by their
-    corresponding eigenvalue. Eigenvectors can be oriented by passing a binned
-    `phasing_track` with the same resolution as the cooler.
-
-
-    Parameters
-    ----------
-    clr : cooler
-        cooler object to fetch data from
-    phasing_track : DataFrame
-        binned track with the same resolution as cooler bins, the fourth column is
-        used to phase the eigenvectors, flipping them to achieve a positive correlation.
-    view_df : iterable or DataFrame, optional
-        if provided, eigenvectors are calculated for the regions of the view only,
-        otherwise chromosome-wide eigenvectors are computed, for chromosomes
-        specified in phasing_track.
-    n_eigs : int
-        number of eigenvectors to compute
-    clr_weight_name : str
-        name of the column with balancing weights to be used.
-    ignore_diags : int, optional
-        the number of diagonals to ignore. Derived from cooler metadata
-        if not specified.
-    clip_percentile : float
-        if >0 and <100, clip pixels with diagonal-normalized values
-        higher than the specified percentile of matrix-wide values.
-    sort_metric : str
-        If provided, re-sort `eigenvecs` and `eigvals` in the order of
-        decreasing correlation between phasing_track and eigenvector, using the
-        specified measure of correlation. Possible values:
-        'pearsonr' - sort by decreasing Pearson correlation.
-        'var_explained' - sort by decreasing absolute amount of variation in
-        `eigvecs` explained by `phasing_track` (i.e. R^2 * var(eigvec))
-        'MAD_explained' - sort by decreasing absolute amount of Median Absolute
-        Deviation from the median of `eigvecs` explained by `phasing_track`
-        (i.e. COMED(eigvec, phasing_track) * MAD(eigvec)).
-        'spearmanr' - sort by decreasing Spearman correlation.
-        This option is designed to report the most "biologically" informative
-        eigenvectors first, and prevent eigenvector swapping caused by
-        translocations. In reality, however, sometimes it shows poor
-        performance and may lead to reporting of non-informative eigenvectors.
-        Off by default.
-    map : callable, optional
-        Map functor implementation.
-    Returns
-    -------
-    eigvals, eigvec_table -> DataFrames with eigenvalues for each region and
-    a table of eigenvectors filled in the `bins` table.
-    .. note:: ALWAYS check your EVs by eye. The first one occasionally does
-              not reflect the compartment structure, but instead describes
-              chromosomal arms or translocation blowouts. Possible mitigations:
-              employ `view_df` (e.g. arms) to avoid issues with chromosomal arms,
-              consider blacklisting regions with translocations during balancing.
-    """
-
-    # get chromosomes from cooler, if view_df not specified:
-    if view_df is None:
-        view_df = make_cooler_view(clr)
-    else:
-        # Make sure view_df is a proper viewframe
-        try:
-            _ = is_compatible_viewframe(
-                view_df,
-                clr,
-                check_sorting=True,
-                raise_errors=True,
-            )
-        except Exception as e:
-            raise ValueError("view_df is not a valid viewframe or incompatible") from e
-
-    # check if cooler is balanced
-    try:
-        _ = is_cooler_balanced(clr, clr_weight_name, raise_errors=True)
-    except Exception as e:
-        raise ValueError(
-            f"provided cooler is not balanced or {clr_weight_name} is missing"
-        ) from e
-
-    # ignore diags as in cooler unless specified
-    ignore_diags = (
-        clr._load_attrs(f"bins/{clr_weight_name}").get("ignore_diags", 2)
-        if ignore_diags is None
-        else ignore_diags
-    )
-
-    bins = clr.bins()[:]
-
-    if phasing_track is not None:
-        phasing_track = align_track_with_cooler(
-            phasing_track,
-            clr,
-            view_df=view_df,
-            clr_weight_name=clr_weight_name,
-            mask_clr_bad_bins=True,
-            drop_track_na=True # this adds check for chromosomes that have all missing values
-        )
-
-    # prepare output table for eigen vectors
-    eigvec_table = bioframe.assign_view(bins, view_df).dropna(subset=["view_region"], axis=0)
-    eigvec_table = eigvec_table.loc[:, bins.columns]
-    eigvec_columns = [f"E{i + 1}" for i in range(n_eigs)]
-    for ev_col in eigvec_columns:
-        eigvec_table[ev_col] = np.nan
-
-    # prepare output table for eigenvalues
-    eigvals_table = view_df.copy()
-    eigval_columns = [f"eigval{i + 1}" for i in range(n_eigs)]
-    for eval_col in eigval_columns:
-        eigvals_table[eval_col] = np.nan
-
-    def _each(region):
-        """
-        perform eigen decomposition for a given region
-        assuming safety checks are done outside of this
-        function.
-        Parameters
-        ----------
-        region: tuple-like
-            tuple of the form (chroms,start,end,*)
-        Returns
-        -------
-        _region, eigvals, eigvecs -> ndarrays
-            array of eigenvalues and an array eigenvectors
-        """
-        _region = region[:3]  # take only (chrom, start, end)
-        A = clr.matrix(balance=clr_weight_name).fetch(_region)
-
-        # extract phasing track relevant for the _region
-        if phasing_track is not None:
-            phasing_track_region = bioframe.select(phasing_track, _region)
-            phasing_track_region_values = phasing_track_region["value"].values
-        else:
-            phasing_track_region_values = None
-
-        eigvals, eigvecs = cis_eig(
-            A,
-            n_eigs=n_eigs,
-            ignore_diags=ignore_diags,
-            phasing_track=phasing_track_region_values,
-            clip_percentile=clip_percentile,
-            sort_metric=sort_metric,
-        )
-
-        return _region, eigvals, eigvecs
-
-    # eigendecompose matrix per region (can be multiprocessed)
-    # output assumes that the order of results matches regions
-    results = map(_each, view_df.values)
-
-    # go through eigendecomposition results and fill in
-    # output table eigvec_table and eigvals_table
-    for _region, _eigvals, _eigvecs in results:
-        idx = bioframe.select(eigvec_table, _region).index
-        eigvec_table.loc[idx, eigvec_columns] = _eigvecs.T
-        idx = bioframe.select(eigvals_table, _region).index
-        eigvals_table.loc[idx, eigval_columns] = _eigvals
-
-    return eigvals_table, eigvec_table
+    return OE
 
 
 def eigs_trans(
     clr,
-    phasing_track=None,
     n_eigs=3,
     partition=None,
     clr_weight_name="weight",
-    sort_metric=None,
+    perc_top=99.95,
+    perc_bottom=1,
+    phasing_track=None,
+    reorder=False,
+    corr_metric="pearsonr",
     **kwargs,
 ):
+    """
+    Eigendecomposition on interchomosomal (trans) contact data.
 
+    Parameters
+    ----------
+    A : 2D array
+        balanced whole genome contact matrix
+    n_eigs : int
+        number of eigenvectors to compute; default = 3
+    partition : sequence of int
+        bin offset of each contiguous region to treat separately (e.g.,
+        chromosomes or chromosome arms)
+    clr_weight_name : str
+        Name of the column with balancing weights to be used.
+    perc_top : float (percentile)
+        filter - clip trans blowout contacts above this cutoff; default = 99.95
+    perc_bottom : float (percentile)
+        filter - remove bins with trans coverage below this cutoff; default=1
+    phasing_track : 1D array, optional
+        If provided, eigenvectors are oriented to achieve a deterministic
+        positive correlation with `phasing_track`, according to `corr_metric`.
+    reorder : bool, default: False
+        If a phasing track is provided, reorder the ``eigvecs`` and ``eigvals``
+        in descending order of correlation between phasing_track and eigenvector,
+        using the specified measure of correlation. Off by default.
+    corr_metric : str, default: "pearsonr"
+        Correlation metric to use for phasing and for reordering eigenvectors if
+        requested. Possible values:
+        'pearsonr' - Pearson correlation.
+        'spearmanr' - Spearman correlation.
+        'var_explained' - variation in `eigvecs` explained by `phasing_track`
+                          (i.e. R^2 * var(eigvec))
+        'MAD_explained' - amount of Median Absolute Deviation from the median of
+                          `eigvecs` explained by `phasing_track`
+                          (i.e. COMED(eigvec, phasing_track) * MAD(eigvec)).
+
+    Returns
+    -------
+    eigvals, eigvecs : DataFrame
+
+    Notes
+    -----
+    ALWAYS check your EVs by eye. The first one occasionally does not reflect
+    the compartment structure, but instead describes chromosomal arms or
+    translocation blowouts.
+
+    The ``reorder`` option is designed to report the most "biologically"
+    informative eigenvectors first, and prevent eigenvector swapping caused by
+    translocations. In reality, however, sometimes it shows poor performance and
+    may lead to reporting of non-informative eigenvectors.
+
+    """
     # check if cooler is balanced
     try:
         _ = is_cooler_balanced(clr, clr_weight_name, raise_errors=True)
@@ -499,6 +472,7 @@ def eigs_trans(
     A = clr.matrix(balance=clr_weight_name)[lo:hi, lo:hi]
     bins = clr.bins()[lo:hi]
 
+    phasing_vector = None
     if phasing_track is not None:
         phasing_track = align_track_with_cooler(
             phasing_track,
@@ -506,27 +480,36 @@ def eigs_trans(
             view_df=view_df,
             clr_weight_name=clr_weight_name,
             mask_clr_bad_bins=True,
-            drop_track_na=True # this adds check for chromosomes that have all missing values
+            drop_track_na=True  # this adds check for chromosomes that have all missing values
         )
-        phasing_track_values = phasing_track["value"].values[lo:hi]
-    else:
-        phasing_track_values = None
+        phasing_vector = phasing_track["value"].values[lo:hi]
 
-    eigvals, eigvecs = trans_eig(
-        A,
-        partition,
-        n_eigs=n_eigs,
-        phasing_track=phasing_track_values,
-        sort_metric=sort_metric,
-        **kwargs,
-    )
+    OE = _obsexp_trans_dense(A, partition, perc_top, perc_bottom)
+
+    eigvecs, eigvals = numutils.get_eig(OE, n_eigs, mask_zero_rows=True)
+    eigvecs /= np.sqrt(np.nansum(eigvecs ** 2, axis=1))[:, None]
+    eigvecs *= np.sqrt(np.abs(eigvals))[:, None]
+
+    if phasing_vector is not None:
+        corrs = _correlate_with_eigs(
+            eigvecs, phasing_vector, corr_metric
+        )
+        # Flip signs of eigvecs deterministically
+        for i in range(len(corrs)):
+            eigvecs[i] = np.sign(corrs[i]) * eigvecs[i]
+        # Re-rank eigvecs by descending correlation to phasing track
+        if reorder:
+            idx = np.argsort(-np.abs(corrs))
+            eigvals = eigvals[idx]
+            eigvecs[idx] = eigvecs[idx]
 
     eigvec_table = bins.copy()
     for i, eigvec in enumerate(eigvecs):
         eigvec_table[f"E{i + 1}"] = eigvec
 
-    eigvals = pd.DataFrame(
+    eigvals_table = pd.DataFrame(
         data=np.atleast_2d(eigvals),
         columns=[f"eigval{i + 1}" for i in range(n_eigs)],
     )
-    return eigvals, eigvec_table
+
+    return eigvals_table, eigvec_table
