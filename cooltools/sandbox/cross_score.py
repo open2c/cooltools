@@ -1,15 +1,18 @@
 from operator import index
 import pathlib
+import itertools
 import multiprocessing as mp
 
 import numpy as np
-import cooler
 import bioframe
+import cooler
 
 import argparse
 import logging
 
 import pandas as pd
+
+import pybigtools # we will need it for writing bigwig files
 
 parser = argparse.ArgumentParser(
     description="""Calculate distance-dependent contact marginals of a Hi-C map.
@@ -21,7 +24,11 @@ parser = argparse.ArgumentParser(
     """
 )
 
-parser.add_argument("COOL_URI", metavar="COOL_URI", type=str, help="input cooler URI")
+parser.add_argument(
+    "COOL_URI", 
+    metavar="COOL_URI", 
+    type=str, 
+    help="input cooler URI")
 
 parser.add_argument(
     "--dist-bins",
@@ -37,13 +44,23 @@ parser.add_argument(
 )
 
 parser.add_argument(
-    "--ignore-diags", type=int, default=2, help="How many diagonals to ignore"
+    "--ignore-diags", 
+    type=int, 
+    default=2, 
+    help="How many diagonals to ignore"
 )
 
-parser.add_argument("--outfolder", type=str, default="./", help="The output folder")
+parser.add_argument(
+    "--outfolder", 
+    type=str, 
+    default="./", 
+    help="The output folder")
 
 parser.add_argument(
-    "--prefix", type=str, default=None, help="The prefix for output files"
+    "--prefix", 
+    type=str, 
+    default=None, 
+    help="The prefix for output files"
 )
 
 parser.add_argument(
@@ -118,11 +135,16 @@ args = parser.parse_args()
 logging.basicConfig(level=logging.INFO)
 if __name__ == "__main__":
     mp.freeze_support()
+
     chunksize = int(float(args.chunksize))
     clr = cooler.Cooler(args.COOL_URI)
     bins = clr.bins()[:]
     n_pixels = clr.pixels().shape[0]
-    dist_bins = np.array([int(float(i)) for i in args.dist_bins.split(",")])
+
+    # dist_bins contain *right* bins edges; 0 is implied as the left edge of the first bin.
+    dist_bins = np.array([int(float(i)) for i in args.dist_bins.split(",")]).astype(np.int64)
+    dist_bins = np.r_[dist_bins, np.iinfo(dist_bins.dtype).max]
+
     weight_name = args.clr_weight_name
     ignore_diags = args.ignore_diags
     formats = args.format.split(",")
@@ -133,15 +155,20 @@ if __name__ == "__main__":
 
     nproc = mp.cpu_count() if args.nproc is None else args.nproc
 
-    logging.info(f"Calculating marginals for {args.COOL_URI} using {nproc} processes")
-    with mp.Pool(nproc) as pool:
-        out = pool.starmap(
-            get_dist_margs,
-            [
-                (args.COOL_URI, lo, hi, dist_bins, weight_name, ignore_diags)
-                for lo, hi in zip(chunk_spans[:-1], chunk_spans[1:])
-            ],
-        )
+    if nproc == 1:
+        mapfunc = itertools.starmap
+    else:
+        pool = mp.Pool(nproc)
+        mapfunc = pool.starmap
+    logging.info(f"Calculating marginals for {args.COOL_URI}, weight name {weight_name}, ignore diags {ignore_diags}; using {nproc} processes")
+    
+    out = mapfunc(
+        get_dist_margs,
+        [
+            (args.COOL_URI, lo, hi, dist_bins, weight_name, ignore_diags)
+            for lo, hi in zip(chunk_spans[:-1], chunk_spans[1:])
+        ],
+    )
 
     margs_up = np.zeros(len(bins) * n_dist_bins + 1)
     margs_down = np.zeros(len(bins) * n_dist_bins + 1)
@@ -165,7 +192,7 @@ if __name__ == "__main__":
     prefix = clr_name if args.prefix is None else args.prefix
     res = clr.binsize
 
-    for dist_bin_id in range(n_dist_bins):
+    for dist_bin_id in range(n_dist_bins-1):
         lo = np.r_[0, dist_bins][dist_bin_id]
         hi = np.r_[0, dist_bins][dist_bin_id + 1]
 
@@ -180,18 +207,21 @@ if __name__ == "__main__":
 
             if "bigwig" in formats:
                 file_name = f"{prefix}.{res}.cross.{dir_str}.{lo}-{hi}.bw"
-                logging.info(f"Write output into {file_name}")
-                bioframe.io.to_bigwig(
+                out_path = (out_folder / file_name).resolve().as_posix()
+                logging.info(f"Write output into {out_path}")
+                bioframe.to_bigwig(
                     out_df,
-                    chromsizes=clr.chromsizes,
-                    outpath=str(out_folder / file_name),
+                    chromsizes=clr.chromsizes.astype(int).to_dict(),
+                    outpath=out_path,
+                    engine='pybigtools'
                 )
 
             if "bedgraph" in formats:
                 file_name = f"{prefix}.{res}.cross.{dir_str}.{lo}-{hi}.bg.gz"
-                logging.info(f"Write output into {file_name}")
+                out_path = (out_folder / file_name).resolve().as_posix()
+                logging.info(f"Write output into {out_path}")
                 out_df.to_csv(
-                    str(out_folder / file_name),
+                    out_path,
                     sep="\t",
                     index=False,
                     header=False,
