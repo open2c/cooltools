@@ -100,8 +100,8 @@ def get_cmap(name):
 
 def _register_cmaps():
     for name, pal in PALETTES.items():
-        register_cmap(list_to_colormap(pal), name=name)
-        register_cmap(list_to_colormap(pal[::-1]), name=name + "_r")
+        register_cmap(cmap=list_to_colormap(pal), name=name)
+        register_cmap(cmap=list_to_colormap(pal[::-1]), name=name + "_r")
 
 
 _register_cmaps()
