@@ -212,6 +212,6 @@ def rearrange_cooler(
         ),
         assembly=assembly,
         mode=mode,
-        mergebuf=int(1e9),
+        mergebuf=int(2e7),
     )
     logging.info(f"Created a new cooler at {out_cooler}")
