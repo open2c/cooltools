@@ -5,7 +5,8 @@ Migrated from :mod:`mirnylib.plotting`.
 try:
     from matplotlib.cm import register_cmap
 except ImportError:
-    from matplotlib.colormaps import register
+    from matplotlib import colormaps
+    register_cmap = colormaps.register
 
 import matplotlib as mpl
 import matplotlib.pyplot as plt
@@ -99,8 +100,8 @@ def get_cmap(name):
 
 def _register_cmaps():
     for name, pal in PALETTES.items():
-        register_cmap(name, list_to_colormap(pal))
-        register_cmap(name + "_r", list_to_colormap(pal[::-1]))
+        register_cmap(list_to_colormap(pal), name=name)
+        register_cmap(list_to_colormap(pal[::-1]), name=name + "_r")
 
 
 _register_cmaps()
