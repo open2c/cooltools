@@ -733,3 +733,4 @@ def test_diagsum_from_array():
     exp1 = diagsum_from_array(ar, ignore_diags=0)
     exp1["balanced.avg"] = exp1["balanced.sum"] / exp1["n_valid"]
     assert np.allclose(exp, exp1["balanced.avg"].values, equal_nan=True)
+    

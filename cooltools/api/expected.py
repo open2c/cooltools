@@ -1036,7 +1036,7 @@ def per_region_smooth_cvd(
 
     return cvd
 
-def _transformer(p, weight1, weight2):
+def _balance_transform(p, weight1, weight2):
     return p["count"] * p[weight1] * p[weight2]
 
 # user-friendly wrapper for diagsum_symm and diagsum_pairwise - part of new "public" API
@@ -1183,7 +1183,7 @@ def expected_cis(
         # define balanced data transform:
         weight1 = clr_weight_name + "1"
         weight2 = clr_weight_name + "2"
-        transforms = {"balanced": partial(_transformer, weight1=weight1, weight2=weight2)}
+        transforms = {"balanced": partial(_balance_transform, weight1=weight1, weight2=weight2)}
     else:
         raise ValueError(
             "cooler is not balanced, or"
@@ -1321,7 +1321,7 @@ def expected_trans(
         # define balanced data transform:
         weight1 = clr_weight_name + "1"
         weight2 = clr_weight_name + "2"
-        transforms = {"balanced": partial(_transformer, weight1=weight1, weight2=weight2)}
+        transforms = {"balanced": partial(_balance_transform, weight1=weight1, weight2=weight2)}
     else:
         raise ValueError(
             "cooler is not balanced, or"
