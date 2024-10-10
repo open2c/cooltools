@@ -2,7 +2,7 @@ import warnings
 import numpy as np
 import pandas as pd
 import bioframe
-from multiprocess import Pool
+from multiprocessing import Pool
 from functools import wraps
 import logging
 
@@ -526,7 +526,7 @@ def pool_decorator(func):
         # If alternative or third party map functors are provided
         if "map_functor" in kwargs.keys():
             logging.info(f"using an alternative map functor: {kwargs['map_functor']}")
-            return func(*args, **kwargs, map_functor=kwargs["map_functor"])
+            return func(*args, **kwargs)
         
         pool = None
         if "nproc" in kwargs.keys():

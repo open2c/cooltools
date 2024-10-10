@@ -1262,6 +1262,9 @@ def cluster_filtering_hiccups(
 # large helper functions wrapping smaller step-specific ones
 ####################################################################
 
+def _compose_score_hist(tile, to_score, to_hist):
+    return to_hist(to_score(tile))
+
 @pool_decorator
 def scoring_and_histogramming_step(
     clr,
@@ -1300,7 +1303,7 @@ def scoring_and_histogramming_step(
     to_hist = partial(histogram_scored_pixels, kernels=kernels, ledges=ledges)
 
     # compose scoring and histogramming together :
-    job = lambda tile: to_hist(to_score(tile))
+    job = partial(_compose_score_hist, to_score=to_score, to_hist=to_hist)
 
     # standard multiprocessing implementation
     if nproc > 1:
@@ -1388,7 +1391,7 @@ def scoring_and_extraction_step(
     )
 
     # compose scoring and histogramming together
-    job = lambda tile: to_extract(to_score(tile))
+    job = partial(_compose_score_hist, to_score=to_score, to_hist=to_extract)
 
     # standard multiprocessing implementation
     if nproc > 1:
