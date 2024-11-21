@@ -1,6 +1,5 @@
 # inspired by:
 # saddles.py by @nvictus
-# https://github.com/nandankita/labUtilityTools
 from functools import partial
 import os.path as op
 import sys
@@ -124,36 +123,6 @@ from . import cli
     required=True,
 )
 @click.option(
-    "--fig",
-    type=click.Choice(["png", "jpg", "svg", "pdf", "ps", "eps"]),
-    multiple=True,
-    help="Generate a figure and save to a file of the specified format. "
-    "If not specified - no image is generated. Repeat for multiple "
-    "output formats.",
-)
-@click.option(
-    "--scale",
-    help="Value scale for the heatmap",
-    type=click.Choice(["linear", "log"]),
-    default="log",
-    show_default=True,
-)
-@click.option(
-    "--cmap", help="Name of matplotlib colormap", default="coolwarm", show_default=True
-)
-@click.option(
-    "--vmin",
-    help="Low value of the saddleplot colorbar. "
-    "Note: value in original units irrespective of used scale, "
-    "and therefore should be positive for both vmin and vmax.",
-    type=float,
-    default=0.5,
-)
-@click.option(
-    "--vmax", help="High value of the saddleplot colorbar", type=float, default=2
-)
-@click.option("--hist-color", help="Face color of histogram bar chart")
-@click.option(
     "-v", "--verbose", help="Enable verbose output", is_flag=True, default=False
 )
 def saddle(
@@ -170,12 +139,6 @@ def saddle(
     strength,
     view,
     out_prefix,
-    fig,
-    scale,
-    cmap,
-    vmin,
-    vmax,
-    hist_color,
     verbose,
 ):
     """
@@ -334,51 +297,3 @@ def saddle(
     # Save data
     np.savez(out_prefix + ".saddledump", **to_save)  # .npz auto-added
     digitized_track.to_csv(out_prefix + ".digitized.tsv", sep="\t", index=False)
-
-    # Generate figure
-    if len(fig):
-        try:
-            import matplotlib as mpl
-
-            mpl.use("Agg")  # savefig only for now:
-            import matplotlib.pyplot as plt
-        except ImportError:
-            print("Install matplotlib to use ", file=sys.stderr)
-            sys.exit(1)
-
-        if hist_color is None:
-            color = (
-                0.41568627450980394,
-                0.8,
-                0.39215686274509803,
-            )  # sns.color_palette('muted')[2]
-        else:
-            color = mpl.colors.colorConverter.to_rgb(hist_color)
-        title = op.basename(cool_path) + " ({})".format(contact_type)
-
-        if qrange is not None:
-            track_label = track_name + " quantiles"
-        else:
-            track_label = track_name
-
-        clabel = "(contact frequency / expected)"
-
-        api.saddle.saddleplot(
-            track,
-            saddledata,
-            n_bins,
-            vrange=vrange,
-            qrange=qrange,
-            scale=scale,
-            vmin=vmin,
-            vmax=vmax,
-            color=color,
-            title=title,
-            xlabel=track_label,
-            ylabel=track_label,
-            clabel=clabel,
-            cmap=cmap,
-        )
-
-        for ext in fig:
-            plt.savefig(out_prefix + "." + ext, bbox_inches="tight")
