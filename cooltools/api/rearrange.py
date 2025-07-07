@@ -202,6 +202,8 @@ def rearrange_cooler(
         bins_old, view_df, new_chrom_col=new_chrom_col, orientation_col=orientation_col
     )
     logging.info("Creating a new cooler")
+    # fetching pixel dtypes to avoid implicit casts of count column
+    dtypes = clr.pixels().dtypes.to_dict()
     cooler.create_cooler(
         out_cooler,
         bins_new,
@@ -210,6 +212,7 @@ def rearrange_cooler(
             bin_mapping,
             chunksize=chunksize,
         ),
+        dtypes = dtypes,
         assembly=assembly,
         mode=mode,
         mergebuf=int(2e7),
