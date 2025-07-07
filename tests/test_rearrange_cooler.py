@@ -138,7 +138,7 @@ def test_rearrange_cooler(request):
     assert np.array_equal(old_trans_m, reordered_inverted_trans_m, equal_nan=True)
 
     # IV.
-    # Check that pixel datatypes are propagted to output cooler
+    # Check that pixel datatypes are propagated to output cooler
     float_clr = cooler.Cooler(op.join(request.fspath.dirname, "data/float_counts.cool"))
     new_view = bioframe.make_viewframe(float_clr.chromsizes)
     rearrange_cooler(float_clr, new_view, "test_propagated_datatypes.cool")
