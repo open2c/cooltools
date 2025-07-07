@@ -62,7 +62,7 @@ def test_rearrange_cooler(request):
 
     # III.
     # Check that when taking two chromosomes in a different order and inverting one,
-    # all is ax espected
+    # all is as espected
 
     reorder_invert_view = (
         orig_view.iloc[1::-1].assign(strand=["+", "-"]).reset_index(drop=True)
@@ -136,3 +136,16 @@ def test_rearrange_cooler(request):
         ::-1, :
     ]
     assert np.array_equal(old_trans_m, reordered_inverted_trans_m, equal_nan=True)
+
+    # IV.
+    # Check that pixel datatypes are propagted to output cooler
+    float_clr = cooler.Cooler(op.join(request.fspath.dirname, "data/float_counts.cool"))
+    new_view = (
+        bioframe
+        .make_viewframe(float_clr.chromsizes)
+        .sort_values(['chrom', 'start', 'end'])
+    )
+    rearrange_cooler(float_clr, new_view, "test_propagated_datatypes.cool")
+
+    propagate_clr = cooler.Cooler("test_propagated_datatypes.cool")
+    assert_frame_equal(float_clr.pixels()[:], propagate_clr.pixels()[:])
