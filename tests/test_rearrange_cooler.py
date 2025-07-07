@@ -140,12 +140,11 @@ def test_rearrange_cooler(request):
     # IV.
     # Check that pixel datatypes are propagted to output cooler
     float_clr = cooler.Cooler(op.join(request.fspath.dirname, "data/float_counts.cool"))
-    new_view = (
-        bioframe
-        .make_viewframe(float_clr.chromsizes)
-        .sort_values(['chrom', 'start', 'end'])
-    )
+    new_view = bioframe.make_viewframe(float_clr.chromsizes)
     rearrange_cooler(float_clr, new_view, "test_propagated_datatypes.cool")
 
     propagate_clr = cooler.Cooler("test_propagated_datatypes.cool")
-    assert_frame_equal(float_clr.pixels()[:], propagate_clr.pixels()[:])
+    assert_frame_equal(
+        float_clr.pixels()[:], 
+        propagate_clr.pixels()[:]
+    )
