@@ -119,6 +119,22 @@ logging.basicConfig(level=logging.INFO)
     "This is useful when only cis-expected is available.",
     is_flag=True,
 )
+@click.option(
+    "--output-dtype",
+    help="Data type for O/E values in the output cooler. "
+    "'float32' saves disk space (~2x smaller), 'float64' keeps full precision.",
+    type=click.Choice(["float32", "float64"]),
+    default="float32",
+    show_default=True,
+)
+@click.option(
+    "--mode",
+    help="File mode for cooler creation. 'a' (append) allows writing "
+    "multiple resolutions into one .mcool file. 'w' overwrites.",
+    type=click.Choice(["a", "w"]),
+    default="a",
+    show_default=True,
+)
 def obs_over_exp(
     cool_path,
     cis_expected,
@@ -134,6 +150,8 @@ def obs_over_exp(
     chunksize,
     nproc,
     no_trans,
+    output_dtype,
+    mode,
 ):
     """
     Divide a cooler's contact matrix by expected and save as a new cooler.
@@ -246,6 +264,8 @@ def obs_over_exp(
         smooth_sigma=smooth_sigma,
         chunksize=chunksize,
         nproc=nproc,
+        output_dtype=output_dtype,
+        mode=mode,
     )
 
     logging.info(f"Done! O/E cooler written to: {output}")

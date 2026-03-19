@@ -143,7 +143,7 @@ def _verify_oe_cooler(
 
     # 2. Check that pixels have float count values (O/E ratios)
     oe_pixels = oe_clr.pixels()[:]
-    assert oe_pixels["count"].dtype == np.float64
+    assert np.issubdtype(oe_pixels["count"].dtype, np.floating)
 
     # 3. Verify a cis region: pick the first intra-chromosomal block in the view
     region_name = view_df.iloc[0]["name"]
@@ -299,7 +299,7 @@ class TestCreateObsOverExpCooler:
         # Structural check
         assert len(oe_clr.bins()) == len(clr.bins())
         oe_pixels = oe_clr.pixels()[:]
-        assert oe_pixels["count"].dtype == np.float64
+        assert np.issubdtype(oe_pixels["count"].dtype, np.floating)
         assert len(oe_pixels) > 0
 
     def test_compute_expected_on_the_fly(self, clr, tmp_path):
@@ -324,7 +324,7 @@ class TestCreateObsOverExpCooler:
         oe_clr = cooler.Cooler(out_path)
         assert len(oe_clr.bins()) == len(clr.bins())
         oe_pixels = oe_clr.pixels()[:]
-        assert oe_pixels["count"].dtype == np.float64
+        assert np.issubdtype(oe_pixels["count"].dtype, np.floating)
         assert len(oe_pixels) > 0
 
     def test_no_view_uses_full_chroms(self, clr, tmp_path):
@@ -451,6 +451,76 @@ class TestCreateObsOverExpCooler:
         assert len(finite_vals) > 0, "No finite O/E values"
         median_oe = np.median(finite_vals)
         assert 0.01 < median_oe < 100, f"Median O/E = {median_oe}, expected near 1"
+
+    @pytest.mark.parametrize("dtype", ["float32", "float64"])
+    def test_output_dtype(self, clr, cis_exp, tmp_path, dtype):
+        """Test that output_dtype controls the storage precision of O/E values."""
+        from cooltools.sandbox.obs_over_exp_cooler import create_obs_over_exp_cooler
+
+        out_path = str(tmp_path / f"oe_{dtype}.cool")
+
+        create_obs_over_exp_cooler(
+            clr,
+            out_path,
+            expected_cis_df=cis_exp,
+            expected_trans_df=False,
+            view_df=view_df,
+            expected_value_col="balanced.avg",
+            clr_weight_name=clr_weight_name,
+            ignore_diags=ignore_diags,
+            chunksize=chunksize,
+            output_dtype=dtype,
+        )
+
+        oe_clr = cooler.Cooler(out_path)
+        oe_pixels = oe_clr.pixels()[:]
+        assert oe_pixels["count"].dtype == np.dtype(dtype), (
+            f"Expected dtype {dtype}, got {oe_pixels['count'].dtype}"
+        )
+
+    def test_parallel_matches_sequential(self, clr, cis_exp, trans_exp, tmp_path):
+        """Test that nproc>1 gives identical results to nproc=1."""
+        from cooltools.sandbox.obs_over_exp_cooler import create_obs_over_exp_cooler
+
+        out_seq = str(tmp_path / "oe_seq.cool")
+        out_par = str(tmp_path / "oe_par.cool")
+
+        common_kwargs = dict(
+            expected_cis_df=cis_exp,
+            expected_trans_df=trans_exp,
+            view_df=view_df,
+            expected_value_col="balanced.avg",
+            clr_weight_name=clr_weight_name,
+            ignore_diags=ignore_diags,
+            chunksize=chunksize,
+            output_dtype="float64",  # use float64 to avoid precision loss in comparison
+        )
+
+        create_obs_over_exp_cooler(clr, out_seq, nproc=1, **common_kwargs)
+        create_obs_over_exp_cooler(clr, out_par, nproc=2, **common_kwargs)
+
+        seq_pixels = cooler.Cooler(out_seq).pixels()[:].sort_values(
+            ["bin1_id", "bin2_id"]
+        ).reset_index(drop=True)
+        par_pixels = cooler.Cooler(out_par).pixels()[:].sort_values(
+            ["bin1_id", "bin2_id"]
+        ).reset_index(drop=True)
+
+        assert len(seq_pixels) == len(par_pixels), (
+            f"Pixel count mismatch: sequential={len(seq_pixels)}, parallel={len(par_pixels)}"
+        )
+        testing.assert_array_equal(
+            seq_pixels["bin1_id"].values, par_pixels["bin1_id"].values
+        )
+        testing.assert_array_equal(
+            seq_pixels["bin2_id"].values, par_pixels["bin2_id"].values
+        )
+        testing.assert_allclose(
+            seq_pixels["count"].values,
+            par_pixels["count"].values,
+            rtol=1e-12,
+            err_msg="Parallel and sequential O/E values differ",
+        )
 
 
 # ---------------------------------------------------------------------------
