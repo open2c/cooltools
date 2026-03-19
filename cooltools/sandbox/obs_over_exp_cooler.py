@@ -15,6 +15,9 @@ obs_over_exp_generator - is a function/generator(lazy iterator) that wraps
     `obs_over_exp` function and yields chunks of observed/expected pixel table.
     Such a "stream" can be used in cooler.create as a "pixels" argument to write
     obs/exp cooler-file.
+create_obs_over_exp_cooler - the main user-facing function that takes a cooler,
+    pre-computed expected (cis and optionally trans), and writes a new cooler file
+    with observed/expected values as the pixel counts.
 
 It also includes 3 helper functions (used in `expected_full_fast`):
 make_pairwise_expected_table - a function that creates an empty table for the
@@ -742,6 +745,31 @@ def obs_over_exp(
     return pixels_oe
 
 
+def _obs_over_exp_worker(args):
+    """
+    Top-level picklable worker function for parallel obs_over_exp computation.
+
+    Reads a pixel chunk from the cooler and computes O/E for that chunk.
+    Must be a module-level function so that multiprocess can pickle it.
+    """
+    (clr_uri, lo, hi, bins_view, expected_full,
+     view_column_name, expected_column_name,
+     clr_weight_name, oe_column_name) = args
+
+    clr = cooler.Cooler(clr_uri)
+    pixels = clr.pixels()[lo:hi]
+    oe_chunk = obs_over_exp(
+        pixels,
+        bins_view,
+        expected_full,
+        view_column_name=view_column_name,
+        expected_column_name=expected_column_name,
+        clr_weight_name=clr_weight_name,
+        oe_column_name=oe_column_name,
+    )
+    return oe_chunk[["bin1_id", "bin2_id", oe_column_name]]
+
+
 def obs_over_exp_generator(
     clr,
     expected_full,
@@ -749,11 +777,16 @@ def obs_over_exp_generator(
     expected_column_name="expected",
     clr_weight_name='weight',
     oe_column_name="count",
-    chunksize = 1_000_000
+    chunksize=1_000_000,
+    nproc=1,
 ):
     """
     Generator yielding chunks of pixels with
     pre-caluclated observed over expected.
+
+    When nproc > 1, chunks are computed in parallel using a process pool
+    with ordered mapping (``imap``), so the output order is preserved —
+    a requirement for ``cooler.create_cooler(ordered=True)``.
 
     Parameters
     ----------
@@ -772,6 +805,8 @@ def obs_over_exp_generator(
         Use raw unbalanced data, when None.
     chunksize : int, optional
         Size of pixel table chunks to process and output
+    nproc : int, optional
+        Number of worker processes. 1 (default) means sequential.
 
     Yields
     ------
@@ -791,18 +826,340 @@ def obs_over_exp_generator(
 
     # define chunks of pixels to work on
     spans = partition(0, len(clr.pixels()), chunksize)
-    for span in spans:
-        lo, hi = span
-        # logging.info(f"Calculating observed over expected for pixels [{lo}:{hi}]")
-        oe_chunk = obs_over_exp(
-            clr.pixels()[lo:hi],
-            bins_view,
-            expected_full,
-            view_column_name=view_column_name,
-            expected_column_name=expected_column_name,
-            clr_weight_name=clr_weight_name,
-            oe_column_name=oe_column_name,
+
+    if nproc > 1:
+        # Build the cooler URI so workers can re-open it independently
+        clr_uri = clr.uri  # e.g. "path.cool" or "path.mcool::/resolutions/10000"
+
+        # Prepare argument tuples for the worker function
+        job_args = [
+            (clr_uri, lo, hi, bins_view, expected_full,
+             view_column_name, expected_column_name,
+             clr_weight_name, oe_column_name)
+            for lo, hi in spans
+        ]
+
+        logging.info(
+            f"Computing O/E in parallel with {nproc} processes "
+            f"({len(job_args)} chunks of {chunksize} pixels) ..."
         )
 
-        # yield pixel-table-like chunks of observed over expected
-        yield oe_chunk[["bin1_id", "bin2_id", oe_column_name]]
+        # imap preserves order — critical for cooler.create_cooler(ordered=True)
+        pool = mp.Pool(nproc)
+        try:
+            for oe_chunk in pool.imap(_obs_over_exp_worker, job_args):
+                yield oe_chunk
+        finally:
+            pool.close()
+            pool.join()
+    else:
+        for span in spans:
+            lo, hi = span
+            oe_chunk = obs_over_exp(
+                clr.pixels()[lo:hi],
+                bins_view,
+                expected_full,
+                view_column_name=view_column_name,
+                expected_column_name=expected_column_name,
+                clr_weight_name=clr_weight_name,
+                oe_column_name=oe_column_name,
+            )
+            yield oe_chunk[["bin1_id", "bin2_id", oe_column_name]]
+
+
+def create_obs_over_exp_cooler(
+    clr,
+    out_path,
+    expected_cis_df,
+    expected_trans_df=None,
+    view_df=None,
+    expected_value_col="balanced.avg",
+    clr_weight_name="weight",
+    ignore_diags=2,
+    smooth_cis=False,
+    aggregate_smoothed=False,
+    smooth_sigma=0.1,
+    aggregate_trans=False,
+    chunksize=1_000_000,
+    nproc=4,
+    output_dtype="float32",
+    mode="a",
+):
+    """
+    Create a new cooler file where pixel values are observed/expected ratios.
+
+    This is the main user-facing function that:
+    1. Takes a cooler and pre-computed cis-expected (and optionally trans-expected).
+       If expected DataFrames are not provided, computes them from the cooler.
+    2. Stitches cis and trans expected into a "full" expected covering the entire heatmap.
+    3. Divides observed (balanced or raw) pixel values by the expected, and writes
+       the resulting O/E values into a new cooler file.
+
+    Expected DataFrames should be in the standard cooltools format, e.g. as produced
+    by `cooltools.expected_cis()` and `cooltools.expected_trans()`.
+
+    Parameters
+    ----------
+    clr : cooler.Cooler
+        Input cooler object.
+    out_path : str
+        Path to the output .cool file where O/E values will be stored.
+    expected_cis_df : pd.DataFrame or None
+        Pre-computed cis-expected DataFrame in cooltools format.
+        If None, cis-expected is computed from the cooler.
+    expected_trans_df : pd.DataFrame, None, or False
+        Pre-computed trans-expected DataFrame in cooltools format.
+        If None, trans-expected is computed from the cooler.
+        If False, trans pixels are skipped entirely (cis-only O/E).
+    view_df : viewframe or None
+        A viewframe defining genomic regions. Must match the regions
+        used to compute expected. If None, uses full chromosomes from
+        the cooler.
+    expected_value_col : str
+        Name of the column in expected DataFrames that contains the
+        expected interaction values to divide by.
+        Default is "balanced.avg". Other common choices:
+        "balanced.avg.smoothed", "balanced.avg.smoothed.agg",
+        "count.avg" (for raw data).
+    clr_weight_name : str or None
+        Name of the balancing weight column in the cooler.
+        Set to None to use raw (unbalanced) data.
+    ignore_diags : int
+        Number of short-distance diagonals to ignore.
+        Pixels on these diagonals will be excluded from the output.
+    smooth_cis : bool
+        Only used when expected_cis_df is None and expected needs
+        to be computed. Apply smoothing to cis-expected.
+    aggregate_smoothed : bool
+        Only used when expected_cis_df is None. Aggregate smoothed
+        expected over all regions.
+    smooth_sigma : float
+        Only used when expected_cis_df is None. Sigma for smoothing.
+    aggregate_trans : bool
+        Only used when expected_trans_df is None. Aggregate
+        trans-expected at the inter-chromosomal level.
+    chunksize : int
+        Number of pixels per chunk for streaming computation.
+    nproc : int
+        Number of processes for expected computation (when expected
+        needs to be computed) and for parallel O/E pixel calculation.
+    output_dtype : str or numpy dtype
+        Data type for the O/E values stored in the output cooler.
+        Default is "float32" which is sufficient for visualisation
+        and saves disk space (~2x smaller files). Use "float64" when
+        full double-precision is needed for downstream analyses.
+    mode : str
+        File mode for ``cooler.create_cooler()``. Default is "a"
+        (append), which allows writing multiple resolutions into
+        one ``.mcool`` file by calling this function consecutively
+        for each resolution. Use "w" to overwrite an existing file.
+
+    Returns
+    -------
+    None
+        Writes the output cooler to `out_path`.
+
+    Notes
+    -----
+    The output cooler has the same bins as the input cooler, but the
+    "count" column in pixels contains float O/E values instead of
+    integer raw counts. Pixels with NaN O/E values (e.g. from
+    bad bins, ignored diagonals, or missing expected) are excluded.
+
+    The workflow is:
+    1. Prepare a "full" expected table covering the entire heatmap by
+       stitching cis and trans expected together with integer region
+       labels matching the viewframe.
+    2. Stream through pixel chunks, annotate each pixel with its
+       region pair and genomic distance, merge with expected, divide
+       observed by expected.
+    3. Write the resulting O/E pixel stream into a new cooler using
+       `cooler.create_cooler()`.
+
+    Examples
+    --------
+    Using pre-computed expected files:
+
+    >>> import cooler
+    >>> import pandas as pd
+    >>> from cooltools.sandbox.obs_over_exp_cooler import create_obs_over_exp_cooler
+    >>> clr = cooler.Cooler("mydata.cool")
+    >>> cis_exp = pd.read_table("expected_cis.tsv")
+    >>> trans_exp = pd.read_table("expected_trans.tsv")
+    >>> create_obs_over_exp_cooler(
+    ...     clr, "mydata_oe.cool",
+    ...     expected_cis_df=cis_exp,
+    ...     expected_trans_df=trans_exp,
+    ...     expected_value_col="balanced.avg.smoothed.agg",
+    ... )
+
+    Computing expected on the fly:
+
+    >>> create_obs_over_exp_cooler(
+    ...     clr, "mydata_oe.cool",
+    ...     expected_cis_df=None,
+    ...     expected_trans_df=None,
+    ...     smooth_cis=True,
+    ...     aggregate_smoothed=True,
+    ... )
+    """
+
+    logging.info(
+        f"Creating O/E cooler from {clr.filename} "
+        f"(binsize={clr.binsize}, {len(clr.chromnames)} chroms, "
+        f"{len(clr.pixels())} pixels) -> {out_path}"
+    )
+
+    # ---- 1. Prepare view ------------------------------------------------
+    if view_df is None:
+        view_df = make_cooler_view(clr)
+    else:
+        try:
+            _ = is_compatible_viewframe(
+                view_df, clr, check_sorting=True, raise_errors=True,
+            )
+        except Exception as e:
+            raise ValueError("view_df is not a valid viewframe or incompatible") from e
+
+    # ---- 2. Compute expected if not provided -----------------------------
+    if expected_cis_df is None:
+        logging.info("No cis-expected provided, computing from the cooler ...")
+        expected_cis_df = expected_cis(
+            clr,
+            view_df=view_df,
+            intra_only=False,  # need all cis pairwise blocks
+            smooth=smooth_cis,
+            aggregate_smoothed=aggregate_smoothed,
+            smooth_sigma=smooth_sigma,
+            clr_weight_name=clr_weight_name,
+            ignore_diags=ignore_diags,
+            chunksize=chunksize * 10,  # larger chunks for expected computation
+            nproc=nproc,
+        )
+
+    if expected_trans_df is None:
+        logging.info(
+            "No trans-expected provided, computing from the cooler ... "
+            "Pass expected_trans_df=False to skip trans and keep only cis O/E."
+        )
+        expected_trans_df = expected_trans(
+            clr,
+            view_df=view_df,
+            clr_weight_name=clr_weight_name,
+            chunksize=chunksize * 10,
+            nproc=nproc,
+        )
+
+        # Aggregate trans-expected at the chromosome level if requested.
+        # This is useful when a sub-chromosomal view is provided, so that
+        # all inter-arm blocks of the same chromosome pair share the same
+        # expected value.
+        if aggregate_trans:
+            view_label_agg = (
+                view_df.reset_index()
+                .rename(columns={"index": "r"})
+                .set_index("name")
+            )
+            additive_cols = ["n_valid", "count.sum"]
+            if clr_weight_name:
+                additive_cols.append("balanced.sum")
+            _cpb_agg = expected_trans_df.groupby(
+                [
+                    view_label_agg["chrom"].loc[expected_trans_df[_REGION1_NAME]].to_numpy(),
+                    view_label_agg["chrom"].loc[expected_trans_df[_REGION2_NAME]].to_numpy(),
+                ]
+            )[additive_cols].transform("sum")
+            expected_trans_df["count.avg.agg"] = (
+                _cpb_agg["count.sum"] / _cpb_agg["n_valid"]
+            )
+            if clr_weight_name:
+                expected_trans_df["balanced.avg.agg"] = (
+                    _cpb_agg["balanced.sum"] / _cpb_agg["n_valid"]
+                )
+            logging.info("Aggregated trans-expected at the chromosome level.")
+
+    # ---- 3. Stitch cis + trans into a "full" expected --------------------
+    # Determine the expected value column name for cis and trans
+    if expected_value_col not in expected_cis_df.columns:
+        raise ValueError(
+            f"Column '{expected_value_col}' not found in cis-expected. "
+            f"Available columns: {list(expected_cis_df.columns)}"
+        )
+
+    # Build a unified view label mapping: region name -> integer index
+    view_label = (
+        view_df.reset_index()
+        .rename(columns={"index": "r"})
+        .set_index("name")
+    )
+
+    # Prepare cis expected with "r1", "r2", "dist" for merging
+    cis_df = expected_cis_df.copy()
+    cis_df["expected"] = cis_df[expected_value_col]
+    cis_df["r1"] = view_label["r"].loc[cis_df[_REGION1_NAME]].to_numpy()
+    cis_df["r2"] = view_label["r"].loc[cis_df[_REGION2_NAME]].to_numpy()
+
+    # Prepare trans expected (if provided)
+    if expected_trans_df is not False and expected_trans_df is not None:
+        trans_value_col = expected_value_col
+        # trans expected might use a simpler column name (no smoothing suffix)
+        # try to find the best match
+        if trans_value_col not in expected_trans_df.columns:
+            # fall back to balanced.avg or count.avg
+            for fallback in ["balanced.avg", "count.avg"]:
+                if fallback in expected_trans_df.columns:
+                    trans_value_col = fallback
+                    logging.info(
+                        f"Column '{expected_value_col}' not found in trans-expected, "
+                        f"falling back to '{trans_value_col}'."
+                    )
+                    break
+            else:
+                raise ValueError(
+                    f"Column '{expected_value_col}' not found in trans-expected. "
+                    f"Available columns: {list(expected_trans_df.columns)}"
+                )
+
+        trans_df = expected_trans_df.copy()
+        trans_df["expected"] = trans_df[trans_value_col]
+        trans_df[_DIST_NAME] = TRANS_DIST_VALUE  # sentinel value for trans
+        trans_df["r1"] = view_label["r"].loc[trans_df[_REGION1_NAME]].to_numpy()
+        trans_df["r2"] = view_label["r"].loc[trans_df[_REGION2_NAME]].to_numpy()
+    else:
+        trans_df = None
+        logging.info("No trans-expected, output cooler will contain cis O/E only.")
+
+    # Concatenate into full expected
+    keep_cols = ["r1", "r2", _DIST_NAME, "expected"]
+    parts = [cis_df[keep_cols]]
+    if trans_df is not None:
+        parts.append(trans_df[keep_cols])
+    full_expected = pd.concat(parts, ignore_index=True)
+
+    # ---- 4. Generate O/E pixels and write cooler -------------------------
+    logging.info(f"Generating O/E pixels and writing to {out_path} ...")
+
+    pixel_generator = obs_over_exp_generator(
+        clr,
+        expected_full=full_expected,
+        view_df=view_df,
+        expected_column_name="expected",
+        clr_weight_name=clr_weight_name,
+        oe_column_name="count",  # name it "count" for the output cooler
+        chunksize=chunksize,
+        nproc=nproc,
+    )
+
+    # Create the new cooler with O/E values
+    # Use the original bins (chrom, start, end only - no weights)
+    bins = clr.bins()[:][["chrom", "start", "end"]]
+    cooler.create_cooler(
+        out_path,
+        bins,
+        pixel_generator,
+        dtypes={"count": np.dtype(output_dtype)},  # O/E values are floats
+        ordered=True,
+        mode=mode,
+    )
+
+    logging.info(f"Done. O/E cooler written to {out_path}")
