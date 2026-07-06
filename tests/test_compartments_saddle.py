@@ -419,3 +419,34 @@ def test_saddle(request, tmpdir):
     # TODO: tests after adding input agreement, e.g.
     # asserting saddle.saddle(clr, cis-type-expected, track, "trans")
     # throws an error
+
+
+def test_saddle_strength():
+    # asymmetric bin counts on the diagonal (C[0, 0] != C[-1, -1]) so that
+    # a naive extent=0 default of 0 would be distinguishable from the
+    # correct value
+    S = np.array(
+        [
+            [10.0, 2.0, 1.0],
+            [2.0, 5.0, 2.0],
+            [1.0, 2.0, 8.0],
+        ]
+    )
+    C = np.array(
+        [
+            [4.0, 2.0, 1.0],
+            [2.0, 5.0, 2.0],
+            [1.0, 2.0, 2.0],
+        ]
+    )
+
+    ratios = saddle.saddle_strength(S, C)
+
+    # extent=0: ((S/C)[0, 0] + (S/C)[-1, -1]) / (2 * (S/C)[-1, 0])
+    # hand-computed from S, C above
+    expected = np.array([3.0, 3.0, 1.5])
+
+    assert np.allclose(ratios, expected)
+    # regression check: extent=0 must not be left at its zero-initialized
+    # default (see https://github.com/open2c/cooltools/issues/565)
+    assert ratios[0] != 0

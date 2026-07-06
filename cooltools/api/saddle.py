@@ -784,6 +784,18 @@ def saddle_strength(S, C):
         raise ValueError("`saddledata` should be square.")
 
     ratios = np.zeros(n)
+
+    # extent=0 reduces to a single pair of corner bins on each side
+    intra0_sum = np.nansum(S[0, 0]) + np.nansum(S[-1, -1])
+    intra0_count = np.nansum(C[0, 0]) + np.nansum(C[-1, -1])
+    intra0 = intra0_sum / intra0_count
+
+    inter0_sum = np.nansum(S[0, -1]) + np.nansum(S[-1, 0])
+    inter0_count = np.nansum(C[0, -1]) + np.nansum(C[-1, 0])
+    inter0 = inter0_sum / inter0_count
+
+    ratios[0] = intra0 / inter0
+
     for k in range(1, n):
         intra_sum = np.nansum(S[0:k, 0:k]) + np.nansum(S[n - k : n, n - k : n])
         intra_count = np.nansum(C[0:k, 0:k]) + np.nansum(C[n - k : n, n - k : n])
